@@ -16,7 +16,9 @@ rifle, knife, grenade and hand archives are V2-keyed, the plaintext asset
 tree of the BR 1810.04 client (rifle, knife, grenades; its M92FS pair is
 byte-for-byte the size of Steam's and gives the same numbers) and an older
 client release's extracted hand archive and effect file. Each number says
-which source it comes from.
+which source it comes from. A follow-up session (Open questions 9–16)
+added the client's footing test, deselect, piece and attached-effect
+handling, the hand-file reset and the flash-hider choice.
 Status: draft
 
 Sections: Summary; Units and conventions; Constants; Behavior (1 which
@@ -230,10 +232,33 @@ styles; piece texture index k uses skin k.
   skins 7 and 8 of the hand model (and of the weapon model when it uses a
   player-view entry) become the clan emblem and background textures.
 - Nothing depends on the team. Sleeves change with the character, the face
-  (skin tone) and the uniform item. When any of these change while a weapon
-  is out, the game resets the weapon's file names: weapon skins, hand model
-  and skins, bone matching, and the draw is marked to be refreshed (Edge
-  cases).
+  (skin tone) and the uniform item. Every draw builds a fresh weapon model
+  (1), whose file names are worked out from the current character, face and
+  uniform, so a change shows on the next draw at the latest. Separately, the
+  weapon in hand has its **file names reset** (weapon skins, hand model and
+  skins, the player-view attachments, bone matching, and the draw marked to
+  be refreshed, Edge cases) at exactly one moment: when the local player's
+  own character effect is created on the client, i.e. when the client first
+  receives its player object at world entry (the first weapon is often
+  drawn before that, which is why its hands start without the sleeve
+  texture). No other event resets it: a character or uniform change while a
+  weapon is out keeps the old hands until the next draw (Open question 13).
+- **Colour variants of a hand record**: `ColorSkin{c}_{k}` replaces the
+  record's whole skin list (`Skin0..`) when the character's model colour
+  index c selects a non-empty list. In the US data only two hand records
+  have them, both with c = 1 and 2 and only skin 5 different from the plain
+  list: `GhillieSuit_M_Hand` (`Hand8`) and `GhillieSuit_M_Zombie_Hand`
+  (`Hand21`): c = 1 → skin 5 `CHARS_T_BODY\CM_Fur_Ghillie_Suit_DE_SD.DTX`,
+  c = 2 → `CHARS_T_BODY\CM_Fur_Ghillie_Suit_UR_SD.DTX`; skin 0 stays `Hands`
+  (replaced by the sleeve texture as above). The stock records start
+  `Hand0` `Normal_M_Hand` (skin 0 `Hands`), `Hand1` `Normal_W_Hand` (skin 0
+  `CHARS_T_HAND\Hand_W.DTX`), `Hand2` `Special_M_Hand`, `Hand3`
+  `Special_W_Hand`; skins 1–9 are blanks, a `clouds` render-style texture and
+  a specular map, skins 10 and 11 the tattoo tags. The stock bodies all use
+  `HandIndex` 0; the female bodies carry four extra `HandsSkin` entries
+  (`CHARS_T_HAND\HAND_W_00_%02d.dtx` … `HAND_W_03_%02d.dtx` at entries 4–7),
+  which the female faces 4–7 select, so a female player gets the
+  `Normal_M_Hand` model with women's sleeve textures.
 
 ### 3. Attachments and attached effects
 
@@ -246,16 +271,41 @@ styles; piece texture index k uses skin k.
 - **Player-view attachments** (character-dependent models at sockets of the
   weapon model) are supported but no character model in the US data
   defines any.
-- **Attached effects**: a weapon's `PVAttachFXName0..` effects (chainsaw
-  idle, PSY bomb fire, time bomb lights) are created with the weapon model
-  as parent, shown and hidden with it, and by the `SHOW_PVATTACHFX` /
-  `HIDE_PVATTACHFX` keys unless `PVAttachFXAlwaysShow` is 1. Their
-  placement is the effect's own (9).
-- **Hidden pieces**: the weapon's `HiddenPiece0..` pieces are hidden while
-  the weapon has no ammo at all (checked when the model is created and at
-  the end of each fire sequence). `ProjectilePiece` (rocket launchers'
-  visible rocket) is shown when a reload starts or ends and hidden at draw
-  if the clip is empty.
+- **Attached effects** (Open question 12): a
+  weapon's `PVAttachFXName0..` effects (chainsaw idle, PSY bomb fire, time
+  bomb lights; the XK-2 bomb has five: `TimebombGreen`, `TimebombRed`,
+  `TimebombYellow1..3`) are all created, **hidden**, when the weapon model
+  is created, each as a looping, camera-relative effect parented to the
+  weapon model. Placement is each key's own placement mode (9): a key
+  pinned to a socket or node of the weapon model follows that socket's
+  animated position in camera space plus its offset in the socket's axes;
+  a "player view" key is placed by the weapon code; a fixed key stays where
+  it was created. Showing:
+  - when the weapon becomes visible (draw, end of scope), every attached
+    effect that was not hidden by a key is shown; with `PVAttachFXAlwaysShow`
+    1 all of them are;
+  - a `HIDE_PVATTACHFX i j …` key hides effects i, j … (indices from 0) and
+    remembers that; `SHOW_PVATTACHFX i …` shows them again; both keys are
+    ignored while the weapon is invisible, and the hide key is ignored when
+    `PVAttachFXAlwaysShow` is 1;
+  - when the weapon is hidden, each effect remembers whether it was
+    showing, and all are hidden; they are destroyed with the model.
+- **Hidden pieces**: the weapon's `HiddenPiece0..` names are pieces of the
+  weapon model hidden while the weapon's **total** ammunition is below 1
+  (checked when the model is created and at the end of each fire sequence;
+  a forced show skips the check). Missing piece names are skipped.
+- **Projectile piece**: `ProjectilePiece` names one piece (for example
+  a rocket launcher's visible rocket). It is **hidden** on every
+  shot (right after the fire sound), **shown** when a reload starts (if
+  ammo and a clip size remain) and again when the reload finishes, and at
+  draw it is shown if the clip is not empty or the total equals the ammo's
+  maximum, otherwise hidden.
+- **Player-view attachments** (models from the character record's
+  player-view attachment list, each placed on a named socket of the weapon
+  model): created whenever the weapon's file names are reset (2) and on
+  creation, drawn camera-relative with the weapon, hidden and shown with it
+  and by the `HIDE_PVATTACHMENT` / `SHOW_PVATTACHMENT` keys. No character
+  record in the US data defines any, so in stock play there are none.
 
 ### 4. Placement in camera space
 
@@ -353,6 +403,18 @@ default 1).
 - Zoom narrows only the world FOV (`weapon_classes.md`, with its `FovX` =
   this recomputed value). It never changes the view-model projection, and
   the view model is hidden while a scope is up (11).
+- **Other aspect ratios** (Open question 14): the world is "vertical
+  fixed": `FovY` stays 75° and the horizontal angle grows with the aspect
+  ratio (the formula above, from the camera rectangle's pixel size at the
+  reset). The value is recomputed only when the camera is reset (client
+  start, world start); a window or resolution change between resets keeps
+  the old `FovX`, so the picture is stretched horizontally until the next
+  world start. The view model is also vertical-fixed (50°) but takes its
+  aspect from the current screen at every draw, so it never stretches.
+  The near and far planes 0.1 / 7.0 and the [0, 0.1] depth slice are the
+  renderer's defaults (`reallyclose_near`, `reallyclose_far`) and are used
+  for every camera-relative object, view model and camera-relative effects
+  alike.
 
 ### 6. Bob and sway
 
@@ -367,6 +429,36 @@ airborne after a jump), player movement allowed and not frozen; **or** the
 player is spectating someone in first person. When it does not run, every
 value below keeps its last value, including the offsets $(w, h)$
 (Quirk 3).
+
+**The footing test** (Open question 15), evaluated once per movement tick
+before the motion step, in this order: standing on sky → false (and the
+rest is skipped); on a ladder → true (even in water); on the ground → true
+(even on the tick of a jump); jumped (and not yet landed) → false;
+otherwise a ray from the hull centre straight down 150 u (to 100 u below
+the standing feet), against solid world geometry and solid objects other
+than the player's own, invisible polygons ignored: a hit → true, no hit →
+false and the standing surface becomes "unknown". What it changes:
+
+- the sway above runs only while it is true;
+- own first-person footsteps (`effects_sounds.md`) need it;
+- the **start of a fall**: on a tick where it is false, the player did not
+  jump, is not already falling and is not in a free-movement volume, on a
+  ladder or spectating, the client marks itself falling and tells the
+  server (the third-person driver's "falling" motion status,
+  `characters.md` 5). So walking off a ledge with ground less than 100 u
+  below the feet never counts as a fall, and the run animation and the sway
+  continue through the drop.
+
+**Spectating in first person** (Open question 15): the spectator's own sway
+state runs with the **spectated player's** control flags as last received
+(its run flag picks the 1.4 or 0.6 pace and its movement keys the "moving"
+test), unless that player is dead, in which case the spectator's own flags
+are used. The distance part of the moving test is replaced by a fixed
+3.5 u per frame, so it always passes: the spectated gun sways whenever that
+player holds a movement key, at full amplitude after the 0.1 s ramp,
+whatever their real speed (standing against a wall with forward held still
+sways). The spectated player's own zoom is not read; the spectator's
+`WeaponSway` option scales it.
 
 **Inputs**, per frame: frame time $\Delta t$ (the game's, clamped to 0.1 s),
 client clock $T$ (s), the control flags (run flag, moving flag) and the
@@ -451,7 +543,7 @@ stock files' (S = Steam 25595979, B = BR 1810.04).
 | Action | Animation (name looked up) | Started | Rate | Length (stock) | Sets or must match |
 |---|---|---|---|---|---|
 | Draw | `select` | at the switch, reset | $\rho_{draw}$ | M92FS 650 (S), M4A1/M16A3 1200 (B), M9 450 (B), M67/XM84/M18 400 (B) | inventory.md draw time; fire is accepted on the update that sees it done |
-| Holster | `deselect` | never in practice | 1.0 | none in any stock file | inventory.md: holster time 0 |
+| Holster | `deselect` | only if the file has it (none in any stock file): on a weapon switch the old weapon enters its deselect state and plays `deselect` non-reset at rate 1.0 (no rate bonus), the switch waits for "done" and the new weapon is drawn on the next update; without the animation the switch is instant | 1.0 | none in any stock file | inventory.md: holster time 0 (correct for every stock weapon) |
 | Subtle idle | `idle_0` | when idle and nothing else is due; restarted (reset) on the update after it reports done | 1.0 | M92FS 1566, M4A1 1833, M9 2000, M67 933 | — |
 | Full idle | `idle_1` (random among `idle_1` and further numbered idles; only `idle_1` exists) | when the idle wait has passed, the current animation is done and the player is not moving; non-reset | 1.0 | same lengths as `idle_0` in stock files | idle wait 5–15 s, rescheduled each time the weapon enters idle and each time the wait is checked |
 | Pre-fire | `prefire` | from idle, the first update with a fire request only sets the state to firing; the next update starts it, reset; **skipped for secondary (pistol) and melee classes and for primary shotguns** | $\rho_{fire}$ | M4A1 0 (6 keys), M92FS 0 (skipped), M9 1 (skipped), M67 700 | weapon_firing.md fire cycle; grenades.md pin pull |
@@ -459,8 +551,8 @@ stock files' (S = Steam 25595979, B = BR 1810.04).
 | Fire, alternate | `alt_fire_0` | as `fire_0`, when the last fire type is alternate (knife stab, dual pistols' left gun) | $\rho_{fire}$ | M9 1100 | inventory.md knife stab |
 | Post-fire | `postfire` | when the request ends after a fire animation, reset | $\rho_{fire}$ | M92FS 150, M4A1 0, M9 1, M67 366 | weapon_firing.md, grenades.md |
 | Last round | none of its own | the clip-0 gate ends the request, so the last `fire_0` runs out, `postfire` plays, then the reload starts | | | weapon_firing.md empty clip |
-| Dry fire | `dryFire` (matches `dryfire`) | only while the state is "firing with no ammo", which normal play never reaches (C6) | 1.0 | M92FS 300, M4A1 0 | — |
-| Reload, magazine | `reload` (`reload_1` for double-barrel guns with rounds left) | the first weapon update after the request (the same frame for the reload key, the next for the automatic reload), once the whole fire sequence including `postfire` is over; non-reset | $\rho_{reload}$ | M92FS 1500 (S), M4A1 2300 (B), M67 400 (B) | weapon_firing.md reload time; clip filled on the update that sees it done |
+| Dry fire | `dryFire` (matches `dryfire`) | only while the state is "firing with no ammo", which normal play never reaches (C6, confirmed): that state needs a fire request with a **total** of 0, but the total includes the clip and the request is cleared whenever the clip is 0. No dry-fire sound plays either: the direct dry-fire sound of the fire code is disabled, and `DryFireSnd` could only come from a sound key in `dryFire`, which never runs | 1.0 | M92FS 300, M4A1 0 | — |
+| Reload, magazine | `reload`; `reload_1` instead when the weapon's gun type is the double barrel, its clip is above 0 and the file has `reload_1` (the "one barrel left" reload) | the first weapon update after the request (the same frame for the reload key, the next for the automatic reload), once the whole fire sequence including `postfire` is over; non-reset | $\rho_{reload}$ | M92FS 1500 (S), M4A1 2300 (B), M67 400 (B) | weapon_firing.md reload time; clip filled on the update that sees it done |
 | Reload, empty | same `reload` | no separate empty reload | | | |
 | Reload, shell by shell | `PreReload`, then `reload` per shell, then `PostReload`; all non-reset | | $\rho_{reload}$ | weapon_classes.md 5.5 | weapon_classes.md shell timing |
 | Sprint start | `PreRush` | first update with sprint on (after a draw, reload or fire animation in progress finishes), reset; restarted from 0 if sprint resumes during `PostRush` | 1.0 | M92FS 250, M4A1 233, M9 167, M67 167 | movement.md / inventory.md sprint-in |
@@ -525,6 +617,31 @@ flashes come from the shot itself (9, 10), not from keys.
 - `FIRE_KEY` / `ALT_FIRE_KEY`: raise a shot (or knife hit) only if the
   current animation is part of the fire sequence (`prefire`, `fire_0`,
   `alt_fire_0`, `postfire`) and the state is "firing".
+
+**What times the gameplay** (Open question 9, settles C1). On the shooter's
+client the view model **is** the clock: a shot, a knife hit and a grenade
+release happen only when one of these keys fires in the advance and the
+next weapon update consumes it; the clip is refilled on the update that
+sees `reload` done; the draw ends on the update that sees `select` done.
+There is no separate client timer for any of them (the weapon's
+`FireDelay` is not read by the client at all; only the triple-shot mode has
+a timer of its own). The other specs' times are these animations' lengths
+divided by the rates of 7. Consequences:
+
+- **Full-automatic fire**: while the request holds, `fire_0` is restarted
+  (reset) on the first update that sees it done, so one shot per
+  ⌈(L + 1) / Δ⌉ frames of Δ ms (L the rate-scaled length, the done-needs-L+1
+  rule of `animation.md`); for the M4A1 at 60 fps, 105 ms → 7 frames =
+  116.7 ms per round. The server only refuses shots closer together than the
+  weapon's `FireDelay` (default 30 ms), which never binds at that cadence.
+- **Knife**: the hits are the `FIRE_KEY`s of `fire_0` (155 and 402 ms) and
+  the `ALT_FIRE_KEY` of `alt_fire_0` (367 ms), at the fire rate; with no
+  pre-fire (C1).
+- **Reload asked during the fire sequence**: the request waits; if the main
+  fire animation has ended and the weapon has a `postfire`, `postfire` plays
+  first; `reload` starts (non-reset) on the first update after the whole
+  sequence is over, and the clip is filled on the update that sees `reload`
+  done.
 - `THROW_KEY`: sends the server a throw notice (the third-person side of the
   throw, `grenades.md`); it does not release the grenade.
 - `sound_key n`: weapon sound n played locally and relayed to other players
@@ -570,6 +687,16 @@ consumed in the weapon update of frame n + m.
   1..9, the weapon's `PVFlashHiderFXName`h; else, if a muzzle part is fitted
   and names a `PVMuzzlefxname`, that; else the weapon's `PVMuzzleFXName`
   (`attachments.md`). Empty name: no first-person flash.
+- **The flash hider** (Open question 16) changes only **which group** is
+  used, nothing else: not the flash point, the show time, the light rule
+  or the shot itself. Level h comes from the muzzle part's `FlashHiderLevel`
+  (default 0); the group from the weapon's `PVFlashHiderFXName`h (and
+  `HHFlashHiderFXName`h for the third-person flash others see). A level
+  whose weapon key is missing gives an **empty** name, which means no
+  first-person flash at all. The choice is made when the effect is created
+  (at the draw, 1); when spectating in first person it uses the spectated
+  player's muzzle part. In the US data no part has a `FlashHiderLevel` and
+  no weapon has a flash-hider group, so it changes nothing in stock play.
 - The effect is created once when the weapon model is created, as a
   looping, camera-relative effect parented to the weapon model, and starts
   hidden. A shot records the time of the shot.
@@ -957,6 +1084,58 @@ tolerance 1e-3 unless stated; screen coordinates for a 4:3 screen.
     `idle_0`'s key 1 pose for every node; the image of frame n + 1 shows
     `reload` sampled at the time reached by frame n's advance.
 
+Follow-up cases (Open questions 9–16):
+
+33. **[B] Full-automatic cadence.** M4A1, rate 1, fire held, 60 fps
+    (advances of 16 or 17 ms): `fire_0` (105 ms) is seen done after 7
+    advances, so shots are consumed on updates n, n + 7, n + 14, …:
+    116.7 ms per round. At 100 fps (10 ms advances): 11 advances, 110 ms
+    per round. No client timer shortens or lengthens this.
+34. **Dry fire unreachable.** M4A1, clip 0, total 30, fire held: the request
+    is cleared, the automatic reload starts; no `dryFire`, no `DryFireSnd`.
+    Clip 0, total 0: idle animations only, silent.
+35. **Holster.** Switch from M4A1 to M92FS with the stock files (no
+    `deselect`): the M92FS `select` starts in the weapon update of the
+    switch. A test file that adds a 400 ms `deselect` to the M4A1: it plays
+    at rate 1.0 even with a draw-rate bonus, and the M92FS `select` starts
+    on the first update after it is seen done (after 401 ms of advance; at
+    60 fps on update 25, 416.7 ms).
+36. **[data] `reload_1`.** A double-barrel weapon whose file has `reload`
+    and `reload_1`: clip 1 of 2 → `reload_1`; clip 0 → `reload`. Any other
+    gun type with clip > 0 → `reload`.
+37. **Projectile piece.** A launcher with clip 1, total 1, drawn: the
+    piece shows. After the shot (clip 0, total 0) it is hidden, and the
+    `HiddenPiece` list is hidden too (total < 1) at the end of the fire
+    sequence. Drawn again with clip 0, total 0: hidden.
+38. **[data] Hand colour.** A character using `Hand8` with model colour 1:
+    hand skins = `ColorSkin1_0..11`, i.e. skin 5
+    `CHARS_T_BODY\CM_Fur_Ghillie_Suit_DE_SD.DTX`; colour 0 (none) → `Skin0..`.
+39. **Hand reset.** The local character effect is created while the M4A1
+    is already out → one file-name reset (sleeve texture applied, draw
+    refreshed non-reset at rate 1.0). A uniform change later in the same
+    life → no change until the next draw.
+40. **Projection.** 1920 × 1080 at world start: `FovX` 107.51°, view model
+    horizontal 79.32°. The window becomes 1280 × 1024 without a world
+    start: `FovX` stays 107.51° (stretched picture), the view model's
+    horizontal becomes 2 arctan(1.25 tan 25°) = 60.47°. Next world start:
+    `FovX` = 2 arctan(1.25 tan 37.5°) = 87.61°.
+41. **Footing ray.** Not on the ground, not jumped, hull centre 140 u above
+    a floor → can step (sway continues, no fall status); 160 u above → cannot
+    step, the client sends "falling" on that tick (once).
+42. **Spectated sway.** Spectating a player who holds forward with the run
+    flag set while standing against a wall: the spectator's gun sways at
+    1.4 cycles/s, at full amplitude 0.1 s after the key went down; the same
+    player standing with no key → the sway decays to 0 over 0.1 s.
+43. **Flash hider.** Muzzle part with `FlashHiderLevel` 2 on a weapon whose
+    record has `PVFlashHiderFXName2` = `G`: group `G` is used (not the part's
+    or the weapon's own muzzle group). The same part on a weapon without that
+    key → no first-person flash at all.
+44. **Attached effects.** XK-2 drawn: its five `PVAttachFXName` effects are
+    created hidden and shown when the model becomes visible. A key
+    `HIDE_PVATTACHFX 1` hides `TimebombRed`; after hiding and showing the
+    weapon (scope in and out) it is still hidden until a `SHOW_PVATTACHFX 1`
+    key.
+
 ## Open questions
 
 1. **Steam build data.** Only the pistol archive of the Steam install could
@@ -990,6 +1169,50 @@ tolerance 1e-3 unless stated; screen coordinates for a 4:3 screen.
    last computed"; whether that is this frame's or the previous frame's
    depends on when the shot's effect object is created relative to the
    flash update. The difference is at most one frame of camera motion.
+9. **C1 and the gameplay clock.** Does the view model's key time the shot,
+   the knife hit and the clip refill, or the weapon's own timers? Full-auto
+   restart and a reload asked during the fire sequence.
+   **Answered:** the view model's animations and keys are the client's only
+   clock for shots, knife hits, releases, refills and draws; the client
+   never reads `FireDelay` (the server's 30 ms default floor never binds).
+   Full-auto: `fire_0` restarts on the first update that sees it done, so
+   the cadence is the frame-rounded length (116.7 ms for the M4A1 at
+   60 fps). A reload asked during the sequence starts after `postfire`, and
+   the clip fills when `reload` is seen done. C1 stands. Applied in 8 (What
+   times the gameplay); case 33. The server's own reload window is
+   `characters.md` 7 (it ends before the client's refill).
+10. **C6, dry fire.** **Answered:** never plays, and no dry-fire sound
+    plays (the direct sound path is disabled and the animation that could
+    carry its key never runs). Applied in 7; case 34. `effects_sounds.md`
+    section 11 is corrected to match.
+11. **Holster and `reload_1`.** **Answered:** `deselect` plays only when the
+    file has one (none stock), at rate 1.0, and the switch waits for it;
+    `reload_1` replaces `reload` for the double-barrel gun type with rounds
+    left in the clip. Applied in 7; cases 35, 36.
+12. **Pieces and attachments on the view model.** **Answered:** hidden
+    pieces follow the total ammunition, the projectile piece follows shots,
+    reloads and the draw, attached effects are created hidden and follow
+    visibility and their keys, player-view attachments come from the
+    character record (none stock). Applied in 3; cases 37, 44.
+13. **The hand model per character.** **Answered:** hand index from the
+    effective character record (all stock bodies 0), skin list from the
+    hand record or its `ColorSkin{c}_` list for the model colour (only the
+    two ghillie hands have them), sleeve from the body's `HandsSkin` entry
+    for the face. The file names are reset only when the local character
+    effect is created; otherwise changes show at the next draw. Applied in
+    2; cases 38, 39.
+14. **Projection.** **Answered:** confirmed 0.1 u / 7.0 u, 50° vertical for
+    the view model with the live screen aspect; the world keeps 75° vertical
+    and derives `FovX` from the screen aspect at each camera reset only.
+    Applied in 5.2; case 40.
+15. **Spectating and the 150 u footing ray.** **Answered:** the spectated
+    player's control flags drive the pace and the moving test, with a fixed
+    3.5 u per frame distance; the footing ray tests solid world and objects
+    150 u below the hull centre and gates the sway, own footsteps and the
+    start of a fall. Applied in 6; cases 41, 42.
+16. **The flash hider.** **Answered:** it only selects another effect group
+    (`PVFlashHiderFXName`h / `HHFlashHiderFXName`h); a missing key removes
+    the flash. Nothing in the US data uses it. Applied in 9; case 43.
 
 Contradictions with existing specs (this spec's reading of the reference
 differs; the other specs are not edited here):
