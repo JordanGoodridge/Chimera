@@ -1306,6 +1306,16 @@ text]` (keyed maps need the V2 key). The spec's cases: `--test it
 world_objects::` (synthetic) and `heavy::world_objects` (FREEZER,
 SNOWSTORM, HGOILRIG, BLOODMONEY, CITYOFWINGS, the census).
 
+Combat Arms' music and ambience (`game::music`, the client's): `ca_music`
+shows the screen the music thinks it is on, the player's streams with
+their slot gains, the playlist (the cursor, unticked entries, rotation or
+random) and the interface sounds the cues started; `ca_ambient` lists
+the map's `SoundFX` (file, radii, volume, looping, on) with the gain at
+the local player. Install facts: `heavy::music_ambience` (BGM.rez, the
+loose folder and our table against it, `training`'s ambience, the 33
+maps' census); the logic cases: `--test it music_ambience::` and
+`--features dev,ui --test ui music::`.
+
 Combat Arms' dedicated server: `cargo run --features dev --bin
 combat_arms_server -- -port 27042 +map combat_arms:warehouse +ca_mode TDM
 +ca_goal 50 +MaxPlayer 6 +BotLevel 1` (`--help`; console on stdin:
