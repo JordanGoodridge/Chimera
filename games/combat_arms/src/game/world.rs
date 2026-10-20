@@ -79,6 +79,8 @@
 //!   <name> off`, run as the map starts) is hidden, as JUNK_FLEA2's
 //!   `Box_Kill01`, a kill volume its scripts switch on for half a
 //!   second when a trigger drops something there.
+//! - The world file's offset (`world_info`): one pass-through entity
+//!   (`radar::WORLD_INFO`) for the radar's map data (radar_minimap.md R5, F3).
 //! - AI objects (`objects`): the AI volumes, nodes and regions as map
 //!   entities, every property as text, for the bots (`bots::map_ai`).
 //! - Mode objects (`objects` too): every `GameStartPoint` (with its feet
@@ -382,6 +384,7 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
     objects(world, &mut map, scale, |o| {
         super::bots::map_ai::is_ai_object(&o.class) || super::rules::objects::is_mode_object(&o.class, o.name())
     });
+    world_info(world, &mut map, scale);
     spawns(world, &mut map, &sky, &to_engine);
     start_point_feet(world, &mut map, &sky, scale, &to_engine);
     super::props::add_objects(world, &mut map, scale, file);
@@ -1227,6 +1230,21 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
     if any {
         map.entity_scale = scale;
     }
+}
+
+/// The world file's offset (editor = file + offset), passed through for
+/// the radar's map data (radar_minimap.md R5, F3; `radar::WORLD_INFO`).
+fn world_info(world: &World, map: &mut MapData, scale: f32) {
+    let o = world.world_offset;
+    map.entities.push(MapEntity {
+        keyvalues: vec![
+            ("classname".to_string(), super::radar::WORLD_INFO.to_string()),
+            ("WorldOffsetX".to_string(), o[0].to_string()),
+            ("WorldOffsetZ".to_string(), o[2].to_string()),
+        ],
+        ..default()
+    });
+    map.entity_scale = scale;
 }
 
 /// The objects whose class `wanted` names, passed through as map entities

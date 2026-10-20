@@ -57,6 +57,11 @@
 //!   clock (the HUD's lines, the flags' props); what each player carries
 //!   (`CaCarry`) and the action gauge it fills (`CaAction`: plant, defuse,
 //!   seize).
+//! - **The radar** (radar_minimap.md N; `radar`): the round's map image
+//!   and corners and the spawn markers (`NetCaRadar`, on the match's
+//!   entity, written into a client's `CaRadarRound`), each holder's
+//!   scanner (`CaScanner`: on, battery) and who a scan or a shared
+//!   heartbeat list shows (`CaSeen`, on each player).
 //! - **The modes of game_modes_2.md**: Hired Guns' bullion, banked bars
 //!   and pockets travel in `NetCaObjectives` and `CaCarry`; each player's
 //!   bank (`hired_guns::CaBank`) and squad order (`mercs::CaSquadOrder`),
@@ -90,6 +95,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     inventory::{CaSelection, Dropped},
+    radar::{CaRadarRound, CaScanner, CaSeen},
     rules::{
         CaMatch, CaMatchView, CaRuleSettings, CaStats, CaTeamCounts, Phase, current_mode,
         escort::CaVip,
@@ -140,6 +146,12 @@ fn register(app: &mut App) {
         .ordered::<NetCaMatch>()
         .replicate::<NetCaObjectives>()
         .ordered::<NetCaObjectives>()
+        .replicate::<NetCaRadar>()
+        .ordered::<NetCaRadar>()
+        .replicate::<CaScanner>()
+        .ordered::<CaScanner>()
+        .replicate::<CaSeen>()
+        .ordered::<CaSeen>()
         .replicate::<CaCarry>()
         .ordered::<CaCarry>()
         .replicate::<CaAction>()
@@ -210,6 +222,11 @@ pub struct NetCaMatch {
 /// ticks (whole), on the match's entity.
 #[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct NetCaObjectives(pub CaObjectives);
+
+/// The radar's round data (`radar::CaRadarRound`: the map image, its
+/// corners, the spawn markers; radar_minimap.md N), on the match's entity.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct NetCaRadar(pub CaRadarRound);
 
 /// `NetCaMatch::phase`.
 pub mod match_phase {
@@ -312,6 +329,7 @@ fn write_match(world: &mut World) {
     let mut objectives = world.resource::<CaObjectives>().clone();
     objectives.map_times(|s| t(s).round());
     let objectives = NetCaObjectives(objectives);
+    let radar = NetCaRadar(world.resource::<CaRadarRound>().clone());
     let have = world.query::<(Entity, &NetCaMatch)>().iter(world).next().map(|(e, r)| (e, r.clone()));
     match have {
         Some((e, r)) => {
@@ -321,9 +339,12 @@ fn write_match(world: &mut World) {
             if world.get::<NetCaObjectives>(e) != Some(&objectives) {
                 world.entity_mut(e).insert(objectives);
             }
+            if world.get::<NetCaRadar>(e) != Some(&radar) {
+                world.entity_mut(e).insert(radar);
+            }
         }
         None => {
-            world.spawn((Name::new("Match"), Replicated, now, objectives));
+            world.spawn((Name::new("Match"), Replicated, now, objectives, radar));
         }
     }
 }
@@ -346,14 +367,19 @@ fn receive_respawns(mut requests: MessageReader<FromClient<CaRespawnRequest>>, p
 
 /// The server's match into `CaMatchView`, on this client's clock.
 fn apply_match(world: &mut World) {
-    let Some((r, objectives)) = world
-        .query::<(&NetCaMatch, Option<&NetCaObjectives>)>()
+    let Some((r, objectives, radar)) = world
+        .query::<(&NetCaMatch, Option<&NetCaObjectives>, Option<&NetCaRadar>)>()
         .iter(world)
         .next()
-        .map(|(m, o)| (m.clone(), o.cloned()))
+        .map(|(m, o, rd)| (m.clone(), o.cloned(), rd.cloned()))
     else {
         return;
     };
+    if let Some(NetCaRadar(round)) = radar
+        && *world.resource::<CaRadarRound>() != round
+    {
+        world.insert_resource(round);
+    }
     let Some(time) = ServerTime::of(world) else { return };
     if let Some(NetCaObjectives(mut o)) = objectives {
         o.map_times(|tick| time.local(tick));

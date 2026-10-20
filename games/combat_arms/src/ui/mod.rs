@@ -16,6 +16,8 @@
 //!   round's result); `loading`: the loading screen while joining;
 //!   `menu`: the in-game menu (Esc) in place of the
 //!   shell's default; `chat`: the match chat's queue (the model);
+//!   `hud::radar`, `hud::full_map` (with `hud::scene`): the radar and the
+//!   full-screen map (radar_minimap.md);
 //!   `visuals`: placeholder looks (box guns); `effects`: decals, tracers,
 //!   casings, the first-person muzzle flash and effect lights
 //!   (game::effects).

@@ -79,10 +79,13 @@ in the lowest crate whose public API it needs:
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`; the kill
   feed, score panel, scoreboard and loading screen bound by name,
-  `bound.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
+  `bound.rs`; the radar and the full map's state, `ui::hud::radar` and
+  `full_map`, `radar.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
   install's own layouts and string tables through the UI system's
   readers, the game's HUD panels, scoreboard and loading screen bound
-  by name and its in-game menu, V1 key);
+  by name and its in-game menu, V1 key; `heavy::radar`: the map images'
+  sizes and formats, the radar art and icons, the mission files' corners
+  on four maps, the large-map attribute file, V1 key);
 - `combat_arms_server` (apps/combat_arms_server/tests/it/): Combat
   Arms' dedicated server as its binary composes it (`ServerPlugin`, its
   command line) with headless clients over UDP on loopback (`dedicated`:
@@ -1301,6 +1304,22 @@ bones, sockets, animations with their lengths and key strings, the
 `flash` socket through the shot against view_models.md's numbers); the
 state machine, sway and placement cases without the install: `--test it
 view_model::`.
+
+Combat Arms' radar and full-screen map (`game::radar`, `ui::hud::radar`,
+`ui::hud::full_map`): the arithmetic (pixels, range, rotation, wedges, the
+guide, edge arrows, the image window, the full map's transform, zoom, the
+corners from the mission data), who is shown (`radar::look`), the legend
+and what the server sends at a round start are `--test it radar::`
+(spec cases 1-26, 37-44 and the arithmetic of 48-51); the panels' state
+from the world (zoom keys and the profile, the scanner items, deaths,
+objectives, the legend and markers) is `--features dev,ui --test ui
+radar::` (`CaRadar`, `CaScene`, `CaFullMap`, headless: read them in a
+test to see what would be drawn); the install checks (46-52) are `--test it
+heavy::radar` (V1 key for the mission files). To see it drawn: `--map
+combat_arms:warehouse --window 1280x720 --frames 200 +wait 60 ++fulltacticalmap
++wait 20 +screenshot map.png` (M held; the radar is in the corner of every
+shot; `+incradarscale` / `+decradarscale` zoom while held; with the install
+and its keys the game's art and the mission's picture, else flat boxes).
 
 Combat Arms' effects and sounds (`game::effects`): fire at a wall in a
 map run to see impacts, decals and tracers, e.g. `--map

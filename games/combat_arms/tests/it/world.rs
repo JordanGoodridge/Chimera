@@ -601,7 +601,8 @@ fn ai_objects_pass_through() {
     let classes: Vec<&str> = map.entities.iter().map(|e| e.classname()).collect();
     // The start point goes through too, for the game modes (`rules::objects`),
     // its feet on the floor and its yaw added.
-    assert_eq!(classes, ["GameStartPoint", "AIVolume", "AINodePatrol", "AINodePatrol"]);
+    // The world file's offset goes through last, for the radar (`radar::WORLD_INFO`).
+    assert_eq!(classes, ["GameStartPoint", "AIVolume", "AINodePatrol", "AINodePatrol", "WorldInfo"]);
     let start = &map.entities[0];
     assert!(start.get(world::FEET_KEY).is_some() && start.get(world::YAW_KEY).is_some());
     let objects = combat_arms::game::rules::objects::read(&map.entities, map.entity_scale);

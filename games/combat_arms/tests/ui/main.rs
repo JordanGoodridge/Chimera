@@ -15,6 +15,7 @@ mod bound;
 mod camera;
 mod hud;
 mod net_hud;
+mod radar;
 mod score;
 mod ui_system;
 
