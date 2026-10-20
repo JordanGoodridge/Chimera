@@ -3,7 +3,7 @@
 Source basis: the client's in-game HUD (crosshair, damage feedback, health/armour/stamina block, weapon and ammo panel, kill feed, mode score panel, player name tags), the client's weapon spread bookkeeping that drives the crosshair, the HUD layout attribute data and the HUD XML layouts of a US-region data set. Behaviour that differs between regions or later Steam builds is not covered (see Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Behavior (crosshair: A1 to A12; spread fraction: B; damage feedback: C; HUD: D1 to D8); Per-frame order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Behavior (crosshair: A1 to A12; spread fraction: B; damage feedback: C; HUD: D1 to D9); Per-frame order; Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -227,12 +227,13 @@ x = \lfloor (512-64)\,x_r \rfloor,\; y = \lfloor (384-64)\,y_r \rfloor,\; w = \l
   - (255, 198, 0) when d <= Range_eff;
   - (255, 0, 0) otherwise.
   - Range_eff = Range + trunc(Range * Σ attachment range %), with Range from the weapon data.
-- **Placement:** right-aligned at (490, 400) ref, 20-point HUD font. It scales with x_r and y_r.
+- **Placement:** right-aligned at (490, 400) ref, 20-point HUD font. It scales with x_r and y_r. Precisely (Corrections 15): the font is the font list's entry `SysFont13` asked for at height 20 px (at 1024 x 768); (490, 400) is the text's right end and its top, not a box centre.
+- A hit closer than 1 unit (distance truncates to 0) shows an empty text.
 - It is drawn whether or not the scope overlay is up.
 
 ### A10. Hit indicator (you hit someone)
 
-- **Trigger:** the client is told that the local player damaged a player whose team differs from the local player's team. Damaging a teammate does nothing.
+- **Trigger** (corrected, see Corrections 1): the local client's **own** instant-hit shot test, on the frame the shot is traced: the trace hits another player's hit box, that player's team id differs from the local player's, and that player is not inside its post-spawn no-damage window as this client sees it (3500 ms from its (re)spawn on the OS clock, or until its first shot after spawning). No server report is involved: a hit the server later reduces to nothing, or that armour absorbs entirely, still lights it. Grenades, projectiles, fire and poison never light it. Damaging a teammate does nothing.
   - "Enemy" is purely a comparison of team ids: the victim's team id differs from the local player's (Open question 15). There is no mode check in the hit indicator or in the name tags' enemy/teammate rules. In modes without teams the result depends on which team id the server gives each player, which was not traced (see Open question 15).
 - **On:** the crosshair colour is (208, 0, 0, 255) while now - t_hit <= 500 ms, where t_hit is the time of the **latest** such hit.
 - **Off:** on the first HUD frame where the elapsed time exceeds 500 ms.
@@ -253,11 +254,12 @@ x = \lfloor (512-64)\,x_r \rfloor,\; y = \lfloor (384-64)\,y_r \rfloor,\; w = \l
   - **Teammates:** always shown. Name colour (161, 197, 233) at alpha 200.
   - **Enemies:** shown only while they are the aim target, or carry the flag, or are revealed by a scanner item. Name colour (215, 17, 18) at alpha 200.
   - **Enemy hit flash:** for 0.2 s after you hit an enemy, their name colour is (250, 80, 0).
-  - **Dead players:** (80, 80, 80).
+  - **Dead players:** (80, 80, 80), when the player is dead and its health is 0 or less. **Every dead player's tag is shown, enemies included, without aiming** (Corrections 5): it floats over the corpse (the body's name socket, else the body's position) and only while the body is visible.
   - **The local player:** never shown.
+  - **What else a tag holds** (Corrections 5): the player's rank icon (its "alive" variant) only while that player is the aim target and alive; a flag icon while the player carries a flag; a revenge icon on enemies who are the local player's revenge targets; the kill/death ratio (two decimals) only with a "state viewer" weapon or item.
 - **Occlusion:** a shown tag is drawn at alpha 255 if the camera can see the tag point and at alpha 125 if the view is blocked.
 - **HP bar:** shown only while that player is the aim target and alive, and only for teammates. Enemies show it only with a "state viewer" weapon or item.
-- **While dead:** teammates, the aim target, and the chase-camera subject are shown.
+- **While dead:** teammates, the aim target, the chase-camera subject and every dead player are shown.
 
 ### A12. Present in the data or code but not drawn
 
@@ -265,6 +267,7 @@ x = \lfloor (512-64)\,x_r \rfloor,\; y = \lfloor (384-64)\,y_r \rfloor,\; w = \l
 - A drawn scope reticle (black posts with gold highlights) is never called.
 - The "hit crosshair" size, perturb and time keys are read and never used.
 - Do not implement these as visible features.
+- **Not in this list:** the layout keys `CrossHairLeftTex` and `CrossHairRightTex` are used, but not by the crosshair: they are the name prefixes of the gauge sight's two images (Corrections 13).
 
 ### B. Spread fraction r (summary; normative in weapon_firing.md)
 
@@ -313,12 +316,13 @@ The crosshair reads r = max(r_fire, r_move), the same value the shot code uses. 
   - a direction indicator (role: arc pointing at the source), around the screen centre.
 - **Both pieces share one alpha:**
   - set to 255 on each new hit;
-  - lowered by 2 every HUD frame (floor 0) while now - t_dmg < 1000 ms;
-  - removed on the first frame at or after 1000 ms.
+  - lowered by 2 every HUD frame (floor 0) while now - t_dmg < 1000 ms, **including the frame the hit arrives** (the hit is handled before that frame's HUD update), so the first drawn alpha is 253 (Corrections 3);
+  - removed on the first frame at or after 1000 ms;
+  - also removed when a round goes live.
 - **Hit overlay rect:** (0, 0, floor(1024 x_r), floor(1024 y_r)). It is taller than the screen, so only the top 768/1024 of the texture is visible (quirk).
 - **Direction:**
-  - The report carries the direction the damage travelled, d, from the source towards the player.
-  - With F and Rt the player's forward and right vectors at the moment of the hit:
+  - The report carries the direction the damage travelled, d, from the source towards the player. Damage with no direction (zero vector) is sent as the world's forward axis, the way a yaw-0 player faces (Corrections 2).
+  - With F and Rt the forward and right vectors of the player's **view rotation (pitch and yaw)** at the moment of the hit (F tilts with pitch; Rt stays horizontal):
 
 ```math
 \theta = \pi + \operatorname{atan2}(F\cdot d,\; Rt\cdot d) \in [0, 2\pi], \qquad s = \frac{\theta}{\pi/6}
@@ -376,7 +380,7 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
   - The HP value, AP value, silhouette tint, and the "HP" and "AP" labels turn (255, 0, 0, 255).
   - The "SP" and set labels do not change.
   - Above 30 %, everything returns to its default colour (values white, labels (216, 216, 216), silhouette untinted).
-  - While low, a heartbeat sound plays whenever at least 1.0 s has passed since the previous heartbeat. The timer survives between low-health episodes.
+  - While low, a heartbeat sound plays on a frame where **more than** 1000 ms (OS millisecond clock) have passed since the timer's last restart, and restarts it. The timer is first started, silently, on the first low-health frame of the client's session, so the first heartbeat comes about 1 s after first going low, not at once; it is never reset afterwards, so going low again long after the last beat plays a beat on the first low frame (Corrections 4).
 - Armour has no threshold colour.
 
 ### D3. Stamina gauge
@@ -402,7 +406,7 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
 
 **Weapon name**
 
-- The weapon's display name, right-aligned in a 250 x 10 box at (769, 716), so it ends at x = 1019 and is centred on y = 721.
+- The weapon's display name, right-aligned in a 250 x 10 box at (769, 716), so it ends at x = 1019 and is centred on y = 721. The name is the shop item table's name for that weapon id, not a field of the weapon data (Corrections 16).
 - Bold 16, colour (222, 222, 222), with a stroke.
 - It changes only when the weapon ID changes.
 
@@ -452,14 +456,16 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
   - Shown even while dead.
   - Not used in co-op mission modes.
 - **Line content, left to right, from x = 5:**
-  1. **Killer name.** Bold 12 with a stroke, at y + 3.
-  2. **Weapon icon,** 64 x 20. Replacements for the weapon:
-     - crush or fall-out-of-world deaths: the suicide icon;
-     - no killer: the barrel icon (explosion or bump), the fire icon (burn), the poison icon or the bleeding icon;
+  1. **Killer name.** Bold 12 with a stroke, at y + 3. The frag message names a killer whenever the killing damage had a player damager, **the victim themself included** (own grenade, fall damage, which is crush damage dealt by the victim). The slot then shows that name in the killer's colour (Corrections 7).
+  2. **Weapon icon,** 64 x 20. Replacements for the weapon, first match wins:
+     - crush or fall-out-of-world deaths: the suicide icon (an ordinary fall is crush);
+     - no killer named: the barrel icon (explosion or bump), the fire icon (burn), the poison icon or the bleeding icon; any other type keeps the weapon's icon;
      - AI killer: the NPC icon.
+     - Otherwise the killing weapon's own icon, **also for a self-kill** (own grenade: the grenade's icon, not the barrel).
      - If none of these applies and the weapon has no icon, the slot is hidden but its 64 ref px are still skipped.
-  3. **Badge icons,** 32 x 20, in this order: revenge, headshot, groin shot, flag carrier (colour by flag team), gold carrier, ice crush, VIP, VIP rank.
-     - The first badge takes the first slot. Every later badge is written into the second slot, so with three or more only the last one survives.
+  3. **Badge icons,** 32 x 20, in this order: revenge, headshot (whenever the killing hit's location is the head, killer named or not), groin shot, flag carrier, gold carrier, ice crush, VIP, VIP rank.
+     - Flag carrier image: the enemy-flag image when the victim is on the local player's team, the team-flag image otherwise (the image of the flag the victim was carrying).
+     - The first badge takes the first slot. Every later badge is written into the second slot **and moves it to the running x**, so with k ≥ 2 badges the second slot shows the last badge at the first badge's x + 32 (k − 1) (Corrections 6).
      - x still advances by 32 for each badge (quirk).
   4. **Victim name.**
 - **Name placement:** each element is placed at the running x, which then advances by that element's width (a text's width is its rendered width).
@@ -467,7 +473,7 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
   - names on your team: (124, 190, 221);
   - other teams: (218, 115, 115);
   - text alpha 150.
-- **No killer** (environment or self): the killer slot shows the victim's name in the victim's colour, and the victim slot still shows the victim name as well (see Open questions).
+- **No killer** (environment): the killer slot shows the victim's name in the victim's colour, and the victim slot still shows the victim name as well (Open question 6, answered). A self-kill is not "no killer": see item 1.
 
 ### D6. Score panel (team deathmatch)
 
@@ -489,8 +495,9 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
 ```
 
   - The bar is hidden at 0 kills or goal 0, and full at kills >= goal.
-- **Updates:** on every kill message and when the goal is set. Scores are plain integers.
-- **Hidden:** while the round-result screen is up.
+- **Updates:** on every kill message and when the goal is set. Scores are plain integers, the counters the server sends.
+- **Hidden:** while the round-result screen is up, together with the shared indicator message line (Corrections 10).
+- **Round modes** (Elimination Pro, Search & Destroy, Bombing Run): the row titles `top_title` and `bottom_title` show each team's **number of living players** (plain integer, updated on each frag and at each round start), not a team label; the bars count round wins and carry G − 1 divider marks (Corrections 9).
 
 ### D7. Round timer
 
@@ -507,6 +514,8 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
   - It counts down, seconds are truncated (never rounded up), and it stops at 00 : 00.
   - Minutes of 100 or more print three digits.
   - The timer has no low-time colour.
+  - **When it runs** (Corrections 8): at a round's setup it shows the setup delay counting down (hidden when that delay is 0); when the round goes live it restarts with the round length; at the round result it is stopped and hidden. When a bomb is planted the round timer is stopped and hidden and the bomb timer (control `BombTime`, text `bomb_timer`) shows the fuse in the same format instead.
+  - **Clock:** a local countdown on the client's game clock, started from the value in the server's message and never resynchronised (it lags the server by the one-way latency).
 
 ### D8. What updates when
 
@@ -521,6 +530,28 @@ P_k = \Big( \big(512 + \tfrac{S}{\sqrt 2}\cos\alpha_k\big)\,x_r,\;\; \big(384 + 
 | Score panel | on each kill message, on goal set, on team change |
 | Name tags | every frame |
 | Range readout | every frame |
+| Action message (D9) | requested every frame while its condition holds; hidden 100 ms after the last request |
+| Action gauge (D9) | every frame |
+
+### D9. Action prompts and the action gauge (added by Corrections 11 and 12)
+
+Both live in the main HUD layout's `Action` panel. This answers which panel shows the pickup prompt.
+
+**The action message** (`Message` inside the window `ActionDesc`):
+
+- **Placement:** each time a message is set, `Message` is moved so its centre is on `ActionDesc`'s centre horizontally: x = (ActionDesc x + ⌊ActionDesc width / 2⌋) − ⌊w / 2⌋, with w the text's reference width; y stays the layout's. With an icon (bullion messages) the icon and text are centred together.
+- **Life:** each request shows it for 100 ms (OS millisecond clock; hidden on the first frame more than 100 ms after the last request). Requests are made every frame while a condition holds, so it vanishes about 100 ms after the condition ends. Never shown to observers. A "fixed" message (mode notices) cannot be replaced by an ordinary one while it lasts.
+- **Pickup prompt:** the string-table entry `IDS_HUD_ITEMGET_MSG`, a fixed text with no item name and no key name (Hunted, aiming at one's own bag: `IDS_HUD_Search_mybag`). Requested only from the crosshair's draw step, so only when: no video and no AI freeze; the crosshair item on; **no scope overlay**; not dead in the free-look or chase camera; weapon data exists for the held weapon; the aim target is a pickup; the held weapon is not a mine; the local player is not infected, has a human model, has no buff that replaces weapons, is not the VIP in VIP Escort, and is not in Spy Hunt's second stage holding intel.
+- **Defuse prompt:** aiming at a bomb target while on Bravo in Search & Destroy (and its clan and Go4CA versions), or in Bombing Run at a target owned by the other team, with no defuse in progress: `IDS_HUD_BOMBDEFUSE_MSG`.
+- **Plant prompt:** while the player may plant and is not planting: `IDS_HUD_BOMBSET_MSG` when the bomb is in hand, `IDS_HUD_BOMBSELECT_MSG` otherwise (telling the player to take the bomb out).
+- **Other targets:** the aim target's own text, when it has one.
+
+**The action gauge** (window `ActionGauge`: `ActionTitle`, `ActionIcon`, `Gauge`):
+
+- **States:** plant (while the local player's plant is under way; total 4 s), defuse (while the defuse progress is above 0; total 7 s), custom (using an activate or recharge trigger: the trigger's own title and icon, else the string `$GaugeDefault`), team change (clan modes; 3 s). In first-person spectating the watched player's plant or defuse is shown instead.
+- **Titles and icons:** strings `$GaugeBombPlant`, `$GaugeBombDefuse`, `$TeamChange`; icons from the layout attribute keys `Guage_BombPlant_Tex`, `Guage_BombDefuse_Tex`, `Guage_TeamChagne_Tex` (spelled so in the data).
+- **Fill:** a timer on the game clock starts from 0 on the frame the state changes; fill p = trunc(100 · elapsed / total) whole percent; bar width = ⌊p · MaxRange / 100⌋ (ui_system.md W5). When elapsed reaches the total the gauge hides and its state resets, even if the key is still held.
+- **Visibility:** hidden whenever the alive-player HUD is hidden (D2), except the team-change gauge.
 
 ## Per-frame order
 
@@ -586,6 +617,73 @@ Keep these unless a reviewer decides otherwise:
 13. **The attachment perturb sum doubles** per attachment (A3).
 14. **Crosshair colour can stick.** With no weapon data it keeps the previous frame's colour, which can be the hit red.
 15. **Kill-feed expiry lag.** When a line expires, the feed removes the front entry of its internal ring. That may be an already-hidden line, so a visibly expired line can linger for up to 4 extra frames. Negligible; there is no need to copy it.
+
+## Corrections (2026-10-19)
+
+A second pass over the reference's HUD (the crosshair item, the health, weapon, kill-log, name-tag, mode-indicator, action and scoreboard panels, the loading screen and the in-match popups), compared behaviour by behaviour with this spec and with our implementation in `games/combat_arms/src/ui/`. Each entry: what the reference does, what we do now (our file:line), why it matters, the numbers. The body text above is already corrected; test cases 78 to 100 cover these entries.
+
+1. **The hit indicator is the shooter's own hit test, not a damage report** (A10).
+   - Reference: the red crosshair (and the enemy name-tag flash, A11) is started by the local client's instant-hit shot test, on the frame the shot is traced: the trace hits another player's hit box; that player's team id differs from the local player's; and that player is not in its no-damage window as this client sees it. The window opens when the player's character (re)spawns on this client and closes on the first frame more than 3500 ms later (OS millisecond clock), or at once when that player fires its first shot after spawning. Every pellet that hits restarts the 500 ms. Nothing waits for the server: a hit the server later reduces to nothing (armour, a rejected shot) still lights it. Grenades, other projectiles, fire and poison never light it; only traced shots (guns, and melee that traces) do.
+   - Ours: `games/combat_arms/src/ui/hud.rs:388-399` lights it on any `core::Damage` from the local player with `amount` > 0 against a character (grenade blasts and burns included, a fully armour-absorbed hit excluded); on a network client (`hud.rs:357`, `hud.rs:371`) only on the server's hit confirmation, a round trip late; no spawn-protection window.
+   - Why: the red flash is the game's hit confirmation. Online it must be instant (the frame of the shot), and grenade damage must not flash it.
+2. **Damage direction uses the view's pitch; directionless damage has a fixed direction** (C).
+   - Reference: F is the forward of the player's full view rotation (pitch and yaw), Rt its right (horizontal). With pitch p (p > 0 looking up), F = cos p · F_h + sin p · U, so F·d = cos p (F_h·d) + sin p (U·d) mixes in the vertical part of d. Damage the server knows no direction for is sent along the world's forward axis (the way a yaw-0 player faces). The client recomputes the direction only when the vector is non-zero and the `Reality` console variable is above 0 (default 1); otherwise the previous direction stays.
+   - Ours: `hud.rs:307-312` and `hud.rs:405` use horizontal yaw axes only; a zero direction gives atan2(0, 0) = 0, so s = 6 (left) whatever the player faces.
+   - Why: looking steeply down while shot from above in front shows the arc **behind** in the game (s = 9, test 79); ours shows front. Directionless damage points at a world direction in the game, always left in ours.
+3. **The damage overlay's first frame is alpha 253, and a new round clears it** (C).
+   - Reference: the hit is handled before that frame's HUD update, which already subtracts 2: the arrival frame draws 253, the n-th frame (arrival = 1) 255 − 2n. The overlay is also switched off when a round goes live.
+   - Ours: `hud.rs:378-381` fades before reading the frame's hits, so the arrival frame draws 255 and every later frame is 2 higher than the game's.
+   - Why: small, but the fade is frame-counted and the numbers must match (test 39 corrected).
+4. **The heartbeat's first beat is delayed, strict, on the OS clock** (D2).
+   - Reference: the heartbeat timer is started, silently, on the first low-health frame of the client session (never reset again, not even between matches); a beat plays on a frame where more than 1000 ms (OS milliseconds) have passed since the timer's last restart, and restarts it. Going low again after a long time plays a beat on the first low frame.
+   - Ours: `games/combat_arms/src/ui/hud/model.rs:707-714` beats on the very first low frame and at ≥ 1.0 s; `hud.rs:753` feeds the game clock in seconds.
+   - Why: the game has a silent first second when health first drops; ours beats at once and exactly every 1.0 s.
+5. **Dead players' name tags show to everyone, and tags carry more than the name** (A11).
+   - Reference: a dead player's tag is shown without aiming, enemies included, whether the local player is alive or dead, in the dead colour (80, 80, 80) at alpha 200 × the occlusion alpha, anchored at the corpse (the body's name socket, else its position) and only while the body is visible. In Spy Hunt, while the local player holds intel, enemy tags (dead or alive) show only for the players the mode marks. A tag also holds: the player's rank icon, only while that player is the aim target and alive; a flag icon while carrying a flag; a revenge icon on enemies who are the local player's revenge targets; the kill/death ratio (two decimals) with a state viewer. The HP bar's gauge is set to the target's health value.
+   - Ours: `model.rs:583-590` shows a dead enemy only when aimed or revealed; `hud.rs:826-847` anchors every tag at the character's own pose; `hud.rs:1646` onwards draws only the name and the HP bar.
+   - Why: grey tags over every corpse are a constant sight in the game (they show where players died); the rank icon on the aimed player is its usual look.
+6. **The kill feed's second badge slot moves with each later badge** (D5).
+   - Reference: the copy slot is placed at the running x each time a badge is written to it, so with k ≥ 2 badges it shows the last badge at x_b + 32 (k − 1) (x_b the first badge's x); the empty gap is between the first and the last badge.
+   - Ours: `model.rs:950-958` keeps the copy at the first later badge's x (x_b + 32) and only changes its picture.
+   - Why: with three or more badges the last badge sits 32 ref px (or more) too far left (test 59 corrected).
+7. **Self-kills name a killer; the weapon slot and the headshot badge follow the message** (D5; answers Open question 6).
+   - Reference: the frag message names a killer whenever the killing damage had a player damager, the victim themself included. Fall damage is crush dealt by the victim, so a fall reads "Me [suicide] Me"; an own grenade reads "Me [grenade's icon] Me", the first name in the killer's colour. The barrel, fire, poison and bleeding icons appear only when no killer is named; any other damage type with no killer keeps the message's weapon icon (hidden if it has none). The headshot badge shows whenever the killing hit's location was the head, killer or not. The flag badge is the enemy-flag image when the victim is on the local player's team and the team-flag image otherwise.
+   - Ours: `hud.rs:410-427` drops a self-killer (attacker equal to the victim), so an own grenade shows the barrel icon; every other no-killer kind shows the bleeding icon (`hud.rs:418`); the headshot badge needs a killer (`hud.rs:424`); the flag badge is always the enemy-flag image (`hud.rs:1012`) and nothing sets it.
+   - Why: grenade suicides are common; the barrel icon misreads them as a map explosion.
+8. **The round timer: setup countdown, bomb timer, clock** (D7; also game_modes.md S3).
+   - Reference: at a round's setup the timer shows the setup delay counting down (hidden when it is 0, the stock value); when the round goes live it restarts with the round length; at the round result both timers stop and hide. A bomb plant stops and hides the round timer and shows the bomb timer (`BombTime` / `bomb_timer`, same "MM : SS") counting the 40 s fuse. The countdown runs locally on the client's game clock from the server message's value.
+   - Ours: `games/combat_arms/src/ui/hud/score.rs:200-205` shows the round timer only while live, from the server's round end (which has the 40 s added at a plant), so after a plant it shows the round's remaining time + 40 in the round timer's place, and the fuse only as an objective line (`score.rs:124` onwards).
+   - Why: after a plant the game's top-centre clock switches to the bomb's 40 s; players time defuses off it.
+9. **Round modes' row titles are living-player counts; the bars have round dividers** (D6).
+   - Reference: in Elimination Pro, Search & Destroy and Bombing Run, `top_title` and `bottom_title` hold each team's number of living players (updated on each frag and at round start), not team labels. When the goal G is set, each bar frame (w × h at (x, y)) gets G − 1 divider marks at x + 1 + trunc(i / G · (w − 2)), y + 2, height h − 2, for i = 1 … G − 1. Last Man Standing fills its own alive, dead, win and lose counts.
+   - Ours: `games/combat_arms/src/ui/hud/bound.rs:24-31` hides the alive counts and writes team labels; no dividers.
+   - Why: the alive count is the main number in round modes.
+10. **The mode panel hides during the round result** (D6).
+    - Reference (as D6 already said): the mode panel and the shared indicator message line are hidden while the round result shows, which lasts until the next round's setup (ui_system.md Corrections 1).
+    - Ours: `score.rs:22` keeps the panel up (a listed shortcut).
+    - Why: the result banner and the score panel overlap in our build.
+11. **Action prompts: which panel, which text, when** (new D9; answers which panel shows the pickup prompt).
+    - Reference: see D9. The pickup prompt is the `Action` panel's `Message` in `ActionDesc`, re-centred on `ActionDesc`, with the fixed string `IDS_HUD_ITEMGET_MSG`; it lives 100 ms after the last frame its condition held; it is not shown under a scope overlay, in the free-look or chase death camera, with a mine in hand, or while infected, non-human, the escorted VIP or holding a weapon-replacing buff. The defuse and plant prompts are their own strings.
+    - Ours: `hud.rs:862-875` builds "Press [E] to pick up {name}" in English (the weapon's name, a hard-coded key) whenever the local player is alive and not spectating, scoped or not; `bound.rs:325` keeps `Message` at its layout x; without the install `hud.rs:1435-1446` draws it at (312, 430), 400 × 20, ours. No plant or defuse prompt.
+    - Why: wrong text in every language, and a prompt over the scope view that the game never shows.
+12. **The action gauge fills in whole percent from its own start** (new D9).
+    - Reference: plant 4 s, defuse 7 s; the gauge's own game-clock timer starts at 0 when the state begins; fill = trunc(100 · elapsed / total) %, bar ⌊p · MaxRange / 100⌋; it hides when the timer reaches the total. Titles `$GaugeBombPlant`, `$GaugeBombDefuse`; seizing and other triggers use the trigger's own title or `$GaugeDefault`. First-person spectators see the watched player's gauge.
+    - Ours: `score.rs:206-213` titles "Planting", "Defusing", "Seizing" in English; `bound.rs:334` fills by a continuous fraction.
+    - Why: the titles must come from the string table; the bar steps in 1 % units.
+13. **The layout's "crosshair images" are the gauge sight's** (A12; answers the crosshair-images question).
+    - Reference: `CrossHairLeftTex` and `CrossHairRightTex` (HUD layout attributes) are name prefixes: the gauge sight's control `OptionCrossHair` (special-weapon HUD layout, children `Left` and `Right`) shows prefix + N + ".dtx", with N = (q + 5) − ((q + 5) mod 10) for q = trunc(100 h / h_max) on the left and q = trunc(100 · clip / clip size) on the right. It belongs to the weapon panel: shown whenever the held weapon's scope attachment has the gauge style and the weapon panel shows (alive, not infected), independent of the crosshair. The crosshair itself never uses images.
+    - Ours: `hud.rs:90-93` files them under A12's unused items; `hud.rs:1246-1256` draws "HP n" and "n AMMO" words beside the centre. (Our rounding, `games/combat_arms/src/game/attachments.rs:943-945`, matches.)
+    - Why: with the install the real images exist and should be drawn.
+14. **The crosshair is never toggled off** (A7; answers Open question 12).
+    - Reference: no command, key or menu turns the crosshair item off.
+    - Ours: `HudOptions::crosshair_on` (`hud.rs`) defaults on and nothing in the game sets it: matches; keep it a test hook only.
+15. **The range readout's font and anchor** (A9).
+    - Reference: font list entry `SysFont13` asked for at height 20 px (at 1024 × 768, scaled by x_r and y_r); (490, 400) is the text's right end and top; a distance that truncates to 0 shows nothing.
+    - Ours: `hud.rs:1240-1244` uses "bold 14", right-aligned in a 120 × 16 box from (370, 400) and centred vertically, so the text's middle is at y 408 and it is 14 px tall.
+    - Why: it is the range scope's only text.
+16. **The weapon name comes from the item table** (D4).
+    - Reference: the shop item table's name for the weapon id.
+    - Ours: `hud.rs:781-783` the weapon data's `hud.name`, else the id in capitals. Low impact while our data copies the item names.
 
 ## Test cases
 
@@ -669,7 +767,7 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
     - P0 (343, 215), P1 (343, 553).
     - The top edge is on the left: the indicator points left, where the attacker now is.
 39. Damage taken at t_dmg, rendering at a steady 60 fps.
-    - Alpha 255 - 2n after the n-th HUD frame, for example 195 after 30 frames.
+    - Alpha 255 - 2n on the n-th HUD frame, counting the frame the hit arrives as n = 1 (it draws 253; corrected, Corrections 3), for example 195 on the 30th.
     - Overlay and indicator gone on the first frame at or after t_dmg + 1000 ms.
 40. A hit fully absorbed by armour -> no overlay and no indicator.
 41. Hit overlay rect at 1920x1080 -> (0, 0, 1920, 1440).
@@ -704,7 +802,7 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
     - Headshot badge 32 wide.
     - Victim name in (218, 115, 115).
 59. Kill line with revenge, headshot and groin-shot badges.
-    - The first badge slot shows revenge and the second shows groin shot.
+    - The first badge slot shows revenge and the second shows groin shot, at the first slot's x + 64 (corrected, Corrections 6).
     - The victim name is 96 px (3 * 32) after the weapon icon's end.
 60. TDM, goal 100, Alpha 25 kills, Bravo 0, local player on Alpha.
     - Alpha score "25" in (223, 31, 20); Alpha bar 38 px wide.
@@ -731,6 +829,29 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
 75. Name tags have no distance limit: a teammate 20000 units away in front of the camera -> tag shown (alpha by visibility as in case 66). The same teammate directly behind the camera -> hidden.
 76. Fire-mode icons from the data: M16A3 (primary, `RapidFireCount` 0, `TripleShotMode` 1) -> full-auto icon, burst icon when toggled; M24 sniper (primary, `RapidFireCount` 1) -> single-shot icon; Beretta M92FS (secondary, `RapidFireCount` 1) -> single-shot icon; a primary with `RapidFireCount` 3 and no burst mode -> no icon; M67 grenade (throw class) -> no icon.
 77. Panel visibility by inventory class: M67 in hand -> panel shown, name "M67", counts "001" / "000" (finite ammo), no fire-mode icon. M9 knife -> panel shown, name only (case 52). Mission bomb (`Guntype` 8) -> panel hidden. A weapon in no order list (class 0) -> panel hidden.
+78. Hit indicator from the shot test (Corrections 1): local player on Alpha fires a rifle; on frame F its shot trace hits Bravo player B's hit box (B spawned 5 s ago and has fired since) -> the crosshair is (208, 0, 0, 255) from frame F itself and B's tag name is (250, 80, 0) for 0.2 s, with no server message. If the server then reports no health damage (armour absorbed it all) -> still red until 500 ms after F.
+79. Spawn window (Corrections 1): B (re)spawned at OS t = 10000 ms and has not fired. A trace hits B at t = 13400 -> stays green, no flash. At t = 13501 -> red. If B fired at t = 12000, a hit at t = 12100 -> red.
+80. Not from damage (Corrections 1): the local player's grenade deals 50 to enemy B; B burns from the local player's fire -> crosshair stays green, no tag flash.
+81. Damage direction with pitch (Corrections 2): yaw 0, looking down 60 degrees (F = (right 0, up -0.866, forward 0.5)); the source is in front and 45 degrees above, d = (0, -0.7071, -0.7071) -> F·d = 0.2588, Rt·d = 0, theta = 3pi/2, s = 9 (behind). The same hit at pitch 0 -> s = 3 (front).
+82. Directionless damage (Corrections 2): d is the world's forward axis. Player at yaw 0, pitch 0 -> s = 9. Player turned right by pi/2 -> s = 12 (right). Never s = 6 by default.
+83. Overlay first frame (Corrections 3): a hit arrives on frame 1 -> alpha 253 drawn on frame 1, 251 on frame 2. A round goes live on frame 10 -> overlay and direction indicator gone from frame 10.
+84. Heartbeat (Corrections 4): health first drops to 30 of 100 at OS t = 10000 ms, frames every 10 ms -> no beat at 10000 (or 11000); beats at 11010 and 12020. Health back to 50 at 12500; low again at 20000 -> a beat at 20000.
+85. Own-grenade kill (Corrections 7): local player "Me" on Alpha dies to their own grenade -> "Me" at x 5 in (124, 190, 221), then the grenade's own kill icon (not the barrel icon), then "Me" in (124, 190, 221).
+86. Kill-line icons without a self-killer (Corrections 7): a fall death -> "Me [suicide icon] Me". An ownerless barrel explosion kills V -> "V [barrel icon] V", both in V's colour. A no-killer death of another damage type with a weapon id that has an icon -> that icon.
+87. Headshot badge without a named killer (Corrections 7): a death whose killing hit was on the head and whose message names no killer -> the headshot badge is shown.
+88. Badge slots (Corrections 6): badges revenge, headshot, groin -> first slot revenge at x_b, second slot groin at x_b + 64, victim name at x_b + 96. Badges revenge, headshot, groin, flag -> second slot flag at x_b + 96, victim at x_b + 128.
+89. Flag badge image (Corrections 7): the victim carried a flag and is on the local player's team -> the enemy-flag image; the victim is on the other team -> the team-flag image.
+90. Dead players' tags (Corrections 5): local player alive on Alpha; enemy B dead 40 m away, body visible, not aimed at, clear line of sight -> B's tag over the body's name socket, name (80, 80, 80) at alpha 200 x 255/255. B's body hidden -> no tag. The same while the local player is dead.
+91. Rank icon (Corrections 5): aiming at a living teammate -> rank icon shown left of the name; not aiming, or aiming at a dead player -> no rank icon.
+92. Round timer and bomb timer (Corrections 8): Search & Destroy, setup delay 0 -> no timer during setup (a setup delay of 5 s would show "00 : 05" at setup start). Live with 180 s -> "03 : 00"; 1.5 s later "02 : 58". Bomb planted with 100 s left -> round timer hidden, bomb timer "00 : 40" on that frame and "00 : 39" 0.5 s later. Round result -> both hidden.
+93. Round-mode rows (Corrections 9): Search & Destroy 5 v 5 at round start -> `top_title` "5", `bottom_title` "5"; two Alpha players die -> "3". Goal 7 rounds, bar frame 157 x 16 at (448, 32) -> six divider marks at x = 449 + 22, 44, 66, 88, 110, 132, y = 34, height 14.
+94. Result hides the mode panel (Corrections 10): TDM round result arrives -> the mode panel and the indicator line are hidden until the next round's setup message.
+95. Pickup prompt (Corrections 11): aiming at a dropped rifle, not scoped -> `Message` shows the string-table text for `IDS_HUD_ITEMGET_MSG` (no weapon name). With `ActionDesc` at x 312, width 400, and a text 150 ref wide -> `Message` x = 312 + 200 - 75 = 437. The aim leaves the rifle at OS t -> still shown at t + 100 ms, gone on the first frame after. The same aim with the scope overlay up -> no prompt.
+96. Prompt conditions (Corrections 11): holding a mine and aiming at a pickup -> no prompt; infected -> no prompt. Bravo in Search & Destroy aiming at a bomb site, no defuse running -> `IDS_HUD_BOMBDEFUSE_MSG`. Alpha able to plant with the bomb in hand -> `IDS_HUD_BOMBSET_MSG`; with a rifle in hand -> `IDS_HUD_BOMBSELECT_MSG`.
+97. Action gauge (Corrections 12): defuse starts at game time t0; gauge MaxRange 200 -> at t0 + 3.5 s p = 50, bar 100; at t0 + 6.999 s p = 99, bar 198; at t0 + 7.0 s hidden. A plant at 1.999 s -> p = 49 (not 49.975). Title is the string `$GaugeBombDefuse` resp. `$GaugeBombPlant`.
+98. Gauge sight images (Corrections 13): gauge-style sight fitted, health 67 of 100, clip 14 of 30 -> left image `CrossHairLeftTex` + "70.dtx", right image `CrossHairRightTex` + "50.dtx". Health 4 -> "0"; health 95 -> "100"; clip 30 of 30 -> "100". Shown while the weapon panel shows, crosshair or not.
+99. Range readout look (Corrections 15): target at 2000 units at 1024 x 768 -> "50.0" in `SysFont13` at 20 px, its right end at x 490 and its top at y 400. At 1920 x 1080 -> right end at 918.75, top at 562.5, font height trunc(20 x 1.40625) = 28. A hit at 0.6 units -> empty text.
+100. Weapon name source (Corrections 16): weapon id W whose item-table name is "M4A1 Custom" while its weapon data's name differs -> the panel shows "M4A1 Custom".
 
 ## Open questions
 
@@ -742,6 +863,7 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
 4. **Yaw sign:** case 38 assumes yaw increases when turning right. Check by taking damage from the front and turning right: the indicator should swing left.
 5. **Texture addressing:** whether the direction indicator's texture wraps or clamps beyond v = 1.
 6. **Kill-feed text on suicides and world kills:** does the caller pass an empty killer name, giving "Victim [icon] Victim"? Check a fall-death line in the live game.
+   **Answered:** a world death with no player damager names no killer, so the line reads "Victim [icon] Victim", the first name in the victim's colour. A self-kill (own grenade, fall damage) names the victim as killer: the same two names, the first in the killer's colour, with the weapon's icon (a fall: the suicide icon). See D5 and Corrections 7; test cases 85 and 86.
 7. **Goal string:** the exact goal text for TDM (for example "100 Kills") comes from the room data string table and was not traced.
 8. **Spread data units:** whether the shot code converts perturb units to an angle in a way that makes "1 perturb = 1 px at 1024" visually exact for the game's field of view. This belongs to weapon_firing.md.
 9. **Unused features:** confirm the over-crosshair friendly icon and the teammate HP number are really absent in the Steam build (they are disabled in the reference).
@@ -749,6 +871,7 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
     **Answered:** the "distance-hide" option only hides a tag whose anchor is behind the camera (view-space depth ≤ 0); there is no distance threshold. The anchor is the model socket "NAME_socket" in the current pose, or the character's position (hull centre) when the model has no such socket, with no extra world offset. See A11; test cases 74 and 75. The socket's height above the feet is model data (models spec); to measure it live, stand a teammate on flat ground and compare the tag's screen position with a wall mark of known height at the same distance.
 11. **Wide-fire pellet field:** the meaning of N_wide (double-circle min) beyond "the weapon's wide-fire count field". Check one shotgun with CrossHairType 5.
 12. **Crosshair toggle:** which console command or key toggles the crosshair off, and whether the damage overlay then also hides (in the reference it does).
+   **Answered:** nothing in the client turns it off: the crosshair item starts on and no command, key or menu changes that. The off branch (which would also hide the damage overlay but not the infected overlay) is unreachable. Keep the crosshair always on (Corrections 14).
 13. **The HUD clock.** Do the hit indicator, kill-feed life and crosshair kick run on the rendered-frame clock in milliseconds?
     **Answered:** they are evaluated once per rendered frame, but against clocks, not frame counts: the hit indicator and the kill feed against the OS millisecond clock (off on the first frame with elapsed > 500 ms or > 30000 ms), the kick against the game client time in seconds. Only the damage overlay's alpha step counts frames. See Units and conventions ("Time"); test cases 71 and 72.
 14. **The crosshair gap and rounding.** Is the gap drawn from the shot cone after whole-unit rounding, or from the unrounded spread?

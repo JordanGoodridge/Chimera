@@ -379,8 +379,8 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
     map.sky_camera = sky.and_then(|o| sky_camera(world, o, properties, scale));
     let sky = collision(world, &mut map, &to_engine);
     volumes(world, &mut map, scale);
-    objects(world, &mut map, scale, |c| {
-        super::bots::map_ai::is_ai_object(c) || super::rules::objects::is_mode_object(c)
+    objects(world, &mut map, scale, |o| {
+        super::bots::map_ai::is_ai_object(&o.class) || super::rules::objects::is_mode_object(&o.class, o.name())
     });
     spawns(world, &mut map, &sky, &to_engine);
     start_point_feet(world, &mut map, &sky, scale, &to_engine);
@@ -1236,9 +1236,9 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
 /// vectors in entity axes (x, z, y of the file's: positions and sizes
 /// alike), colours "r g b", numbers as numbers, booleans 1 or 0;
 /// rotations and unknown values left out.
-fn objects(world: &World, map: &mut MapData, scale: f32, wanted: fn(&str) -> bool) {
+fn objects(world: &World, map: &mut MapData, scale: f32, wanted: fn(&lt::Object) -> bool) {
     let mut any = false;
-    for o in world.objects.iter().filter(|o| wanted(&o.class)) {
+    for o in world.objects.iter().filter(|o| wanted(o)) {
         let mut keyvalues = vec![("classname".to_string(), o.class.clone())];
         for p in &o.properties {
             let key = match p.name.as_str() {
@@ -1342,7 +1342,8 @@ fn spawns(world: &World, map: &mut MapData, sky: &[[u32; 3]], to_engine: &impl F
     map.spawn_yaws = yaws;
 }
 
-/// Each passed-through `GameStartPoint` entity (in map order, as
+/// Each passed-through `GameStartPoint` and `TeleportPoint` entity
+/// (`FEET_CLASSES`; in map order, as
 /// `objects` passed them) gets its feet on the floor below it
 /// (`FEET_KEY`, entity space, as `spawns` drops a point) and its facing
 /// as an engine yaw (`YAW_KEY`), so a mode can spawn at any family's
@@ -1350,8 +1351,10 @@ fn spawns(world: &World, map: &mut MapData, sky: &[[u32; 3]], to_engine: &impl F
 fn start_point_feet(world: &World, map: &mut MapData, sky: &[[u32; 3]], scale: f32, to_engine: &impl Fn(lt::Vec3) -> Vec3) {
     let floor = Floor::new(map, sky);
     let feet: Vec<(Vec3, f32)> = world
-        .objects_of("GameStartPoint")
-        .map(|(_, o)| {
+        .objects
+        .iter()
+        .filter(|o| FEET_CLASSES.contains(&o.class.as_str()))
+        .map(|o| {
             let at = o.pos().map(to_engine).unwrap_or(Vec3::ZERO);
             let yaw = o.rotation("Rotation").map_or(0.0, |r| r[1]);
             (floor.below(at).unwrap_or(at), -yaw)
@@ -1360,7 +1363,7 @@ fn start_point_feet(world: &World, map: &mut MapData, sky: &[[u32; 3]], scale: f
     let starts = map
         .entities
         .iter_mut()
-        .filter(|e| e.classname() == "GameStartPoint");
+        .filter(|e| FEET_CLASSES.contains(&e.classname()));
     for (e, (at, yaw)) in starts.zip(feet) {
         let v = engine_to_entity(at, scale);
         e.keyvalues.push((FEET_KEY.into(), format!("{} {} {}", v.x, v.y, v.z)));
@@ -1371,6 +1374,9 @@ fn start_point_feet(world: &World, map: &mut MapData, sky: &[[u32; 3]], scale: f
 /// The feet of a passed-through start point (entity space), and its yaw
 /// (engine radians), added by `start_point_feet`.
 pub const FEET_KEY: &str = "chimera_feet";
+/// The classes given feet and a yaw: start points and VIP Escort's
+/// teleport points (game_modes_2.md M13.3: `MoveToFloor`, `ChangeRot`).
+pub const FEET_CLASSES: &[&str] = &["GameStartPoint", "TeleportPoint"];
 pub const YAW_KEY: &str = "chimera_yaw";
 
 /// Downward rays against what players stand on (the collision triangles

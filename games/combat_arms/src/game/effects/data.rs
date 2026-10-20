@@ -219,6 +219,11 @@ impl CaFxTables {
             .unwrap_or_else(|| NONE.get_or_init(Surface::default))
     }
 
+    /// The surface type named `name` (without regard to case).
+    pub fn surface_id(&self, name: &str) -> Option<u16> {
+        self.surface.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.id)
+    }
+
     /// An ImpactFX record by name (case kept as the data writes it, then
     /// without regard to case).
     pub fn impact(&self, name: &str) -> Option<&ImpactFx> {

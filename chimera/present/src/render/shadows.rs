@@ -53,7 +53,10 @@ use crate::map::{
     vis,
 };
 
-const METERS_PER_UNIT: f32 = 0.0254;
+/// Source's inch, metres. The sizes below are Source's renderer's, in its
+/// units, made metres here: shadows are a look of the map's (any game's
+/// characters on it get the same in metres), never the gameplay's unit.
+const SOURCE_UNIT: f32 = 0.0254;
 /// Added to each projected width, units.
 const BLOAT: f32 = 4.0;
 const TEXELS_PER_UNIT: f32 = 2.0;
@@ -102,7 +105,7 @@ impl ShadowFrame {
             .unwrap_or(Vec3::X)
             .normalize_or(d.any_orthonormal_vector());
         let x = y.cross(d).normalize_or_zero();
-        let bloat = BLOAT * METERS_PER_UNIT;
+        let bloat = BLOAT * SOURCE_UNIT;
         let size = Vec2::new(
             (0..3).map(|i| sizes[i] * axes[i].dot(x).abs()).sum::<f32>() + bloat,
             (0..3).map(|i| sizes[i] * axes[i].dot(y).abs()).sum::<f32>() + bloat,
@@ -151,7 +154,7 @@ impl ShadowFrame {
 /// Cell size for a caster: 2 texels per unit of its largest dimension,
 /// rounded up to a power of two, 16..256.
 pub fn cell_size(bounds: (Vec3, Vec3)) -> u32 {
-    let units = (bounds.1 - bounds.0).max_element() / METERS_PER_UNIT;
+    let units = (bounds.1 - bounds.0).max_element() / SOURCE_UNIT;
     ((TEXELS_PER_UNIT * units).ceil().max(1.0) as u32)
         .next_power_of_two()
         .clamp(MIN_TEX, MAX_TEX)
@@ -334,7 +337,7 @@ pub fn shadow_mesh(frame: &ShadowFrame, receivers: &Receivers, rect: (Vec2, Vec2
         for p in &poly {
             let local = frame.local(*p);
             let uv = Vec2::new(local.x / frame.size.x + 0.5, local.y / frame.size.y + 0.5);
-            positions.push((*p + n * (LIFT * METERS_PER_UNIT)).to_array());
+            positions.push((*p + n * (LIFT * SOURCE_UNIT)).to_array());
             uvs.push((rect.0 + uv * rect.1).to_array());
             colors.push([frame.fade(local.z), 0.0, 0.0, 1.0]);
         }
@@ -616,15 +619,15 @@ impl ShadowFrame {
     /// `BLOB_SNAP`.
     pub fn blob(bounds: (Vec3, Vec3), translation: Vec3, rotation: Quat, d: Vec3, distance: f32) -> Self {
         let mut f = Self::new(bounds, translation, rotation, d, distance);
-        let blob = BLOB_BLOAT * METERS_PER_UNIT;
-        f.size = (f.size - Vec2::splat(BLOAT * METERS_PER_UNIT) + Vec2::splat(blob)).max(Vec2::splat(blob));
+        let blob = BLOB_BLOAT * SOURCE_UNIT;
+        f.size = (f.size - Vec2::splat(BLOAT * SOURCE_UNIT) + Vec2::splat(blob)).max(Vec2::splat(blob));
         let centre = translation + rotation * ((bounds.0 + bounds.1) / 2.0);
         // `new` backed up by m (negative along d): once more.
         let m = (f.origin - centre).dot(d);
         f.origin += d * m;
         f.falloff_start -= m;
         f.max_dist = distance + f.falloff_start;
-        let snap = BLOB_SNAP * METERS_PER_UNIT;
+        let snap = BLOB_SNAP * SOURCE_UNIT;
         f.origin = (f.origin / snap).trunc() * snap;
         f
     }
@@ -658,7 +661,8 @@ pub fn blob_atlas() -> Atlas {
 pub const BLOB_RECT: (Vec2, Vec2) = (Vec2::ZERO, Vec2::ONE);
 
 /// A character's blob shadow frame: its collision box (`hull`, relative to
-/// its origin; Source's player box when it has none), axis-aligned as
+/// its origin, metres, whatever its game; Source's player box when it
+/// has none), axis-aligned as
 /// the box itself is, cast straight down (Low) or along the map's
 /// direction (Medium, High: our characters have no render-to-texture
 /// shadow; Source falls back to blobs that way past its 32 a frame).
@@ -670,8 +674,8 @@ pub fn character_frame(hull: (Vec3, Vec3), at: Vec3, mode: ShadowMode, settings:
         hull
     } else {
         (
-            Vec3::new(-16.0, 0.0, -16.0) * METERS_PER_UNIT,
-            Vec3::new(16.0, 72.0, 16.0) * METERS_PER_UNIT,
+            Vec3::new(-16.0, 0.0, -16.0) * SOURCE_UNIT,
+            Vec3::new(16.0, 72.0, 16.0) * SOURCE_UNIT,
         )
     };
     let d = if mode == ShadowMode::Blob { DOWN } else { settings.direction };
@@ -687,7 +691,7 @@ pub fn character_frame(hull: (Vec3, Vec3), at: Vec3, mode: ShadowMode, settings:
 /// caster's own movement shifts it.
 pub fn moved_visibly(bounds: (Vec3, Vec3), n: u32, from: (Vec3, Quat), to: (Vec3, Quat)) -> bool {
     let (lo, hi) = bounds;
-    let texel = ((hi - lo).max_element().max(0.0) + BLOAT * METERS_PER_UNIT) / n.max(1) as f32;
+    let texel = ((hi - lo).max_element().max(0.0) + BLOAT * SOURCE_UNIT) / n.max(1) as f32;
     let radius = lo.length().max(hi.length());
     let turn = from.1.angle_between(to.1);
     from.0.distance(to.0) + turn * radius > texel / 4.0
@@ -1179,7 +1183,7 @@ mod tests {
     fn jitter_keeps_the_shadow() {
         // A 32-unit crate: a 64-texel cell of about half a unit (1.3 cm)
         // each.
-        let half = Vec3::splat(16.0 * METERS_PER_UNIT);
+        let half = Vec3::splat(16.0 * SOURCE_UNIT);
         let bounds = (-half, half);
         let n = cell_size(bounds);
         let at = (Vec3::new(1.0, 0.5, 2.0), Quat::from_rotation_y(0.4));
@@ -1211,7 +1215,7 @@ mod tests {
         assert!(at(16, 16) > 0.99 && at(0, 0) == 0.0 && at(0, 16) < 0.05, "full in the middle, none at the edge");
         assert!((at(8, 16) - at(16, 8)).abs() < 1e-6, "round");
         // A 2-unit pebble: the least size; a player box: its width plus 10.
-        let u = METERS_PER_UNIT;
+        let u = SOURCE_UNIT;
         let pebble = ShadowFrame::blob((Vec3::splat(-u), Vec3::splat(u)), Vec3::ZERO, Quat::IDENTITY, DOWN, 1.0);
         assert!((pebble.size - Vec2::splat(12.0 * u)).abs().max_element() < 1e-4, "{}", pebble.size / u);
         let hull = (Vec3::new(-16.0, 0.0, -16.0) * u, Vec3::new(16.0, 72.0, 16.0) * u);
@@ -1227,7 +1231,7 @@ mod tests {
     /// the depth the impacts write, or it fails the depth test there.
     #[test]
     fn shadows_draw_over_impact_decals() {
-        let u = METERS_PER_UNIT;
+        let u = SOURCE_UNIT;
         let depth_copy = crate::map::decal::LIFT - crate::map::decal::DEPTH_DROP;
         assert!(LIFT * u > depth_copy + 0.02 * u, "shadow {LIFT} units, impacts' depth {} units", depth_copy / u);
         // And on a real floor: the shadow's vertices sit that high.

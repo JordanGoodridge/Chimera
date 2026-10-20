@@ -142,17 +142,17 @@ pub fn preset(index: u16) -> &'static RoomPreset {
 }
 
 /// How much of a world sound goes to the room: the near level at the
-/// listener, rising to all of it at `FAR_UNITS` (ours: farther sounds
-/// reach the ear more through the room).
+/// listener, rising to all of it at `FAR_SEND` metres (ours: farther
+/// sounds reach the ear more through the room).
 pub const NEAR_SEND: f32 = 0.6;
-pub const FAR_UNITS: f32 = 1500.0;
+pub const FAR_SEND: f32 = 38.0;
 /// Unspatialized world sounds (soundscape ambience, play-everywhere
 /// ambient sounds) send this much.
 pub const AMBIENT_SEND: f32 = 1.0;
 
-/// The send of a sound `units` (Source units) from the listener.
-pub fn distance_send(units: f32) -> f32 {
-    NEAR_SEND + (1.0 - NEAR_SEND) * (units / FAR_UNITS).clamp(0.0, 1.0)
+/// The send of a sound `metres` from the listener.
+pub fn distance_send(metres: f32) -> f32 {
+    NEAR_SEND + (1.0 - NEAR_SEND) * (metres / FAR_SEND).clamp(0.0, 1.0)
 }
 
 /// The room the listener is in and the bus that plays it.
@@ -671,8 +671,8 @@ mod tests {
     #[test]
     fn send_grows_with_distance() {
         assert!((distance_send(0.0) - NEAR_SEND).abs() < 1e-6);
-        assert!(distance_send(500.0) > NEAR_SEND);
-        assert!((distance_send(5000.0) - 1.0).abs() < 1e-6);
+        assert!(distance_send(12.0) > NEAR_SEND);
+        assert!((distance_send(130.0) - 1.0).abs() < 1e-6);
     }
 
     /// Energy of the room's answer to a click over `seconds`.

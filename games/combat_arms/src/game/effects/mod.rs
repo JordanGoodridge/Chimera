@@ -107,6 +107,7 @@ use crate::{
     core::{Damage, DamageKind, Health, Hitgroup, Intent, LocalPlayer, MovementState, SOLID_LAYERS, authoritative},
     map::{
         particles::{ParticleMaterials, Particles, WorldTracer},
+        SurfaceNames,
         sound::SurfaceGrid,
     },
     weapon::{
@@ -300,9 +301,56 @@ fn camera(q: &CameraQuery) -> Option<Camera> {
 /// The surface type at a world point (metres): the nearest tagged drawn
 /// triangle within 4 u; none: Unknown (0).
 pub fn world_surface(grid: Option<&SurfaceGrid>, at: Vec3) -> u16 {
+    world_surface_named(grid, None, at)
+}
+
+/// `world_surface` on a map whose surfaces may be another game's
+/// (`names`: a mashup's, `map::SurfaceNames`).
+pub fn world_surface_named(grid: Option<&SurfaceGrid>, names: Option<&SurfaceNames>, at: Vec3) -> u16 {
     grid.and_then(|g| g.nearest(at, 4.0 * UNIT))
-        .and_then(|s| s.parse().ok())
+        .map_or(0, |s| surface_type(s, names, CaFxTables::built_in()))
+}
+
+/// A world triangle's surface (its `MapMesh::surface`) as a type: Combat
+/// Arms' own maps tag the type's number (`library::tag_surfaces`);
+/// another game's map keeps its own names, which the app's table gives
+/// as Combat Arms' type names (`map::SurfaceNames`), found by name in
+/// `tables`; anything else: Unknown (0).
+pub fn surface_type(s: &str, names: Option<&SurfaceNames>, tables: &CaFxTables) -> u16 {
+    s.parse()
+        .ok()
+        .or_else(|| tables.surface_id(names.map_or(s, |n| n.resolve(s))))
         .unwrap_or(0)
+}
+
+/// The world's surfaces as Combat Arms' types (`surface_type`): the map's
+/// tagged triangles and, on another game's map, its names as Combat
+/// Arms'.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct Ground<'w> {
+    grid: Option<Res<'w, SurfaceGrid>>,
+    names: Option<Res<'w, SurfaceNames>>,
+}
+
+impl Ground<'_> {
+    fn ty(&self, s: &str) -> u16 {
+        surface_type(s, self.names.as_deref(), CaFxTables::built_in())
+    }
+
+    /// `world_surface`'s: the nearest tagged triangle within 4 u.
+    pub fn at(&self, at: Vec3) -> u16 {
+        world_surface_named(self.grid.as_deref(), self.names.as_deref(), at)
+    }
+
+    /// The nearest tagged triangle's type within `reach` (metres).
+    pub fn nearest(&self, at: Vec3, reach: f32) -> Option<u16> {
+        self.grid.as_deref()?.nearest(at, reach).map(|s| self.ty(s))
+    }
+
+    /// The type of the triangle below `at` within `reach` (metres).
+    pub fn below(&self, at: Vec3, reach: f32) -> Option<u16> {
+        self.grid.as_deref()?.below(at, reach).map(|s| self.ty(s))
+    }
 }
 
 /// A deterministic stream of draws in 0..1.
@@ -514,7 +562,7 @@ fn shot_effects(
     weapons: WeaponFxQuery,
     characters: Query<(Has<Health>, Has<Intent>, Option<&CaViewModel>, Option<&Transform>)>,
     hands: Query<(&super::characters::CaPose, &Transform, &MovementState)>,
-    grid: Option<Res<SurfaceGrid>>,
+    grid: Ground,
     tables: Res<CaFxTables>,
     settings: Res<CaFxSettings>,
     mut marks: ResMut<rules::CaMarks>,
@@ -673,7 +721,7 @@ fn shot_effects(
                 let ty = if character {
                     if heads.contains(hit) { 4 } else { 6 }
                 } else {
-                    world_surface(grid.as_deref(), *to)
+                    grid.at(*to)
                 };
                 let surface = tables.surface(ty);
                 let Some(record) = tables.impact(&wfx.impact) else { continue };
@@ -721,7 +769,7 @@ fn shot_effects(
                 }
                 let Some((point, n, hit)) = at else { continue };
                 let (has_health, is_character, ..) = characters.get(*hit).unwrap_or((false, false, None, None));
-                let ty = if has_health && is_character { 6 } else { world_surface(grid.as_deref(), *point) };
+                let ty = if has_health && is_character { 6 } else { grid.at(*point) };
                 let Some(record) = tables.impact(&wfx.impact) else { continue };
                 let seen = cam.is_some_and(|c| c.gates(*point, *point, !mine).impact_seen);
                 let rolls = [state.rolls.next(), state.rolls.next()];
@@ -925,7 +973,7 @@ fn play_dings(mut dings: ResMut<DingQueue>, tables: Res<CaFxTables>, mut sounds:
 fn grenade_effects(
     mut detonations: MessageReader<Detonated>,
     cameras: CameraQuery,
-    grid: Option<Res<SurfaceGrid>>,
+    grid: Ground,
     tables: Res<CaFxTables>,
     settings: Res<CaFxSettings>,
     mut sounds: MessageWriter<CaSound>,
@@ -938,10 +986,7 @@ fn grenade_effects(
     for d in detonations.read() {
         let Some(g) = tables.grenade.get(d.weapon) else { continue };
         let Some(record) = tables.impact(&g.impact) else { continue };
-        let ty = grid
-            .as_deref()
-            .and_then(|g| g.nearest(d.at, GRENADE_SURFACE_REACH * UNIT))
-            .map_or(1, |s| s.parse().unwrap_or(0));
+        let ty = grid.nearest(d.at, GRENADE_SURFACE_REACH * UNIT).unwrap_or(1);
         let surface = tables.surface(ty);
         let seen = cam.is_some_and(|c| c.gates(d.at, d.at, true).impact_seen);
         let mut out = impact(
@@ -990,7 +1035,7 @@ pub fn bounce_volume(in_water: bool, loudness: f32) -> f32 {
 /// `bounce_volume`.
 fn bounce_sounds(
     grenades: Query<(Entity, &CaGrenade), Changed<CaGrenade>>,
-    grid: Option<Res<SurfaceGrid>>,
+    grid: Ground,
     tables: Res<CaFxTables>,
     mut seen: Local<HashMap<Entity, usize>>,
     mut sounds: MessageWriter<CaSound>,
@@ -1000,7 +1045,7 @@ fn bounce_sounds(
         let n = seen.entry(e).or_insert(0);
         for c in g.contacts.iter().skip(*n) {
             let at = c.at * g.unit;
-            let surface = tables.surface(world_surface(grid.as_deref(), at));
+            let surface = tables.surface(grid.at(at));
             if surface.grenade.is_empty() {
                 continue;
             }
@@ -1102,7 +1147,7 @@ fn footsteps(
         Option<&mut OwnSteps>,
         Option<&mut OthersSteps>,
     )>,
-    grid: Option<Res<SurfaceGrid>>,
+    grid: Ground,
     tables: Res<CaFxTables>,
     mut sounds: MessageWriter<CaSound>,
     mut rolls: Local<Rolls>,
@@ -1126,11 +1171,7 @@ fn footsteps(
             let ty = if ms.on_ladder {
                 200
             } else {
-                let ty = grid
-                    .as_deref()
-                    .and_then(|g| g.below(feet + Vec3::Y * 50.0 * UNIT, 100.0 * UNIT))
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
+                let ty = grid.below(feet + Vec3::Y * 50.0 * UNIT, 100.0 * UNIT).unwrap_or(0);
                 // An unknown surface inside a water volume is Water.
                 if ty == 0 && in_liquid(volumes.iter(), feet) { WATER_SURFACE } else { ty }
             };
@@ -1217,7 +1258,7 @@ fn step_effects(
     owners: Query<&Transform, Without<CaShell>>,
     characters: Query<(), With<Intent>>,
     spatial: SpatialQuery,
-    grid: Option<Res<SurfaceGrid>>,
+    grid: Ground,
     tables: Res<CaFxTables>,
     mut sounds: MessageWriter<CaSound>,
     mut last_owner: Local<HashMap<Entity, Vec3>>,
@@ -1250,7 +1291,7 @@ fn step_effects(
                 !characters.contains(e)
             })?;
             let at = from + (to - from) * (hit.distance / d.length());
-            let surface = tables.surface(world_surface(grid.as_deref(), at * UNIT));
+            let surface = tables.surface(grid.at(at * UNIT));
             Some(CasingHit {
                 at,
                 normal: hit.normal,
@@ -1264,7 +1305,7 @@ fn step_effects(
             }
             CasingStep::FirstBounce if !s.casing.in_water && !s.sounded => {
                 s.sounded = true;
-                let surface = tables.surface(world_surface(grid.as_deref(), s.casing.at * UNIT));
+                let surface = tables.surface(grid.at(s.casing.at * UNIT));
                 if !surface.shell.is_empty() {
                     sounds.write(CaSound::at(&surface.shell, s.casing.at * UNIT, surface.shell_radius));
                 }

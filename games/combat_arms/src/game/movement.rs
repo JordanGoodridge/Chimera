@@ -87,12 +87,15 @@
 //! convex brushes; no edge axes), once a tick with the hull's height
 //! before that tick's resize; of overlapping eye volumes a liquid or a
 //! ladder wins (`volumes::eye_volume`; the spec's order is unknown); the
-//! integrator's flat normal on a model is for characters only (props and moving world models give the contact's
-//! normal); the steep-floor cut uses what the last move stood on, not a
+//! integrator's flat normal on a model is for characters only (props
+//! and moving world models give the contact's normal); the steep-floor cut uses what the last move stood on, not a
 //! new probe; a blocked move is one that moved less than 0.01 u (the
 //! mover's clearance jitter; the spec's 10^-6); a locked tick in a
 //! gravity volume uses the last free tick's gravity. `viscosity_max` is
-//! grenades.md's 5000. Not modelled: VIP accounts, kill-streak and
+//! grenades.md's 5000. The custom term P_custom is `CustomMovePenalty`
+//! (Hired Guns' carry penalty) and a VIP account `VipMovement` (VIP
+//! Escort's VIP: its model's penalty alone, the figure's stamina; its
+//! sprint keeps the figure's dash speed). Not modelled: kill-streak and
 //! stamina perks, the ammo's own stun, the "falling" sound status,
 //! stamina kits, jump stamina, the modes' actual `ModeSpeed` values
 //! (game-mode specs), maps' not-a-step surface flag (characters and
@@ -301,6 +304,21 @@ pub struct StunPenalty {
     pub until: f64,
 }
 
+/// The custom move penalty (P_custom, spec "Penalty"): Hired Guns' carry
+/// penalty (game_modes_2.md M11.4), set by the rules; predicted with the
+/// player's movement.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CustomMovePenalty(pub f32);
+
+/// A VIP (spec "Penalty": a VIP account; game_modes_2.md M13.4): the
+/// penalty is this alone (the VIP model's `MovePenalty`), whatever the
+/// weapon, gear or custom term, and the stamina the figure's with no gear
+/// bonuses. Set by VIP Escort's rules; predicted with the movement.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct VipMovement {
+    pub penalty: f32,
+}
+
 /// An infected character of the infection mode: hits from the other
 /// team knock it back (spec "Other modifiers", `HitKnockback`). The
 /// infection modes' rules set it (`rules::quarantine`).
@@ -499,7 +517,9 @@ impl Plugin for CaMovementPlugin {
             .insert_resource(Loadout { movement: ID })
             .register_movement::<CaMovement>(ID)
             .add_systems(Predict::Movement, (step, sync_collider).chain())
-            .predicted_net::<CaMovement>();
+            .predicted_net::<CaMovement>()
+            .predicted_net::<CustomMovePenalty>()
+            .predicted_net::<VipMovement>();
     }
 }
 
@@ -988,7 +1008,14 @@ fn step(
         &mut Velocity,
         &mut MovementState,
         Option<&CaCharacter>,
-        (Option<&HeldMovePenalty>, Option<&StunPenalty>, Option<&ModeSpeed>, Option<&CaAction>),
+        (
+            Option<&HeldMovePenalty>,
+            Option<&StunPenalty>,
+            Option<&ModeSpeed>,
+            Option<&CaAction>,
+            Option<&CustomMovePenalty>,
+            Option<&VipMovement>,
+        ),
         Option<&mut HitKnockback>,
         Has<Zoomed>,
         Has<Dead>,
@@ -1028,7 +1055,7 @@ fn step(
     }
     // The open-form step: no friction, a quarter-step displacement.
     let quarter = |v: Vec3, a: Vec3| (v + a * dt, v * dt + a * (0.25 * dt * dt));
-    for (entity, intent, mut me, mut transform, mut vel, mut state, character, (held, stun, mode, action), mut knock, zoomed, dead, lock) in
+    for (entity, intent, mut me, mut transform, mut vel, mut state, character, (held, stun, mode, action, custom, vip), mut knock, zoomed, dead, lock) in
         &mut q
     {
         let me = &mut *me;
@@ -1036,6 +1063,15 @@ fn step(
         let mode = mode.copied().unwrap_or_default();
         let locked = !dead && (lock || action.is_some_and(|a| a.kind == ActionKind::Plant));
         me.locked = locked;
+        // A VIP: the figure without its gear's bonuses.
+        let vip_character;
+        let character = match vip {
+            Some(_) => {
+                vip_character = character.without_gear();
+                &vip_character
+            }
+            None => character,
+        };
         let space = Space {
             mover: &move_and_slide,
             filter: SpatialQueryFilter::from_excluded_entities([entity]).with_mask(CHARACTER_FILTER),
@@ -1372,12 +1408,17 @@ fn step(
             let v1 = if on_ladder { d.ladder } else { v0 + (d.crouch - v0) * r };
             let held = held.copied().unwrap_or_default();
             let stun = stun.filter(|s| now < s.until).map_or(0.0, |s| s.penalty);
-            let penalty = (held.penalty * (1.0 + held.mod_factor)
-                + character.gear_sum(|g| g.move_penalty)
-                + fig.variable_weight
-                - fig.variable_speed
-                + stun)
-                .clamp(-1.0, 1.0);
+            let custom = custom.map_or(0.0, |c| c.0);
+            let penalty = match vip {
+                Some(v) => v.penalty.clamp(-1.0, 1.0),
+                None => (held.penalty * (1.0 + held.mod_factor)
+                    + character.gear_sum(|g| g.move_penalty)
+                    + fig.variable_weight
+                    - fig.variable_speed
+                    + custom
+                    + stun)
+                    .clamp(-1.0, 1.0),
+            };
             let limit = v1 * (1.0 - penalty) * mode.speed * factor;
             me.speed_limit = limit;
             if on_ladder {

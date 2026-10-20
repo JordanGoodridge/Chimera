@@ -305,20 +305,24 @@ pub fn relay_game_sounds(
 #[derive(Resource, Clone)]
 pub struct SoundBank(pub Arc<MapSounds>);
 
-/// Meters per Source unit.
-pub const METERS_PER_UNIT: f32 = 0.0254;
-/// Distances closer than this don't get louder (units).
+/// Meters per Source unit: Source's own levels (`SoundLevel::Db`,
+/// `Attenuation`) are defined over inches, whatever game plays them.
+pub const SOURCE_UNIT: f32 = 0.0254;
+/// Distances closer than this don't get louder (Source units).
 const MIN_DISTANCE: f32 = 36.0;
 
-/// Gain at `units` from the source (spec open question 1: hypotheses H1
-/// for sound levels, H2 for attenuation entries, until measured).
-pub fn distance_gain(level: SoundLevel, units: f32) -> f32 {
+/// Gain at `metres` from the source (spec open question 1: hypotheses H1
+/// for sound levels, H2 for attenuation entries, until measured): a
+/// Source level over Source units, a `Radius` one over metres, so any
+/// game's sounds fall off right on any game's map.
+pub fn distance_gain(level: SoundLevel, metres: f32) -> f32 {
+    let units = metres / SOURCE_UNIT;
     match level {
         SoundLevel::Db(l) if l <= 0.0 => 1.0,
         SoundLevel::Db(l) => (10f32.powf((l - 60.0) / 20.0) * MIN_DISTANCE / units.max(MIN_DISTANCE)).min(1.0),
         SoundLevel::Attenuation(a) if a <= 0.0 => 1.0,
         SoundLevel::Attenuation(a) => (1.0 - units * a / 1000.0).clamp(0.0, 1.0),
-        SoundLevel::Radius { inner, outer, .. } => radius_gain(inner, outer, units * METERS_PER_UNIT),
+        SoundLevel::Radius { inner, outer, .. } => radius_gain(inner, outer, metres),
     }
 }
 
@@ -336,11 +340,11 @@ pub fn radius_gain(r: f32, big_r: f32, d: f32) -> f32 {
     (1.0 - (d * d - r * r) / ((big_r - r) * (big_r - r))).clamp(0.0, 1.0)
 }
 
-/// The low-pass cut-off of a sound at `units` from the listener, as a
+/// The low-pass cut-off of a sound at `metres` from the listener, as a
 /// fraction of the full bandwidth (1: unfiltered): a `Radius` level's
 /// `low_pass` (start, span) between its radii (`low_pass_fraction`);
 /// 1 for every other level.
-pub fn distance_cutoff(level: SoundLevel, units: f32) -> f32 {
+pub fn distance_cutoff(level: SoundLevel, metres: f32) -> f32 {
     let SoundLevel::Radius {
         inner,
         outer,
@@ -349,7 +353,7 @@ pub fn distance_cutoff(level: SoundLevel, units: f32) -> f32 {
     else {
         return 1.0;
     };
-    let d = units * METERS_PER_UNIT;
+    let d = metres;
     if d <= inner || d >= outer {
         return 1.0;
     }
@@ -591,7 +595,7 @@ mod tests {
             outer: 40.0,
             low_pass: Some((20.0, 10.0)),
         };
-        let units = |m: f32| m / METERS_PER_UNIT;
+        let units = |m: f32| m;
         assert_eq!(distance_cutoff(level, units(10.0)), 1.0);
         assert!((distance_cutoff(level, units(25.0)) - (1.0 - (std::f32::consts::FRAC_PI_4).cos())).abs() < 1e-4);
         assert_eq!(distance_cutoff(level, units(39.0)), 0.1);

@@ -65,7 +65,7 @@ pub fn update(world: &mut World, family: &str) {
     let now = world.resource::<SimClock>().now;
     let o = world.resource::<CaRuleSettings>().objectives.clone();
     let sites = zones(world, family);
-    let players = objectives::living(world);
+    let players = objectives::takers(world);
     let planted = world.resource::<CaObjectives>().planted;
     // Plants.
     for p in &players {

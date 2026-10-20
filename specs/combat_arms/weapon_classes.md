@@ -3,7 +3,7 @@
 Source basis: the client's weapon logic (fire, reload and per-round reload state machine, spread and the multi-ray path), the client's player manager (zoom levels, field of view, scope sway, mouse scaling while zoomed, automatic zoom-out), the client's interface overlay code (scope overlay), the shared weapon and modification attribute managers, the server's player object (reload bookkeeping per class), plus the shipped attribute data (weapons file, modifications file, projectile effects file) and the first-person view-model animation files, all from a reference client build (US data set). Numbers for typical weapons are that build's data; the Steam build may differ (see Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; How the data marks a class; Typical weapons; Behavior (1 assault rifles, 2 SMGs, 3 machine guns, 4 pistols, 5 shotguns, 6 sniper rifles, 7 zoom and scope, 8 launchers and other classes); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; How the data marks a class; Typical weapons; Behavior (1 assault rifles, 2 SMGs, 3 machine guns, 4 pistols, 5 shotguns, 6 sniper rifles, 7 zoom and scope, 8 launchers and other classes); Per-tick order; Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
 
 This spec builds on `weapon_firing.md` (one rifle, the M4A1) and says only what differs. Terms used without definition here (spread fraction $p$, firing meter $F$, movement meter $M$, cone $n$, fire cycle, view kick $J$) are defined there.
 
@@ -254,7 +254,7 @@ t_{shell\,i} = t_0 + L_{pre} + i\,L_{loop}\ (i = 1..k), \qquad t_{done} = t_0 + 
 
 #### 5.6 Server reload bookkeeping (why shotguns can fire mid-reload)
 
-- When a reload starts, the server marks the player as reloading and drops shots that arrive while the mark is set. For magazine weapons the mark lasts the reload animation's length.
+- When a reload starts, the server marks the player as reloading and drops shots that arrive while the mark is set (dropped whole: no damage and no server-side ammo spent). For magazine weapons the mark lasts the **third-person** reload animation's length for the player's current stance, divided by $\min(r_{reload}, 2.0)\cdot(2 - c)$, where $c$ is the server setting `ReloadCheckTime` (section `[TimeWeight]`, built-in 0.8, so ×1.2). The server fills its own clip when the mark ends. A weapon whose record gives its own third-person reload length is timed by the animation instead (Corrections 2).
 - For shotgun-class weapons (`Guntype` 2), rockets, the M32 and gadgets, the server instead fills its own clip at once and clears the mark on the next shot: for shotguns when the clip is not 0; for rockets, the M32 and gadgets when the total is not 0. Our implementation: let a shotgun shot through whenever the shooter's clip is > 0.
 
 #### 5.7 Multi-pellet hit carry-over (Q1)
@@ -262,6 +262,7 @@ t_{shell\,i} = t_0 + L_{pre} + i\,L_{loop}\ (i = 1..k), \qquad t_{done} = t_0 + 
 - The client resets its "hit a player" record once per shot, not once per pellet (console variable `AllowMultipleVectorsPerRoundBug`, default 1).
 - So, once one pellet of a shot hits a player, **every later pellet of the same shot** is also reported as a hit on that player, at the node and along the direction of the most recent pellet that really hit. Pellets before the first hit are judged normally. The server applies each report (it does not re-test client-reported hits).
 - Example: 8 pellets, pellet 3 is the only real hit (torso, 500 units). Pellets 3–8 all count: 6 × 9 = 54 damage. With the variable at 0: 9.
+- **Corrected:** these numbers hold only when the weapon's `FireDelay` is 0. With `FireDelay` > 0 (30 when the record omits it), the server drops the shot's **last** pellet report (`weapon_firing.md` Corrections 3). The same example then gives 5 × 9 = 45. If only pellet 8 hits, it gives 0. See Corrections 1.
 
 #### 5.8 Double barrel (`Guntype` 13)
 
@@ -447,6 +448,25 @@ One client frame, for the local player (extends `weapon_firing.md`'s order):
 - **Q10, stale "reload after zoom"**: if a weapon switch resets the zoom while a reload is waiting for a zoom-out, the waiting flag is not cleared. The next completed zoom-out (on any weapon) issues a reload request. Minor. Recommendation: clear it on reset, and note the difference.
 - **Q11, no-scope**: an unscoped sniper is not "inaccurate by movement"; it is a fixed ±5.71° square even standing still, and has no crosshair. Keep.
 
+## Corrections (2026-10-19)
+
+From a second pass over the reference's server shot handling, its reload bookkeeping and the client's fire state machine, compared with this spec and with our implementation. Test cases 37–41.
+
+1. **Multi-pellet shots lose their last pellet when `FireDelay` > 0.**
+   - Reference: the server checks the spacing on a shot's last ray only. The earlier rays have already stored the shot's own timestamp, so with `FireDelay` > 0 that last ray is always dropped (`weapon_firing.md` Corrections 3). This applies to every pellet weapon (shotguns, the double barrel's two volleys, each a separate shot) and to the carried-over reports of 5.7: the last report of each shot is the one lost.
+   - Ours: 5.3, 5.7 and test cases 22–23 counted all pellets. `after_shots` checks once per round and then delivers every pellet (`games/combat_arms/src/game/weapons.rs:1795-1806`, `1831-1845`). Our Remington 870 document has no `fire_delay`, so it uses the default 30 ms (`games/combat_arms/data/weapons/remington_870.toml`; `weapons.rs:342-344`).
+   - Why it matters: the shotgun's close-range damage drops by one pellet in eight (72 → 63), and a single lucky last pellet scores nothing.
+
+2. **The server's reload mark is shorter than the reload, and refills the server clip at its end.**
+   - Reference: see the corrected 5.6. Mark length = third-person reload length (by stance) ÷ ($\min(r, 2.0)\cdot 1.2$). The server's rate is capped at 2.0, unlike the client's "above 2.0 plays at 1.0". Shots during the mark are dropped without spending server ammo. The server clip is filled when the mark ends, not when the reload starts.
+   - Ours: one simulation, no mark (`games/combat_arms/src/game/weapons/classes.rs:46-47`, known shortcut). The spec said the mark lasts the reload animation.
+   - Why it matters: only with lag or a modified client. It is listed so that a split server keeps the right window: with stock rates the mark ends at 1/1.2 of the third-person reload, before the client can fire again.
+
+3. **First-round latency by class.**
+   - Reference (`weapon_firing.md` Corrections 10): a press from idle spends its first round on the 3rd weapon update when the model has a pre-fire animation (rifles, SMGs, MGs, pistols: their 0 ms pre-fires count), on the 2nd for primary shotguns (their pre-fire is always skipped). The minigun's spin-up is its pre-fire: its first round comes on the update after the one that sees the 1300 ms spin-up done, plus the one update that only sets the firing state.
+   - Ours: the trigger fires on the press tick (`classes.rs:278-282` for the minigun waits only for the spin-up time).
+   - Why it matters: pump shotguns answer one frame faster than rifles and pistols. A pistol tap fires 50 ms after the press at 60 fps.
+
 ## Test cases
 
 Data as in "Typical weapons". Reference character for speeds. "Exact time" means the fire cycle, transitions and spread run on exact time (`weapon_firing.md` Q2 recommendation); frame-quantised cases say so. Unarmoured male victim, damage roll 1.0, unless stated.
@@ -487,6 +507,11 @@ Data as in "Typical weapons". Reference character for speeds. "Exact time" means
 34. **Sniper kick**: L96A1 first shot from rest → view up 5.000°, side 1.000° in the wag direction. A second shot with no recovery → up 2.500°.
 35. **Damage**: L96A1 torso at d = 3000 / 4200 / 4800 → 160 / 112 / 56; head at d = 3000 → 960. Dragunov torso at d = 3000 → 100.
 36. **No zoom without a scope**: M4A1 (no attachment), press zoom → nothing changes (L = 0, FOV 90°, normal cone and speed).
+37. **Shotgun with spacing (Corrections 1)**: Remington_870, `FireDelay` 30, all 8 pellets on the torso at d = 500 → 63 (7 land), total −1. `FireDelay` 0 → 72. At d = 700 → 7 × 6.3 = 44.1.
+38. **Carry-over with spacing (Corrections 1)**: Remington_870, `FireDelay` 30, carry-over on. Only pellet 3 really hits (torso, d = 500) → reports 3–8, the 8th dropped: 45. Only pellet 1 hits → 63. Only pellet 8 hits → 0. With the carry-over off and only pellet 3 → 9.
+39. **Server reload mark (Corrections 2)**: magazine weapon whose third-person reload (standing) is 2400 ms, rate 1, `ReloadCheckTime` 0.8 → mark 2000 ms. A shot message stamped 1990 ms after the reload message → dropped, server ammo unchanged. At 2010 ms → applied, and the server clip was refilled at 2000 ms. With a rate bonus summing to 2.4 → the server uses 2.0: mark 2400 / 2.4 = 1000 ms.
+40. **Latency by class (Corrections 3)**: 60 fps, press seen on update 0. M92FS → round on update 3 (50.0 ms). Remington_870 → update 2 (33.3 ms). Minigun_Special → spin-up started on update 1, seen done on the first update at or after 1300 ms of it, `fire_0` started on that update, first round on the next.
+41. **Pump re-press (Corrections 3)**: Remington_870 held → the second round comes on the update after the one that sees the 600 ms `fire_0` done (no extra state update inside a held loop).
 
 ## Open questions
 

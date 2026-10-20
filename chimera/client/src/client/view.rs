@@ -30,8 +30,9 @@ use crate::{
     map::ShowLocalBody,
 };
 
-/// Source units to meters (cam_idealdist is in CS:S units).
-const METERS_PER_UNIT: f32 = 0.0254;
+/// Source's inch, metres: the default `CameraMode::meters_per_unit`
+/// (with no game registered) and the tests' unit.
+const SOURCE_UNIT: f32 = 0.0254;
 /// Radius of the sphere swept back from the eye to place the camera, so
 /// it stops short of walls (CS:S sweeps a 28-unit box).
 const CAMERA_RADIUS: f32 = 0.2;
@@ -41,14 +42,20 @@ const CAMERA_RADIUS: f32 = 0.2;
 #[derive(Resource, Clone, Copy, Debug, PartialEq)]
 pub struct CameraMode {
     pub third_person: bool,
-    /// CS:S units (cam_idealdist).
+    /// The gameplay's world units (cam_idealdist; CS:S's inches, Combat
+    /// Arms' units: `meters_per_unit`).
     pub ideal_dist: f32,
     /// Degrees the third-person camera orbits around the player
     /// (cam_idealyaw; 180 looks at your front).
     pub ideal_yaw: f32,
-    /// CS:S units the third-person camera's pivot sits above the eye
+    /// Units the third-person camera's pivot sits above the eye
     /// (`THIRD_PERSON_PIVOT_UP`; the spectator's chase camera has none).
     pub pivot_up: f32,
+    /// Metres per unit of `ideal_dist` and `pivot_up`: the default game's
+    /// world unit (`game_registry::GameInfo::meters_per_unit`, set by
+    /// `game_unit`), so the camera's distances are the gameplay's in any
+    /// game and on any game's map.
+    pub meters_per_unit: f32,
 }
 
 /// How far above the eye CS:S's third-person camera turns about, units:
@@ -66,6 +73,7 @@ impl Default for CameraMode {
             ideal_dist: 150.0,
             ideal_yaw: 0.0,
             pivot_up: THIRD_PERSON_PIVOT_UP,
+            meters_per_unit: SOURCE_UNIT,
         }
     }
 }
@@ -117,7 +125,7 @@ impl Plugin for ViewPlugin {
             .init_resource::<Watch>()
             .init_resource::<HealthBars>()
             .init_resource::<ShowLocalBody>()
-            .add_systems(Update, (show_local_body, draw_health_bars.after(super::follow_eye)));
+            .add_systems(Update, (game_unit, show_local_body, draw_health_bars.after(super::follow_eye)));
         view_console(app);
     }
 }
@@ -203,7 +211,8 @@ const CEILING_CLEARANCE: f32 = 0.12;
 /// under the edge (a playtester's comparison; the movement spec doesn't
 /// cover the view against ceilings: our reading, a capture to confirm in
 /// docs/backlog.md).
-const CEILING_PROBE_HALF_WIDTH: f32 = 15.0 * METERS_PER_UNIT;
+/// Metres (CS:S's 15 units), for any game's character.
+const CEILING_PROBE_HALF_WIDTH: f32 = 15.0 * SOURCE_UNIT;
 
 /// The eye, lowered if a ceiling sits closer above it than
 /// `CEILING_CLEARANCE` anywhere over the player's box
@@ -256,7 +265,7 @@ pub fn camera_offset(
     if !mode.third_person {
         return below_ceiling(origin, eye, spatial, characters);
     }
-    let ideal = mode.ideal_dist.max(0.0) * METERS_PER_UNIT;
+    let ideal = mode.ideal_dist.max(0.0) * mode.meters_per_unit;
     let Ok(dir) = Dir3::new(look * Vec3::Z) else {
         return eye;
     };
@@ -272,10 +281,20 @@ pub fn camera_offset(
             .map(|h| h.distance)
     };
     // The pivot: up from the eye, short of a ceiling.
-    let up = mode.pivot_up.max(0.0) * METERS_PER_UNIT;
+    let up = mode.pivot_up.max(0.0) * mode.meters_per_unit;
     let pivot = eye + Vec3::Y * up.min(sweep(origin + eye, Dir3::Y, up).unwrap_or(up));
     let hit = sweep(origin + pivot, dir, ideal);
     pivot + third_person_offset(look, ideal, hit)
+}
+
+/// The camera's distances in the default game's unit.
+fn game_unit(games: Option<Res<crate::game_registry::Games>>, mut mode: ResMut<CameraMode>) {
+    let Some(unit) = games.and_then(|g| g.default_game()).map(|g| g.meters_per_unit) else {
+        return;
+    };
+    if unit > 0.0 && mode.meters_per_unit != unit {
+        mode.meters_per_unit = unit;
+    }
 }
 
 /// Draw the local player's body in third person while alive.
@@ -435,7 +454,7 @@ mod tests {
 
     #[test]
     fn the_eye_stays_below_a_low_ceiling() {
-        let u = METERS_PER_UNIT;
+        let u = SOURCE_UNIT;
         // A 64-unit duct: origin 31 units up (box centre), eye 33 above it,
         // ceiling 33 above it: the eye drops to keep the near plane clear.
         let eye = eye_under_ceiling(33.0 * u, Some(33.0 * u));
@@ -449,7 +468,7 @@ mod tests {
     fn third_person_camera_sits_behind_and_stops_at_walls() {
         // Looking down -Z (yaw 0): behind is +Z.
         let look = Quat::IDENTITY;
-        let ideal = 150.0 * METERS_PER_UNIT;
+        let ideal = 150.0 * SOURCE_UNIT;
         let free = third_person_offset(look, ideal, None);
         assert!((free - Vec3::Z * ideal).length() < 1e-5, "{free}");
         // A wall 1 m back pulls the camera in to it.

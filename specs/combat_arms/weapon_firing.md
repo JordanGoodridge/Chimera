@@ -3,7 +3,7 @@
 Source basis: the client's weapon logic (trigger, animation-driven fire cycle, spread, client-side hit test), the client's view recoil, the server's vector/damage and armour logic, the shared weapon attribute manager, and the shipped attribute data (weapon/ammo table, model/skeleton table, surface table) plus the M4A1 view-model animation file, all from a reference client build. Numbers for the worked example are the reference build's data; the Steam build's data may differ (see Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Worked example (M4A1); Behavior (trigger and fire modes, ammo, reload, hitscan, penetration, damage, hit zones, armour, spread, recoil); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Worked example (M4A1); Behavior (trigger and fire modes, ammo, reload, hitscan, penetration, damage, hit zones, armour, spread, recoil); Per-tick order; Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -44,7 +44,10 @@ Fixed in code. Values that come from the attribute data are listed under the wor
 | death_threshold | 1.0 | HP | A character dies when HP ≤ this after positive damage |
 | anim_rate_cap | 2.0 | × | Any animation rate above this is replaced by 1.0 (Q6) |
 | hitbox_widen | 2 | × | Horizontal (X, Z) widening of a character box in the client's first ray test |
-| server_trace_steps | 3 | — | Max ray segments the server walks through objects and surfaces |
+| server_trace_steps | 4 | — | Max ray intersections the server's own walk makes (every surface, object or skipped character box counts one); corrected from 3, see Corrections 4 |
+| server_hitbox_step | 5 | units | A server-side character box whose spheres the line misses is passed by restarting this far beyond its entry point (Corrections 5) |
+| ai_damage_factor | 0.8 | × | Server console variable `AIDamageFactor`: any damage dealt by an AI (bots included) is scaled by it (Corrections 7) |
+| ai_damage_cap | 50 (990 at ≥ 1000) | HP | Final non-melee damage an AI deals to a player in one hit (Corrections 7) |
 | server_impact_slack | 2 | × dims | The server accepts a client-reported object hit only inside ±2× the object's half-dims |
 | damage_roll_default | 0.1 | — | `DamageRFacter` when the field is missing; 0.2 if the value is outside [0,1] |
 | fire_delay_default | 30 | ms | `fireDelay` when missing (server minimum shot spacing) |
@@ -140,7 +143,7 @@ Inputs: fire button held, clip count, total ammo, burst mode flag, burst counter
   4. **Continuous-fire override**: weapons with the continuous-fire option, when switched to it, force the request on while the button is held.
   5. **Burst lockout**: block while less than `TripleShotDelay` ms have passed since a burst completed, or less than `TripleShotSelectDelay` ms since the fire mode was toggled.
 - **Animation state machine** (view model):
-  - Idle + fire request: enter firing. Play `prefire` if the model has a non-empty one (shotguns skip it), else play `fire_0` from its start.
+  - Idle + fire request: the update that sees it only sets the state to firing. The **next** update plays `prefire` if the model has one, **even a 0 ms one** (only weapons whose shop category is primary shotgun skip it), else `fire_0` from its start. A finished `prefire` is followed by `fire_0` on the update that sees it done. So the first round of a press is spent on the third weapon update after the one that saw the press (second without a pre-fire); see Corrections 10. The same holds when a draw, a magazine reload or the post-sprint pose ends with fire held.
   - Firing: when the fire animation finishes (it is one-shot, not looping) and the request is still on with ammo left, restart `fire_0` from 0. When the request is off, play `postfire` if present, else go idle.
   - The `fire_0` animation carries a fire marker at 0 ms. When the animation passes the marker while the weapon is firing, a shot is raised. On the next update the weapon spends one round (clip −1 and total −1) and fires. One round per loop.
   - Cycle time:
@@ -153,7 +156,7 @@ T_{cycle} = \frac{L_{fire}}{r_{fire}}, \qquad r_{fire} = 1 + \texttt{FireAniRate
   - The restart happens on the first frame after the animation reports done, and leftover time is not carried over. The real interval is therefore $T_{cycle}$ rounded **up** to whole frames: 7 frames = 116.7 ms at 60 fps, 11 frames = 110 ms at 100 fps (Q2).
 - **Burst counting**: every fired shot in burst mode raises the burst counter. When it reaches the burst rounds (3), the counter resets to 0 and the burst lockout timer starts. If the counter is ever greater than the clip, it resets to 0. Starting a reload or a sprint also resets it.
 - **Toggling burst** (fire-mode key) is only possible on weapons with `TripleShotMode=1`. Each toggle starts the select lockout. Weapons that also have continuous fire cycle through auto → burst → continuous.
-- **Server rate limit**: the server drops a shot that arrives sooner than `fireDelay` ms after the previous one, but **still spends the round**. The times compared are the **client's** fire timestamps carried in the shot message (whole ms), not arrival times. "The previous one" is the last shot that passed this check; a dropped shot does not restart the clock. A shot that passes the check but is then refused for another reason (no ammo) does restart it. The check is strict: exactly `fireDelay` ms after is allowed. Only the first ray of a shot carries the check; extra pellets of the same shot are not rate-limited (Open question 14).
+- **Server rate limit**: the server drops a shot that arrives sooner than `fireDelay` ms after the previous one, but **still spends the round**. The times compared are the **client's** fire timestamps carried in the shot message (whole ms), not arrival times. "The previous one" is the last shot that passed this check; a dropped shot does not restart the clock. A shot that passes the check but is then refused for another reason (no ammo) does restart it. The check is strict: exactly `fireDelay` ms after is allowed. **Corrected:** only the **last** ray of a shot carries the check, and every ray that is not checked still restarts the clock with the shot's own timestamp. So on a shot of two or more rays the last ray always sees 0 ms since "the previous shot" and, whenever `fireDelay` > 0, it is dropped (the round is still spent once); the other rays are never rate-limited (Corrections 3).
 
 Writes: the clip, total ammo, the per-press counter, the burst counter and the lockout timers.
 
@@ -194,7 +197,7 @@ L_{ray} = \texttt{Range}\cdot\left(1 + \sum \text{mod range bonuses}\right)
 - **Client test** (the shooter's machine decides player hits):
   - The ray ignores the shooter and invisible surfaces.
   - Each character has an axis-aligned hit box. For the first test the box is widened 2× on X and Z (height unchanged). The box counts as hit only if the ray segment, over its whole length, passes within the radius of at least one of the skeleton's **hit spheres** (table under Hit zones).
-  - If the first hit is a character, a second test without widening decides which surface point to report. The victim is the same either way.
+  - If the first hit is a character, a second test without widening decides what to report (corrected, Corrections 8): if it hits the same character, the reported point is the entry into the **widened** box from the first test; if it hits something else whose surface plane has the victim's origin behind it, that other thing is reported instead and no player hit is sent; otherwise the character is reported at the widened-box entry.
   - **Which sphere**: of all spheres the full segment passes through, the one with the smallest value of the expression below wins, where $p$ is the sphere centre relative to the ray start. This is roughly "the sphere entered first", but it favours big spheres.
 
 ```math
@@ -204,18 +207,19 @@ L_{ray} = \texttt{Range}\cdot\left(1 + \sum \text{mod range bonuses}\right)
   - Spheres with radius 0 never count.
 - **Server**:
   - When the client reports a player hit, the server applies the damage below to that victim with the reported sphere, and does not re-test the geometry.
-  - It then walks the ray itself, skipping the first character box it meets, so collateral hits on objects or a second character are possible (see Edge cases).
-  - When the client reports no player, the server walks the ray against walls, objects and characters (its own sphere test) for up to 3 segments.
+  - It then walks the ray itself from the fire position, skipping the first character box it meets, so collateral hits on objects or a second character are possible (see Edge cases).
+  - When the client reports no player, the server walks the ray against walls, objects and characters for up to **4** intersections (corrected from 3; every surface, object or skipped box counts one).
+  - A character found by the server's own walk is tested on the server's own, **unwidened** box. The sphere is chosen by the skeleton's node hit priority, not by distance (Corrections 5). The walk **ends** at the first character it damages: there is never a third victim.
 
 ### Penetration (server-side ray only)
 
 - When the server's ray hits a surface whose type allows shooting through:
   - If its `MaxShootThroughThickness` is 0, the ray always passes.
-  - Otherwise it passes only when the material is no thicker than that value. The server measures this by casting back from `MaxShootThroughThickness + 1` units beyond the entry point. For an object, the object must also be thinner than the limit on at least one axis (2× half-dims < limit).
+  - Otherwise the server casts a ray back from `MaxShootThroughThickness + 1` units beyond the entry point to 1 unit before it. The ray passes when that back-cast hits **anything** (any surface or object but the shooter), so the effective limit is `MaxShootThroughThickness + 1` units, and the measured thickness itself is never compared (Corrections 9). For an object (not the level, not a world model), the object must also be thinner than the limit on at least one axis (2× half-dims < limit).
 - On passing:
-  - The remaining range is multiplied by `BulletRangeDampen` and the ray restarts from the exit point.
+  - The remaining range is `Range` minus the straight distance from the fire position to the restart point, times `BulletRangeDampen`. The ray restarts from the exit point when the back-cast's surface has the same surface flags as the entry, else from the entry point.
   - Damage is multiplied by `BulletDamageDampen`. This is cumulative, and it also applies to whatever the ray hits next.
-  - The direction is re-perturbed by uniform ±`MaxShootThroughPerturb`/1000 on the right and up axes.
+  - The direction is re-perturbed on the right and up axes of a look rotation along the ray with world up, each by a whole number of thousandths drawn uniformly from $\{-P, \dots, P\}$, $P$ = `MaxShootThroughPerturb` (integers, not a continuous range; Corrections 9).
 - The ray stops if less than 1 unit of range is left. Melee never penetrates.
 - Shoot-through surfaces in the surface table:
 
@@ -245,7 +249,7 @@ D \leftarrow D \cdot U(1-k,\,1+k), \qquad k = \texttt{DamageRFacter}
 ```
 
 3. **Client-reported character hit only**: $D \leftarrow D\cdot(1+\text{figure VariableDamage})\cdot b$, with $b = 1.3$ if hit from behind, else 1.
-   - "Behind" is computed from the bullet direction $\hat d$ and the victim's forward $\hat f$ and right $\hat r$:
+   - "Behind" is computed from the bullet direction $\hat d$ and the victim's forward $\hat f$ and right $\hat r$. These are the victim's **body** orientation on the server (the one its client sends: view yaw minus the upper-body twist of the Spread section), not its view (Corrections 6):
 
 ```math
 \theta = \pi + \operatorname{atan2}(\hat f\cdot\hat d,\ \hat r\cdot\hat d), \qquad s = \left\lfloor \frac{\theta}{\pi/6} \right\rfloor,\qquad \text{behind} \iff 7 \le s \le 11
@@ -262,8 +266,11 @@ m_{range} = \begin{cases} \texttt{Rangedamage0} = 1.0 & 0 \le d \le E_0 = 2500 \
    - The multiplier is a step function, not a curve. The M4A1 does 35 out to 2500 units, 24.5 to 3000, 12.25 to 3500.
 5. **Penetration dampening** from earlier surfaces, if any (server path).
 6. **Victim side**:
-   - Buff and room hooks: mutation items, set items, game-mode rules, attachments that boost bullet damage, and AI damage scales. All are identity in a plain match.
-   - Then armour and hit zone, as below. Then $D \leftarrow \max(D, 0)$ and $HP \leftarrow HP - D$.
+   - Buff and room hooks: mutation items, set items, game-mode rules, attachments that boost bullet damage. All are identity in a plain match.
+   - **AI damager** (bots included): $D \leftarrow 0.8\,D$ (`AIDamageFactor`) here, before armour (Corrections 7).
+   - Then armour and hit zone, as below. Then $D \leftarrow \max(D, 0)$.
+   - **AI damager, player victim, damage type not melee**: $D \leftarrow 990$ if $D \ge 1000$, else $\min(D, 50)$ (Corrections 7).
+   - $HP \leftarrow HP - D$.
    - The victim dies when $HP \le 1.0$ (and $D > 0$).
 
 ### Hit zones
@@ -371,7 +378,7 @@ n = n_{min} + \left\lfloor (n_{max}-n_{min})\cdot p \right\rfloor \cdot g
 ### Recoil (view kick)
 
 - Applied on the client in first person only, on the frame a shot fires, **after** the shot's ray was cast. The kick affects the next shot.
-- State: vertical accumulator $J \ge 0$ (radians), side accumulator $J_y$ (signed radians), a side direction flag (random at spawn), and the time of the last kick.
+- State: vertical accumulator $J \ge 0$ (radians), side accumulator $J_y$ (signed radians), a side direction flag, the backward push and the time of the last kick. **All of it belongs to the player, not to the weapon** (Corrections 1): one set per player, never reset by a switch, a death or a respawn (only returned). The direction flag is drawn once when the player enters the map. Every kick and every return reads the data of the weapon **in hand at that moment**.
 - Each accumulator holds **half** of the view offset it has caused (Q4).
 
 **Kick**, per shot. $J_{max}$ = rad(`MaxCamRecoilPitch`) (×(1 + mod %)), $b$ = rad(`BaseCamRecoilPitch`) (×(1 + mod %)), $a$ = `BaseCamRecoilAccelPitch` (+ mods). Burst mode uses the burst pitch values when both are non-zero.
@@ -410,6 +417,7 @@ q = 1 - \frac{|J_y|}{\operatorname{rad}(\texttt{MaxCamRecoilWag})}, \qquad w = q
 J \leftarrow J - v/2, \qquad \text{pitch} \leftarrow \text{pitch} + v
 ```
 
+  Here $J_{max}$ is the cap of the weapon in hand, scaled by its **muzzle** attachment's `MaxCamRecoilPitchPer` only. In burst mode it is rad(`TripleShotMaxCamRecoilPitch`) whenever that field is non-zero, even when `TripleShotBaseCamRecoilPitch` is 0 (the kick needs both non-zero; the return needs only the cap). Corrections 2.
 - Side, while $J_y \ne 0$: the same with $|J_y|$ and rad(`MaxCamRecoilWag`), and the sign of $J_y$.
 - The return is applied to the real view angles, so it pulls the aim down even if the player has already corrected with the mouse. The cap $v \le J$ means the last step can move the view by up to $J$ itself, not the full remaining offset $2J$, so recovery tails off gently.
 
@@ -435,11 +443,13 @@ One client frame, for the local player's current weapon:
 10. **Auto-reload**: if total > 0, clip ≤ 0, and not reloading or firing.
 11. **View kick** (if fired, first person), then the side wag check.
 
-Server, per received shot:
-1. Rate check (`fireDelay`).
-2. Spend the round.
-3. If the client reported a player: figure modifier, behind bonus, range band, armour and zone, apply damage. Then continue the ray, skipping the first character box.
-4. Else walk the ray: walls, penetration, objects, characters.
+Server, per received shot, for each ray in order:
+1. Rate check (`fireDelay`), **last ray only**; every ray that passes or is not checked stamps the clock (Corrections 3).
+2. Spend the round (on the last ray).
+3. If the client reported a player: figure modifier, behind bonus, range band, armour and zone, apply damage. Then walk the ray from the fire position, skipping the first character box.
+4. Else walk the ray: walls, penetration, objects, characters (at most 4 intersections; it ends at the first character it damages).
+
+Within the client frame, steps 1 to 11 run after the frame's camera update: the shot's direction is the camera rotation set before step 1's return (Corrections 11).
 
 ## Edge cases
 
@@ -448,12 +458,12 @@ Server, per received shot:
 - **Clip = total**: no reload possible (nothing in reserve).
 - **Clip 0, total > 0, trigger held**: the last fire animation completes, then the reload starts by itself. The held trigger then fires again after the reload ends.
 - **Firing perturb at the cap while moving**: crouching and stopping while $F$ = 0.38 leaves $F$ at 0.38 until it recovers. The new cap 0.30 is only enforced on the next shot.
-- **Fire held through weapon select**: the weapon starts firing on the update after the select animation ends.
+- **Fire held through weapon select**: the update that sees the select animation done sets the state to firing; the pre-fire (0 ms on the M4A1) plays on the next, `fire_0` starts on the one after, and the round is spent on the third update after the select ended (Corrections 10).
 - **Sprinting while the fire animation plays**: the current fire animation completes, then the sprint pose plays and the burst counter resets. No firing during sprint.
 - **AP exactly equal to blocked**: the third armour case, $(D - AP)\cdot z$, applies, which gives the same result as $(D-B)\cdot z$.
-- **Server-side second victim**: after a client-reported hit, the server ray skips only the **first** character box it meets. If a second character is behind the first on the line, the server can damage it too (Open question 5). Its damage starts from the running value left by the first hit, i.e. base × roll × the first victim's figure modifier and behind bonus × the range multiplier, and the range band is then applied **again**, using the same distance as before (fire position to the client-reported impact point on the first victim), not the second victim's own distance. So inside the first band nothing changes, but at 2500–3000 units the second victim gets ×0.7 twice. The first victim's armour and zone factor are not carried over (they are applied at the victim side); the second victim's own armour and zone apply. Surfaces passed between the two victims dampen it as usual; the first victim's body does not.
+- **Server-side second victim**: after a client-reported hit, the server ray skips only the **first** character box it meets. If a second character is behind the first on the line, the server can damage it too (Open question 5). Its damage starts from the running value left by the first hit, i.e. base × roll × the first victim's figure modifier and behind bonus × the range multiplier, and the range band is then applied **again**, using the same distance as before (fire position to the client-reported impact point on the first victim), not the second victim's own distance. So inside the first band nothing changes, but at 2500–3000 units the second victim gets ×0.7 twice. The first victim's armour and zone factor are not carried over (they are applied at the victim side); the second victim's own armour and zone apply. Surfaces passed between the two victims dampen it as usual; the first victim's body does not. The second victim's sphere is picked by node hit priority on the server's model (Corrections 5), it gets no behind bonus and no figure modifier of its own, and the walk ends there: a third character in line is never hit (Corrections 4).
 - **Server rejects a far-off object hit**: a reported object hit point outside ±2× the object's half-dims is ignored, and the server traces itself.
-- **Zero-length prefire**: weapons whose `prefire` exists but is 0 ms spend one extra update before `fire_0` starts, so the first shot is a frame later (Q2).
+- **Zero-length prefire**: weapons whose `prefire` exists but is 0 ms spend one extra update before `fire_0` starts, so the first shot is a frame later (Q2). This comes on top of the update that only sets the firing state (Corrections 10).
 
 ## Quirks
 
@@ -473,6 +483,78 @@ Server, per received shot:
 - **Q11, turning barely matters**: the movement meter is clamped to $\mu S$ after rising, so the turn term cannot raise spread. It does change one thing: turning while the meter is above $\mu S$ takes the rising branch and **snaps** $M$ down to $\mu S$ instead of letting it decay. Keep.
 - **Q12, airborne decay inverted**: when the movement target falls below $M$ while airborne from a jump, $M$ grows instead (capped at `JumpPerturb`). Keep.
 - **Q13, wall-bang falloff distance**: for hits found only by the server ray (through walls), the impact point used for the range band is the one the client reported. If the client hit plain world geometry it reported none, and the distance is measured from the shooter to the **world origin**. Recommendation: measure the real distance, and record this in the implementation's notes (see Open questions).
+
+## Corrections (2026-10-19)
+
+A second pass over the reference's client weapon, player view, server shot handling, server ray and victim damage code, compared behaviour by behaviour with this spec and with our implementation (`games/combat_arms/src/game/weapons.rs` and its submodules). The body text above is already corrected; each entry says what was wrong. Test cases 50–69 cover them.
+
+1. **The view kick belongs to the player, not to the weapon.**
+   - Reference: one vertical accumulator $J$, one side accumulator $J_y$, one side-direction flag, one backward push and one "last kick" time per player. Kicks from every weapon add to the same values. Nothing resets them on a weapon switch, a death or a respawn; they only return. The direction flag is drawn once (50/50) when the player enters the map. The kick and the return always read the data of the weapon in hand at that moment: its caps, base kick, wag sizes and its ammo's return rates and delay.
+   - Ours: `CaRecoil` is a part of each weapon (`weapons.rs:748-771`), with its own accumulators and its own direction flag picked at that weapon's first side kick (`weapons.rs:812`). `before_shots` returns every carried weapon's accumulator with that weapon's own data (`weapons.rs:1459-1475`). The spec said "random at spawn" and did not say whose state it is.
+   - Why it matters: switching to a pistol right after a spray. In the game the pistol's first kick is cut by the rifle's leftover climb, $k = b\,(1 - J/J_{max})$ with the **pistol's** cap, and the climb keeps returning at the pistol's ammo rates. Ours gives the pistol a fresh full kick. M4A1 sprayed to its cap ($J$ = rad 5° = 0.0872665), then the M92FS (3.5°, cap 14°): the first pistol shot raises the view 2.250°, not 3.500°.
+
+2. **The vertical return in burst mode uses the burst cap.**
+   - Reference: the return's correction factor $1 + J/J_{max}$ uses rad(`TripleShotMaxCamRecoilPitch`) whenever burst mode is on and that field is non-zero. The base kick field does not matter here (the kick needs both non-zero, the return only the cap). The cap is scaled by the muzzle attachment's `MaxCamRecoilPitchPer` only.
+   - Ours: `CaRecoil::recover` always takes the normal cap (`pitch_params(false, …)`, `weapons.rs:839`). The spec's Return paragraph did not mention burst.
+   - Why it matters: burst weapons settle at a different speed. With a burst cap 8° against a normal 5°, $J$ = 0.0418879 rad (2.4°), a 16 ms frame at the waiting rate 0.1: the view comes down 0.002080 rad in the game, 0.002368 rad in ours (14 % faster).
+
+3. **The server's spacing check is on a shot's last ray, and every earlier ray restarts its clock.**
+   - Reference: the server handles a shot's rays one by one. A ray that is not the last is never checked, but it stores the shot's timestamp as "the last shot that passed". The last ray is checked: if less than `fireDelay` ms have passed since that stored time it is dropped, and the shot's round is spent through the drop path. On a shot of two or more rays the stored time is the shot's own, so the difference is 0. With `fireDelay` > 0 (30 ms when the record omits it) the **last ray of every multi-ray shot is dropped**, and no other ray is ever rate-limited. Single-ray weapons behave as the old text said. The round is spent once either way.
+   - Ours: the spec said "only the first ray carries the check" (Trigger and fire cycle, "Server rate limit"). `after_shots` checks once per round, before any pellet, and keeps or drops the whole round (`weapons.rs:1795-1806`).
+   - Why it matters: every shotgun whose record has `FireDelay` > 0 (or none) deals one pellet less per shot. A Remington 870 with `FireDelay` 30 does at most 7 × 9 = 63 at close range, not 72. With the pellet carry-over (`weapon_classes.md` 5.7) the dropped report is the last one.
+
+4. **The server's walk makes up to 4 intersections and ends at the first character it damages.**
+   - Reference: the walk loops until it hits nothing, and gives up after the 4th intersection; every surface, object or skipped character box counts one. A server-found character (any character after the skipped one) is damaged and the walk **returns** at once, even when its body surface could be shot through.
+   - Ours: `SERVER_TRACE_STEPS` 3 including the client test (`weapons.rs:240`), and the walk goes on past every character it damages (`weapons.rs:2131-2137`). The spec said "up to 3 segments" and was silent on what follows a second victim.
+   - Why it matters: three thin panels can be shot through in the game (the 4th intersection is the target); ours stops after the third panel. In a line of three players, the game hits at most two.
+
+5. **A character found by the server's own walk gets its sphere by hit priority, on the unwidened box.**
+   - Reference: the server meets the character's own hit box (not widened). From the entry point $P$ it takes the **infinite line** through $P$ along the ray. A node counts if its perpendicular distance from that line is at most its hit radius, whatever its position along the line. Of the counted nodes, the one with the highest `Node#Priority` of the skeleton data wins; on equal priority the one later in the node order wins. If none counts, the character is not hit: the walk goes on from $P + 5\hat d$ with that box filtered out. The damage on a server-found character gets no behind bonus and no figure modifier (those belong to client-reported hits). Its range band is applied again, cumulatively.
+   - Ours: every segment uses the client rule, the 2×-widened box and the sphere with the smallest $\lVert p\rVert^2 - r^2$ (`weapons.rs:2041-2052`, `pick_sphere` at `weapons.rs:931-947`). The priorities are in no spec (`characters.md` 11 lists radius, location and factor only).
+   - Why it matters: through-wall and second-victim hits land on whichever node the data ranks highest. For example, a wall-bang whose line grazes the head and passes the chest counts as the chest if the chest ranks higher, 6× less damage than ours. A grazing line that misses every sphere passes the player in the game but hits the widened box in ours.
+
+6. **"From behind" is measured against the victim's body, not its view.**
+   - Reference: the sector test uses the server object's rotation. That is the body yaw the client sends: the view yaw minus the upper-body twist (up to ±45° with no movement key held, Spread section).
+   - Ours: the test uses the view yaw (`intent.yaw_rotation()` at `weapons.rs:1620` and `r.yaw` at `weapons.rs:1608`, giving `forward`/`right` at `weapons.rs:1627-1628`).
+   - Why it matters: a standing player who has turned the mouse is protected or exposed by where the legs point. Body 45° to the right of the view, bullet at 150° from the view's right: ours gives ×1.3, the game ×1.0.
+
+7. **Damage from an AI (bots included) is scaled by 0.8 and capped at 50 per hit on players.**
+   - Reference, on the victim side: if the damager is an AI (any bot or AI character), first $D \leftarrow D\cdot$ `AIDamageFactor` (server console variable, built-in 0.8), before set items, gear and the zone factor. Then, after armour and the zone factor, if the victim is a player and the damage type is not melee: $D \ge 1000 \Rightarrow D = 990$; $50 < D < 1000 \Rightarrow D = 50$.
+   - Ours: neither exists (`hurt`, `weapons.rs:2191-2288`); the spec listed "AI damage scales" among identity hooks.
+   - Why it matters: bot matches. A bot headshot with an M4A1 does 50, not 210; a bot's sniper or shotgun cannot one-shot a player. A bot's knife is not capped (×0.8 only).
+
+8. **The client reports the widened-box entry, and can drop a hit on a near miss.**
+   - Reference: when the first (widened, sphere-checked) test hits a character, the plain-box test is run again. Same character hit: the reported point, and so the band distance, is the **widened** box's entry. Something else hit, and its surface plane has the victim's origin behind it: that other thing is reported, with no player hit. Otherwise: the character at the widened entry.
+   - Ours: the reported point is the plain box's entry (`weapons.rs:2101-2103`) and the near-miss drop does not exist. The spec said "the victim is the same either way".
+   - Why it matters: the band distance is shorter by up to one box half-width, which moves hits near a band edge into the better band. Against a box of half-width 16 whose front is 2510 units away the game does 35, ours 24.5.
+
+9. **Penetration: what passes, where the ray restarts, and the integer re-perturb.**
+   - Reference:
+     - The back-cast from limit + 1 units beyond the entry accepts any surface or object it hits, so a panel up to limit + 1 units thick passes. The thickness found is never compared with the limit.
+     - The restart point is the exit when its surface flags equal the entry's, else the entry.
+     - The remaining range is `Range` − |restart − fire position|, times the range dampen.
+     - The new direction adds $k_r/1000$ and $k_u/1000$ on the right and up axes of a look rotation along the ray with world up, with $k_r, k_u$ whole numbers drawn uniformly from $\{-P..P\}$.
+   - Ours: the back-cast only accepts the same entity (`weapons.rs:2156-2158`), the exit must be within the limit (`weapons.rs:2164`), and the re-perturb is a continuous uniform draw on an arc-rotation basis (`weapons.rs:2180-2182`).
+   - Why it matters: boards 10–11 units thick are shot through in the game (wood: 17.5 instead of nothing). Exit spread is quantised (glass: 11 possible offsets per axis).
+
+10. **First-round latency of a press.**
+    - Reference: the weapon update that first sees the fire request only switches the state to firing. The next update starts the pre-fire if the model has one (a 0 ms pre-fire counts; only primary shotguns skip it), else `fire_0`. A finished pre-fire starts `fire_0` on the update that sees it done. The fire key at 0 ms is consumed on the update after `fire_0` started. So the first round is spent on the **3rd** update after the press update (2nd without a pre-fire). The same chain runs when a draw, a magazine reload or the post-sprint pose ends with fire held: the update that sees it end sets the firing state. The loop restart of a held automatic adds nothing (the restart and its key are one update apart, as the cycle already counts).
+    - Ours: Chimera's trigger fires on the tick of the press, and at the tick a draw or reload ends. The spec's state machine played the pre-fire on the press update and only for "non-empty" pre-fires.
+    - Why it matters: 50 ms of extra input latency at 60 fps on every first shot (M4A1, pistols), 33 ms on shotguns. It also shifts every "ready" time after a draw or reload by those updates.
+
+11. **Shot direction timing (answers Open question 10).**
+    - Reference: the camera's rotation is set from the view angles in the frame's camera update. The weapon update (recoil return, firing, kick) runs afterwards, just before rendering. A shot therefore leaves along the angles as they were **before** this frame's return. The previous frame's kick and return are in it, and so are this frame's mouse and scope sway.
+    - Ours: `before_shots` adds this tick's return to `ViewPunch` before the frame fires (`weapons.rs:1464-1474`), so the shot includes it.
+    - Why it matters: under 0.1° per shot. It is listed so that the per-tick order is exact.
+
+12. **State-value details of the spread meters.**
+    - Reference:
+      - With the run flag **on** and airborne from a jump, the movement target is the plain `JumpPerturb`, even zoomed with a non-zero `ZoomedJumpPerturb`. That zoomed value is used only with the run flag off.
+      - The falling branch's clamp is always the plain `JumpPerturb`.
+      - The "no spread" hold of both meters tests the weapon's plain `MaxPerturb`, not the zoomed or burst one.
+      - In burst mode each burst field replaces its plain counterpart only when non-zero, field by field. The burst cone needs `TripleShotMinPerturb`/`TripleShotMaxPerturb`; the meter speeds `TripleShotPerturbIncSpeed`/`TripleShotPerturbDecSpeed`.
+    - Ours: `CaSpread::states` uses the zoomed jump whenever zoomed (`weapons.rs:610`), the clamp is that same value (`weapons.rs:1978`), the hold tests the mode's cone (`weapons.rs:1934`), and the burst values replace all four at once (`weapons.rs:581`).
+    - Why it matters: no stock ammo has `ZoomedJumpPerturb` and the install reader fills every burst field. These only bite on custom or partial data.
 
 ## Test cases
 
@@ -532,6 +614,26 @@ M4A1 data as above unless stated. "Roll 1.0" means the damage random roll return
     - bullet 35 on the groin → 35, AP stays 100;
     - bullet 35 on the torso → 29.75, AP → 94.75 (case 6).
 49. **Groin on an infected victim**. Infected victim, AP 100, default body gear, bullet 35 on the groin → counted as torso: 29.75, AP → 94.75 (no groin factor).
+50. **Kick carries over a switch (Corrections 1).** M4A1 fired 9 times with no recovery, so $J$ = 0.0872665 rad (its cap). Switch to the M92FS (`BaseCamRecoilPitch` 3.5, `MaxCamRecoilPitch` 14, accel 0) with no time passing, fire once → $k$ = 0.0610865 × (1 − 0.0872665/0.2443461) = 0.0392699 rad: the view rises 2.250° (not 3.500°), $J$ → 0.1069015.
+51. **One wag direction per player (Corrections 1).** Player enters the map with the direction flag on R. M4A1 shot 2 kicks R; switch to the MP5A4 and fire twice with no time passing → the MP5A4's first side kick goes in the direction left by the M4A1's last flip test, not a fresh random one; $J_y$ starts from the M4A1's value.
+52. **Burst return cap (Corrections 2).** Burst mode on, `MaxCamRecoilPitch` 5, `TripleShotMaxCamRecoilPitch` 8, ammo `JitterWaitRecover` 0.1, $J$ = 0.0418879 rad, 16 ms frame within `JitterDecDelay` → view down 0.0020800 rad, $J$ → 0.0408479. (Normal cap would give 0.0023680 and 0.0407039.) Same with `TripleShotBaseCamRecoilPitch` 0 → unchanged (0.0020800).
+53. **Last pellet dropped (Corrections 3).** 8-ray weapon, 9 damage a ray, `fireDelay` 30, all rays on an unarmoured torso at 500 units, roll 1.0 → 7 rays land: 63 damage; total ammo −1. Same with `fireDelay` 0 → 72. A single-ray weapon with `fireDelay` 30 firing every 105 ms → every round lands.
+54. **Rays are not rate-limited between shots (Corrections 3).** 8-ray weapon, `fireDelay` 100, shots stamped at 0 and 40 ms → each shot lands rays 1–7, loses ray 8; total ammo −2.
+55. **Four intersections (Corrections 4).** No client player hit. Three 6-unit "Wood" panels (world surfaces) then a torso 1000 units away, roll 1.0, unarmoured, band on the real distance → 35 × 0.5³ = 4.375. Four panels → no damage.
+56. **No third victim (Corrections 4).** Unarmoured A, B, C in line at 2000, 2100, 2200 units, client-reported torso hit on A from the front, roll 1.0, the line passing only torso spheres of B and C → A 35, B 35, C 0.
+57. **Server-side sphere by priority (Corrections 5).** Male skeleton with (for the test) chest priority 2 and head priority 1. A wall-bang through one 6-unit "Wood" panel at 1000 units whose line passes within both the head and the chest sphere radii, head first → chest: 35 × 0.5 = 17.5 (smallest-$\lVert p\rVert^2 - r^2$ would give the head, 105). All priorities equal → the later of the two in the node order. A line through the unwidened box that is within no sphere's radius → no damage; the walk restarts 5 units past the box entry.
+58. **Behind from the body (Corrections 6).** Victim's body yaw 45° to the right of its view (no movement key). View forward (0,0,1), right (1,0,0); body forward (0.7071, 0, 0.7071), right (0.7071, 0, −0.7071). Bullet direction (−0.8660, 0, 0.5) → body sector 0, not behind: torso 35 (by the view it would be sector 11, 45.5).
+59. **AI damage (Corrections 7).** Bot with an M4A1, roll 1.0, d = 100, unarmoured player: torso 35 × 0.8 = 28; head 28 × 6 = 168 → 50. Armoured (AP 100, default body gear) torso: B = 4.2 → 23.8, AP → 95.8. Bot knife primary on the head: 45 × 0.8 × 6 = 216 (melee, no cap). AI damage of 1500 after armour → ×0.8 first: 1200 → 990.
+60. **Widened entry for the band (Corrections 8).** Shooter at the origin aiming along +Z at the chest of a victim whose plain box has half-width 16 on X and Z and its front face at z = 2510 → reported point z = 2494, band 1.0, roll 1.0 → 35 (the plain entry would give 24.5).
+61. **Near-miss drop (Corrections 8).** The ray passes the widened box and a sphere but misses the plain box, and the next thing on the line is a wall whose plane has the victim's origin behind it → no player hit is reported; the wall gets the impact. Same with the victim's origin in front of the wall's plane → the player is hit at the widened entry.
+62. **Board at limit + 1 (Corrections 9).** "Wood" (limit 10): a 10.5-unit panel, then a torso at 1000 units, roll 1.0 → 17.5. An 11.5-unit panel → the ray stops.
+63. **Integer re-perturb (Corrections 9).** Exit from "Glass" ($P$ = 5) with the ray along (0,0,1): draws $k_r$ = 5, $k_u$ = −5 → new direction ∝ (0.005, −0.005, 1) = (0.0049999, −0.0049999, 0.9999750). No draw can give 0.0025.
+64. **First-round latency (Corrections 10).** 60 fps, M4A1 (0 ms pre-fire), fire pressed just before the update at t = 0 and held → update 0 sets firing, update 1 plays the pre-fire, update 2 starts `fire_0`, the first round is spent on update 3 (50.0 ms); the next rounds on updates 10 and 17 (166.7, 283.3 ms). Remington 870 (primary shotgun, no pre-fire) → first round on update 2 (33.3 ms).
+65. **After a draw (Corrections 10).** 60 fps, M4A1 drawn with fire held; the select animation is seen done on the update at t = 1200 ms → first round on the update at 1250 ms.
+66. **Shot direction (Corrections 11).** M4A1 kick at t = 0 leaves $J$ = 0.0113446 (view 0.0226892 rad up). Frames at 16, 32, 48, 64, 80 ms (all within `JitterDecDelay`) return 0.0018080, 0.0017914, 0.0017750, 0.0017587, 0.0017426 rad. A shot on the 80 ms frame leaves 0.0155561 rad above the pre-kick aim (the 80 ms return is not yet in the camera); the view after that frame is 0.0138135 rad up.
+67. **Zoomed jump target (Corrections 12).** Ammo `JumpPerturb` 0.7 and (for the test) `ZoomedJumpPerturb` 0.3, zoomed, airborne from a jump, μ = 1: run flag on → $S$ = 0.7; run flag off → $S$ = 0.3.
+68. **Jump clamp (Corrections 12).** Same ammo, M4A1 zoomed rates (inc 1.3), run flag off, airborne, $M$ = 0.5, μS = 0.3 → $M$ = 0.5 + 0.1125 × 1.3 = 0.64625, clamped to the plain 0.7: stays 0.64625.
+69. **Partial burst fields (Corrections 12).** Burst mode, `TripleShotMinPerturb` 0, `TripleShotMaxPerturb` 60, plain 3/100, meters 0 → cone limits 3/60, n = 3.
 
 ## Open questions
 
@@ -541,12 +643,14 @@ M4A1 data as above unless stated. "Roll 1.0" means the damage random roll return
 4. **Wall-bang falloff (Q13)**: confirm in game that a through-wood hit at about 2800 units does the same damage as at about 1000 units on a map where the world origin is far away.
 5. **Second victim**: can one bullet damage two players standing in line? The reference suggests yes, through the server ray. Test with two bots in line.
    **Answered (damage rule):** the second victim's damage is banded again from the already banded running value, not from the base damage, and with the same distance as the first hit (fire position to the first victim's reported impact point); it also inherits the first victim's figure modifier and behind bonus. Inside the first band this changes nothing; at 2500–3000 units it gives ×0.49 of the base. See Edge cases ("Server-side second victim"); test case 46. Whether it happens at all in the live game still needs the two-bots test above (the server ray must not stop on the first victim's own body).
+   **Answered (reach):** in the reference code the walk skips the first character box it meets and then damages the next character on the line; it ends there, so at most two players are hit by one ray (Corrections 4, test case 56). The live two-bots test remains the confirmation.
 6. **Run flag at rest**: whether the "run" control flag is set while standing still or walking is a movement-spec question. It only selects between `WalkPerturb` and `RunPerturb`.
    **Answered:** the run flag is "not crouched and not walking" (walk key XOR always-run), set at rest too; walking with the walk key or crouching clears it (crouched → `WalkPerturb`). The maximum speed in μ is movement.md's full speed limit for the tick, with the weapon and gear penalty included, plus the crouch blend, zoom, confirmed sprint and damage slow. See Spread, "State values"; test cases 41 and 45.
 7. **Character gear**: which `GearID` each character uses, and the full gear table, belong to the characters/inventory specs. The values here are examples.
 8. **Hidden multipliers**: perks (they can shrink the cone), set items, mutation buffs, game-room damage scaling and attachments all hook into damage, rate, cone and recoil. They are identity in a plain match; a later spec should list them.
 9. **Hit sphere centres**: the sphere positions depend on the skeleton's animated bones (models spec). Until then, place spheres on our placeholder skeleton by body part.
 10. **Shot direction timing**: does the ray use the camera orientation from before or after this frame's recoil return? The reference reads the camera object, which may lag the view angles by a frame. This is a minor effect on the second shot onward.
+    **Answered:** before. The camera rotation is set in the frame's camera update; the recoil return, the shot and the kick run later in the same frame (just before rendering). The shot includes the previous frame's kick and return and this frame's mouse and sway, not this frame's return. Corrections 11; test case 66.
 11. **Spread recovery delay, `<` or `≤`?** Does recovery wait while the time since the last shot is at most `DecDelay`, or strictly less (case 16's 95 ms)?
     **Answered:** strictly less. The elapsed time is whole OS milliseconds; a sub-step at exactly `DecDelay` ms (95) recovers. After the first recovery step the stamp is cleared. Applies in Spread, firing meter; case 16 corrected by case 38.
 12. **"Airborne" for spread.** Only from a jump until landing, or any time off the ground? How does the airborne rise grow?
@@ -555,5 +659,8 @@ M4A1 data as above unless stated. "Roll 1.0" means the damage random roll return
     **Answered:** it measures the body orientation, whose pitch does not follow the view in this build, so the vertical kick (and any pitch) never counts; the side wag does count through the yaw. Mouse yaw counts only beyond the ±45° upper-body twist while no movement key is held, fully while one is. The whole frame's change lands on the frame's first sub-step; the others see 0. Applies in Spread, movement meter; case 20 corrected by case 42; cases 43 and 44. The twist detail is easy to confirm live: stand still with the M4A1, flick the mouse 30° back and forth repeatedly and check that the crosshair never shrinks faster than when standing still without turning; then repeat while strafing.
 14. **Fire delay origin.** Does the delay count from the previous shot fired, or from the previous round received even if dropped or refused?
     **Answered:** from the last shot that passed the rate check, by the client's own fire timestamps; a dropped shot does not restart the clock, a shot refused later (no ammo) does. Exactly `fireDelay` ms is allowed. Applies in Trigger and fire cycle ("Server rate limit"); test case 47.
+    **Answered further (Corrections 3):** "the last shot that passed" includes every ray that was not checked. Only a shot's last ray is checked, and the rays before it have already stored the shot's own timestamp. A multi-ray shot with `fireDelay` > 0 therefore always loses its last ray; test cases 53 and 54.
 15. **Armour coverage.** Does armour protect against bullets only, and is the groin torso for armour?
     **Answered:** coverage is per gear piece and per damage type in the data; stock body gear covers bullets and burn (0.5 everywhere for burn), head gear bullets only, the gas mask poison; melee and explosions are not covered by any stock gear, and crush skips gear. The groin is not torso: it gets no protection (full damage, no AP used), except on infected victims, whose groin counts as torso. Applies in Armour; test cases 48 and 49.
+16. **Node hit priorities** (Corrections 5). The server picks a server-found character's sphere by the skeleton data's `Node#Priority`, which no spec lists yet. Read them from the install's model file (male and female skeletons) and add them to `characters.md` 11. Until then, give every node priority 0 (the later node in the table wins a tie) and say so in the implementation's notes.
+17. **Which stock weapons have `FireDelay` > 0** (Corrections 3). The shotguns' and the double barrel's `FireDelay` (missing or a non-integer value both mean 30) decides whether they lose a pellet per shot. Read the records. Live check: an R870 at point blank on an unarmoured bot, all pellets on the torso, should do 63, not 72.

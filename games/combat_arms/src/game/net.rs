@@ -55,6 +55,17 @@
 //!   clock (the HUD's lines, the flags' props); what each player carries
 //!   (`CaCarry`) and the action gauge it fills (`CaAction`: plant, defuse,
 //!   seize).
+//! - **The modes of game_modes_2.md**: Hired Guns' bullion, banked bars
+//!   and pockets travel in `NetCaObjectives` and `CaCarry`; each player's
+//!   bank (`hired_guns::CaBank`) and squad order (`mercs::CaSquadOrder`),
+//!   VIP Escort's VIP mark (`escort::CaVip`), and the custom and VIP move
+//!   penalties (predicted with the movement) replicate; mercenaries
+//!   (characters that aren't players, `core::Npc`) replicate as
+//!   characters (`NetCharacter` with no owner, `NetBody`) with their
+//!   `mercs::CaMerc` (whose hirer they follow); a client's hire and order
+//!   requests (`CaHireRequest`, `CaOrderRequest`: the console's `ca_hire`
+//!   and `ca_order`) go to the server, which checks them
+//!   (`mercs::hire`, `mercs::set_order`).
 //! - **Respawning** (game_modes.md S5): a client's player, dead for more
 //!   than `respawn_wait_client` s by its own clock in a mode that
 //!   respawns, asks once (`CaRespawnRequest`); the server checks it
@@ -79,7 +90,10 @@ use super::{
     inventory::{CaSelection, Dropped},
     rules::{
         CaMatch, CaMatchView, CaRuleSettings, CaStats, CaTeamCounts, Phase, current_mode,
+        escort::CaVip,
         flow::{self, enter_game},
+        hired_guns::CaBank,
+        mercs::{self, CaMerc, CaSquadOrder, MercOrder},
         objectives::{CaAction, CaCarry, CaObjectives},
         spawns,
     },
@@ -88,7 +102,7 @@ use super::{
 use crate::{
     core::{Dead, LocalPlayer, NetRole, SimClock},
     net::{
-        Holds, JoinRules, NetAppExt, NetHooks,
+        Holds, JoinRules, NetAppExt, NetBody, NetCharacter, NetHooks,
         game::{ServerTime, tick_of},
         ordered::OrderedAppExt,
         server::Player,
@@ -128,7 +142,17 @@ fn register(app: &mut App) {
         .ordered::<CaCarry>()
         .replicate::<CaAction>()
         .ordered::<CaAction>()
+        .replicate::<CaBank>()
+        .ordered::<CaBank>()
+        .replicate::<CaSquadOrder>()
+        .ordered::<CaSquadOrder>()
+        .replicate::<CaMerc>()
+        .ordered::<CaMerc>()
+        .replicate::<CaVip>()
+        .ordered::<CaVip>()
         .add_client_message::<CaRespawnRequest>(Channel::Ordered)
+        .add_client_message::<CaHireRequest>(Channel::Ordered)
+        .add_client_message::<CaOrderRequest>(Channel::Ordered)
         .insert_resource(JoinRules {
             enter: enter_game,
             ..default()
@@ -137,10 +161,10 @@ fn register(app: &mut App) {
             freeze_ends: flow::freeze_ends,
             frozen: flow::frozen_intent,
         })
-        .add_systems(FixedLast, (write_pickups, write_match).run_if(server()))
+        .add_systems(FixedLast, (write_pickups, write_match, replicate_mercs).run_if(server()))
         .add_systems(
             PreUpdate,
-            receive_respawns
+            (receive_respawns, receive_squad_requests)
                 .after(ServerSystems::Receive)
                 .run_if(in_state(ServerState::Running)),
         )
@@ -199,6 +223,60 @@ pub mod match_phase {
 /// A client's player asks to respawn (game_modes.md S5).
 #[derive(Message, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
 pub struct CaRespawnRequest;
+
+/// A client asks to hire unit `unit` (game_modes_2.md M11.7).
+#[derive(Message, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+pub struct CaHireRequest {
+    pub unit: u8,
+}
+
+/// A client gives its squad an order.
+#[derive(Message, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+pub struct CaOrderRequest {
+    pub order: MercOrder,
+}
+
+/// Mercenaries replicate as characters with no owner.
+fn replicate_mercs(
+    q: Query<(Entity, &CaMerc, Option<&Name>), Without<Replicated>>,
+    mut commands: Commands,
+) {
+    for (e, m, name) in &q {
+        commands.entity(e).insert((
+            Replicated,
+            NetCharacter {
+                owner: None,
+                name: name.map_or_else(|| format!("Mercenary {}", m.unit), |n| n.as_str().to_string()),
+            },
+            NetBody::default(),
+        ));
+    }
+}
+
+/// Clients' hire and order requests, checked by the server.
+fn receive_squad_requests(
+    mut hires: MessageReader<FromClient<CaHireRequest>>,
+    mut orders: MessageReader<FromClient<CaOrderRequest>>,
+    players: Query<&Player>,
+    mut commands: Commands,
+) {
+    for r in hires.read() {
+        let Some(client) = r.client_id.entity() else { continue };
+        let Ok(p) = players.get(client) else { continue };
+        let (character, unit) = (p.character, r.message.unit as usize);
+        commands.queue(move |w: &mut World| {
+            if let Err(why) = mercs::hire(w, character, unit) {
+                debug!("hire refused: {why}");
+            }
+        });
+    }
+    for r in orders.read() {
+        let Some(client) = r.client_id.entity() else { continue };
+        let Ok(p) = players.get(client) else { continue };
+        let (character, order) = (p.character, r.message.order);
+        commands.queue(move |w: &mut World| mercs::set_order(w, character, order));
+    }
+}
 
 /// The server's match into `NetCaMatch`.
 fn write_match(world: &mut World) {
