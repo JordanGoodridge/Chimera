@@ -1004,7 +1004,11 @@ Details and baseline numbers: [performance.md](performance.md).
   `MapData::load_times` (`map::loading::LoadTimer`; a heavy test can
   print them). Time spent putting the map into the world (colliders,
   decal and surface grids) is not in it: time `Sim::new(MapPlugin::new(map))`
-  plus a tick.
+  plus a tick. Combat Arms' map loads (first and second of a session,
+  peak memory, the spawn into a simulation, the bots' navigation mesh,
+  a view model on demand), each under a budget: `cargo test -p
+  combat_arms --features dev --test it heavy::map_load -- --nocapture`
+  (performance.md, "Combat Arms map loads").
 - Load-independent numbers (`metrics`, `client::frame_metrics`;
   performance.md, "Load-independent metrics"): the readout also gives
   distributions over the last 4096 frames and ticks: `frame ms (N): p50
@@ -1267,8 +1271,9 @@ readers' numbers: `cargo test -p lithtech_formats -- heavy::ltb_install
 --nocapture` (`census` prints the install's model and animation counts).
 
 Combat Arms' view models (`game::view_model`, from the weapon data's
-`[models] view`): a map load lists the ones that don't load among its
-warnings. To see one, give its weapon in a map run: `--map
+`[models] view`): each loads in the background the first time its
+weapon wants drawing (`view_model::on_demand`; the placeholder box
+until then), once per session; one that doesn't load logs a warning. To see one, give its weapon in a map run: `--map
 combat_arms:warehouse --window 1280x720 --frames 240 --screenshot
 pistol.png +wait 30 +give combat_arms:beretta_m92fs` (also
 `combat_arms:remington_870`, `combat_arms:m60`); a firing frame: drop

@@ -1,7 +1,9 @@
 //! Combat Arms' first-person view models (specs/combat_arms/
 //! view_models.md; section numbers below are its).
 //!
-//! Loading (`add_view_models`, from `world::load_from`): each weapon whose
+//! Loading (`on_demand`: a weapon's when it is first wanted, in the
+//! background, once per session; `add_view_models`: every one of ours
+//! into a map, for tests): each weapon whose
 //! data names a player-view model (`[models] view`, an archive path of the
 //! install, with `view_skins`: its skins by texture index, 2, and
 //! `view_offset`: its `Pos`, 4) gets it as Chimera's `MapViewModel`,
@@ -94,6 +96,7 @@
 
 pub mod hands;
 pub mod machine;
+pub mod on_demand;
 pub mod place;
 pub mod sway;
 
@@ -269,9 +272,12 @@ impl Plugin for CaViewModelPlugin {
         .add_message::<CaViewKey>()
         .add_systems(
             Update,
-            drive
-                .in_set(crate::map::DriveAnimation)
-                .before(crate::weapon::view_anim::drive),
+            (
+                on_demand::load_on_demand.run_if(resource_exists::<on_demand::LoadOnDemand>),
+                drive
+                    .in_set(crate::map::DriveAnimation)
+                    .before(crate::weapon::view_anim::drive),
+            ),
         );
     }
 }
@@ -549,6 +555,14 @@ fn drive(
         let active = inventory.active.filter(|_| alive);
         let parts = active.and_then(|w| weapons.get(w).ok());
         let key = parts.as_ref().map(|p| p.0.id);
+        // Its view model loaded since the weapon was drawn (`on_demand`):
+        // drawn afresh.
+        if models.as_ref().is_some_and(|m| m.is_changed())
+            && view.animator.is_none()
+            && key.is_some_and(|k| models.as_ref().is_some_and(|m| m.get(k).is_some()))
+        {
+            view.key = None;
+        }
         // A new weapon in hand: a fresh model drawing.
         let shown_changed = view.show(key, models.as_deref());
         if shown_changed || vm.weapon != active {

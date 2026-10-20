@@ -31,6 +31,39 @@ pub struct MapTexture {
     pub rgba8: Vec<u8>,
 }
 
+impl MapTexture {
+    /// The mip levels below `rgba8`'s, box-filtered (each texel the mean
+    /// of the 2 x 2 above it, edges clamped), down to 1 x 1: what the
+    /// drawing generates for a texture without its own. A loader that
+    /// fills `mips` with these on its own threads spares the main thread
+    /// that work when the map spawns.
+    pub fn box_mips(&self) -> Vec<Vec<u8>> {
+        let (mut w, mut h) = (self.width as usize, self.height as usize);
+        let mut out: Vec<Vec<u8>> = Vec::new();
+        while w > 1 || h > 1 {
+            let level = out.last().unwrap_or(&self.rgba8);
+            let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+            let mut next = vec![0u8; nw * nh * 4];
+            for y in 0..nh {
+                for x in 0..nw {
+                    for c in 0..4 {
+                        let mut sum = 0u32;
+                        for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                            let sx = (x * 2 + dx).min(w - 1);
+                            let sy = (y * 2 + dy).min(h - 1);
+                            sum += level[(sy * w + sx) * 4 + c] as u32;
+                        }
+                        next[(y * nw + x) * 4 + c] = (sum / 4) as u8;
+                    }
+                }
+            }
+            out.push(next);
+            (w, h) = (nw, nh);
+        }
+        out
+    }
+}
+
 /// How a surface's alpha is used.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum MapAlpha {

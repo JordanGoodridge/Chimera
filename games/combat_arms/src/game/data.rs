@@ -86,9 +86,11 @@
 //!   our movement data has one figure.
 //! - Test case 29's install document has no `Ammo0`, which case 26 says
 //!   fails to load; its test adds one.
-//! - The install adds some 2,000 weapons; a map loads the view and held
-//!   models of ours only (`builtin_weapon_ids`: what players are given),
-//!   so an install weapon given by other means draws as a placeholder.
+//! - The install adds some 2,000 weapons; a map loads the held
+//!   (third-person) models of ours only (`builtin_weapon_ids`: what
+//!   players are given), so an install weapon given by other means has
+//!   none in third person (its view model loads on demand like any:
+//!   `view_model::on_demand`).
 //!   The skins' `Hands` placeholder and `PV_L_ARM` / `PV_R_ARM` tags (no
 //!   `.dtx`) are empty slots (`skin_paths`).
 

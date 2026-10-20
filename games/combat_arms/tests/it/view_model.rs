@@ -1098,6 +1098,25 @@ fn drawn(sim: &mut Sim, p: Entity, id: &str) -> Entity {
     w
 }
 
+/// A view model that arrives after its weapon was drawn (loaded on
+/// demand: `view_model::on_demand`, through `map::add_view_model`) plays
+/// from its arrival: drawn afresh, `select` then idle.
+#[test]
+fn a_view_model_loaded_later_plays_from_its_arrival() {
+    let mut sim = sim();
+    sim.app.world_mut().remove_resource::<ViewModels>();
+    let p = player(&mut sim);
+    weapon::give(sim.app.world_mut(), p, M92FS).unwrap();
+    sim.ticks(5);
+    assert_eq!(shown(&sim, p), None, "nothing to draw yet");
+    let pistol: Vec<AnimInfo> = m92fs().iter().cloned().collect();
+    chimera_world::map::add_view_model(sim.app.world_mut(), view_model(M92FS, &pistol), Arc::new(Vec::new()));
+    sim.ticks(1);
+    assert_eq!(shown(&sim, p).as_deref(), Some("select"));
+    assert!(until(&mut sim, 100, |s| shown(s, p).as_deref() == Some("idle_0")));
+    assert!(sim.app.world().resource::<chimera_world::map::LateViewModelTextures>().0.contains_key(M92FS));
+}
+
 #[test]
 fn plays_the_machine_in_game() {
     let mut sim = sim();

@@ -10,6 +10,10 @@
 //! on the `RightHand` socket. The body's nodes, sockets, weight sets and
 //! animation list are kept as a `Rig` (`rig`) for posing.
 //!
+//! Converted once per session (`shared_character_models`, the first map
+//! load's) and copied into each map after (`append_shared`: the textures
+//! appended, the indices moved), the rigs registered again.
+//!
 //! Every character archive (`CHARS_*`) and the third-person guns
 //! (`GUNS_M_HH`) are V2-keyed: without the key nothing here loads (the
 //! map's warnings say so) and characters stay the shell's capsules, posed
@@ -75,8 +79,8 @@ pub fn unregister(path: &str) {
 /// animation library (tens of megabytes), parsed per body.
 pub const LOADED: &[i32] = &[0, 7];
 
-/// The loaded bodies (`LOADED`) and every third-person weapon into `map`
-/// (when they read).
+/// The loaded bodies (`LOADED`) and every third-person weapon of ours into
+/// `map` (when they read); `shared_character_models` once per session.
 pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let scale = super::super::movement::movement_data().meters_per_unit;
     let data = records::data();
@@ -105,6 +109,61 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
             Err(e) => map.warnings.push(format!("{} third-person model: {e}", w.id)),
         }
     }
+}
+
+/// The character models every map carries (`add_character_models` into
+/// an empty map: its own textures) and their rigs (`shared_character_models`).
+pub struct SharedModels {
+    data: MapData,
+    rigs: Vec<(String, Arc<Rig>)>,
+}
+
+/// `add_character_models`, converted once per session (the first map
+/// load; the next ones copy it: `append_shared`).
+pub fn shared_character_models(file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Arc<SharedModels> {
+    static SHARED: OnceLock<Mutex<Option<Arc<SharedModels>>>> = OnceLock::new();
+    let mut cached = SHARED.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    cached
+        .get_or_insert_with(|| {
+            let mut data = MapData::default();
+            add_character_models(&mut data, file);
+            let rigs = records::data()
+                .model
+                .iter()
+                .filter(|r| LOADED.contains(&r.id))
+                .filter_map(|r| Some((r.file.clone(), rig(&r.file)?)))
+                .collect();
+            Arc::new(SharedModels { data, rigs })
+        })
+        .clone()
+}
+
+/// The shared character models into `map`: their textures appended to
+/// the map's (the meshes' and skins' indices moved past the map's own),
+/// their rigs registered again (a test may have replaced one).
+pub fn append_shared(map: &mut MapData, models: &SharedModels) {
+    for (path, r) in &models.rigs {
+        register(path, r.clone());
+    }
+    let base = map.textures.len();
+    let shift = |model: &mut MapModel| {
+        for t in model.meshes.iter_mut().filter_map(|m| m.texture.as_mut()) {
+            *t += base;
+        }
+        for t in model.skins.iter_mut().flatten().filter_map(|l| l.texture.as_mut()) {
+            *t += base;
+        }
+    };
+    map.textures.extend(models.data.textures.iter().cloned());
+    map.characters.extend(models.data.characters.iter().cloned().map(|mut c| {
+        shift(&mut c.model);
+        c
+    }));
+    map.held.extend(models.data.held.iter().cloned().map(|mut h| {
+        shift(&mut h.model);
+        h
+    }));
+    map.warnings.extend(models.data.warnings.iter().cloned());
 }
 
 /// A texture slot's file for a family (2: 0 upper, 1 legs, 2 team mark,

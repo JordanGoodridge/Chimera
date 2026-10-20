@@ -41,6 +41,7 @@ mod heavy {
     mod bots;
     mod characters;
     mod effects_sounds;
+    mod map_load;
     mod model;
     mod movement_volumes;
     mod mount;
