@@ -411,6 +411,17 @@ Notes:
   textures (format not in ui_system.md), goggles and backpacks, the
   crosshair item images and the dot sight's image, other players'
   looks over the network (no character info sent yet).
+- 2026-10-19: Looks over the network and worn gear: each client sends
+  its look (`ca_model`/`ca_face`/`ca_head`/`ca_camo`/`ca_goggle`/
+  `ca_backpack`), the server validates it (characters.md 1) and every
+  client draws every player and bot as chosen; goggles and backpacks
+  (the install's attachments file, `Goggle#`/`Backpack#`) are body-part
+  choices rigid on their sockets (`Eyes`, `1W_N`), bots draw them from
+  the pool too; map props draw in their objects' render styles
+  (`RenderStyle0..7`; the stock flags name `RS\EdgeAmp01.ltb`, opaque in
+  our table; world models already follow `BlendMode`). Open: the
+  render-style files' format (no spec), cosmetics, clan pieces,
+  infection overrides, the carried flag on `1W_N`.
 - 2026-10-19: Follow-up brief for Wave 3's open questions (56 questions
   from the characters, view model, game mode, bot, effects and UI
   modules' Known shortcuts) and Wave 4 briefs (18-22: game modes part 2,

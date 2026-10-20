@@ -44,6 +44,7 @@ mod heavy {
     mod model;
     mod movement_volumes;
     mod mount;
+    mod props;
     mod view_model;
     mod world;
 }

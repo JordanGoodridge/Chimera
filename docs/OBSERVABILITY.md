@@ -1246,7 +1246,8 @@ view, run the game live and use the remote console: `ca_bot_add alpha`,
 then `world.query` the `Transform` of entities with `Intent` and `Name`
 for the bot, `setpos`/`setang` beside it (Source-style inches, z up)
 and `screenshot <file.png>`. Your own look: `ca_model`, `ca_face`,
-`ca_head`, `ca_camo` (bots draw theirs from data/characters.toml's
+`ca_head`, `ca_camo`, `ca_goggle`, `ca_backpack` (a client sends it to the
+server, which shows it to every player; bots draw theirs from data/characters.toml's
 `[loadouts]`).
 
 Combat Arms' dedicated server: `cargo run --features dev --bin
@@ -1261,8 +1262,9 @@ the map's AI volumes (`bots: the map's N AI volumes as navigation
 areas`) or generated ones (`bots: generated a navigation mesh of N
 areas`).
 
-Combat Arms' models: `CHIMERA_CA_PROP=<model>[,<skin>...]` (archive
-paths) puts that model, playing its first animation, 3 m in front of the
+Combat Arms' models: `CHIMERA_CA_PROP=<model>[,<skin>...][;<render style>...]` (archive
+paths; render styles by index, e.g. `;RS\default.ltb,RS\glass.ltb`) puts
+that model, playing its first animation, 3 m in front of the
 first spawn of the `--map` loaded (`game::props::dev_prop`), e.g.
 `CHIMERA_CA_PROP=props/headquaters/hq_flag01.ltb` with `--map
 combat_arms:warehouse --screenshot shot.png --frames 120`. Readable
