@@ -35,7 +35,7 @@ pub fn kind_of(kind: crate::core::DamageKind, weapon: Option<&str>) -> DeathKind
 
 /// A thrown weapon (grenade data).
 fn is_thrown(id: &str) -> bool {
-    crate::weapon::data::lookup(id).is_some_and(|d| d.has_hook(super::super::grenades::HOOK))
+    super::super::data::weapon_set().get(id).is_some_and(|d| d.has_hook(super::super::grenades::HOOK))
 }
 
 /// The C library's generator (the Microsoft LCG) seeded with `seed`,

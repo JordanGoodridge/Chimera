@@ -74,6 +74,27 @@ pub struct Pole {
     pub scored: u32,
 }
 
+/// Hired Guns' bullion on the ground (game_modes_2.md M11.3): a placed
+/// bar (taken with the use key) or a dropped bag (taken by touch).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Bullion {
+    pub id: u32,
+    pub at: Vec3,
+    pub bars: u32,
+    pub money: i32,
+    /// A dropped pocket (else a placed bar).
+    pub bag: bool,
+}
+
+/// VIP Escort's exit (game_modes_2.md M13.5).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Exit {
+    /// It opens then (game seconds) ...
+    pub opens: f64,
+    /// ... and is open.
+    pub open: bool,
+}
+
 /// The objectives as every machine sees them.
 #[derive(Resource, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CaObjectives {
@@ -97,6 +118,22 @@ pub struct CaObjectives {
     /// Spy Hunt's stage-2 camera hold: when it ends (game seconds; every
     /// view on the map camera until then, M7).
     pub camera_until: Option<f64>,
+    /// Hired Guns: the bars and bags on the ground, bars banked this round
+    /// (Alpha, Bravo), bars placed this round, bars in each team's
+    /// pockets.
+    pub bullion: Vec<Bullion>,
+    pub banked: [u32; 2],
+    pub placed: u32,
+    pub in_pockets: [u32; 2],
+    /// VIP Escort: the escort team (0: none), the exit, the side swap's
+    /// notice (its countdown's end), the rounds until the swap shown at a
+    /// round over (255: none).
+    pub escort: u8,
+    pub exit: Option<Exit>,
+    pub swap_notice: Option<f64>,
+    pub rounds_to_swap: u8,
+    /// The clan modes: the half (1, 2; 0 none).
+    pub half: u8,
 }
 
 impl CaObjectives {
@@ -119,6 +156,19 @@ impl CaObjectives {
         if let Some(t) = &mut self.camera_until {
             *t = f(*t);
         }
+        if let Some(x) = &mut self.exit {
+            x.opens = f(x.opens);
+        }
+        if let Some(n) = &mut self.swap_notice {
+            *n = f(*n);
+        }
+    }
+
+    /// Bars of placed (level) bars still on the ground, and in bags.
+    pub fn bars_on_ground(&self) -> (u32, u32) {
+        let level = self.bullion.iter().filter(|b| !b.bag).map(|b| b.bars).sum();
+        let bags = self.bullion.iter().filter(|b| b.bag).map(|b| b.bars).sum();
+        (level, bags)
     }
 
     /// `team`'s flag.
@@ -136,6 +186,9 @@ pub struct CaCarry {
     pub bomb: bool,
     /// Spy Hunt's intel items.
     pub intel: u8,
+    /// Hired Guns' pocket: bars and their money (game_modes_2.md M11.4).
+    pub bars: u32,
+    pub money: i32,
 }
 
 impl CaCarry {
@@ -197,6 +250,17 @@ pub fn living(world: &mut World) -> Vec<Living> {
         });
     }
     out
+}
+
+/// The living players who may take, carry or use an objective (a flag, a
+/// bomb, intel, a seize trigger, bullion, a VIP's exit): the human ones
+/// (bots_objectives.md 1, Quirk 1: no AI plays an objective; our bots,
+/// which play every mode, leave them alone).
+pub fn takers(world: &mut World) -> Vec<Living> {
+    living(world)
+        .into_iter()
+        .filter(|p| world.get::<crate::core::Bot>(p.e).is_none())
+        .collect()
 }
 
 /// A player's box half-extents (engine metres): the fallback hull.

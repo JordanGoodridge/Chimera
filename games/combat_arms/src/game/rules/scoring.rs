@@ -8,9 +8,11 @@
 //!   its row of S7's table (`CaMode::on_death`, which may also win the
 //!   round), its kills and deaths copied into Chimera's `core::Score`
 //!   (the scoreboard line the network replicates).
-//! - The killer (`classify`): the attacker; the victim's own damage is a
-//!   suicide, but a fall (the movement's crush damage from the player
-//!   itself, no weapon) has no killer.
+//! - The killer (`classify`): the attacker (a Hired Guns mercenary's
+//!   hirer for its kills: `mercs::killer_of`); the victim's own damage is
+//!   a suicide, but a fall (the movement's crush damage from the player
+//!   itself, no weapon) has no killer. A mercenary's own death goes to
+//!   `mercs::died`.
 //! - Assists (the modes with `CaMode::assists`): damage a player dealt
 //!   to another is summed while the victim lives (`CaDamageLog`; heals
 //!   by the victim's enemies take it back, `heal`); an enemy kill gives
@@ -100,7 +102,7 @@ pub(super) fn scale_friendly_fire(
     settings: Res<CaRuleSettings>,
     mut ff: ResMut<FriendlyFire>,
 ) {
-    let on = settings.friendly_fire;
+    let on = if super::no_friendly_fire(&settings.mode) { 0 } else { settings.friendly_fire };
     if ff.0 != on {
         ff.0 = on;
     }
@@ -135,6 +137,16 @@ fn on_died(world: &mut World, d: &Died) {
     }
     let now = world.resource::<SimClock>().now;
     world.entity_mut(victim).insert((Dead { since: now }, ColliderDisabled));
+    // A Hired Guns mercenary's death is its own (game_modes_2.md M11.7).
+    if world.get::<super::mercs::CaMerc>(victim).is_some() {
+        super::mercs::died(world, d);
+        clear_log(world, victim);
+        return;
+    }
+    // A mercenary's kill is its hirer's.
+    let mut d = d.clone();
+    d.attacker = d.attacker.map(|a| super::mercs::killer_of(world, a));
+    let d = &d;
     let killer_team = |w: &World, e: Entity| w.get::<Team>(e).map(|t| t.0);
     let Some(victim_team) = killer_team(world, victim).filter(|t| super::state::plays(*t)) else {
         (mode.hooks.died)(world, d);

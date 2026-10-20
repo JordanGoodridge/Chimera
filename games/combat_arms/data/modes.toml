@@ -9,8 +9,9 @@
 # Man Army), LMS (Last Man Standing), BNT (Spy Hunt), QRT (Quarantine
 # Regen), SBT (Bombing Run), HQM (Seize and Secure), SQM2 (Squad Match 2),
 # VTDM (VIP Elimination), VWRM (Arms Race), HG (Hunted), ESL (S&D for the
-# Go4CA Cup), or none (no mode: nobody is spawned, counted or respawned by
-# the rules).
+# Go4CA Cup), SQM (Hired Guns), ESC (VIP Escort), the clan modes CDM, CMM,
+# CCTF, CTSV and CESC, or none (no mode: nobody is spawned, counted or
+# respawned by the rules).
 mode = "TDM"
 # The room's goal G (S2); 0: the mode's default (its `goal_default`).
 goal = 0
@@ -175,6 +176,72 @@ time_limit = 180.0
 training_time_limit = 10.0
 jsf_weapon = ["XK-2"]
 
+# Hired Guns (game_modes_2.md M11): rounds played; rounds of 300 s after a
+# 10 s warm-up (Blood Money's mission file).
+[modes.SQM]
+goal_min = 3
+goal_max = 9
+goal_step = 2
+goal_default = 7
+time_limit = 300.0
+training_time_limit = 10.0
+
+# VIP Escort (M13): round wins R; rounds of 180 s after a 10 s warm-up
+# (another after each side swap).
+[modes.ESC]
+goal_min = 5
+goal_max = 11
+goal_step = 2
+goal_default = 7
+time_limit = 180.0
+training_time_limit = 10.0
+
+# Clan VIP Escort (M13.8; not enabled in any room data): rounds played.
+[modes.CESC]
+goal_min = 5
+goal_max = 11
+goal_step = 2
+goal_default = 7
+time_limit = 180.0
+training_time_limit = 10.0
+
+# The clan modes (M18): fixed goals, a 10 s warm-up before each half.
+# Clan Elimination: 100 kills, no time limit.
+[modes.CDM]
+goal_min = 100
+goal_max = 100
+goal_step = 1
+goal_default = 100
+training_time_limit = 10.0
+
+# Clan Capture the Flag: 6 captures; halves of a flat 600 s.
+[modes.CCTF]
+goal_min = 6
+goal_max = 6
+goal_step = 1
+goal_default = 6
+time_limit = 600.0
+training_time_limit = 10.0
+
+# Clan Search & Destroy: exactly 6 rounds of S&D's 180 s.
+[modes.CMM]
+goal_min = 6
+goal_max = 6
+goal_step = 1
+goal_default = 6
+time_limit = 180.0
+training_time_limit = 10.0
+jsf_weapon = ["XK-2"]
+
+# Clan Elimination Pro: exactly 6 rounds of 180 s.
+[modes.CTSV]
+goal_min = 6
+goal_max = 6
+goal_step = 1
+goal_default = 6
+time_limit = 180.0
+training_time_limit = 10.0
+
 # The objectives' numbers (Constants (shared) and the mode sections).
 [objectives]
 # M4: a dropped flag goes home after this, s.
@@ -270,3 +337,126 @@ mutation_weights = [
 257 = "combat_arms:l96a1"
 110 = "combat_arms:beretta_m92fs"
 84 = "combat_arms:m67"
+
+# Hired Guns (game_modes_2.md M11; Blood Money's mission file,
+# `[BullionManage]`, missions.md F4.5).
+[hired_guns]
+# The bar drop points' and spawn points' game type.
+family = "SquadMatch"
+# DropBullionNum: bars placed at each real round's start.
+drop_bullion_num = 80
+# BullionAmount: a placed bar's money.
+bullion_amount = 100
+# BaseBankAmount (added at each real round's start and on joining a live
+# round), RoundWinBonusAmount, KillBonusAmount, DeathBonusAmount.
+base_bank = 1000
+round_win_bonus = 500
+kill_bonus = 100
+death_bonus = 0
+# A bar or bag is taken within this distance of the player (u).
+pickup_reach = 200.0
+# The carry penalty's sections: [first bar, last bar, rate per bar]
+# (MovePenaltyIncPerBullionNumSection<i>, MovePenaltyIncPerBullionNum<i>).
+penalty_sections = [[0, 10, 0.0], [11, 25, 0.03], [26, 80, 0.0]]
+# The objective's AIDamageFactor (mercenaries' damage).
+ai_damage_factor = 1.0
+# Living mercenaries per player.
+merc_cap = 2
+# The mercenaries' spawn objects by the hirer's team.
+unit_spawn_alpha = "UNITSPAWN_ALPHA"
+unit_spawn_bravo = "UNITSPAWN_BRAVO"
+# A dead mercenary's body goes after this (s; `BodyLifetime`).
+body_lifetime = 2.0
+# The hire menu's units, by unit id 0-9 (`SpawnCostAI<i>`, the templates'
+# weapons). Our weapons stand in for the NPC ones we don't have: the
+# MP5A4 for the P90, the M4A1 for the M416, the M60 for the MG21E.
+[[hired_guns.units]]
+template = "Squad_1"
+name = "Heavy - Male"
+cost = 200
+weapon = "combat_arms:m4a1"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_2"
+name = "Heavy - Female"
+cost = 200
+weapon = "combat_arms:m4a1"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_3"
+name = "Light - Male"
+cost = 200
+weapon = "combat_arms:mp5a4"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_4"
+name = "Light - Female"
+cost = 200
+weapon = "combat_arms:mp5a4"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_5"
+name = "Light - Mei"
+cost = 500
+weapon = "combat_arms:mp5a4"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_6"
+name = "Light - Deckland"
+cost = 500
+weapon = "combat_arms:mp5a4"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_7"
+name = "Medium - Hana"
+cost = 500
+weapon = "combat_arms:m4a1"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_8"
+name = "Medium - Zadan"
+cost = 500
+weapon = "combat_arms:m4a1"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_9"
+name = "Heavy - Kamara"
+cost = 500
+weapon = "combat_arms:m60"
+grenade = "combat_arms:m67"
+[[hired_guns.units]]
+template = "Squad_0"
+name = "Heavy - Baron"
+cost = 500
+weapon = "combat_arms:m60"
+grenade = "combat_arms:m67"
+
+# VIP Escort (game_modes_2.md M13; the stock mission files, missions.md
+# F4.6, and the VIP data).
+[escort]
+# The points' and the exit's game type.
+family = "VIPEscort"
+# [Mission0] VIPSpawn: the object the VIP is teleported to.
+vip_spawn = "VipTeleportPoint"
+# The objective's EscapeZoneTrigger: the exit's name.
+escape_zone = "EscapeZoneTrigger"
+# The exit timer (`VipExitTimer` TimeAmount, s from the round's setup).
+exit_time = 60.0
+# VIP_MISSION_END_TIME: the message hold after a deciding event (s).
+end_hold = 3.0
+# A side swap: the wait after the intermission, then the notice (s).
+swap_wait = 3.0
+swap_notice = 3.0
+# The VIP's weapons ([VIPChangeCharWeapon_0]: primary 91, the G18; ours,
+# until the G18 is in our data: the M92FS) and its model's MovePenalty
+# (model 87).
+vip_weapons = ["combat_arms:beretta_m92fs"]
+vip_move_penalty = 0.44
+
+# AI damage (game_modes_2.md Constants (shared)): one non-melee AI hit takes
+# at most `ai_damage_cap` health from a player, and `ai_damage_cap_big`
+# when the hit was `ai_damage_big` or more (HP).
+[ai_damage]
+cap = 50.0
+cap_big = 990.0
+big = 1000.0

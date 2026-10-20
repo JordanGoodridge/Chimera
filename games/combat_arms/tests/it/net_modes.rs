@@ -31,7 +31,7 @@ use combat_arms::{
     harness::CaSim,
 };
 
-fn setup(app: &mut App) {
+pub(crate) fn setup(app: &mut App) {
     app.add_plugins(GreyboxMapPlugin);
     let w = app.world_mut();
     {
@@ -50,16 +50,16 @@ fn setup(app: &mut App) {
     }
 }
 
-fn view(sim: &NetSim, i: usize) -> CaMatchView {
+pub(crate) fn view(sim: &NetSim, i: usize) -> CaMatchView {
     sim.clients[i].app.world().resource::<CaMatchView>().clone()
 }
 
-fn server_match(sim: &NetSim) -> CaMatch {
+pub(crate) fn server_match(sim: &NetSim) -> CaMatch {
     sim.server.app.world().resource::<CaMatch>().clone()
 }
 
 /// `killer` kills `victim` on the server.
-fn kill(sim: &mut NetSim, victim: Entity, killer: Entity) {
+pub(crate) fn kill(sim: &mut NetSim, victim: Entity, killer: Entity) {
     sim.server.app.world_mut().write_message(Damage {
         target: victim,
         attacker: Some(killer),
@@ -136,7 +136,7 @@ fn two_clients_play_team_death_match() {
 /// A server and two clients playing `mode` (G `goal`) on the greybox,
 /// with short warm-ups and phases (1 s warm-up, 0.5 s round-over and
 /// intermission) so the tests reach the first real round soon.
-fn mode_sim(mode: &'static str, goal: u32) -> NetSim {
+pub(crate) fn mode_sim(mode: &'static str, goal: u32) -> NetSim {
     let link = LinkConditions {
         latency: Duration::from_millis(30),
         jitter: Duration::ZERO,
@@ -162,7 +162,7 @@ fn mode_sim(mode: &'static str, goal: u32) -> NetSim {
 
 /// The match from its start on the server (after its objects were put
 /// in), until its first real round is live everywhere.
-fn restart_and_play(sim: &mut NetSim) {
+pub(crate) fn restart_and_play(sim: &mut NetSim) {
     combat_arms::game::rules::flow::restart(sim.server.app.world_mut());
     let ok = sim.until(1200, |s| {
         let m = server_match(s);
@@ -176,12 +176,12 @@ fn restart_and_play(sim: &mut NetSim) {
     }
 }
 
-fn client_objectives(sim: &NetSim, i: usize) -> CaObjectives {
+pub(crate) fn client_objectives(sim: &NetSim, i: usize) -> CaObjectives {
     sim.clients[i].app.world().resource::<CaObjectives>().clone()
 }
 
 /// Keep the server's `e` at `at` for `n` ticks.
-fn hold_server(sim: &mut NetSim, e: Entity, at: Vec3, n: u64) {
+pub(crate) fn hold_server(sim: &mut NetSim, e: Entity, at: Vec3, n: u64) {
     for _ in 0..n {
         let w = sim.server.app.world_mut();
         w.get_mut::<Transform>(e).unwrap().translation = at;
@@ -193,13 +193,13 @@ fn hold_server(sim: &mut NetSim, e: Entity, at: Vec3, n: u64) {
 }
 
 /// The server's character of client `i`, and its team.
-fn player(sim: &mut NetSim, i: usize) -> (Entity, u8) {
+pub(crate) fn player(sim: &mut NetSim, i: usize) -> (Entity, u8) {
     let e = sim.character_of(i).unwrap();
     (e, sim.server.app.world().get::<Team>(e).unwrap().0)
 }
 
 /// Client `i`'s client and server entities by team: (alpha's, bravo's).
-fn by_team(sim: &mut NetSim) -> [(usize, Entity); 2] {
+pub(crate) fn by_team(sim: &mut NetSim) -> [(usize, Entity); 2] {
     let (a, ta) = player(sim, 0);
     let (b, _) = player(sim, 1);
     if ta == 1 { [(0, a), (1, b)] } else { [(1, b), (0, a)] }
@@ -460,7 +460,7 @@ fn the_variants_over_the_network() {
 }
 
 /// The server's weapons of `e`.
-fn weapons_of(sim: &NetSim, e: Entity) -> Vec<&'static str> {
+pub(crate) fn weapons_of(sim: &NetSim, e: Entity) -> Vec<&'static str> {
     let w = sim.server.app.world();
     w.get::<chimera_sim::weapon::Inventory>(e)
         .map(|i| {
@@ -482,7 +482,7 @@ fn held(sim: &NetSim, e: Entity) -> Option<&'static str> {
         .map(|x| x.id)
 }
 
-fn client_intent(sim: &mut NetSim, i: usize) -> Mut<'_, chimera_core::core::Intent> {
+pub(crate) fn client_intent(sim: &mut NetSim, i: usize) -> Mut<'_, chimera_core::core::Intent> {
     let me = sim.local_player(i).unwrap();
     sim.clients[i].app.world_mut().get_mut::<chimera_core::core::Intent>(me).unwrap()
 }

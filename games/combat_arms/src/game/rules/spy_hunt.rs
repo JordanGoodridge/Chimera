@@ -141,7 +141,7 @@ fn update(world: &mut World) {
     }
     let total = super::super::missions::spy_hunt(world).0 as u8;
     let half = objectives::player_half();
-    for p in objectives::living(world) {
+    for p in objectives::takers(world) {
         let items = world.resource::<CaObjectives>().intel.clone();
         let Some(i) = items.iter().position(|at| {
             ObjBox {

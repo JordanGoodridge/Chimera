@@ -25,7 +25,7 @@ use avian3d::prelude::*;
 use bevy::{ecs::system::SystemState, prelude::*};
 
 use super::{
-    BotSettings, BotState, CaBot, Pending,
+    BotSettings, BotState, CaBot, MercMind, Pending,
     data::{BotData, GunAi},
     map_ai::MapAi,
     math::{self, Choice, MOVES, Move},
@@ -887,6 +887,11 @@ fn gun_ai(ctx: &Ctx, bot: &CaBot, id: &str) -> Option<GunAi> {
 }
 
 fn decide(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], active: Option<Entity>) -> Out {
+    if let Some(mut mind) = bot.merc.take() {
+        let out = decide_merc(ctx, bot, &mut mind, me, guns, active);
+        bot.merc = Some(mind);
+        return out;
+    }
     let mut out = Out::default();
     let mut io = IntentOut {
         yaw: me.yaw,
@@ -1729,4 +1734,166 @@ fn patrol(ctx: &Ctx, bot: &mut CaBot, me: &Char, io: &mut IntentOut, out: &mut O
         bot.patrol_from = Some(to);
         bot.patrol_to = None;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Hired Guns mercenaries (bots_objectives.md 3)
+
+/// The follow state's arrive radius (u, 3D).
+pub const FOLLOW_ARRIVE: f32 = 200.0;
+/// The leave radius: √(200² + 1000) u.
+pub fn follow_leave() -> f32 {
+    (FOLLOW_ARRIVE * FOLLOW_ARRIVE + 1000.0).sqrt()
+}
+/// The leave delay (s).
+pub const FOLLOW_LEAVE_DELAY: f64 = 0.25;
+/// The path to the follow target is planned again at least this often (s).
+pub const FOLLOW_REPLAN: f64 = 1.0;
+/// The ranged attack goal's decay after the last sight (s).
+pub const MERC_ATTACK_DECAY: f64 = 2.0;
+
+/// A mercenary's tick (3.3): the `Squad` goal set's attack (ranged,
+/// dynamic: the bot brain's attack, 7-9) over its follow goal (3.4);
+/// under "follow me" the follow goal only. No patrol, chase, investigate
+/// or grenade dodge; sight is never rolled (Open question 5: no relaxed
+/// state, so the alert field of view).
+fn decide_merc(ctx: &Ctx, bot: &mut CaBot, mind: &mut MercMind, me: &Char, guns: &[Gun], active: Option<Entity>) -> Out {
+    let mut out = Out::default();
+    let mut io = IntentOut {
+        yaw: me.yaw,
+        pitch: me.pitch,
+        ..default()
+    };
+    if let Some(target) = bot.target
+        && !ctx.chars.iter().any(|c| c.e == target && c.alive)
+    {
+        bot.target = None;
+        if matches!(bot.state, BotState::Attack { .. }) {
+            leave_attack(ctx, bot);
+        }
+        bot.state = BotState::Patrol;
+    }
+    if ctx.frame {
+        bot.passes += 1;
+        // The current target's visibility (the target update).
+        if let Some(target) = bot.target.and_then(|e| ctx.chars.iter().find(|c| c.e == e)) {
+            let seen = sight(ctx, me, target, true);
+            bot.visible = seen.is_some();
+            bot.head_only = seen == Some(true);
+            let gun = held_gun(ctx, bot, guns, me);
+            bot.tracking
+                .update(target.pos / UNIT, SERVER_FRAME as f32, gun.map_or(0.0, |g| g.c_max), gun.map_or(0.0, |g| g.decay));
+            if bot.visible {
+                mind.seen_at = ctx.now;
+            }
+        }
+        if mind.follow_only {
+            if matches!(bot.state, BotState::Attack { .. }) {
+                leave_attack(ctx, bot);
+            }
+            bot.state = BotState::Patrol;
+            bot.target = None;
+        } else {
+            // The nearest enemy in sight (players and mercenaries alike).
+            let mut enemies: Vec<(&Char, f32)> = ctx
+                .chars
+                .iter()
+                .filter(|c| c.alive && c.team != me.team && crate::game::rules::state::plays(c.team))
+                .map(|c| (c, u(me.pos.distance(c.pos))))
+                .filter(|(_, d)| *d < SIGHT_RANGE)
+                .collect();
+            enemies.sort_by(|a, b| a.1.total_cmp(&b.1));
+            let seen = enemies
+                .into_iter()
+                .find_map(|(c, _)| sight(ctx, me, c, true).map(|head| (*c, head)));
+            if let Some((target, head_only)) = seen {
+                mind.seen_at = ctx.now;
+                // A new target only when the current one is out of sight.
+                if bot.target != Some(target.e) && !(bot.visible && bot.target.is_some()) {
+                    bot.target = Some(target.e);
+                    let c_max = held_gun(ctx, bot, guns, me).map_or(0.0, |g| g.c_max);
+                    bot.tracking.select(c_max);
+                    bot.tracking.prev = Some(target.pos / UNIT);
+                    reset_grenades(ctx, bot);
+                    bot.aim_offset = None;
+                    bot.visible = true;
+                    bot.head_only = head_only;
+                }
+                if !matches!(bot.state, BotState::Attack { .. }) {
+                    enter_attack(ctx, bot, &target);
+                }
+            } else if matches!(bot.state, BotState::Attack { .. }) && ctx.now - mind.seen_at >= MERC_ATTACK_DECAY - 1e-9 {
+                leave_attack(ctx, bot);
+                bot.state = BotState::Patrol;
+                bot.target = None;
+                mind.holding = false;
+            }
+        }
+    }
+    let target = bot.target.and_then(|e| ctx.chars.iter().find(|c| c.e == e)).copied();
+    match (bot.state, target) {
+        (BotState::Attack { .. }, Some(target)) if !mind.follow_only => {
+            attack(ctx, bot, me, &target, guns, active, &mut io, &mut out);
+        }
+        _ => follow(ctx, bot, mind, me, &mut io),
+    }
+    io.jump = std::mem::take(&mut bot.jump);
+    if ctx.settings.dont_shoot != 0 || mind.follow_only {
+        io.fire = false;
+    }
+    if ctx.settings.stop != 0 {
+        io.axis = Vec2::ZERO;
+        io.jump = false;
+    }
+    out.intent = Some(io);
+    out
+}
+
+/// The follow goal (3.4): to the follow point, else the leader's current
+/// position; stop within the arrive radius and hold (facing the leader)
+/// until the goal is beyond the leave radius for the leave delay; the
+/// path planned again at least every second.
+fn follow(ctx: &Ctx, bot: &mut CaBot, mind: &mut MercMind, me: &Char, io: &mut IntentOut) {
+    let leader = ctx.chars.iter().find(|c| c.e == mind.leader).copied();
+    let point = mind.follow_point.filter(|p| *p != Vec3::ZERO);
+    let goal = match (point, leader) {
+        (Some(p), _) => p,
+        (None, Some(l)) => l.feet(),
+        (None, None) => {
+            io.axis = Vec2::ZERO;
+            return;
+        }
+    };
+    let d = u(me.feet().distance(goal));
+    if ctx.frame {
+        if mind.holding {
+            if d <= follow_leave() {
+                mind.leave_at = ctx.now + FOLLOW_LEAVE_DELAY;
+            } else if ctx.now + 1e-9 >= mind.leave_at {
+                mind.holding = false;
+                bot.route.clear();
+                bot.route_goal = None;
+                mind.replan_at = ctx.now + FOLLOW_REPLAN;
+            }
+        } else if d < FOLLOW_ARRIVE {
+            mind.holding = true;
+            mind.leave_at = ctx.now + FOLLOW_LEAVE_DELAY;
+            bot.route.clear();
+            bot.route_goal = None;
+        } else if ctx.now + 1e-9 >= mind.replan_at {
+            bot.route.clear();
+            bot.route_goal = None;
+            mind.replan_at = ctx.now + FOLLOW_REPLAN;
+        }
+    }
+    if mind.holding {
+        io.axis = Vec2::ZERO;
+        if let Some(l) = leader.filter(|_| point.is_none()) {
+            let (yaw, _) = look_at(me.eye(), l.eye());
+            io.yaw = yaw;
+            io.pitch = 0.0;
+        }
+        return;
+    }
+    walk(ctx, bot, me, goal, false, io);
 }

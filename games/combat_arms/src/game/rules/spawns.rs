@@ -195,6 +195,8 @@ pub fn spawn_list(world: &mut World, team: u8) -> (Vec<Transform>, usize) {
     let spawns = mode.map_or(super::TEAM_POINTS, |m| m.spawns);
     let warmup = world.resource::<super::CaMatch>().warmup;
     let cursor = if spawns.one_list { 0 } else { side(team).unwrap_or(0) };
+    // VIP Escort's escort side spawns at the `JSF` points (its swap).
+    let team = super::escort::point_team(world, team);
     let starts = world.resource::<super::objects::CaMapObjects>().starts.clone();
     let mut list: Vec<(usize, Transform)> = if starts.is_empty() {
         let all = points(world, if spawns.one_list { None } else { Some(team) });

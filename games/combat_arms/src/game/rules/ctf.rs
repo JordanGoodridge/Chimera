@@ -210,7 +210,7 @@ fn update(world: &mut World) {
     }
     // Touches.
     let half = objectives::player_half();
-    for p in objectives::living(world) {
+    for p in objectives::takers(world) {
         let flags = world.resource::<CaObjectives>().flags.clone();
         let carry = objectives::carry(world, p.e);
         for f in &flags {
@@ -350,7 +350,7 @@ pub fn show_flags(
     mut props: Query<(&crate::map::PropEntity, &crate::map::PropHome, &mut Transform, &mut Visibility)>,
 ) {
     let Some(entities) = entities else { return };
-    let ctf = view.mode == MODE.key;
+    let ctf = view.mode == MODE.key || view.mode == super::clan::CTF.key;
     for (index, home, mut t, mut vis) in &mut props {
         let Some(e) = entities.entities.get(index.0) else { continue };
         if e.classname() != "FlagItem" {

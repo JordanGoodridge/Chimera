@@ -462,8 +462,8 @@ fn case_81_spectating() {
 /// 84. Hunted's start: the fist only (our knife without the install).
 #[test]
 fn case_84_hunted_start() {
-    assert_eq!(hunted::start_weapon(), KNIFE);
     let mut sim = game("HG", 12);
+    assert_eq!(hunted::start_weapon(), KNIFE, "without the install");
     let p = join(&mut sim, JSF);
     join(&mut sim, JSF);
     until_live(&mut sim);

@@ -25,6 +25,13 @@
 //! - `brain`: the senses (5), goals and states (2: patrol, investigate,
 //!   chase, attack, dodge), firing (7, 8), movement in a fight (9).
 //!
+//! Objectives (bots_objectives.md): no AI in Combat Arms plays one, so
+//! bots take no flag, bomb, intel, seize trigger, bullion or VIP role
+//! (`rules::objectives::takers` leaves them out) and no objective event
+//! reaches their senses; they fight in every mode. Hired Guns'
+//! mercenaries are bots too (`MercMind`: the `Squad` goal set, follow and
+//! attack only; `rules::mercs`), but not players.
+//!
 //! Bots run on the server only, their senses and goals on the server's
 //! 20 Hz frames (`grenades::SERVER_FRAME`, the dedicated server's rate:
 //! Open question 1), their aim, movement keys and trigger every tick.
@@ -166,6 +173,42 @@ pub struct Pending {
     pub gunfire: bool,
 }
 
+/// A Hired Guns mercenary's mind (bots_objectives.md 3; `rules::mercs`):
+/// whom it follows and how, beside the bot brain's attack.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MercMind {
+    /// The hirer (its leader).
+    pub leader: Entity,
+    /// The follow point (feet, m); None or the world origin: the leader
+    /// (Quirk 4).
+    pub follow_point: Option<Vec3>,
+    /// "Follow me": the follow goal outranks every attack (Quirk 3).
+    pub follow_only: bool,
+    /// Holding (within the arrive radius) rather than following.
+    pub holding: bool,
+    /// While holding: the leave delay's end (restarted while inside the
+    /// leave radius).
+    pub leave_at: f64,
+    /// While following: the path's next re-plan.
+    pub replan_at: f64,
+    /// When an enemy was last seen (the attack goal's 2 s decay).
+    pub seen_at: f64,
+}
+
+impl MercMind {
+    pub fn new(leader: Entity) -> Self {
+        Self {
+            leader,
+            follow_point: None,
+            follow_only: false,
+            holding: false,
+            leave_at: 0.0,
+            replan_at: 0.0,
+            seen_at: f64::MIN,
+        }
+    }
+}
+
 /// A bot: its brain's state. Positions in metres (engine), the spec's
 /// numbers in world units where named so.
 #[derive(Component, Clone, Debug)]
@@ -247,6 +290,8 @@ pub struct CaBot {
     pub patrol_came: Option<usize>,
     pub stuck_check: (f64, Vec3),
     pub jump: bool,
+    /// A Hired Guns mercenary's mind (None: a Bot Deathmatch bot).
+    pub merc: Option<MercMind>,
 }
 
 impl CaBot {
@@ -300,6 +345,7 @@ impl CaBot {
             patrol_came: None,
             stuck_check: (0.0, Vec3::ZERO),
             jump: false,
+            merc: None,
         }
     }
 }
@@ -341,7 +387,10 @@ impl Plugin for CaBotsPlugin {
                 s.quota_set = true;
             },
             sync_quota: |w| {
-                let n = w.query_filtered::<(), With<CaBot>>().iter(w).count() as u32;
+                let n = w
+                    .query_filtered::<(), (With<CaBot>, Without<crate::core::Npc>)>()
+                    .iter(w)
+                    .count() as u32;
                 let mut s = w.resource_mut::<BotSettings>();
                 if n > 0 {
                     s.quota = n;
@@ -387,7 +436,7 @@ impl Plugin for CaBotsPlugin {
                 let wanted = a.join(" ");
                 let all = wanted.is_empty() || wanted.eq_ignore_ascii_case("all");
                 let bots: Vec<Entity> = w
-                    .query_filtered::<(Entity, Option<&Name>), With<CaBot>>()
+                    .query_filtered::<(Entity, Option<&Name>), (With<CaBot>, Without<crate::core::Npc>)>()
                     .iter(w)
                     .filter(|(_, n)| all || n.is_some_and(|n| n.as_str().eq_ignore_ascii_case(&wanted)))
                     .map(|(e, _)| e)

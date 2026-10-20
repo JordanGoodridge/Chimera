@@ -113,7 +113,7 @@ fn setup(world: &mut World) {
     if world.resource::<CaMatch>().warmup {
         return;
     }
-    for p in objectives::living(world) {
+    for p in objectives::takers(world) {
         if p.team == ALPHA {
             world.entity_mut(p.e).insert(CaBombDue);
         }

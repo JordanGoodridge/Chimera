@@ -853,7 +853,12 @@ mod tests {
         for (name, text) in WEAPON_DATA.iter().filter(|(n, _)| n.starts_with("placeholder_")) {
             assert!(text.contains("PLACEHOLDER"), "{name}: no PLACEHOLDER note");
         }
-        assert_eq!(weapon_set().weapons.len(), WEAPON_DATA.len());
+        // Every document of ours is in the set (another test of this
+        // process may have merged the install's in first).
+        assert!(weapon_set().weapons.len() >= WEAPON_DATA.len());
+        for id in builtin_weapon_ids() {
+            assert!(weapon_set().get(id).is_some(), "{id}");
+        }
     }
 
     #[test]

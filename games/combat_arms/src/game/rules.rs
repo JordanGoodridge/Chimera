@@ -7,7 +7,11 @@
 //! `spy_hunt` (`BNT`, M7), `quarantine` (`QRT`, M8), `bombing_run`
 //! (`SBT`, M9), `seize_and_secure` (`HQM`, M10) and `squad_match_2`
 //! (`SQM2`, M11's variant), `vip_elimination` (`VTDM`, M12), `arms_race`
-//! (`VWRM`, M14), `hunted` (`HG`, M15), `go4ca_cup` (`ESL`, M17), and
+//! (`VWRM`, M14), `hunted` (`HG`, M15), `go4ca_cup` (`ESL`, M17);
+//! from specs/combat_arms/game_modes_2.md: `hired_guns` (`SQM`, M11),
+//! `vip_escort` (`ESC`, M13) and `clan_vip_escort` (`CESC`), the clan
+//! modes `clan_tdm` (`CDM`), `clan_ctf` (`CCTF`), `clan_search_destroy`
+//! (`CMM`) and `clan_elimination_pro` (`CTSV`, M18); and
 //! `combat_arms:none` (no mode: the rules leave players alone).
 //!
 //! A mode is data and hooks (`CaMode`: its room key, whether it respawns,
@@ -39,7 +43,8 @@
 //!   detonation;
 //! - one module a mode: `tdm`, `elimination`, `search_destroy`, `ctf`,
 //!   `free_for_all`, `last_man`, `spy_hunt`, `quarantine`, `bombing_run`,
-//!   `seize`, `vip`, `arms_race`, `hunted`, `go4ca`;
+//!   `seize`, `vip`, `arms_race`, `hunted`, `go4ca`, `hired_guns` (with
+//!   its AI mercenaries, `mercs`), `escort`, `clan`;
 //! - `scoreboard`: the scoreboard's rows and each mode's order (S13).
 //!
 //! What the HUD and a network client read is `CaMatchView` (the server
@@ -66,26 +71,31 @@
 //! Known shortcuts (docs/tech-debt.md; the most literal reading where the
 //! spec is unclear, each module's own list): see `flow`, `spawns`,
 //! `scoring`, `settings`, `objects`, `objectives`, `bomb` and each mode's.
-//! Not there: Hired Guns (M11: AI mercenaries and bullion banks the spec
-//! doesn't describe), VIP Escort (M13: the VIP's spawn and the exit are
-//! mission data the spec doesn't name), Snowball Fight (M16: not playable
-//! in the US data), the clan variants (M18), the co-operative and offline
-//! modes (M19, M20) and the modes without rules (M21, M22). Bots fight in
-//! every mode (any other team is an enemy) but don't play objectives
-//! (bots.md has none). The server runs the mission update on its 20 Hz
-//! frames (`grenades::SERVER_FRAME`) over the game's 15 ms tick.
+//! Not there: Snowball Fight (game_modes_2.md M16: no data set enables
+//! it, and its snowball weapons aren't in our data), the co-operative and
+//! offline modes (M19, M20: mission scripts and PvE enemies; the AI damage
+//! cap of M19 applies to Hired Guns' mercenaries) and the modes without
+//! rules (M21, M22). Bots fight in every mode (any other team is an
+//! enemy) but play no objective: bots_objectives.md says no AI in Combat
+//! Arms does (its Quirk 1); the only AI on a versus team is Hired Guns'
+//! mercenaries. The server runs the mission update on its 20 Hz frames
+//! (`grenades::SERVER_FRAME`) over the game's 15 ms tick.
 
 pub mod arms_race;
 pub mod bomb;
 pub mod bombing_run;
+pub mod clan;
 pub mod ctf;
 pub mod elimination;
+pub mod escort;
 pub mod flow;
 pub mod free_for_all;
 pub mod go4ca;
+pub mod hired_guns;
 pub mod hunted;
 pub mod last_man;
 pub mod mutation;
+pub mod mercs;
 pub mod objectives;
 pub mod objects;
 pub mod quarantine;
@@ -142,6 +152,28 @@ pub const ARMS_RACE: &str = "combat_arms:arms_race";
 pub const HUNTED: &str = "combat_arms:hunted";
 /// S&D for the Go4CA Cup (M17).
 pub const GO4CA_CUP: &str = "combat_arms:go4ca_cup";
+/// Hired Guns (game_modes_2.md M11).
+pub const HIRED_GUNS: &str = "combat_arms:hired_guns";
+/// VIP Escort (M13) and its clan variant.
+pub const VIP_ESCORT: &str = "combat_arms:vip_escort";
+pub const CLAN_VIP_ESCORT: &str = "combat_arms:clan_vip_escort";
+/// The clan modes (M18).
+pub const CLAN_TDM: &str = "combat_arms:clan_tdm";
+pub const CLAN_CTF: &str = "combat_arms:clan_ctf";
+pub const CLAN_SEARCH_DESTROY: &str = "combat_arms:clan_search_destroy";
+pub const CLAN_ELIMINATION_PRO: &str = "combat_arms:clan_elimination_pro";
+
+/// The modes whose rooms have no friendly-fire option (always off:
+/// game_modes_2.md M13.1, M18.1).
+pub fn no_friendly_fire(key: &str) -> bool {
+    key == escort::MODE.key || clan::KEYS.contains(&key)
+}
+
+/// The modes whose rooms take no joiners in progress (the clan modes,
+/// M18.1).
+pub fn no_join_in_progress(key: &str) -> bool {
+    clan::KEYS.contains(&key)
+}
 
 /// A leaving player, as the leaving rule sees it (S10): its team, its
 /// team's players and living players (the leaver counted), whether it was
@@ -159,6 +191,21 @@ pub struct Leaver {
     pub others: Vec<u8>,
     pub goal: u32,
     pub leave_kill_share: f32,
+    /// The leaver was VIP Escort's VIP.
+    pub vip: bool,
+    /// When it left (game seconds).
+    pub now: f64,
+}
+
+/// A player who left, for the mode's objects (`Hooks::left`): where it was
+/// and what it carried.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LeftPlayer {
+    pub entity: Entity,
+    pub team: u8,
+    pub at: Vec3,
+    pub carry: objectives::CaCarry,
+    pub alive: bool,
 }
 
 /// How a mode makes teams (S1).
@@ -256,6 +303,21 @@ pub struct Hooks {
     pub may_respawn: fn(&World, Entity) -> bool,
     /// A round mode holds joiners now beyond S1's rule (a bomb ticking).
     pub holds_joiner: fn(&World) -> bool,
+    /// At a mission start after the teams are made, before everyone is
+    /// respawned (VIP Escort's VIP choice, the clan modes' half-time
+    /// swap).
+    pub before_spawns: fn(&mut World),
+    /// After a round's end, its intermission set (`CaMatch::phase`): the
+    /// mode may lengthen it or ask for a warm-up next (VIP Escort's side
+    /// swap, the clan modes' half time).
+    pub after_round: fn(&mut World),
+    /// A player on a team left (after the leaving rule): its carried
+    /// objects and its own (Hired Guns' pocket and mercenaries).
+    pub left: fn(&mut World, &LeftPlayer),
+    /// Every server tick after the tick's damage and deaths: touches of
+    /// the mode's objects (game_modes_2.md "Per-tick order": a death from
+    /// a shot comes before a bank or exit touch of the same frame).
+    pub touches: fn(&mut World),
 }
 
 /// No hooks.
@@ -267,6 +329,10 @@ pub const NO_HOOKS: Hooks = Hooks {
     died: |_, _| {},
     may_respawn: |_, _| true,
     holds_joiner: |_| false,
+    before_spawns: |_| {},
+    after_round: |_| {},
+    left: |_, _| {},
+    touches: |_| {},
 };
 
 /// A game mode: its data and hooks.
@@ -337,6 +403,13 @@ pub const MODES: &[CaMode] = &[
     arms_race::MODE,
     hunted::MODE,
     go4ca::MODE,
+    hired_guns::MODE,
+    escort::MODE,
+    escort::CLAN,
+    clan::TDM,
+    clan::CTF,
+    clan::SEARCH_DESTROY,
+    clan::ELIMINATION_PRO,
 ];
 
 /// The mode playing (`ca_mode`), if any.
@@ -400,6 +473,13 @@ pub fn modules() -> Vec<RuleModule> {
         module_of!(arms_race::MODE),
         module_of!(hunted::MODE),
         module_of!(go4ca::MODE),
+        module_of!(hired_guns::MODE),
+        module_of!(escort::MODE),
+        module_of!(escort::CLAN),
+        module_of!(clan::TDM),
+        module_of!(clan::CTF),
+        module_of!(clan::SEARCH_DESTROY),
+        module_of!(clan::ELIMINATION_PRO),
         RuleModule {
             name: NO_MODE,
             description: "no game mode (ca_mode none): no teams' rules, rounds, score or respawning; the dead stay dead",
@@ -487,9 +567,12 @@ fn on_leave(
         (Entity, &Team, &Health, Has<Dead>, Option<&CaStats>),
         (With<Intent>, Without<Connecting>, Without<Spectating>, Without<Npc>),
     >,
+    more: Query<(&Transform, Option<&objectives::CaCarry>, Has<escort::CaVip>)>,
     settings: Option<Res<CaRuleSettings>>,
     role: Option<Res<crate::core::NetRole>>,
+    clock: Option<Res<SimClock>>,
     mut state: Option<ResMut<CaMatch>>,
+    mut commands: Commands,
 ) {
     if role.is_some_and(|r| *r == crate::core::NetRole::Client) {
         return;
@@ -500,6 +583,10 @@ fn on_leave(
     if !state::plays(team.0) {
         return;
     }
+    let (at, carry, vip) = more
+        .get(leave.entity)
+        .map(|(t, c, v)| (t.translation, c.copied().unwrap_or_default(), v))
+        .unwrap_or_default();
     let living = |h: &Health, d: bool| !d && h.current > 0.0;
     let in_play: Vec<_> = players.iter().filter(|(_, t, ..)| state::plays(t.0)).collect();
     let mates = in_play.iter().filter(|(_, t, ..)| t.0 == team.0);
@@ -517,9 +604,35 @@ fn on_leave(
             .collect(),
         goal: settings.goal(),
         leave_kill_share: settings.objectives.leave_kill_share,
+        vip,
+        now: clock.map_or(0.0, |c| c.now),
     };
     (mode.leaving)(state, &leaver);
+    let left = LeftPlayer {
+        entity: leave.entity,
+        team: team.0,
+        at,
+        carry,
+        alive: leaver.alive,
+    };
+    let hook = mode.hooks.left;
+    commands.queue(move |w: &mut World| hook(w, &left));
 }
+/// The mode's touches, after the tick's deaths.
+fn mode_touches(world: &mut World) {
+    if let Some(mode) = current_mode(world) {
+        (mode.hooks.touches)(world);
+    }
+}
+
+/// This machine's player.
+fn local_player(world: &mut World) -> Option<Entity> {
+    world
+        .query_filtered::<Entity, With<crate::core::LocalPlayer>>()
+        .iter(world)
+        .next()
+}
+
 /// The mode's own update (its objects), every server tick before the
 /// mission update.
 fn mode_update(world: &mut World) {
@@ -570,6 +683,9 @@ impl Plugin for CaRulesPlugin {
             .init_resource::<quarantine::CaQuarantine>()
             .init_resource::<super::missions::CaMission>()
             .init_resource::<crate::core::SpectatorRules>()
+            .init_resource::<hired_guns::CaHiredGuns>()
+            .init_resource::<escort::CaEscort>()
+            .init_resource::<clan::CaClan>()
             .insert_resource(crate::core::NewGame(flow::new_game))
             .add_observer(on_leave)
             .add_observer(flow::number_players)
@@ -586,22 +702,56 @@ impl Plugin for CaRulesPlugin {
                         crate::spawning::hold_the_dead,
                         flow::hold_frozen,
                         spawns::end_protection,
+                        mercs::expire,
                         update_team_counts,
                         publish,
                     )
                         .chain()
                         .in_set(SimSet::Rules),
-                    scoring::scale_friendly_fire
+                    (scoring::scale_friendly_fire, mercs::ai_damage, escort::immunity)
+                        .chain()
                         .after(SimSet::Weapons)
                         .before(crate::core::apply_damage),
                     spawns::firing_ends_protection.after(SimSet::Weapons),
-                    (scoring::log_damage, scoring::handle_deaths, publish)
+                    (scoring::log_damage, scoring::handle_deaths, mode_touches, publish)
                         .chain()
                         .after(crate::core::apply_damage),
                 )
                     .run_if(server.and_then(mode_on)),
             )
             .add_systems(FixedUpdate, publish.run_if(server.and_then(not(mode_on))))
+            .console_command(
+                "ca_hire",
+                "ca_hire <unit 0-9>: Hired Guns: hire a mercenary for the local player (the hire menu's keys 1-9, 0).",
+                |w, a| {
+                    let unit: usize = a.first().and_then(|u| u.parse().ok()).ok_or("ca_hire <unit 0-9>")?;
+                    let me = local_player(w).ok_or("no local player")?;
+                    if w.get_resource::<crate::core::NetRole>().is_some_and(|r| *r == crate::core::NetRole::Client) {
+                        w.write_message(super::net::CaHireRequest { unit: unit as u8 });
+                        return Ok(Some("hire requested".into()));
+                    }
+                    let e = mercs::hire(w, me, unit)?;
+                    let name = w.get::<Name>(e).map_or_else(|| e.to_string(), |n| n.as_str().to_string());
+                    Ok(Some(format!("hired {name}")))
+                },
+            )
+            .console_command(
+                "ca_order",
+                "ca_order <hold|default|follow>: Hired Guns: the local player's mercenaries' order.",
+                |w, a| {
+                    let order = a
+                        .first()
+                        .and_then(|o| mercs::MercOrder::named(o))
+                        .ok_or("ca_order <hold|default|follow>")?;
+                    let me = local_player(w).ok_or("no local player")?;
+                    if w.get_resource::<crate::core::NetRole>().is_some_and(|r| *r == crate::core::NetRole::Client) {
+                        w.write_message(super::net::CaOrderRequest { order });
+                        return Ok(Some("order sent".into()));
+                    }
+                    mercs::set_order(w, me, order);
+                    Ok(Some(format!("order {order:?}")))
+                },
+            )
             .console_command(
                 "ca_restart",
                 "Start the match over (ca_mode's mode, ca_goal's goal): everyone respawned at the next server frame.",

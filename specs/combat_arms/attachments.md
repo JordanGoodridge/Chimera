@@ -3,7 +3,7 @@
 Source basis: the shared weapon-modification manager (record reader and lookups), the client weapon (attachment slots, spread meters, cone inputs, ray length, view-model parts, muzzle effects, fire-sound choice), the client player manager (view recoil, zoom, victim-side stun), the shared animation-rate calculation, the HUD crosshair and weapon panel, the scope overlay, the server weapon and weapon inventory (fitting, clip size, damage), the server damage path (special-function damage), the server projectile (server ray length, AI hearing radius), plus the shipped weapon-modification file, weapons file and character attachments file of a reference client build (US). Numbers are that build's data; the Steam build may differ (see Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; How attachments are described in the data; Which weapon accepts which; Fitting (when and where); Effects by kind (muzzle, sight, magazine, bullet, mechanical sight); The combined formulas (damage, range, spread, recoil, rates, clip, zoom); Sound; Crosshair, HUD and overlay; View model and world model; Kill feed; Character attachments and gear mods (pointer); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; How attachments are described in the data; Which weapon accepts which; Fitting (when and where); Effects by kind (muzzle, sight, magazine, bullet, mechanical sight); The combined formulas (damage, range, spread, recoil, rates, clip, zoom); Sound; Crosshair, HUD and overlay; View model and world model; Kill feed; Character attachments and gear mods (pointer); Per-tick order; Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -532,6 +532,41 @@ Victim's client, on being hit by a player's bullet from another team:
 - **Q12, server ray ignores bullet range.** See Ray length. A long-range bullet extends direct hits only, never wall-bangs. Keep.
 - **Q13, link by position.** Modification records are matched to weapons by index. Our loader should do the same when it reads the install's files, and log every record whose `Name` differs from the weapon's. Our own TOML data may link by name.
 
+## Corrections (2026-10-19)
+
+From a second pass over the reference's client and server shot handling and
+view kick, compared with this spec and our implementation. Test cases 38–40.
+
+1. **`VectorsPerRoundPer`: the client and the server read different slots.**
+   - Reference: the client sends $n + \lfloor n\cdot v_{magazine}\rfloor$ rays,
+     with $v$ the **magazine** part's `VectorsPerRoundPer`. The server
+     expects $n + \lfloor n\cdot v_{muzzle}\rfloor$ from the **muzzle** part's.
+     When the counts differ the server ignores the whole shot: no damage,
+     and no server-side ammo is spent.
+   - Ours: the field is read and never applied
+     (`games/combat_arms/src/game/attachments.rs:302-303`). The spec only said "pellet-count
+     fraction (no shipped record)".
+   - Why it matters: nothing with stock data. A data mod that gives a
+     magazine a pellet bonus makes that weapon deal no damage at all.
+2. **The burst return uses the burst cap with the muzzle's scale.**
+   - Reference: in burst mode the return of `weapon_firing.md` uses
+     rad(`TripleShotMaxCamRecoilPitch` × (1 + the muzzle part's
+     `MaxCamRecoilPitchPer`)) whenever that field is non-zero. See
+     `weapon_firing.md` Corrections 2.
+   - Ours: the "Return" bullet of the Recoil formulas named only the
+     normal cap; `recover` uses the normal one
+     (`games/combat_arms/src/game/weapons.rs:839`).
+   - Why it matters: same as there; no shipped part has a non-zero
+     `MaxCamRecoilPitchPer`, so only the burst cap itself changes.
+3. **Recoil terms follow the weapon in hand, not the weapon that kicked.**
+   - Reference: the view kick state is the player's (`weapon_firing.md`
+     Corrections 1). After a switch, the return and the next kick read
+     the attachment terms of the weapon now in hand.
+   - Ours: the terms sit on each weapon's own recoil state
+     (`weapons.rs:748-759`).
+   - Why it matters: switching from a weapon with a muzzle part to a bare
+     one changes the cap the leftover climb returns against.
+
 ## Test cases
 
 M4A1 data as in `weapon_firing.md` unless stated. "Roll 1.0" means the damage random roll returns 1. Victim: male skeleton, 100 HP, no armour, torso hit, unless stated. Distances are fire position to impact.
@@ -579,6 +614,9 @@ M4A1 data as in `weapon_firing.md` unless stated. "Roll 1.0" means the damage ra
 35. **Stun bullet.** M4A1 + `Bullet_PVP_Stun_I_AR` vs a player, roll 1.0 → damage 31.5. Probability draw ≤ 0.5 → the victim's movement gets the stun penalty 0.20 for 1.0 s (`movement.md` $P_{stun}$); draw 0.6 → no stun.
 36. **Missing record (ours, Q2).** A weapon whose index has no modification record → given normally with an empty accepted list (log once). Every attachment offered for it is rejected.
 37. **Link by position (Q13).** Weapons file index 964 is named `M6A2_Event`; modification-file record 964 is named `M6A2_(Event)` → that record's list is used for the weapon.
+38. **Pellet-count mismatch (Corrections 1).** A shotgun with 8 rays and (for the test) a magazine part with `VectorsPerRoundPer` 0.25 and no muzzle part → the client sends 10 rays, the server expects 8 → the shot does nothing on the server. The same 0.25 on the muzzle part and none on the magazine → the client sends 8 and the server expects 10 → nothing either. The same value on both parts → 10 rays land.
+39. **Burst return with a muzzle part (Corrections 2).** Burst mode, `TripleShotMaxCamRecoilPitch` 8, muzzle part `MaxCamRecoilPitchPer` 0.25 (for the test) → the return's cap is rad 10°.
+40. **Switch after a kick (Corrections 3).** M4A1 with a silencer kicks; switch to a weapon without parts at once → the next return step uses that weapon's cap and its ammo's rates, with no muzzle term.
 
 ## Open questions
 
