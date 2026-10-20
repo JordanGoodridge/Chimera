@@ -94,6 +94,10 @@ pub mod keys {
     pub const KEYS: &str = "chimera_keys";
 }
 
+/// A map entity's keyvalues and, for a world model or a volume, its box
+/// centre (file frame): what `ObjectWorld::build` takes per object.
+pub type EntityProps = (Vec<(String, String)>, Option<Vec3>);
+
 /// A map object's properties (as the map entity carries them).
 #[derive(Clone, Debug, Default)]
 pub struct Props(pub Vec<(String, String)>);
@@ -343,7 +347,7 @@ impl Object {
 pub struct Rng(pub u64);
 
 impl Rng {
-    pub fn next(&mut self) -> f32 {
+    pub fn roll(&mut self) -> f32 {
         self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         ((self.0 >> 40) as f32) / (1u64 << 24) as f32
     }
@@ -575,7 +579,7 @@ impl ObjectWorld {
     /// The object world of a map's entities (`MapEntity` keyvalues as
     /// `Props`, in map order; `centres[i]` a world model's or volume's
     /// box centre in the file frame, when it has one).
-    pub fn build(entities: &[(Vec<(String, String)>, Option<Vec3>)]) -> Self {
+    pub fn build(entities: &[EntityProps]) -> Self {
         let mut w = Self::default();
         for (i, (kv, centre)) in entities.iter().enumerate() {
             let p = Props(kv.clone());
@@ -684,7 +688,7 @@ impl ObjectWorld {
                 "KeyFramer" => {
                     let keys = p
                         .get(keys::KEYS)
-                        .and_then(|h| hex(h))
+                        .and_then(hex)
                         .and_then(|b| keyframer::parse_keys(&b))
                         .unwrap_or_default();
                     kind = Kind::KeyFramer(Box::new(Keyframer {
@@ -811,10 +815,10 @@ impl ObjectWorld {
                 a.start(start_on, &pose, now, &mut out);
                 self.apply_outs(i as ObjId, out, Who::Nobody);
             }
-            if let Kind::Trigger(t) = &mut self.objects[i].kind {
-                if t.timed {
-                    t.next_timed = t.min_time as f64;
-                }
+            if let Kind::Trigger(t) = &mut self.objects[i].kind
+                && t.timed
+            {
+                t.next_timed = t.min_time as f64;
             }
         }
     }
@@ -1147,15 +1151,16 @@ impl ObjectWorld {
                     }
                     "INIT" => {
                         let at = a.init();
-                        drop(f);
                         self.objects[id as usize].kind = kind;
                         self.set_pose(id, Pose { pos: at, ..pose });
                         return;
                     }
-                    "TRIGGERCLOSE" if a.door => {
-                        if matches!(a.state, State::On | State::PowerOn) && now > a.stop_time + a.on_wait as f64 {
-                            a.enter(State::PowerOff, &pose, None, now, &mut out);
-                        }
+                    "TRIGGERCLOSE"
+                        if a.door
+                            && matches!(a.state, State::On | State::PowerOn)
+                            && now > a.stop_time + a.on_wait as f64 =>
+                    {
+                        a.enter(State::PowerOff, &pose, None, now, &mut out);
                     }
                     _ => {}
                 }
@@ -1175,7 +1180,6 @@ impl ObjectWorld {
                     }
                 }
                 let activator = a.activator;
-                drop(f);
                 self.objects[id as usize].kind = kind;
                 let links: Vec<String> = out
                     .iter()
@@ -1391,7 +1395,7 @@ impl ObjectWorld {
 
     /// A trigger activates (12, "Activation").
     fn activate(&mut self, id: ObjId) {
-        let roll = self.rng.next();
+        let roll = self.rng.roll();
         let pos = self.objects[id as usize].pose.pos;
         let Kind::Trigger(t) = &mut self.objects[id as usize].kind else { return };
         t.pending = None;
@@ -1678,7 +1682,6 @@ impl ObjectWorld {
                 let moved = a.update(&f, &pose, &mut out);
                 let riders = moved.as_ref().map(|_| f.blocking.riders(&pose)).unwrap_or_default();
                 let activator = a.activator;
-                drop(f);
                 self.chars = chars;
                 self.objects[id as usize].kind = kind;
                 if let Some(next) = moved {
@@ -1694,7 +1697,7 @@ impl ObjectWorld {
                     if !t.attach_to.is_empty() {
                         let name = t.attach_to.clone();
                         self.objects[id as usize].kind = kind;
-                        for p in self.named_all(&name) {
+                        if let Some(&p) = self.named_all(&name).first() {
                             let at = self.objects[p as usize].pose.pos;
                             self.objects[id as usize].pose.pos = at;
                             let a = Attached {
@@ -1703,7 +1706,6 @@ impl ObjectWorld {
                                 rot: Quat::IDENTITY,
                             };
                             self.objects[p as usize].attached.push(a);
-                            break;
                         }
                         kind = std::mem::take(&mut self.objects[id as usize].kind);
                     }
@@ -1713,7 +1715,7 @@ impl ObjectWorld {
                 let timed = t.timed && now + 1e-9 >= t.next_timed;
                 if timed {
                     let (lo, hi) = (t.min_time, t.max_time);
-                    t.next_timed = now + (lo + (hi - lo) * self.rng.next()) as f64;
+                    t.next_timed = now + (lo + (hi - lo) * self.rng.roll()) as f64;
                 }
                 self.objects[id as usize].kind = kind;
                 if due {
@@ -1967,7 +1969,7 @@ fn look(d: Vec3) -> Quat {
 /// Hex text as bytes.
 pub fn hex(s: &str) -> Option<Vec<u8>> {
     let s = s.trim();
-    (s.len() % 2 == 0).then_some(())?;
+    s.len().is_multiple_of(2).then_some(())?;
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
 }
 
@@ -2030,7 +2032,7 @@ impl CommandHost for ObjectWorld {
     }
 
     fn random(&mut self) -> f32 {
-        self.rng.next()
+        self.rng.roll()
     }
 
     fn log(&mut self, line: String) {

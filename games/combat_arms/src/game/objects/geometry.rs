@@ -142,7 +142,7 @@ mod tests {
             rot: Quat::from_rotation_y(0.785),
             half: Vec3::new(10.0, 10.0, 1.0),
         };
-        assert!(o.overlaps(Vec3::new(5.0, -1.0, 5.0), Vec3::new(7.0, 1.0, 7.0)) == false);
+        assert!(!o.overlaps(Vec3::new(5.0, -1.0, 5.0), Vec3::new(7.0, 1.0, 7.0)));
         assert!(o.overlaps(Vec3::new(5.0, -1.0, -6.0), Vec3::new(7.0, 1.0, -4.0)));
         assert!(!o.overlaps(Vec3::new(20.0, -1.0, 0.0), Vec3::new(22.0, 1.0, 1.0)));
     }

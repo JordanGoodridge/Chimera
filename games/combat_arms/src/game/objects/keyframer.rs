@@ -283,11 +283,11 @@ impl Keyframer {
     pub fn toggle_dir(&mut self) {
         let behind = self.before(self.next);
         self.forward = !self.forward;
-        if let Some(b) = behind {
-            if !self.at_key {
-                self.next = b;
-                self.k = (1.0 - self.k).clamp(0.0, 1.0);
-            }
+        if let Some(b) = behind
+            && !self.at_key
+        {
+            self.next = b;
+            self.k = (1.0 - self.k).clamp(0.0, 1.0);
         }
     }
 

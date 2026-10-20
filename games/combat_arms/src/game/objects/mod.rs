@@ -189,6 +189,8 @@ pub struct CaObjects {
     pub volumes: HashMap<ObjId, Entity>,
     /// The next server frame's time.
     pub next_frame: f64,
+    /// How many nodes the map has (bound when they all are).
+    want_nodes: usize,
     /// Each object's pose and flags at the map's start (`net`).
     pub start: Vec<(movers::Pose, u8)>,
     prev_use: HashMap<Entity, bool>,
@@ -391,8 +393,7 @@ fn load(world: &mut World) {
     if same {
         // Nodes spawn with the map; bind them once they're there.
         let o = world.resource::<CaObjects>();
-        let want = o.world.objects.iter().filter(|ob| ob.node).count();
-        if o.nodes.len() < want && world.query::<&MapBrushEntity>().iter(world).next().is_some() {
+        if o.nodes.len() < o.want_nodes && world.query::<&MapBrushEntity>().iter(world).next().is_some() {
             bind(world);
             mark_all(world);
         }
@@ -406,7 +407,9 @@ fn load(world: &mut World) {
         warn!("objects: {l}");
     }
     let start = w.objects.iter().map(|o| (o.pose, net::flags_of(o))).collect();
+    let want_nodes = w.objects.iter().filter(|o| o.node).count();
     *world.resource_mut::<CaObjects>() = CaObjects {
+        want_nodes,
         start,
         world: w,
         from: Some(entities.entities.clone()),
@@ -423,7 +426,7 @@ fn load(world: &mut World) {
 /// models' nodes at their centres, volumes at their boxes' centres and
 /// switched as their `Hidden` says.
 pub fn object_world(entities: &[MapEntity]) -> ObjectWorld {
-    let list: Vec<(Vec<(String, String)>, Option<Vec3>)> = entities
+    let list: Vec<runtime::EntityProps> = entities
         .iter()
         .map(|e| {
             let centre = if e.mover {
@@ -503,7 +506,6 @@ fn frame(world: &mut World) {
         commands::message(w, &r.target, &r.message, Ctx::default());
     }
     w.frame(at, super::grenades::SERVER_FRAME as f32);
-    drop(o);
     apply_effects(world);
 }
 
@@ -740,8 +742,8 @@ fn effect(world: &mut World, f: Fx, scale: f32) {
 /// world models within it are damaged the same (no line test).
 fn explode(world: &mut World, at: Vec3, radius: f32, damage: f32, attacker: Who, scale: f32) {
     let centre = to_engine(at, scale);
-    let mut st: SystemState<(SpatialQuery, Query<(Entity, &Transform, &MovementState, &Health), With<Intent>>)> =
-        SystemState::new(world);
+    type Bodies<'w, 's> = Query<'w, 's, (Entity, &'static Transform, &'static MovementState, &'static Health), With<Intent>>;
+    let mut st: SystemState<(SpatialQuery, Bodies)> = SystemState::new(world);
     let Ok((spatial, chars)) = st.get(world) else { return };
     let excluded: Vec<Entity> = chars.iter().map(|(e, ..)| e).collect();
     let filter = SpatialQueryFilter::from_excluded_entities(excluded).with_mask(crate::core::SOLID_LAYERS);

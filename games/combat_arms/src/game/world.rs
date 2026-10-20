@@ -352,8 +352,9 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
     // World models that move, hide or break: a node each (the map's first
     // entities), drawn and collided there.
     let nodes = world_model_nodes(world, &mut map, scale);
-    let mut worlds: Vec<(&RenderWorld, MapAlpha, bool, Option<(usize, Vec3)>)> =
-        vec![(&world.render, MapAlpha::Opaque, false, None)];
+    // Each render world drawn: its look, whether it's the sky, its node.
+    type Drawn<'a> = (&'a RenderWorld, MapAlpha, bool, Option<(usize, Vec3)>);
+    let mut worlds: Vec<Drawn> = vec![(&world.render, MapAlpha::Opaque, false, None)];
     worlds.extend(world.render.models.iter().filter_map(|(n, w)| {
         if sky.and_then(Object::name) == Some(n.as_str()) {
             return Some((w, MapAlpha::Opaque, true, None));

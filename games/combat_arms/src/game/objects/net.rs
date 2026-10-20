@@ -58,7 +58,7 @@ fn part(app: &mut App) {
 }
 
 pub(super) fn flags_of(o: &super::runtime::Object) -> u8 {
-    (o.visible as u8) * VISIBLE | (o.solid as u8) * SOLID | (o.rayhit as u8) * RAYHIT | (o.removed as u8) * REMOVED
+    ((o.visible as u8) * VISIBLE) | ((o.solid as u8) * SOLID) | ((o.rayhit as u8) * RAYHIT) | ((o.removed as u8) * REMOVED)
 }
 
 /// The server's objects that differ from the start.
@@ -98,6 +98,7 @@ fn read(world: &mut World) {
     if net.map != map {
         return;
     }
+    {
     let mut o = world.resource_mut::<CaObjects>();
     if o.from.is_none() {
         return;
@@ -115,9 +116,9 @@ fn read(world: &mut World) {
             x.flags,
         ));
     }
-    for i in 0..n {
+    for (i, wanted) in want.into_iter().enumerate() {
         let Some(start) = o.start.get(i).copied() else { continue };
-        let (pose, flags) = want[i].unwrap_or(start);
+        let (pose, flags) = wanted.unwrap_or(start);
         let ob = &mut o.world.objects[i];
         if ob.pose != pose || flags_of(ob) != flags {
             ob.pose = pose;
@@ -128,6 +129,6 @@ fn read(world: &mut World) {
             ob.dirty = true;
         }
     }
-    drop(o);
+    }
     apply_effects(world);
 }
