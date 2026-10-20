@@ -215,12 +215,13 @@ pub struct PopupInput;
 fn popup_input(
     menu: Res<InGameMenu>,
     chat: Option<Res<crate::client::chat::ChatInput>>,
+    talk: Option<Res<crate::game::chat::CaChat>>,
     mut player: Query<&mut crate::core::Intent, With<crate::core::LocalPlayer>>,
     mut last: Local<Option<(bool, f32, f32)>>,
     mut held: Local<Option<(bool, f32, f32)>>,
 ) {
     let Ok(mut intent) = player.single_mut() else { return };
-    let open = menu.open || chat.is_some_and(|c| c.open.is_some());
+    let open = menu.open || chat.is_some_and(|c| c.open.is_some()) || talk.is_some_and(|c| c.is_open());
     if !open {
         *held = None;
         *last = Some((intent.crouch, intent.yaw, intent.pitch));
@@ -302,9 +303,12 @@ fn keys(
     keys: Res<ButtonInput<KeyCode>>,
     console: Option<Res<crate::client::console::ConsoleUi>>,
     chat: Option<Res<crate::client::chat::ChatInput>>,
+    talk: Option<Res<crate::game::chat::CaChat>>,
     mut menu: ResMut<InGameMenu>,
 ) {
-    let busy = console.is_some_and(|c| c.open) || chat.is_some_and(|c| c.open.is_some());
+    let busy = console.is_some_and(|c| c.open)
+        || chat.is_some_and(|c| c.open.is_some())
+        || talk.is_some_and(|c| c.is_open());
     if keys.just_pressed(KeyCode::Escape) && !busy {
         let open = !menu.open;
         menu.set_open(open);
