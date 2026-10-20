@@ -369,6 +369,20 @@ Notes:
   world's outer box. Open: the kill feed, score panel, crosshair images
   and other screens are still code-placed; HGOILRIG's spawns have no floor
   in the file (they land on the sea and sink: no swimming).
+- 2026-10-19: With the keys, model pieces draw in their render styles
+  (by the style file's name: an enemy's team mark is clear, no white
+  patch; glass and additive pieces blended), the rest of the HUD is the
+  install's layouts bound by name (kill feed, each mode's score panel
+  and timer, pickup prompt and action gauge, hit overlay and direction
+  indicator images, scoreboard with the result banner, the loading
+  screen while joining; the install's font list), and soldiers differ:
+  the Light and Heavy vests, faces and head pieces are body-part
+  choices of one model per sex, bots draw a look from a loadout pool,
+  the local player's from `ca_model`/`ca_face`/`ca_head`/`ca_camo`.
+  Open: the render-style files' format (no spec), per-language
+  textures (format not in ui_system.md), goggles and backpacks, the
+  crosshair item images and the dot sight's image, other players'
+  looks over the network (no character info sent yet).
 - 2026-10-19: Follow-up brief for Wave 3's open questions (56 questions
   from the characters, view model, game mode, bot, effects and UI
   modules' Known shortcuts) and Wave 4 briefs (18-22: game modes part 2,

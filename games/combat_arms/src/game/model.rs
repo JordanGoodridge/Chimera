@@ -34,9 +34,9 @@
 //!   key strings.
 //! - Only LOD 0 (Chimera's model levels of detail aren't used for rigged
 //!   models); vertex-animated pieces are drawn at their stored positions
-//!   (not animated); render styles and render priority are ignored (one
-//!   opaque, alpha-tested material per piece); only a piece's first
-//!   texture index is used.
+//!   (not animated); render priority is ignored, and the render style
+//!   is the caller's to apply (`render_style`, by `slot_and_style`;
+//!   props don't yet); only a piece's first texture index is used.
 //! - A missing or unreadable child, or one whose skeleton shape differs,
 //!   fails the whole model (models_ltb.md "Child models"; animation.md
 //!   open question 4 is left as models_ltb.md says).
@@ -103,6 +103,35 @@ pub fn load(path: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<Loaded
     let refs: Vec<Option<&Model>> = children.iter().map(Some).collect();
     let list = AnimList::build(&model, &refs);
     Ok(LoadedModel { path, model, list })
+}
+
+/// Model `path` alone, without its child models (its own animations
+/// only): a piece merged onto another model's skeleton, whose animations
+/// are the other's.
+pub fn load_own(path: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<LoadedModel, String> {
+    let path = normalize(path);
+    let bytes = file(&path).ok_or_else(|| format!("{path}: not found or locked (keyed archive)"))?;
+    let model = Model::parse(&bytes).map_err(|e| format!("{path}: {e}"))?;
+    let none: Vec<Option<&Model>> = model.children.iter().map(|_| None).collect();
+    let list = AnimList::build(&model, &none);
+    Ok(LoadedModel { path, model, list })
+}
+
+/// The LODs `convert` makes meshes of, in its order: LOD 0 of each piece
+/// with geometry.
+pub fn drawn_lods(model: &Model) -> Vec<&ltb::Lod> {
+    model
+        .pieces
+        .iter()
+        .filter_map(|p| p.lods.first())
+        .filter(|l| l.mesh.geometry().is_some())
+        .collect()
+}
+
+/// A drawn LOD's skin slot (its first texture index; -1 none) and its
+/// render-style index.
+pub fn slot_and_style(lod: &ltb::Lod) -> (i32, i32) {
+    (lod.used_textures().first().copied().unwrap_or(-1), lod.render_style)
 }
 
 fn mat(m: &ltb::Mat4) -> Mat4 {

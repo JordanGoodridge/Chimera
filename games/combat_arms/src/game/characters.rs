@@ -9,7 +9,9 @@
 //!   and sockets) and the model choice (1, 2): cosmetics, the face
 //!   redirect, skins by camouflage index, team marks, head pieces and
 //!   goggles by skeleton and figure type. A player's selection is
-//!   `CaLook` (the default when it has none).
+//!   `CaLook`: the local player's `CaOwnLook` (the console's `ca_model`,
+//!   `ca_face`, `ca_head`, `ca_camo`), a bot's drawn from the loadout
+//!   pool (`CharacterData::bot_look`), else the default.
 //! - `driver`: the animation driver (4-7, 9) on LithTech's millisecond
 //!   trackers: posture and movement from the weapon status, the fire
 //!   buttons and the movement flags; names from the class code, stance,
@@ -61,22 +63,27 @@
 //!   feet (the hull's height over the standing one), turned by the aim:
 //!   so spheres don't follow the walking legs or the weapon's aim pose,
 //!   and the female `Bip01 Neck` and right-hand socket places are ours.
-//! - With models: only the default male and female bodies load
-//!   (`models::LOADED`: each parses its sex's whole library; another
-//!   selection stays a capsule on the spec's skeleton); the pose is
-//!   computed per tick (not per rendered frame) and drawn as is; each
-//!   body wears its default face (the first face the default selection
-//!   draws it with: 0, the female twin's 4) and, as the default head
-//!   piece (`HBasic`) has no model, the head piece that face names in the
-//!   install's `HairIndex` (our reading: the spec doesn't say what
-//!   `HairIndex` does; the female's hair), so other faces and head pieces
-//!   aren't drawn; goggles, backpacks, cosmetics, the clan pieces and
-//!   infection overrides aren't loaded (nothing selects them); a face's
-//!   skins by camouflage index (its colour overrides not read); render
-//!   styles are ignored; the drawn body's feet sit at the standing hull's bottom; a
+//! - With models: the six stock bodies load (`models::LOADED`), one
+//!   character model per sex: the first body with its library, the
+//!   other bodies (the Light and Heavy vests), the faces of the loadout
+//!   pool and the head pieces they may wear merged onto its skeleton as
+//!   body-part choices (`models::BodyGroup`, `map::BodyNumber`), so the
+//!   Light and Heavy bodies pose on the Normal one's library; another
+//!   selection's body stays a capsule on the spec's skeleton, a face or
+//!   head piece outside the pool shows the body's default; the pose is
+//!   computed per tick (not per rendered frame) and drawn as is; with the
+//!   default head piece (`HBasic`, no model) a body wears the head piece
+//!   its face names in the install's `HairIndex` (our reading: the spec
+//!   doesn't say what `HairIndex` does; the female's hair); goggles,
+//!   backpacks, cosmetics, the clan pieces and infection overrides
+//!   aren't loaded (nothing selects them); a face's skins by camouflage
+//!   index (its colour overrides not read); render styles as
+//!   `render_style` reads them; the drawn body's feet sit at the standing hull's bottom; a
 //!   corpse (`CaBody`) isn't drawn and has no hit spheres (Open question
 //!   9); the stock bodies' skins other than the default male's are not in
-//!   our data. A weapon names its third-person model only with the V1 key (the
+//!   our data (the install's models file gives them). Bots' looks are
+//!   ours (the spec has no loadouts for them); other players on a server
+//!   wear the default (no character info is sent yet). A weapon names its third-person model only with the V1 key (the
 //!   install's `HHModel`, `data`); ours name none.
 //! - The driver: emotes (9) and the hit kick on remote characters (9:
 //!   display only) aren't there; `HHAniFrame` is absent from our data
@@ -124,7 +131,7 @@ use crate::{
         self, Damage, DamageKind, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, NetRole, RoundRestarts,
         SimClock, SimSet, Team,
     },
-    map::{BodyName, BodySkin, CharacterModels, Held, anim::Animator},
+    map::{BodyName, BodyNumber, BodySkin, CharacterModels, Held, anim::Animator},
     net::{NetAppExt, game::ServerTime, ordered::OrderedAppExt},
     weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, WeaponState},
 };
@@ -292,8 +299,11 @@ impl Plugin for CaCharactersPlugin {
                     .chain()
                     .after(SimSet::Weapons),
             )
+            .init_resource::<CaOwnLook>()
             .add_systems(FixedUpdate, dress.after(drive))
+            .add_systems(FixedUpdate, wear_looks.before(setup).run_if(core::authoritative))
             .add_systems(FixedUpdate, client_clock.before(drive).run_if(core::shows_others));
+        look_cvars(app);
     }
 }
 
@@ -317,6 +327,63 @@ fn unit() -> f32 {
 fn body_of(look: &Selection) -> (i32, usize, Option<Arc<Rig>>) {
     let (record, _) = records::data().effective(look);
     (record.id, record.skeleton, models::rig(&record.file))
+}
+
+/// The local player's own look (characters.md 1, "The selection": what
+/// its client sends; ours from the console, `ca_model`, `ca_face`,
+/// `ca_head`, `ca_camo`: the record ids and the camouflage index).
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CaOwnLook(pub Selection);
+
+impl Default for CaOwnLook {
+    fn default() -> Self {
+        Self(Selection::default())
+    }
+}
+
+/// The console's look settings (`CaOwnLook`).
+pub fn look_cvars(app: &mut App) {
+    use crate::console::resource_cvar;
+    resource_cvar::<CaOwnLook, i32>(app, "ca_model", "Your body record (0 Normal, 1 Light, 2 Heavy).", |l| &mut l.0.model);
+    resource_cvar::<CaOwnLook, i32>(app, "ca_face", "Your face (0-3 male, 4-7 female).", |l| &mut l.0.face);
+    resource_cvar::<CaOwnLook, i32>(app, "ca_head", "Your head piece (0: none).", |l| &mut l.0.head);
+    resource_cvar::<CaOwnLook, i32>(app, "ca_camo", "Your camouflage index (0-6).", |l| &mut l.0.camouflage);
+}
+
+/// A seed for a bot's look: its name's (stable across rounds), else its
+/// entity's.
+fn look_seed(name: Option<&Name>, e: Entity) -> u64 {
+    match name {
+        Some(n) => n.as_str().bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3)),
+        None => e.to_bits(),
+    }
+}
+
+/// Looks (the server's): a bot without one draws its own from the
+/// loadout pool (`CharacterData::bot_look`); the local player wears
+/// `CaOwnLook` (changed from the console at once); other players keep
+/// the default (no character info reaches the server yet).
+#[allow(clippy::type_complexity)]
+fn wear_looks(
+    loadout: Res<CaOwnLook>,
+    characters: Query<
+        (Entity, Option<&Selection>, Option<&Name>, Has<core::Bot>, Has<LocalPlayer>),
+        (With<Intent>, With<MovementState>),
+    >,
+    mut commands: Commands,
+) {
+    for (e, look, name, bot, local) in &characters {
+        let want = if local {
+            loadout.0
+        } else if bot && look.is_none() {
+            records::data().bot_look(look_seed(name, e))
+        } else {
+            continue;
+        };
+        if look != Some(&want) {
+            commands.entity(e).insert(want);
+        }
+    }
 }
 
 /// Characters get a selection (the default) and an animation state; a
@@ -716,27 +783,37 @@ fn bodies(
     }
 }
 
-/// Characters wear their body model when the map has it (`BodyName`),
-/// with their skin family for the local player (camouflage, a
-/// teammate's mark), and hold their weapon (`Held`).
+/// Characters wear their body model when the map has it (`BodyName`,
+/// with the body number for their body, face and head piece:
+/// `models::drawn`), with their skin family for the local player
+/// (camouflage, a teammate's mark), and hold their weapon (`Held`).
 #[allow(clippy::type_complexity)]
 fn dress(
     models: Option<Res<CharacterModels>>,
-    characters: Query<(Entity, &Selection, Option<&Team>, Option<&BodyName>, Option<&BodySkin>, Option<&Inventory>, Option<&Held>)>,
+    characters: Query<(
+        Entity,
+        &Selection,
+        Option<&Team>,
+        (Option<&BodyName>, Option<&BodyNumber>, Option<&BodySkin>),
+        Option<&Inventory>,
+        Option<&Held>,
+    )>,
     local: Query<Option<&Team>, With<LocalPlayer>>,
     weapons: Query<&Weapon>,
     mut commands: Commands,
 ) {
     let Some(models) = models else { return };
     let mine = local.iter().next().flatten().copied();
-    for (e, look, team, name, skin, inventory, held) in &characters {
-        let (record, _) = records::data().effective(look);
-        let want = models::body_name(record.id);
+    for (e, look, team, (name, number, skin), inventory, held) in &characters {
+        let Some((want, body)) = models::drawn(look) else { continue };
         if !models.0.iter().any(|m| m.name.as_deref() == Some(want.as_str())) {
             continue;
         }
         if name.is_none_or(|n| n.0 != want) {
             commands.entity(e).insert(BodyName(want));
+        }
+        if number.is_none_or(|n| n.0 != body) {
+            commands.entity(e).insert(BodyNumber(body));
         }
         let teammate = mine.is_some() && team.copied() == mine;
         let family = BodySkin(models::family(look.camouflage, teammate));

@@ -24,9 +24,9 @@
 //! and skill panels, and the active panel's weapon image (`img`, a dummy
 //! texture: no weapon-image lookup) and attachment slots; the set bonus
 //! value (`Set_Value`: no set bonuses). Which silhouette and fire-mode
-//! file stands for which state is our reading of their names. The other
-//! HUD panels (kill feed, score panel, crosshair, name tags) stay
-//! code's (`ui::hud`).
+//! file stands for which state is our reading of their names. The kill
+//! feed, score panel, pickup prompt and action gauge are `bound`'s; the
+//! crosshair and name tags stay code's (`ui::hud`).
 
 use bevy::math::IVec2;
 

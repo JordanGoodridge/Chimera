@@ -6,7 +6,16 @@
 //! take the place of ours (data/ui/); without them ours stay.
 //!
 //! - Layouts: the main HUD (`HUD_FILE`, whose panels `ui::hud::install`
-//!   binds by name) and the in-game menu (`MENU_FILE`, `ui::menu`).
+//!   and `ui::hud::bound` bind by name), the mode score panels
+//!   (`INDICATOR_FILE`), the scoreboard's frame and lists
+//!   (`RESULT_FILE`, `TEAM_LIST_FILE`, `NO_TEAM_LIST_FILE`,
+//!   `ui::scoreboard`), the loading screen (`LOADING_FILE`,
+//!   `ui::loading`) and the in-game menu (`MENU_FILE`, `ui::menu`).
+//! - The HUD layout attributes (`LAYOUT_ATTRIBUTES`' `[HUDLayout0]`,
+//!   `hud_layout`): the textures the HUD code draws by name
+//!   (`HUD_LAYOUT_ART`: the hit overlay and direction indicator, the kill
+//!   feed's special icons and badges, the result banners, the action
+//!   icons).
 //! - Strings (R1): `language_pack/language_<code>.txt`, the code from
 //!   `CHIMERA_CA_LANGUAGE` (ENG, POR, RUS, TUR, DEU, ITA, POL, ARB, SCN),
 //!   else the system's language (`LC_ALL`, `LC_MESSAGES`, `LANG`: its
@@ -14,18 +23,22 @@
 //!   value written `#key#fallback` takes its fallback (R1: the per-user
 //!   override file isn't there). Our strings fill the ids the game's
 //!   table lacks (ours: the pickup prompt).
-//! - Fonts (T1): a layout's font missing from our list is added from the
-//!   face its name's prefix names (the number its height).
+//! - Fonts (T1): the install's font list (`FONT_LIST`: `SysFont#`'s
+//!   name, file, height and width), each in our face of the same file
+//!   (`apply_font_list`); a layout's font still missing is added from
+//!   the face its name's prefix names (the number its height).
 //! - Art: every texture the two layouts name (buttons' four states), the
 //!   HUD's stance silhouettes and fire-mode icons, and the kill feed's
 //!   weapon icons and badges (`EXTRA_ART`, `kill_icon`), decoded to RGBA
 //!   by their names (`texture_key`: lower case, `/`, `.dtx` added).
 //!
 //! Known shortcuts: the per-user override file and the pack's
-//! per-language texture table (`localresource_<code>.txt`) aren't read;
-//! the language comes from the environment, not an options screen; the
-//! install's font list (`attributes/fontlist.txt`) isn't read (ours names
-//! the same faces; heights from the names).
+//! per-language texture table (`localresource_<code>.txt`: R1 says the
+//! pack maps texture names, not how) aren't read; the language comes
+//! from the environment, not an options screen; a font's average glyph
+//! width (when its `Width` is 0) is our face's estimate; the map
+//! pictures are decoded when the loading screen opens, not here (they
+//! are large).
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -38,6 +51,23 @@ use crate::mount::Mount;
 pub const HUD_FILE: &str = "xml/hud_main.xml";
 /// The in-game menu's layout (Esc, H).
 pub const MENU_FILE: &str = "xml/popup_exit_ingame.xml";
+/// The mode score panels' layout (H: one `indicator` control, a child per
+/// mode).
+pub const INDICATOR_FILE: &str = "xml/hud_indicator.xml";
+/// The scoreboard's layouts (H): the common frame (`Result_Normal`), the
+/// team list (`Team_UserList`) and the no-team list.
+pub const RESULT_FILE: &str = "xml/hud_result.xml";
+pub const TEAM_LIST_FILE: &str = "xml/hud_result_team.xml";
+pub const NO_TEAM_LIST_FILE: &str = "xml/hud_result_noteam.xml";
+/// The loading screen's layout (H).
+pub const LOADING_FILE: &str = "xml/hud_maploading.xml";
+/// The attribute file with the HUD layout attributes (`[HUDLayout0]`:
+/// the damage overlays' and kill feed's textures, the result banners)
+/// and the font list (T1).
+pub const LAYOUT_ATTRIBUTES: &str = "attributes/layout.txt";
+pub const FONT_LIST: &str = "attributes/fontlist.txt";
+/// The HUD layout attributes' section.
+pub const HUD_LAYOUT: &str = "HUDLayout0";
 
 /// Textures the HUD code picks by state (stance silhouettes, fire-mode
 /// icons) and the kill feed's badges.
@@ -85,6 +115,16 @@ pub struct Art {
 pub struct InstallUi {
     pub hud: Option<Layout>,
     pub menu: Option<Layout>,
+    pub indicator: Option<Layout>,
+    pub result: Option<Layout>,
+    pub team_list: Option<Layout>,
+    pub no_team_list: Option<Layout>,
+    pub loading: Option<Layout>,
+    /// The HUD layout attributes' strings (`[HUDLayout0]`), by key in
+    /// lower case: texture names.
+    pub hud_layout: HashMap<String, String>,
+    /// The install's font list (T1), in its order.
+    pub fonts: Vec<InstallFont>,
     pub strings: Option<Strings>,
     pub language: String,
     /// By `texture_key`.
@@ -96,12 +136,127 @@ impl std::fmt::Debug for InstallUi {
         f.debug_struct("InstallUi")
             .field("hud", &self.hud.is_some())
             .field("menu", &self.menu.is_some())
+            .field("indicator", &self.indicator.is_some())
+            .field("scoreboard", &self.team_list.is_some())
+            .field("loading", &self.loading.is_some())
+            .field("fonts", &self.fonts.len())
             .field("strings", &self.strings.as_ref().map(|s| s.values.len()))
             .field("language", &self.language)
             .field("art", &self.art.len())
             .finish()
     }
 }
+
+/// One font of the install's font list (T1: `SysFont#`'s `Name`,
+/// `FileName`, `Height` and `Width`, 0 natural).
+#[derive(Clone, Debug, PartialEq)]
+pub struct InstallFont {
+    pub name: String,
+    pub file: String,
+    pub height: i32,
+    pub width: i32,
+}
+
+/// The font list (T1): `SysFont0`, `SysFont1`, ... up to the first
+/// missing number.
+pub fn font_list(mount: &Mount) -> Vec<InstallFont> {
+    let Some(doc) = mount
+        .read(FONT_LIST)
+        .ok()
+        .and_then(|b| lithtech_formats::attributes::Document::parse(&b).ok())
+    else {
+        return Vec::new();
+    };
+    let text = |s: &lithtech_formats::attributes::Section, k: &str| {
+        s.string(k).map(|v| String::from_utf8_lossy(v).trim().to_string()).unwrap_or_default()
+    };
+    doc.records("SysFont")
+        .into_iter()
+        .map(|s| InstallFont {
+            name: text(s, "Name"),
+            file: text(s, "FileName"),
+            height: s.int("Height", 0),
+            width: s.int("Width", 0),
+        })
+        .filter(|f| !f.name.is_empty() && f.height > 0)
+        .collect()
+}
+
+/// The install's fonts over `fonts` (T1: a layout's Font matches a name
+/// exactly): each in the face whose file is its file (any case and
+/// slashes; else the face its name's prefix names), its height, its
+/// width when given (else the face's average for the height).
+pub fn apply_font_list(list: &[InstallFont], fonts: &mut FontList) {
+    let norm = |p: &str| p.trim().replace('\\', "/").to_lowercase();
+    for f in list {
+        let prefix = f.name.rsplit_once(' ').map_or(f.name.as_str(), |(p, _)| p);
+        let face = fonts
+            .faces
+            .iter()
+            .find(|x| x.file.as_deref().is_some_and(|file| norm(file) == norm(&f.file) && x.prefix.eq_ignore_ascii_case(prefix)))
+            .or_else(|| fonts.faces.iter().find(|x| x.file.as_deref().is_some_and(|file| norm(file) == norm(&f.file))))
+            .or_else(|| fonts.faces.iter().find(|x| x.prefix.eq_ignore_ascii_case(prefix)))
+            .cloned();
+        let Some(face) = face else { continue };
+        let average = if f.width > 0 { f.width } else { (f.height as f32 * face.average).round().max(1.0) as i32 };
+        fonts.add(Font {
+            name: f.name.clone(),
+            height: f.height,
+            average,
+            face: face.role.clone(),
+        });
+    }
+}
+
+/// The HUD layout attributes' strings (`HUD_LAYOUT` of
+/// `LAYOUT_ATTRIBUTES`), keys in lower case.
+pub fn hud_layout(mount: &Mount) -> HashMap<String, String> {
+    let Some(doc) = mount
+        .read(LAYOUT_ATTRIBUTES)
+        .ok()
+        .and_then(|b| lithtech_formats::attributes::Document::parse(&b).ok())
+    else {
+        return HashMap::new();
+    };
+    let Some(s) = doc.section(HUD_LAYOUT) else { return HashMap::new() };
+    s.iter()
+        .filter_map(|(k, v)| match v {
+            lithtech_formats::attributes::Value::Str(b) => {
+                Some((k.to_lowercase(), String::from_utf8_lossy(b).trim().to_string()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The HUD layout textures the HUD code draws (`[HUDLayout0]` keys):
+/// the damage overlays, the kill feed's special icons and badges, the
+/// round-result banners, the stance silhouettes and the action icons.
+pub const HUD_LAYOUT_ART: &[&str] = &[
+    "damagetex",
+    "damageindicatortex",
+    "killsuicideimg",
+    "killdrumdeathimg",
+    "killburndeathimg",
+    "killpoisondeathimg",
+    "killbleedingdeathimg",
+    "killerisnpcimg",
+    "killrevengeimg",
+    "killheadshotimg",
+    "killnutshotimg",
+    "killenemyflagimg",
+    "killteamflagimg",
+    "killenemygoldimg",
+    "killicecrushimg",
+    "killlogviprankimg1",
+    "scoreboardwintex",
+    "scoreboardlosetex",
+    "scoreboarddrawtex",
+    "scoreboardffawintex",
+    "scoreboardffalosetex",
+    "guage_bombplant_tex",
+    "guage_bombdefuse_tex",
+];
 
 /// The two-letter language codes the pack's codes stand for.
 const LANGUAGES: &[(&str, &str)] = &[
@@ -232,13 +387,23 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
     }
     let language = language();
     let strings = strings(mount, &language);
-    let mut names: Vec<String> = hud.iter().chain(menu.iter()).flat_map(layout_textures).collect();
+    let (indicator, result) = (layout(mount, INDICATOR_FILE), layout(mount, RESULT_FILE));
+    let (team_list, no_team_list) = (layout(mount, TEAM_LIST_FILE), layout(mount, NO_TEAM_LIST_FILE));
+    let loading = layout(mount, LOADING_FILE);
+    let hud_layout = hud_layout(mount);
+    let fonts = font_list(mount);
+    let mut names: Vec<String> = [&hud, &menu, &indicator, &result, &team_list, &no_team_list, &loading]
+        .into_iter()
+        .flatten()
+        .flat_map(layout_textures)
+        .collect();
     names.extend(EXTRA_ART.iter().map(|s| s.to_string()));
+    names.extend(HUD_LAYOUT_ART.iter().filter_map(|k| hud_layout.get(*k).cloned()));
     names.extend(extra_art.iter().cloned());
     let mut art = HashMap::new();
     for n in names {
         let key = texture_key(&n);
-        if art.contains_key(&key) {
+        if art.contains_key(&key) || key.contains("/mapimage/") {
             continue;
         }
         if let Some(a) = decode(mount, &key) {
@@ -246,19 +411,38 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         }
     }
     info!(
-        "combat_arms ui: the install's layouts (HUD {}, menu {}), {} strings ({language}), {} textures",
+        "combat_arms ui: the install's layouts (HUD {}, menu {}, score panels {}, scoreboard {}, loading {}), {} strings ({language}), {} fonts, {} textures",
         hud.is_some(),
         menu.is_some(),
+        indicator.is_some(),
+        team_list.is_some(),
+        loading.is_some(),
         strings.as_ref().map_or(0, |s| s.values.len()),
+        fonts.len(),
         art.len()
     );
     Some(InstallUi {
         hud,
         menu,
+        indicator,
+        result,
+        team_list,
+        no_team_list,
+        loading,
+        hud_layout,
+        fonts,
         strings,
         language,
         art,
     })
+}
+
+impl InstallUi {
+    /// A HUD layout attribute's texture (`[HUDLayout0]` key, any case),
+    /// as a texture key.
+    pub fn hud_texture(&self, key: &str) -> Option<String> {
+        self.hud_layout.get(&key.to_lowercase()).map(|t| texture_key(t))
+    }
 }
 
 /// The install's UI data for this process: None without an install, with

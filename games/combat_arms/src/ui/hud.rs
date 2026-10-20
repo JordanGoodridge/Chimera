@@ -11,7 +11,10 @@
 //! window, so the scenario tests check it headless (tests/ui/hud.rs);
 //! `CaHudPlugin` adds it and draws `CaHud` with the shell's UI nodes
 //! (with the install's UI data, `CaUi::installed`, the health and weapon
-//! panels are the game's HUD layout's, bound by name: `install`),
+//! panels are the game's HUD layout's, bound by name: `install`; the
+//! kill feed, the mode's score panel, the pickup prompt and the action
+//! gauge too: `bound`, `BoundHud`; the hit overlay and the direction
+//! indicator are the HUD layout attributes' images),
 //! telling the shell's fallback HUD (`client::hud::GameDraws`) to leave
 //! out its crosshair, health and ammo, hit marker and kill feed.
 //!
@@ -77,13 +80,21 @@
 //!   heartbeat's sound (counted in `CaHud::heartbeats`, no sound file).
 //! - The score panel and round timer (D6, D7) are `score`'s, from the
 //!   match (`game::rules::CaMatchView`); see its own shortcuts.
-//! - Placeholders for the game's textures: the silhouette (a grey box
-//!   standing or crouched), the fire-mode icon (a word), kill-feed weapon
-//!   icons and badges (words), the hit overlay (a red frame), the
-//!   direction indicator (a red bar along the square's top edge), the
-//!   dot-sight image (a red outline), the panels' backgrounds (dark
-//!   boxes).
+//! - Without the install (no V1 key), placeholders for the game's
+//!   textures: the silhouette (a grey box standing or crouched), the
+//!   fire-mode icon (a word), kill-feed weapon icons and badges (words),
+//!   the hit overlay (a red frame), the direction indicator (a red bar
+//!   along the square's top edge), the dot-sight image (a red outline),
+//!   the panels' backgrounds (dark boxes). With it, the direction
+//!   indicator is drawn as a rotated rectangle of its sides' lengths (no
+//!   shear on non-4:3 screens) with the rows past the texture's last
+//!   left empty (C's v overrun, no clamp addressing); the crosshair stays
+//!   lines (A5: the layout's crosshair images, `CrossHairLeftTex` and
+//!   the like, are what A12 says isn't drawn); the dot-sight image stays
+//!   a placeholder (no sight in our data names one); name tags stay ours
+//!   (the spec gives no layout for them).
 
+pub mod bound;
 pub mod install;
 pub mod model;
 pub mod score;
@@ -880,8 +891,10 @@ impl Plugin for CaHudPlugin {
         // game's HUD panels bound by name when its HUD layout reads.
         let ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_else(CaUi::installed);
         let panels = ui.install.as_ref().and_then(|i| i.hud.as_ref()).and_then(install::HudPanels::new);
+        let bound = BoundHud::of(&ui);
         app.insert_resource(ui)
             .insert_resource(InstallHud(panels))
+            .insert_resource(bound)
             .add_plugins(CaHudStatePlugin)
             .insert_resource(GameDraws {
                 crosshair: true,
@@ -899,6 +912,7 @@ impl Plugin for CaHudPlugin {
                     draw_status,
                     draw_weapon,
                     draw_install_panels,
+                    draw_action,
                     draw_feed,
                     draw_tags,
                     score::draw_score,
@@ -936,6 +950,73 @@ struct FeedRoot;
 struct TagRoot;
 #[derive(Component)]
 struct InstallRoot;
+#[derive(Component)]
+struct ActionRoot;
+
+/// The rest of the game's HUD panels bound by name (`bound`), when the
+/// install's layouts have them: the kill feed, the score panel, the
+/// pickup prompt and action gauge; and the HUD layout attributes'
+/// textures the code draws (the damage overlay and direction indicator,
+/// the kill feed's icons and badges, the action icons).
+#[derive(Resource, Clone, Debug, Default)]
+pub struct BoundHud {
+    pub feed: Option<bound::FeedPanel>,
+    pub score: Option<bound::ScorePanel>,
+    pub action: Option<bound::ActionPanel>,
+    /// `[HUDLayout0]` texture keys by attribute key (lower case).
+    pub textures: HashMap<String, String>,
+}
+
+impl BoundHud {
+    /// The bound panels of `ui`'s install data (none without it).
+    pub fn of(ui: &CaUi) -> Self {
+        let Some(inst) = ui.install.as_ref() else { return Self::default() };
+        let hud = inst.hud.as_ref();
+        Self {
+            feed: hud.and_then(bound::FeedPanel::new),
+            score: inst.indicator.as_ref().and_then(bound::ScorePanel::new),
+            action: hud.and_then(bound::ActionPanel::new),
+            textures: crate::ui::install::HUD_LAYOUT_ART
+                .iter()
+                .filter_map(|k| Some((k.to_string(), inst.hud_texture(k)?)))
+                .collect(),
+        }
+    }
+
+    /// A `[HUDLayout0]` texture by key.
+    pub fn texture(&self, key: &str) -> Option<&str> {
+        self.textures.get(key).map(String::as_str)
+    }
+
+    /// A kill line's weapon slot texture (D5's replacements).
+    pub fn icon(&self, icon: &KillIcon) -> Option<String> {
+        let key = match icon {
+            KillIcon::Weapon(Some(id)) => return Some(crate::ui::install::kill_icon(id)),
+            KillIcon::Weapon(None) => return None,
+            KillIcon::Suicide => "killsuicideimg",
+            KillIcon::Barrel => "killdrumdeathimg",
+            KillIcon::Fire => "killburndeathimg",
+            KillIcon::Poison => "killpoisondeathimg",
+            KillIcon::Bleeding => "killbleedingdeathimg",
+            KillIcon::Npc => "killerisnpcimg",
+        };
+        self.texture(key).map(str::to_string)
+    }
+
+    /// A badge's texture (D5's order).
+    pub fn badge(&self, b: Badge) -> Option<String> {
+        let key = match b {
+            Badge::Revenge => "killrevengeimg",
+            Badge::Headshot => "killheadshotimg",
+            Badge::Groin => "killnutshotimg",
+            Badge::Flag => "killenemyflagimg",
+            Badge::Gold => "killenemygoldimg",
+            Badge::IceCrush => "killicecrushimg",
+            Badge::Vip | Badge::VipRank => "killlogviprankimg1",
+        };
+        self.texture(key).map(str::to_string).or_else(|| badge_art(b))
+    }
+}
 
 /// The game's HUD panels bound by name (`install`), when the install's
 /// HUD layout reads: they draw the health and weapon panels in place of
@@ -962,6 +1043,7 @@ pub(crate) fn layer(z: i32) -> impl Bundle {
 pub const HUD_Z: i32 = 28;
 
 fn spawn(mut commands: Commands) {
+    commands.spawn((ActionRoot, layer(HUD_Z)));
     commands.spawn((CrosshairRoot, layer(HUD_Z)));
     commands.spawn((DamageRoot, layer(HUD_Z - 1)));
     commands.spawn((StatusRoot, layer(HUD_Z)));
@@ -992,6 +1074,39 @@ fn draw_install_panels(
     let (fonts, faces) = (params.1.as_deref(), params.2.as_deref());
     commands.entity(*root).with_children(|c| {
         draw::spawn_draws(c, &draws, &ui.stand_ins, art.as_deref(), fonts, faces);
+    });
+}
+
+/// The pickup prompt and the action gauge in the game's `Action` panel
+/// (`BoundHud::action`), when the install has it.
+#[allow(clippy::too_many_arguments)]
+fn draw_action(
+    hud: Res<CaHud>,
+    score: Res<score::CaScoreHud>,
+    params: PenParams,
+    art: Option<Res<draw::CaArt>>,
+    bound: Res<BoundHud>,
+    root: Single<Entity, With<ActionRoot>>,
+    mut last: Local<Option<(Option<String>, Option<(String, f32)>, Screen, bool)>>,
+    mut commands: Commands,
+) {
+    let Some(panel) = &bound.action else { return };
+    let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
+    if !rebuild(&mut last, (hud.pickup.clone(), score.gauge.clone(), hud.screen, loaded), *root, &mut commands) {
+        return;
+    }
+    let gauge = score.gauge.as_ref().map(|(what, f)| {
+        let icon = match what.as_str() {
+            "Defusing" => bound.texture("guage_bombdefuse_tex"),
+            _ => bound.texture("guage_bombplant_tex"),
+        };
+        (what.as_str(), *f, icon)
+    });
+    let Some(layout) = panel.build(hud.pickup.as_deref(), gauge, scale(hud.screen)) else { return };
+    let ui = &params.0;
+    let draws = layout.draw(&ui.ctx());
+    commands.entity(*root).with_children(|c| {
+        draw::spawn_draws(c, &draws, &ui.stand_ins, art.as_deref(), params.1.as_deref(), params.2.as_deref());
     });
 }
 
@@ -1166,15 +1281,32 @@ fn draw_crosshair(
 
 fn draw_damage(
     hud: Res<CaHud>,
+    art: Option<Res<draw::CaArt>>,
+    bound: Res<BoundHud>,
     root: Single<Entity, With<DamageRoot>>,
-    mut last: Local<Option<Option<DamageView>>>,
+    mut last: Local<Option<(Option<DamageView>, bool)>>,
     mut commands: Commands,
 ) {
-    if !rebuild(&mut last, hud.damage.clone(), *root, &mut commands) {
+    let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
+    if !rebuild(&mut last, (hud.damage.clone(), loaded), *root, &mut commands) {
         return;
     }
     let Some(d) = &hud.damage else { return };
     let a = d.alpha as f32 / 255.0;
+    // The HUD layout attributes' images (`damagetex`, the hit overlay;
+    // `damageindicatortex`, the direction indicator), when the install
+    // has them.
+    let image = |key: &str| art.as_deref().and_then(|art| art.get(bound.texture(key)?).cloned());
+    if let (Some((hit, hit_size)), Some((arrow, arrow_size))) = (image("damagetex"), image("damageindicatortex")) {
+        let tint = [255, 255, 255, d.alpha];
+        commands.entity(*root).with_children(|p| {
+            let o = d.overlay;
+            let rect = Rect::new(0.0, 0.0, hit_size.x as f32, hit_size.y as f32);
+            draw::image_part(p, &hit, [o.min.x, o.min.y, o.max.x, o.max.y], rect, tint);
+            spawn_indicator(p, d.corners, &arrow, arrow_size, tint);
+        });
+        return;
+    }
     commands.entity(*root).with_children(|p| {
         // PLACEHOLDER for the red edge vignette: a red frame over the
         // overlay's rect (1024 ref tall: its bottom is off the screen).
@@ -1201,6 +1333,64 @@ fn draw_damage(
         p.spawn(line(q0, q1, 6.0 * hud.screen.yr(), Color::srgba(0.85, 0.05, 0.05, 0.9 * a)));
     });
 }
+
+/// The direction indicator's image on its square (C): P0, P1 and P3
+/// carry the texture's top-left, top-right and bottom-left corners (a
+/// mirrored image when they turn the other way), its texels u in [0,
+/// 338/512], v in [0, 338/256]: the rows past the texture's last left
+/// empty (no clamp addressing); a square stretched by x_r and y_r is
+/// drawn as the rectangle of its sides' lengths (no shear).
+fn spawn_indicator(p: &mut ChildSpawnerCommands, corners: [Vec2; 4], image: &Handle<Image>, size: IVec2, tint: Rgba) {
+    let [p0, p1, _, p3] = corners;
+    let (u, v) = (p1 - p0, p3 - p0);
+    let (w, h) = (u.length(), v.length());
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    let mirrored = u.x * v.y - u.y * v.x < 0.0;
+    // The node's left-to-right axis: the image's when not mirrored, else
+    // reversed (its top-left drawn at the node's top-right).
+    let axis = if mirrored { -u } else { u };
+    let centre = (p0 + p1 + corners[2] + p3) / 4.0;
+    let (uw, vh) = (UV_SIDE / size.x.max(1) as f32, UV_SIDE / size.y.max(1) as f32);
+    // The share of the square's height the texture's rows cover.
+    let rows = (1.0 / vh).min(1.0);
+    let rect = Rect::new(0.0, 0.0, (uw * size.x as f32).min(size.x as f32), size.y as f32);
+    p.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(centre.x - w / 2.0),
+            top: px(centre.y - h / 2.0),
+            width: px(w),
+            height: px(h),
+            ..default()
+        },
+        UiTransform::from_rotation(Rot2::radians(axis.y.atan2(axis.x))),
+    ))
+    .with_children(|c| {
+        c.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(0.0),
+                top: px(0.0),
+                width: percent(100.0),
+                height: percent(100.0 * rows),
+                ..default()
+            },
+            ImageNode {
+                image: image.clone(),
+                color: colour(tint),
+                rect: Some(rect),
+                flip_x: mirrored,
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ));
+    });
+}
+
+/// The direction indicator's square side in texels (C: S = 338).
+const UV_SIDE: f32 = 338.0;
 
 /// The HUD texts' fonts and looks (hud_crosshair.md D2, D4, D5).
 mod looks {
@@ -1230,6 +1420,7 @@ fn draw_status(
     hud: Res<CaHud>,
     params: PenParams,
     panels: Res<InstallHud>,
+    bound: Res<BoundHud>,
     root: Single<Entity, With<StatusRoot>>,
     mut last: Local<Option<(Option<StatusView>, Option<String>, Screen)>>,
     mut commands: Commands,
@@ -1241,7 +1432,7 @@ fn draw_status(
     let pen = pen(&params, screen);
     let resolve = |id: &str| pen.ui.strings.resolve(id);
     commands.entity(*root).with_children(|p| {
-        if let Some(prompt) = &hud.pickup {
+        if let Some(prompt) = hud.pickup.as_ref().filter(|_| bound.action.is_none()) {
             // Ours: the spec gives the prompt no look or place.
             hud_text(
                 p,
@@ -1355,12 +1546,27 @@ fn draw_feed(
     hud: Res<CaHud>,
     params: PenParams,
     art: Option<Res<draw::CaArt>>,
+    bound: Res<BoundHud>,
     root: Single<Entity, With<FeedRoot>>,
     mut last: Local<Option<(Vec<FeedLineView>, Screen, bool)>>,
     mut commands: Commands,
 ) {
     let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
     if !rebuild(&mut last, (hud.feed.clone(), hud.screen, loaded), *root, &mut commands) {
+        return;
+    }
+    // The game's own kill feed panel, bound by name (`bound`).
+    if let Some(panel) = &bound.feed {
+        let feed_art = bound::FeedArt {
+            icon: &|i| bound.icon(i),
+            badge: &|b| bound.badge(b),
+        };
+        let layout = panel.build(&hud.feed, &feed_art, scale(hud.screen));
+        let ui = &params.0;
+        let draws = layout.draw(&ui.ctx());
+        commands.entity(*root).with_children(|c| {
+            draw::spawn_draws(c, &draws, &ui.stand_ins, art.as_deref(), params.1.as_deref(), params.2.as_deref());
+        });
         return;
     }
     let pen = pen(&params, hud.screen);

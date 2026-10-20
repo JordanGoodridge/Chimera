@@ -32,6 +32,10 @@ pub struct ModelRecord {
     pub upper_skins: Vec<String>,
     #[serde(default)]
     pub lower_skins: Vec<String>,
+    /// `RenderStyle#`: render-style files by a piece's render-style
+    /// index (none given: `CharacterData::body_render_styles`).
+    #[serde(default)]
+    pub render_styles: Vec<String>,
 }
 
 /// A head piece (`Hair#`): its file per skeleton index and its skins by
@@ -44,6 +48,9 @@ pub struct HeadRecord {
     pub files: Vec<String>,
     #[serde(default)]
     pub skins: Vec<String>,
+    /// `RenderStyle#` (none: the engine's default style).
+    #[serde(default)]
+    pub render_styles: Vec<String>,
 }
 
 /// A face (`Face#`): its file, its skins and the head piece it comes
@@ -59,6 +66,9 @@ pub struct FaceRecord {
     pub skins: Vec<String>,
     #[serde(default)]
     pub hair: Option<i32>,
+    /// `RenderStyle#` (none: the engine's default style).
+    #[serde(default)]
+    pub render_styles: Vec<String>,
 }
 
 /// Goggles or a mask (`Goggle#`): its socket and file per figure type.
@@ -76,6 +86,10 @@ pub struct GoggleRecord {
 pub struct Marks {
     pub enemy: String,
     pub teammate: String,
+    /// `RenderStyle#`: mark 0's (the enemy's) and mark 1's styles, drawn
+    /// over the mark piece's own (none: the piece's alone).
+    #[serde(default)]
+    pub render_styles: Vec<String>,
 }
 
 /// A weapon's third-person data (`AniType`, `LowerAniType`, `HHSkin#`,
@@ -91,6 +105,22 @@ pub struct WeaponLook {
     /// `HHAniFrame_0..9`, ms (0 or missing: none).
     #[serde(default)]
     pub frames: Vec<u32>,
+    /// `HHRenderStyle#` (none: the engine's default style).
+    #[serde(default)]
+    pub render_styles: Vec<String>,
+}
+
+/// Ours: the looks bots draw from (`CharacterData::bot_look`). The spec
+/// gives each player's look from their own loadout (characters.md 1);
+/// bots in the player-versus-player modes have none, so theirs are drawn
+/// from these lists, one entry each.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Loadouts {
+    pub models: Vec<i32>,
+    pub faces: Vec<i32>,
+    pub heads: Vec<i32>,
+    pub camouflages: Vec<i32>,
 }
 
 /// A skeleton node the game uses, and where the spec measured it at `LST`
@@ -184,6 +214,10 @@ pub struct CharacterData {
     pub face: Vec<FaceRecord>,
     pub goggle: Vec<GoggleRecord>,
     pub marks: Marks,
+    /// The stock bodies' render styles (characters.md 2), for a record
+    /// that names none.
+    pub body_render_styles: Vec<String>,
+    pub loadouts: Loadouts,
     pub weapons: HashMap<String, WeaponLook>,
     /// Seconds a body stays after its owner respawned, by mode key.
     pub body_removal: HashMap<String, f32>,
@@ -198,18 +232,59 @@ pub fn data() -> &'static CharacterData {
             toml::from_str(include_str!("../../../data/characters.toml")).expect("data/characters.toml");
         merge_install_weapons(&mut data);
         merge_install_pieces(&mut data);
+        for m in &mut data.model {
+            if m.render_styles.is_empty() {
+                m.render_styles = data.body_render_styles.clone();
+            }
+        }
         data
     })
 }
 
-/// The install's models file over our head pieces and faces: each
-/// `Hair#` and `Face#` record by its index, its files, skins and (a face)
-/// `HairIndex` (characters.md section 2); ours not in it stay.
+/// The install's marks file over our team marks (their textures and
+/// render styles) and its models file over our bodies, head pieces and
+/// faces:
+/// each `Model#` of ours by its id (file, skins, render styles, face
+/// redirects), each `Hair#` and `Face#` record by its index, its files,
+/// skins, render styles and (a face) `HairIndex` (characters.md sections
+/// 1 and 2); ours not in it stay.
 fn merge_install_pieces(data: &mut CharacterData) {
     use super::super::data as ca;
+    if let Some(m) = ca::install_attributes().and_then(|a| a.marks.as_ref()) {
+        if let [enemy, teammate, ..] = &m.textures[..] {
+            data.marks.enemy = enemy.clone();
+            data.marks.teammate = teammate.clone();
+        }
+        data.marks.render_styles = m.render_styles.clone();
+    }
     let Some(models) = ca::install_attributes().and_then(|a| a.models.as_ref()) else {
         return;
     };
+    // Our body records (`Model#` by id): the install's file, skins,
+    // render styles and face redirects where it gives them.
+    for m in &mut data.model {
+        let Some(r) = usize::try_from(m.id).ok().and_then(|i| models.bodies.get(i)) else { continue };
+        if !r.file.is_empty() {
+            m.file = r.file.clone();
+        }
+        // As written (texture lookups ignore case and slashes); entries
+        // that aren't textures are empty slots.
+        let dtx = |l: &[String]| -> Vec<String> {
+            l.iter()
+                .map(|s| if s.to_lowercase().ends_with(".dtx") { s.clone() } else { String::new() })
+                .collect()
+        };
+        if !r.upper_skins.is_empty() {
+            m.upper_skins = dtx(&r.upper_skins);
+            m.lower_skins = dtx(&r.lower_skins);
+        }
+        if !r.render_styles.is_empty() {
+            m.render_styles = r.render_styles.clone();
+        }
+        if !r.faces.is_empty() {
+            m.faces = r.faces.clone();
+        }
+    }
     for (i, r) in models.hair_pieces.iter().enumerate() {
         let id = i as i32;
         let head = HeadRecord {
@@ -217,6 +292,7 @@ fn merge_install_pieces(data: &mut CharacterData) {
             name: r.name.clone(),
             files: r.files.clone(),
             skins: ca::skin_paths(&r.skins),
+            render_styles: r.render_styles.clone(),
         };
         match data.head.iter_mut().find(|h| h.id == id) {
             Some(h) => *h = head,
@@ -231,6 +307,7 @@ fn merge_install_pieces(data: &mut CharacterData) {
             file: r.files.first().cloned().filter(|f| !f.is_empty()),
             skins: ca::skin_paths(&r.skins),
             hair: r.hair,
+            render_styles: r.render_styles.clone(),
         };
         match data.face.iter_mut().find(|f| f.id == id) {
             Some(f) => *f = face,
@@ -255,6 +332,9 @@ fn merge_install_weapons(data: &mut CharacterData) {
         look.lower_ani_type = r.lower_ani_type;
         if !r.hh_skins.is_empty() {
             look.skins = ca::skin_paths(&r.hh_skins);
+        }
+        if !r.hh_render_styles.is_empty() {
+            look.render_styles = r.hh_render_styles.clone();
         }
     }
 }
@@ -396,6 +476,31 @@ impl CharacterData {
             return head;
         }
         self.face(face).and_then(|f| f.hair).unwrap_or(head)
+    }
+
+    /// A bot's look, drawn from the loadout pool (`Loadouts`) by `seed`:
+    /// one body, face, head piece and camouflage index (the same seed,
+    /// the same look); an empty list keeps the default's.
+    pub fn bot_look(&self, seed: u64) -> Selection {
+        let mut x = seed;
+        let mut next = |list: &[i32], fallback: i32| {
+            // splitmix64
+            x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            let mut z = x;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            z ^= z >> 31;
+            if list.is_empty() { fallback } else { list[(z % list.len() as u64) as usize] }
+        };
+        let d = Selection::default();
+        let l = &self.loadouts;
+        Selection {
+            model: next(&l.models, d.model),
+            face: next(&l.faces, d.face),
+            head: next(&l.heads, d.head),
+            camouflage: next(&l.camouflages, d.camouflage),
+            ..d
+        }
     }
 
     /// A goggle's socket and file for `figure` (None: none).
