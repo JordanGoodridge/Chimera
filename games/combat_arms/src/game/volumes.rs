@@ -23,11 +23,16 @@
 //! `ca_volumes_here [radius]` lists the volumes at the player's centre
 //! (`volumes_near`).
 //!
+//! The map's objects (`objects`) switch them (`ON`, `OFF`, `HIDDEN`: a
+//! `StartupCommand`'s `msg Box_Kill01 off`, a trigger's delayed `on`) and
+//! move them (a world model's `Attachments`: HGOILRIG's rising sea
+//! carries its `Water` and `PoisonGas00`), each found by its map entity
+//! index (`VolumeIndex`).
+//!
 //! Known shortcuts: the volume is its world model's polygons' planes (the
 //! exact shape for a convex brush; a concave one is taken as the
-//! intersection of its faces' half-spaces); volumes stay as the map's
-//! start-up commands leave them (`Hidden`, or switched off by a
-//! `StartupCommand`: `world`; no other map scripts switch them); the
+//! intersection of its faces' half-spaces); a moved volume's world model
+//! is drawn where it stood (only its planes move); the
 //! `DamageType` property, armour, the sound filter, fog and tint aren't
 //! read (freezing damage is generic);
 //! the class defaults of `Friction` (1, `Ice` 0) and `PlayerSpeedFactor`
@@ -201,28 +206,10 @@ impl CaVolume {
     }
 }
 
-/// The objects a map's start-up command line (a `StartupCommand`
-/// object's `Command`) switches at once, in order: `msg <name> on` (true)
-/// or `off` (false). Commands are separated by `;`; delayed ones
-/// (`delay <s> (...)`) and other messages are skipped.
-pub fn startup_switches(command: &str) -> Vec<(String, bool)> {
-    command
-        .split(';')
-        .filter_map(|c| {
-            let mut words = c.split_whitespace();
-            if !words.next()?.eq_ignore_ascii_case("msg") {
-                return None;
-            }
-            let name = words.next()?;
-            let on = match words.next()? {
-                w if w.eq_ignore_ascii_case("on") => true,
-                w if w.eq_ignore_ascii_case("off") => false,
-                _ => return None,
-            };
-            words.next().is_none().then(|| (name.to_string(), on))
-        })
-        .collect()
-}
+/// The map entity index of a volume (`MapEntities`), for the world
+/// objects that switch and move it (`objects`).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VolumeIndex(pub usize);
 
 /// Whether the point `p` (m) is inside a liquid volume (`Water`,
 /// `CorrosiveFluid`, `FreezingWater`): effects_sounds.md's under-water
@@ -239,8 +226,12 @@ impl Plugin for CaVolumesPlugin {
         app.init_resource::<TimeInside>().add_systems(
             FixedUpdate,
             (
-                load_volumes.run_if(resource_exists_and_changed::<MapEntities>),
-                volume_damage.run_if(crate::core::authoritative),
+                load_volumes
+                    .run_if(resource_exists_and_changed::<MapEntities>)
+                    .before(super::objects::CaObjectsSet),
+                volume_damage
+                    .run_if(crate::core::authoritative)
+                    .after(super::objects::CaObjectsSet),
             )
                 .chain()
                 .in_set(SimSet::Weapons),
@@ -296,13 +287,13 @@ fn load_volumes(entities: Res<MapEntities>, old: Query<Entity, With<CaVolume>>, 
     for e in &old {
         commands.entity(e).despawn();
     }
-    for e in entities.entities.iter() {
+    for (i, e) in entities.entities.iter().enumerate() {
         if let Some(v) = CaVolume::from_entity(e, entities.scale) {
             let name = match e.get("targetname") {
                 Some(n) => format!("Volume {n} ({})", v.class),
                 None => format!("Volume ({})", v.class),
             };
-            commands.spawn((Name::new(name), v, MapPart));
+            commands.spawn((Name::new(name), v, VolumeIndex(i), MapPart));
         }
     }
 }

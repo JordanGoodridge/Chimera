@@ -1546,6 +1546,9 @@ struct Delivery<'w, 's> {
     table: Res<'w, CaSurfaces>,
     /// Live grenades, which rounds hit (grenades.md 13).
     grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
+    /// Objects that take damage without health (breakable world models:
+    /// world_objects.md 11).
+    damageable: Query<'w, 's, (), With<crate::core::Damageable>>,
     damage: MessageWriter<'w, Damage>,
     rules: DamageRules<'w, 's>,
     first: Res<'w, FirstTimePredicted>,
@@ -2143,6 +2146,22 @@ fn walk(
         let point = from + dir * hit.distance;
         let body = w.body(hit.entity);
         out.push(event(kind(from, point, Some(body), Some(hit.normal))));
+        // A breakable world model takes the round's damage (with its range
+        // band, no zone): world_objects.md 11.
+        if server && w.damageable.contains(body) {
+            let d = base_damage(dmg, rng.next(), false, point.distance(r.origin)) * dampen;
+            w.damage.write(Damage {
+                target: body,
+                attacker: Some(r.owner),
+                amount: d,
+                point,
+                dir,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Bullet,
+                weapon: None,
+                force: Vec3::ZERO,
+            });
+        }
         // Through it?
         let name = w.surfaces.get(hit.entity).or_else(|_| w.surfaces.get(body)).ok();
         let Some(pass) = name.and_then(|n| w.table.get(&n.0)) else { break };

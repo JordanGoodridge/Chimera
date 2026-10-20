@@ -514,6 +514,7 @@ that the paths exist).
 - `games/combat_arms/src/game/world.rs`: Combat Arms' maps from the install as `MapData`: meshes, lightmaps, textures, collision, spawns (games)
 - `games/combat_arms/src/game/model.rs`: Combat Arms' models (`.ltb`) and child animations as a skinned `MapModel` with a `MapRig` and `AnimSet` (games)
 - `games/combat_arms/src/game/props.rs`: models the maps' objects name, as animated props; the `CHIMERA_CA_PROP` development prop (games)
+- `games/combat_arms/src/game/objects/`: world objects: doors, movers, keyframers, breakables, triggers, the command language, their network (games)
 - `games/combat_arms/src/game/view_model.rs`: Combat Arms' first-person view models: loading, per-frame drive, flash timer, flash and breach points (games)
 - `games/combat_arms/src/game/effects/`: Combat Arms' effects and sounds: shots, impacts, decals, tracers, casings, footsteps, the effect file's groups (games)
 - `games/combat_arms/data/effects.toml`: Combat Arms' effect and sound tables: ImpactFX, FireFX, TracerFX, sounds, surfaces (games)

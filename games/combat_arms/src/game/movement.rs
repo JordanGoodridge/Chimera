@@ -904,6 +904,7 @@ fn step(
     mut damage: MessageWriter<Damage>,
     volumes: Query<&super::volumes::CaVolume>,
     pushers: Query<&CaPusher>,
+    ai: Query<(), Or<(With<crate::core::Bot>, With<crate::core::Npc>)>>,
 ) {
     let dt = clock.dt();
     let d = &*data;
@@ -931,7 +932,13 @@ fn step(
         };
         let space = Space {
             mover: &move_and_slide,
-            filter: SpatialQueryFilter::from_excluded_entities([entity]).with_mask(CHARACTER_FILTER),
+            // The map's collision blockers stop players only (world_dat.md
+            // Q5): bots and mercenaries pass them.
+            filter: SpatialQueryFilter::from_excluded_entities([entity]).with_mask(if ai.contains(entity) {
+                CHARACTER_FILTER.0 & !crate::core::PLAYER_CLIP_LAYER.0
+            } else {
+                CHARACTER_FILTER.0
+            }),
             scale: s,
             skin: d.skin,
             radius: d.stand_half_extents[0].max(d.stand_half_extents[2]),
