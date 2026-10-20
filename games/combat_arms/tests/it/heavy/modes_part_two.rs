@@ -142,7 +142,9 @@ fn bots_play_no_objective_on_grayhammer() {
         bots::add_bot(sim.app.world_mut(), Some(team)).unwrap();
     }
     let mut taken = false;
-    for _ in 0..(90.0 / TICK_INTERVAL / 10.0) as usize {
+    // 180 s: the teams' first contact on this map can come near 90 s
+    // (the bots roam the volumes from opposite ends).
+    for _ in 0..(180.0 / TICK_INTERVAL / 10.0) as usize {
         sim.ticks(10);
         let o = sim.app.world().resource::<CaObjectives>();
         taken |= o.flags.iter().any(|f| f.at != FlagAt::Home);
