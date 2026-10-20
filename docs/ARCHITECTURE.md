@@ -165,7 +165,10 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `grenades`, `attachments`, `data`, `rules`: its game modes as rule
   modules, `bots`: Bot Deathmatch's computer soldiers writing `Intent`,
   `characters`: model choice, third-person animation, the posed
-  skeleton's hit spheres and sockets, death and bodies, `net`: its part of the
+  skeleton's hit spheres and sockets, death and bodies, `gear`: what the
+  vest, helmet, goggles, backpack, gear mods and set items change and the
+  loadout that brings them, `perks`: the perks and what each changes, `net`:
+  its part of the
   network on `chimera_net`, `world`: the install's maps as `MapData`),
   with its feature `ui` its
   front end (`ui::layout`: its layouts on Chimera's `client::canvas`,
@@ -536,6 +539,10 @@ that the paths exist).
 - `games/combat_arms/src/game/characters.rs`: Combat Arms' player characters: animation, pose, death, network (games)
 - `games/combat_arms/src/game/characters/`: records, animation driver, skeleton and aim, death, body models (games)
 - `games/combat_arms/data/characters.toml`: Combat Arms' character records, skeletons, hit tables, sockets (games)
+- `games/combat_arms/src/game/gear.rs`: Combat Arms' gear (vests, helmets, goggles, mods, sets) as armour, speed, stamina, ammo; the loadout (games)
+- `games/combat_arms/src/game/gear/`: the gear and perk records: our defaults and the install's over them (games)
+- `games/combat_arms/data/gear.toml`: Combat Arms' stock gear pieces, vests, helmets, goggles, backpacks, gear mods and perks (games)
+- `games/combat_arms/src/game/perks.rs`: Combat Arms' perks: working abilities, state machine, effects, supplies (games)
 - `games/combat_arms/src/game/render_style.rs`: how a model piece's render style draws (blended, added, glowing) (games)
 - `games/combat_arms/data/render_styles.toml`: Combat Arms' render-style files by name and how each draws, ours (games)
 - `games/combat_arms/src/game/bots.rs`: Combat Arms' bots: settings, console, the bot's state; Bot Deathmatch on any mode (games)

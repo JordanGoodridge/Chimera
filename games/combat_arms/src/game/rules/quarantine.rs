@@ -202,8 +202,15 @@ fn update(world: &mut World) {
             s.since = now;
             s.next_heal = now + o.infected_still as f64;
         } else if now + 1e-9 >= s.since + o.infected_still as f64 && now + 1e-9 >= s.next_heal {
+            // Calloused (gear_perks.md 15): an infected with an
+            // infected-mercenary item heals at `HPRecoverRate` 2.
+            let rate = if world.get::<super::super::gear::CaLoadout>(e).is_some_and(|l| l.infected_item) {
+                super::super::gear::CALLOUSED_RATE
+            } else {
+                1.0
+            };
             if let Some(mut h) = world.get_mut::<Health>(e) {
-                h.current = (h.current + o.infected_heal * super::super::inventory::HP).min(h.max);
+                h.current = (h.current + rate * o.infected_heal * super::super::inventory::HP).min(h.max);
             }
             s.next_heal = now + o.infected_heal_period as f64;
         }
