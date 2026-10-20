@@ -41,6 +41,7 @@ mod heavy {
     mod bots;
     mod characters;
     mod effects_sounds;
+    mod junk_flea2;
     mod model;
     mod movement_volumes;
     mod mount;

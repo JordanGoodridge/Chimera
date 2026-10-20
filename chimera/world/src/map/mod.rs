@@ -80,6 +80,8 @@ pub use sound::{
     SoundLevel, StartSound, StepRemap,
 };
 pub mod shells;
+pub mod sources;
+pub use sources::{MapDressing, MapLoader, MapSources, SpawnTeams};
 pub mod surface_color;
 pub mod view_model;
 pub mod vis;

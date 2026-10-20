@@ -66,6 +66,7 @@ cargo build --release -p cs_source_server   # the server as released: no render/
 cargo run --features dev --bin combat_arms_server -- +map combat_arms:warehouse +MaxPlayer 4   # CA's
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 cargo run --features dev --bin combat_arms   # Combat Arms' skeleton (greybox)
+cargo run --features dev --bin mashup_demo   # mashup: de_dust2 played as Combat Arms
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
 ```
 

@@ -125,11 +125,28 @@ Combat Arms has one too: `cargo run --release -p combat_arms_server --
 +map combat_arms:warehouse +ca_mode TDM +MaxPlayer 6`; players join with
 `combat_arms +connect <your ip>`.
 
+## The mashup demo
+
+The first mashup: Counter-Strike: Source's de_dust2 played as Combat Arms.
+The map (geometry, lighting, collision, spawn points, ambience) is CS:S's;
+everything played on it is Combat Arms': its soldier and movement, the
+M4A1, the knife and grenades with their own first-person models, its HUD,
+its bots and Team Death Match (terrorist spawns are Alpha's,
+counter-terrorist spawns Bravo's). It needs both games installed (Combat
+Arms' keys in `chimera.local.toml`, see `chimera.local.example.toml`):
+
+```bash
+cargo run --release -p mashup_demo                     # de_dust2, three bots
+cargo run --release -p mashup_demo -- --map cs_source:de_inferno +MaxPlayer 7
+```
+
+Combat Arms' own maps work too (`--map combat_arms:warehouse`).
+
 ## How it is built
 
 ```
 apps/       the programs: apps/cs_source (the game), apps/cs_source_server,
-            apps/combat_arms and apps/combat_arms_server
+            apps/combat_arms, apps/combat_arms_server and apps/mashup_demo
 games/      each game as a library of parts: games/cs_source
 source/     Source engine file formats and map logic, shared by Source games
 chimera/    the engine: simulation, physics, rendering, sound, network, UI shell

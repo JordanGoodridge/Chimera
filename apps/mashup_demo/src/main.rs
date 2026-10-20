@@ -1,0 +1,101 @@
+//! The mashup game binary (`mashup_demo`): a Counter-Strike: Source map
+//! (de_dust2 without `--map`) played as Combat Arms: its soldier,
+//! movement, weapons, HUD, bots and Team Death Match (`mashup_demo`'s
+//! crate docs). The options are the shell's (`--help`); `--map
+//! cs_source:<name>` or `combat_arms:<name>` picks the map,
+//! `+MaxPlayer <n>` the bots.
+
+use avian3d::prelude::*;
+use bevy::prelude::*;
+use chimera_client::client::Args;
+use chimera_present::{MapPlugin, render};
+use mashup_demo::{ClientPlugin, MashupPlugins};
+
+fn main() {
+    if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
+        println!(
+            "mashup_demo: Counter-Strike: Source's maps played as Combat Arms (its soldier, movement, M4A1,\n\
+             knife and grenades, HUD, bots and Team Death Match). Starts on {} with {} bots;\n\
+             --map cs_source:<name> (or combat_arms:<name>) and +MaxPlayer <n> change them.\n\
+             The options are the shell's (below, named after the CS:S app; all apply here).\n",
+            mashup_demo::DEFAULT_MAP,
+            mashup_demo::DEFAULT_BOTS,
+        );
+    }
+    let args = mashup_demo::with_defaults(Args::parse());
+    let mut app = App::new();
+    let id = args.game_map().unwrap_or(mashup_demo::DEFAULT_MAP).to_string();
+    match mashup_demo::load_map(&id, 0) {
+        Ok(data) => {
+            eprintln!(
+                "loaded {id}: {} triangles, {} textures, {} spawns, {} warnings",
+                data.triangle_count(),
+                data.textures.len(),
+                data.spawns.len(),
+                data.warnings.len()
+            );
+            for w in &data.warnings {
+                eprintln!("  warning: {w}");
+            }
+            app.add_plugins(MapPlugin::new(data));
+        }
+        Err(e) => {
+            eprintln!("error: --map {id}: {e}");
+            std::process::exit(1);
+        }
+    }
+    app.add_plugins((
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Lucker Party: mashup demo".into(),
+                    resolution: match (args.window, args.scale) {
+                        (Some(s), scale) => bevy::window::WindowResolution::new(s.x, s.y)
+                            .with_scale_factor_override(scale.unwrap_or(1.0)),
+                        (None, Some(scale)) => bevy::window::WindowResolution::default().with_scale_factor_override(scale),
+                        (None, None) => default(),
+                    },
+                    resizable: args.window.is_none(),
+                    ..default()
+                }),
+                ..default()
+            })
+            // Warnings and errors also show in the in-game console.
+            .set(bevy::log::LogPlugin {
+                custom_layer: chimera_client::client::console::log_layer,
+                ..default()
+            }),
+        // Rendering eases between ticks with `map::interp`, not avian's
+        // transform interpolation.
+        PhysicsPlugins::default()
+            .with_collision_hooks::<chimera_world::map::MapCollisionHooks>()
+            .build()
+            .disable::<PhysicsInterpolationPlugin>(),
+        MashupPlugins,
+    ))
+    // What the map's drawing needs (as the other apps add them).
+    .add_plugins((
+        render::world_material::WorldMaterialPlugin,
+        render::rope_material::RopeMaterialPlugin,
+        render::sprite_material::SpriteMaterialPlugin,
+        render::prop_material::PropMaterialPlugin,
+        render::shadows::ShadowMaterialPlugin,
+        render::decal::DecalMaterialPlugin,
+        render::spray::SprayMaterialPlugin,
+        render::water::WaterMaterialPlugin,
+        render::particles::ParticleMaterialPlugin,
+        render::beams::BeamMaterialPlugin,
+        render::sky_occluder::SkyOccluderPlugin,
+        render::detail::DetailMaterialPlugin,
+    ))
+    // Combat Arms' tick: its gameplay runs on every map.
+    .insert_resource(Time::<Fixed>::from_seconds(combat_arms::game::TICK_INTERVAL))
+    .insert_resource(chimera_core::core::BuildVersion(mashup_demo::VERSION))
+    // Network play: a listen server, or a client (`connect`).
+    .add_plugins(chimera_net::net::NetPlugin)
+    // The client shell with Combat Arms' HUD, then its other looks.
+    .add_plugins(ClientPlugin { args })
+    .add_plugins(combat_arms::ui::CaUiPlugin);
+    // The executors, `CHIMERA_SYSTEM_DUMP`, then the game, as every app.
+    chimera_client::client::app::run(app);
+}

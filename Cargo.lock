@@ -4861,6 +4861,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mashup_demo"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "combat_arms",
+ "cs_source",
+ "workspace-hack",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

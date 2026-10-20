@@ -20,12 +20,16 @@
 //! players inside take `Damage` per second (`volume_damage`, on the
 //! server; burn for `CorrosiveFluid` and `Burn`), `EndlessFall`'s 10⁸
 //! killing them, after `PendingSec` inside when it is set.
+//! `ca_volumes_here [radius]` lists the volumes at the player's centre
+//! (`volumes_near`).
 //!
 //! Known shortcuts: the volume is its world model's polygons' planes (the
 //! exact shape for a convex brush; a concave one is taken as the
-//! intersection of its faces' half-spaces); `Hidden` volumes stay off (no
-//! map scripts to switch them); the `DamageType` property, armour, the
-//! sound filter, fog and tint aren't read (freezing damage is generic);
+//! intersection of its faces' half-spaces); volumes stay as the map's
+//! start-up commands leave them (`Hidden`, or switched off by a
+//! `StartupCommand`: `world`; no other map scripts switch them); the
+//! `DamageType` property, armour, the sound filter, fog and tint aren't
+//! read (freezing damage is generic);
 //! the class defaults of `Friction` (1, `Ice` 0) and `PlayerSpeedFactor`
 //! (1) are ours (world_dat.md gives Ice's and Wind's only); the pending
 //! time is checked every tick, not every 0.5 s.
@@ -35,6 +39,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::{
+    console::ConsoleAppExt,
     core::{Damage, DamageKind, Health, Hitgroup, Intent, MovementState, SimClock, SimSet},
     map::{MapEntities, MapEntity, MapPart, entities::entity_to_engine},
 };
@@ -196,6 +201,29 @@ impl CaVolume {
     }
 }
 
+/// The objects a map's start-up command line (a `StartupCommand`
+/// object's `Command`) switches at once, in order: `msg <name> on` (true)
+/// or `off` (false). Commands are separated by `;`; delayed ones
+/// (`delay <s> (...)`) and other messages are skipped.
+pub fn startup_switches(command: &str) -> Vec<(String, bool)> {
+    command
+        .split(';')
+        .filter_map(|c| {
+            let mut words = c.split_whitespace();
+            if !words.next()?.eq_ignore_ascii_case("msg") {
+                return None;
+            }
+            let name = words.next()?;
+            let on = match words.next()? {
+                w if w.eq_ignore_ascii_case("on") => true,
+                w if w.eq_ignore_ascii_case("off") => false,
+                _ => return None,
+            };
+            words.next().is_none().then(|| (name.to_string(), on))
+        })
+        .collect()
+}
+
 /// Whether the point `p` (m) is inside a liquid volume (`Water`,
 /// `CorrosiveFluid`, `FreezingWater`): effects_sounds.md's under-water
 /// tests, view_models.md's muzzle flash.
@@ -216,8 +244,51 @@ impl Plugin for CaVolumesPlugin {
             )
                 .chain()
                 .in_set(SimSet::Weapons),
+        )
+        .console_command(
+            "ca_volumes_here",
+            "ca_volumes_here [radius u = 0]: the map's volumes at your centre (or within the radius of it): name, class, bounds (u, engine axes), damage, pending, hidden, whether you are inside.",
+            |w, a| {
+                let radius = a.first().and_then(|r| r.parse::<f32>().ok()).unwrap_or(0.0).max(0.0);
+                let p = crate::console::command_player(w)?;
+                let t = w.get::<Transform>(p).ok_or("no transform")?.translation;
+                let centre = w.get::<MovementState>(p).map_or(t, |s| t + (s.hull_min + s.hull_max) / 2.0);
+                Ok(Some(volumes_near(w, centre, radius)))
+            },
         );
     }
+}
+
+/// `ca_volumes_here`'s listing: the volumes whose bounds come within
+/// `radius_u` (u) of `centre` (m).
+pub fn volumes_near(w: &mut World, centre: Vec3, radius_u: f32) -> String {
+    let unit = super::movement::movement_data().meters_per_unit;
+    let r = radius_u * unit;
+    let mut lines = vec![format!("centre {:.1} (u, engine axes)", centre / unit)];
+    let mut q = w.query::<(Option<&Name>, &CaVolume)>();
+    for (n, v) in q.iter(w) {
+        if !(centre.cmpge(v.min - r).all() && centre.cmple(v.max + r).all()) {
+            continue;
+        }
+        lines.push(format!(
+            "{}: {} {:.1}..{:.1} damage {}/s{} pending {} hidden {} friction {} viscosity {}{}",
+            n.map_or("?", |n| n.as_str()),
+            v.class,
+            v.min / unit,
+            v.max / unit,
+            v.damage,
+            if v.damage > 0.0 { format!(" ({:?})", v.kind) } else { String::new() },
+            v.pending,
+            v.hidden,
+            v.friction,
+            v.viscosity,
+            if v.contains(centre) { " INSIDE" } else { "" }
+        ));
+    }
+    if lines.len() == 1 {
+        lines.push("no volumes".into());
+    }
+    lines.join("\n")
 }
 
 /// Each map entity of a volume class as a `CaVolume` (part of the map).
@@ -227,7 +298,11 @@ fn load_volumes(entities: Res<MapEntities>, old: Query<Entity, With<CaVolume>>, 
     }
     for e in entities.entities.iter() {
         if let Some(v) = CaVolume::from_entity(e, entities.scale) {
-            commands.spawn((Name::new(format!("Volume ({})", v.class)), v, MapPart));
+            let name = match e.get("targetname") {
+                Some(n) => format!("Volume {n} ({})", v.class),
+                None => format!("Volume ({})", v.class),
+            };
+            commands.spawn((Name::new(name), v, MapPart));
         }
     }
 }

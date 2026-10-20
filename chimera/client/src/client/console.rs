@@ -1945,10 +1945,13 @@ fn finish_map_load(w: &mut World) {
     );
     unload_greybox(w);
     crate::map::change_map(w, data, crate::map::MapDebugView::Normal);
-    // At its game's server tick.
-    let tick = id
-        .split_once(':')
-        .and_then(|(game, _)| w.get_resource::<Games>()?.get(game))
+    // At the gameplay's server tick: the default game's (a mashup plays
+    // another game's map at its own game's tick), else the map's game's.
+    let tick = crate::game_registry::default_game(w)
+        .or_else(|| {
+            id.split_once(':')
+                .and_then(|(game, _)| w.get_resource::<Games>()?.get(game))
+        })
         .map_or(std::time::Duration::from_secs_f64(1.0 / crate::core::DEFAULT_TICK_HZ), |g| g.tick());
     crate::core::set_tick_length(w, tick);
     // Follow the map's presentation (Source LDR: no tonemapping).

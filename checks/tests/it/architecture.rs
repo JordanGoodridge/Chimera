@@ -599,7 +599,8 @@ fn no_game_assets_tracked() {
 /// chimera.local.toml and are read at run time.
 #[test]
 fn no_keys_tracked() {
-    const PLACES: &[&str] = &["lithtech/", "games/combat_arms/", "apps/combat_arms/", "specs/combat_arms/"];
+    const PLACES: &[&str] =
+        &["lithtech/", "games/combat_arms/", "apps/combat_arms/", "apps/mashup_demo/", "specs/combat_arms/"];
     let mut errors = Vec::new();
     for f in tracked_files().iter().filter(|f| PLACES.iter().any(|p| f.starts_with(p))) {
         let Ok(text) = fs::read_to_string(root().join(f)) else { continue };
@@ -841,6 +842,9 @@ fn workspace_crates() {
     const CA_APP: &str = "is the Combat Arms app's glue (docs/ARCHITECTURE.md, \"Crates\"): Chimera and Combat \
         Arms composed into its game. It never uses CS:S or Source's logic: what both games need moves into \
         Chimera (a lift), not across.";
+    const MASHUP_APP: &str = "is a mashup app (docs/ARCHITECTURE.md, \"Crates\"): it composes games as \
+        libraries (`cs_source`, `combat_arms`) on Chimera, never another app: what it shares with a game's \
+        own app moves into the game or Chimera (a map loader, a dressing, a hook), not across.";
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
         into the client's side or behind `cs_source_app`'s `present`.";
@@ -888,6 +892,7 @@ fn workspace_crates() {
         ("source/logic", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
         ("apps/cs_source", &["mashup", "combat_arms"], APP),
         ("apps/combat_arms", &["mashup", "cs_source", "source_logic"], CA_APP),
+        ("apps/mashup_demo", &["mashup", "cs_source_app", "combat_arms_app"], MASHUP_APP),
         ("chimera/tools", &["source_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
         ("source/tools", &["bevy", "avian", "chimera_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
         (
