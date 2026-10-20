@@ -42,6 +42,11 @@ pub(crate) fn block(centre: Vec3, half: Vec3) -> Block {
     Block { centre, half, tilt: 0.0 }
 }
 
+/// A box rotated by `tilt` (radians) about X.
+pub(crate) fn tilted(centre: Vec3, half: Vec3, tilt: f32) -> Block {
+    Block { centre, half, tilt }
+}
+
 /// The floor: top at y = 0, wide enough for every test.
 pub(crate) fn floor() -> Block {
     block(Vec3::new(0.0, -50.0, 0.0), Vec3::new(20000.0, 50.0, 20000.0))
