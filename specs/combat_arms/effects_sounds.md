@@ -13,7 +13,12 @@ files (`CLIENTFX.FXF`, read as text) of the US 1501.04 and BR 1810.04 client
 archives (identical for every group used here except the grenade
 explosions' camera jitter, see section 9), texture headers from the
 `FX` archive and footstep keys from the male character animation file.
-Nothing was checked against a running game; see Open questions.
+Nothing was checked against a running game; see Open questions. A
+follow-up session (Open questions 17–25) added the effect plug-ins' key
+code, the liquid and bubble code, the sound manager's update and instance
+handling, the call-out and map-sound code, the third-person weapon models'
+sockets and the S&D site objects of an older extracted client release's
+plaintext maps.
 
 Status: draft
 
@@ -164,13 +169,101 @@ player; the value is the default).
     is blocked). Scale keys scale the sprite.
   - **DynaLight**: a point light; scale keys are its radius in u, colour
     keys its colour. It lights the world only, with no shadows (Open
-    questions 4).
+    questions 4). The engine light is created "world only" and "do not
+    light back-facing polygons"; whether it reaches through a wall onto
+    the other side is the engine renderer's and stays open. Planting the
+    bomb in S&D forces the `DynamicLight` setting on for that client.
   - **CamJitter**: each frame moves the camera by a random offset in
     [−a, a] on each axis, a = scale × falloff; falloff is 1 within
     `InnerRadius`, 0 beyond `OuterRadius`, and linear in **squared**
-    distance between.
+    distance between. Several jitters active in the same frame **add up**
+    (Open question 24): the camera position is reset to the player's view
+    position at the start of each frame, and each jitter key then offsets
+    the position the previous one left, so two equal grenades at the same
+    distance give twice the range of offsets. Nothing caps the sum.
+  - **Not an effect, but often mistaken for one: camera rise** (Open
+    question 24). When the view height target is more than 1 u above the
+    current camera height (stepping up stairs or a ledge, standing up), the
+    camera rises toward it at max(gap / `CameraMoveUpTime` (0.1 s),
+    `CameraMoveUpMinVel` (140 u/s)), the gap first capped at
+    `CameraMoveMaxYDiff` (30 u, so the camera is never more than 30 u below
+    the target); lower targets are taken at once. Inside free-movement
+    volumes (ladders, liquids) and on the frame after a jump the camera
+    snaps to the target.
   - **LightningFX** (spark arcs), **CreateFX** (plays another group,
     `FXName`), **PlaySound**.
+- **Placement modes in detail** (Open question 17): every key that has a
+  parent object (the effect group was created on an object) recomputes its
+  position each update from the parent's current rotation R, with the
+  offset `Offset` = (x, y, z) applied along R's right, up and forward axes:
+  0 **fixed**: the position where the group was created + offset (the
+  offset turns with the parent, the base point does not move); 1
+  **follow**: the parent's current position + offset, the key's rotation
+  stays its own; 3 **node** / 4 **socket attach**: the named node's or
+  socket's current world position + offset, and the key takes that node's
+  or socket's rotation (a socket the parent lacks is looked up on the
+  parent's attachments, so a key can follow a character's weapon socket);
+  5 / 6 the same on a camera-relative model (the view model): the node's
+  or socket's model-local position + offset + the model's camera-space
+  position; 2 **player view**: nothing is computed by the key, the owner
+  (the first-person weapon code) sets the position. A key without a parent
+  stays where it was created. `Follow` in the brief's sense is mode 1.
+- **Key curves**: colour (`Ck`) and scale (`Sk`) keys are evaluated at
+  u = (age / lifetime) mod 1 (so a looping key repeats its curve), linearly
+  between the two keys around u, each channel separately, alpha included
+  (the file's keys start at u = 0 and end at u = 1).
+  Particle systems evaluate them per particle over the particle's own life.
+- **Emitter shapes** (`Type`), with `MinRadius` = rmin, `MaxRadius` = rmax,
+  `EmissionPlane` = the axis n and two unit axes p₁, p₂ perpendicular to it:
+  0 sphere: a uniform direction (a normalised point of the unit cube)
+  scaled by U(rmin, rmax); 1 point: the emitter's point; 2 circle: a
+  normalised random direction in the plane of p₁, p₂ scaled by U(rmin,
+  rmax); 3 **cone**: a height h = rmax − q², q ~ U(0, √rmax), the point
+  n·h + (direction in the p₁p₂ plane) × U(0, rmin·h / rmax), so the cone's
+  apex is at h = 0 with radius 0 and its base at h = rmax with radius rmin
+  (more particles near the base); 4 **cylinder**: (direction in the p₁p₂
+  plane) × U(0, rmin) + n × U(0, rmax): radius rmin, height rmax along n.
+  `VelocityType` 0 "random" draws each axis of the velocity box
+  separately; 1 "from centre" gives speed U(min.x, max.x) along the
+  particle's start offset. Unless `MoveParticlesWithSystem` is on, start
+  points and velocities are turned into world space with the system's
+  rotation at emission.
+- **Motion per update** (Δ = frame time in s): position += v·Δ; then
+  v ← v·(1 − f)^Δ + a·Δ, with f = `Friction` and a = `AdditionalAcceleration`
+  + (0, `GravityAcceleration`, 0) (a world vector; turned into the system's
+  frame when particles move with the system). Angle += angular velocity × Δ.
+- **Bounce**: a particle is marked "bounces" at birth with probability
+  `PercentToBounce`/100 (splatting likewise with `SplatPercent`). Each
+  update, for every marked particle, a ray from its position to
+  position + v·Δ is tested against world polygons and objects (characters
+  and local objects are skipped, non-solid objects ignored); on a hit, v is
+  mirrored about the hit polygon's plane normal and multiplied by 0.75
+  (position unchanged); a splat creates `SplatEffect` at the hit point
+  facing out of the surface (with a random up axis) and, with
+  `KillOnSplat`, removes the particle. So only marked particles bounce and
+  the plane is whatever world polygon the next step would cross.
+- **Sprites**: `DisableZ` draws the sprite without depth test (on top of the
+  world); `CastVisibleRay`: each update a ray from the sprite to the camera
+  against world polygons and solid objects hides the sprite while it is
+  blocked and shows it again when clear (nothing else of the sprite is
+  updated while hidden).
+- **Other key types**: `LightningFX` draws 1–5 (`MinNumBolts`..`MaxNumBolts`)
+  jagged bolts of 10–50 segments, 0.5–3 u wide, perturbed by 0–35 u, each
+  living 0.1–3 s after a 0–0.1 s delay and pulsing (`Pulse` 5), between
+  attractor nodes or sockets of the parent (or within
+  `OmniDirectionalRadius`), textured, camera-aligned by default.
+  `LTBModel` places a model (up to 15 skins and 4 render styles) facing the
+  camera, along the normal or with the parent, optionally playing a named
+  animation over a forced length or in sync with the parent's animation.
+  `PolyTube` (the trail key) draws a camera-aligned textured strip that
+  follows the key's path: a new section every `SectionInterval` (0.1 s), at
+  most `TrailLen` (50) sections, each living `SectionLifespan` (1 s),
+  `TrailWidth` (20 u) wide with a width style (constant, small→big, …),
+  texture scrolled by `UAdd`. `PlaySound` and `PlayRandomSound` play a wave
+  (or one of `NumRand` numbered ones) 3D at the key's position, or local,
+  with their own inner (100) and outer (500) radius, volume, priority,
+  looping and pitch, started when the key starts (whether a looping one is
+  cut at the key's end was not traced).
 - The effect's frame: an effect created with a target normal (impacts,
   explosions) gets its local +Z along that normal; its local +Y and +X are
   built from the world up axis (from world +X when the normal is exactly
@@ -329,6 +422,24 @@ Computed once per weapon effect from the camera at that moment:
   `HHMuzzleFXName`, created at the weapon's `Flash` socket (`Flash01` for a
   left-hand dual weapon), aligned to the shot. Not shown while you
   spectate in first-person chase view.
+  - **Where the third-person points are** (Open question 18): "the
+    weapon's socket" means the socket of the character's **attached
+    third-person weapon model** (`HHModel`, on the character's `RightHand`
+    socket, `characters.md` 2), at its current animated position when the
+    effect is built; if the character has no such socket the server's
+    fire position is used. The muzzle uses `Flash` (`Flash01` for a dual
+    weapon's left gun), casings `Breach` (`Breach01`), both looked up
+    without case (the M4A1 file spells it `breach`). Stock models
+    (older extracted release; socket on node `Bone01`; offset, then the
+    model-space point at bind): M4A1 `HH_AR_M4A1_SH` `Flash` (5.172, 0,
+    27.250) → (0, 2.685, 24.440), `breach` (5.656, −0.766, 5.391) → (0.765,
+    3.170, 2.580); AK-47 `Flash` → (0.119, 2.341, 30.910), `Breach` →
+    (1.041, 2.419, 4.863); M92FS `Flash` → (0, 2.217, 7.158), `Breach` →
+    (1.031, 1.795, −0.076); L96A1 `Flash` → (0.109, 2.545, 39.158); M60
+    `Flash` → (0, 3.701, 34.096); R870 `Flash` → (0, 2.685, 35.330),
+    `Breach` → (1.265, 2.982, 4.643). The weapon model's +Z is the barrel.
+  - **Others' shot sounds** start at the same point (the `Flash` socket
+    position the effect computed), 3D at a point (section 10).
   - `M4_HH_Muzz` (M4A1, AK-47, MK.48 …): one additive particle
     `M4_02.DTX`, size 7.59 → 9.38 → 10.0, life 40–50 ms, moving 200–400 u/s
     along the shot; light radius 170 u, colour (0.89, 0.84, 0.69) → (0.23,
@@ -392,6 +503,13 @@ Computed once per weapon effect from the camera at that moment:
 
 - **World and world models**: the hit polygon's surface type, the u16 of
   `world_dat.md`'s surface record.
+- **What other clients learn about a character hit** (Open question 6,
+  answered): only the surface type in the server's event. The server
+  derives it from the victim's struck node (for a client-reported hit, the
+  node the shooter reported): the model's head surface (4) for a
+  head-location node, its body surface (6) for every other location. So
+  other clients can tell head from body (blood and burst groups differ)
+  but not arm, leg or groin; the damage and zone are the server's.
 - **If that is 0 (unknown)** and the hit object is a model:
   - a character: by hit location, the model's `HeadSurfaceType` for a head
     hit, else its `BodySurfaceType`; when the model sets none (stock player
@@ -425,7 +543,31 @@ in this order:
    at the impact with the surface normal, and, for `BlastMark` records at
    high detail (never, Quirk 9), a light. A movable object hit with an
    ammo override record, a ricochet or a "blocked" impact uses those
-   records instead.
+   records instead. What each of these is (Open question 23):
+   - **Pusher**: the impact's `PusherName` record adds a short push to the
+     **local player's** movement if they are within its radius (start
+     delay, duration, strength). Both stock pushers (`BulletExpPusher`
+     strength 400, `RocketPusher` 800) have radius **0**, so they push
+     nothing.
+   - **Blast light**: for records with `BlastMark` (rockets, grenade
+     launchers, mines, claymores and the device "disappear" effects; colour
+     68.85 grey, hold U(10, 30), fade U(30, 60)) on a surface that shows
+     marks, at **high** detail only and for a blast radius of at least
+     100 u: a world-only light of radius blast/2 … blast/4. With the release
+     build's detail value 3 it never appears (Quirk 9).
+   - **Screen tint**: records with `ScreenTint` would flash the screen with
+     their colour by distance and shake it within twice the blast radius;
+     **no** record in the US data sets it, so it never happens. The white
+     flash of flash grenades is `grenades.md`'s, not this.
+   - **Ricochet**: only projectiles (rockets, grenades) can ricochet, when
+     their projectile record has a ricochet angle and `MaxRicochets` above
+     0; `MaxRicochets` is 0 in every stock record, so nothing ricochets. Bullets
+     never ricochet.
+   - **Critical hit**: a bullet attachment's special function "critical"
+     (`gear_perks.md`) adds damage on its condition and marks the shot
+     critical; the event then carries the flag and the surface burst is
+     replaced by the attachment's critical effect group, if it names one.
+     The shooter's own client rebuilds such an effect in full (section 1).
 3. If the impact is seen:
    - **Decal**, when the ImpactFX has `CreateMark`, the surface
      `ShowsMark`, `MarkShow` is on, the hit object can take decals (the
@@ -447,7 +589,12 @@ in this order:
   0.6..0.8 gives 2.9–3.8 u.
 - Colour: grey `MarkColorRatio` (0.5) on each channel, lit by the world
   unless `MarkLight` is 0. Not clipped to the polygon unless `MarksClip`
-  is 1.
+  is above 0 (default **0**, Open question 19): when on, a ray 2 u either
+  side of the decal along its facing axis finds the polygon and the sprite
+  is cut to it; when off, a decal on an edge hangs over it. The decal's
+  offset from the surface is the 1 u back-off along the **ray** (so
+  1 u × the cosine of the angle between the ray and the normal, 0.5 u for
+  a 60° glancing hit), with no extra push along the normal.
 - Life, with t the decal's age (real frame time, frozen while the game is
   paused):
 
@@ -480,6 +627,32 @@ in this order:
 | `Impact_Glass_BulletProof` | 0.5 s | dust puff; 2 glass chips and 2 debris (m/h); spark; flash sprite |
 | `Impact_Water` | 2.0 s | splash ring sprite (1 s); 4 splash particles (gravity −500, m/h); a column particle |
 | `Impact_Body` / `Impact_Head` | 1.0 / 0.5 s | blood (section 7) |
+
+### 6a. Liquids (Open question 20)
+
+- **Rays and water**: water and other liquid volumes are non-solid
+  containers, so a shot's ray passes **through** the water surface and
+  goes on to the first solid surface, in or out of the water; the surface
+  itself gets no splash, decal or sound from a bullet.
+- **Impact in liquid**: when the impact point lies inside a liquid volume
+  the ammo's under-water impact record is used (`UWBullet` for stock
+  bullets) instead of the normal one. The US data has **no** `UWBullet`
+  record, so for every stock gun the name finds nothing and an under-water impact
+  shows **no** impact effect, decal or surface burst; its impact sound plays
+  at volume 50 (section 11). No tracer is drawn for a shot whose impact is
+  in liquid.
+- **Bubble trail**: when the **fire** point (a point 1 u along the shot
+  from the flash point) is inside a liquid and the ammo does bullet damage,
+  the client draws a bubble trail (not at the lowest detail): from the
+  fire point along the shot up to the first world hit (at most 3000 u), the
+  trail grows at that length / 0.3 s, adding particles along the newly
+  covered part each frame, 30 in all (15 at medium detail) spread in
+  proportion to the distance covered, each a bubble sprite drifting up at
+  U(5, 6) u/s, coloured within the liquid's colour range (default
+  (200..255) grey). After 0.3 s no
+  more bubbles are added and the whole trail fades out linearly over 0.5 s
+  from the last addition, then is removed. Others' shots fired under water
+  give the same trail on every client.
 
 ### 7. Blood
 
@@ -619,6 +792,15 @@ into the following.
     at the latest (not 12 s), unless frozen off-screen (Quirk 7).
 - **Incendiary and gas**: their own impact records and groups; not covered
   here.
+- **S&D and Bombing Run bomb detonation** (`game_modes.md` M3, S15): not a
+  weapon effect at all. The map's site trigger turns on six map effect
+  objects at the site in turn (about 0.4, 0.5, 2.7, 2.8, 5.2, 5.3 s after
+  the detonation), with the groups `Explode_S` and `Explode_L` (some maps
+  also `Explode_M`, `Grenade_Dirt`, glass blow-outs, `Nuke_Exp`,
+  `S_Area_onFire`), while the shared map camera shows them; their sound is
+  whatever those groups and the map's sound objects contain (3 of the 13
+  maps read also turn on map `SoundFX` objects). No camera jitter or damage
+  comes from the bomb itself.
 
 ### 10. How a sound is played
 
@@ -667,6 +849,16 @@ c is the filter cut-off as a fraction of full bandwidth: no filtering up to
 1200 u, heavy muffling from about 1650 u on. This is the only "far" version
 of any sound.
 
+**Updates while playing** (Open question 21): every client frame, for
+every playing 3D sound, if the listener moved since the last frame or the
+source moved, the gain g(d) and the low-pass cut-off c(d) above are
+recomputed from the new distance (the same formulas, only for r < d < R);
+outside that band the last values are kept. So a sound fades and muffles
+continuously as you walk away from it, and one you approach from beyond R
+starts at whatever it was given when it started. At the start of a sound
+both are computed once. Ambient sounds use the same rule without
+direction.
+
 **Occlusion**: none. Walls and floors do not lower or muffle anything (the
 engine's occlusion and obstruction calls are stubs).
 
@@ -683,13 +875,17 @@ gets close; the per-source limits below are what drop sounds in practice:
   server** (section 11);
 - team call-outs: one at a time per kind on each client.
 
+When 255 sounds are live the new one is simply refused (nothing older is
+stopped and no priority is compared: the `Priority` values in the data are
+never used) (Open question 21).
+
 ### 11. Sounds by event
 
 | Event | Sound | Played as | Radius R (heard to ≈ 0.93 R) |
 |---|---|---|---|
 | Own shot | `FireSnd` (silenced: `SilencedFireSnd`ℓ) | local, volume 100 | — |
 | Other's shot | same file | 3D at their flash socket, volume 100 | `FireSndRadius` (silenced: `SilencedFireRadius`ℓ) |
-| Dry fire | `DryFireSnd` | local; others 3D at your flash point | `FireSndRadius` (Quirk 13) |
+| Dry fire | `DryFireSnd` | never plays (corrected, `view_models.md` Open question 10): the dry-fire state is unreachable and its direct sound is disabled | — |
 | Reload / draw keys | view-model `sound_key n`: 1–3 → `ReloadSnd1..3`, 4 → `SelectSnd`, 5 → `DeselectSnd`, 10–14 → misc | local; others 3D at your flash point | `ReloadSndRadius` / `SelectSndRadius` (300) |
 | Bullet impact | surface list by ammo kind (below) | 3D at the impact, volume 100 (50 under water) | ImpactFX `SoundRadius` (900; melee 153) |
 | Grenade bounce | surface `GrenadeImpactSnd` | server 3D, volume per `grenades.md` | `GrenadeSndRadius` (1000) |
@@ -728,7 +924,16 @@ Details:
     diagonals two per 600 ms loop (e.g. 50 and 350 ms); sprinting `LRR*`
     two per 500 ms; jumps `LJ*` one at 600 ms (the landing). Walking `LW*`
     and crouching `LC*` carry only footprint keys: **silent**. Cadence
-    scales with the animation rate.
+    scales with the animation rate, which is always 1 for the leg trackers
+    (`characters.md` 7), so others' footsteps come every 300 ms running
+    and about every 250 ms sprinting, whatever their real speed (Open
+    question 8, answered for rate and gait). The gait is the leg animation
+    the **server's** driver chose for that player from the flags the player
+    sent (run or walk flag, direction, sprint; `characters.md` 4, When the
+    pose is decided), replicated to every client and advanced there each
+    rendered frame; each client fires the keys as its own copy of that
+    animation passes them. The surface comes from a ray at the foot node
+    (left or right alternately).
   - You (first person): the view sway phase φ advances by 2π·1.4·Δ while
     the run flag is set (2π·0.6 otherwise) whenever you move (speed·Δ >
     0.1 u with a movement key held) and can step (on the ground, on a
@@ -776,12 +981,32 @@ Details:
 - **Kill call-outs**: on a kill the server sends the killer's team an
   `EnemyDown` call-out at the killer (radius 1000) and the victim's nearest
   teammate's team a `ManDown` call-out (empty in stock data); clients of
-  the other team ignore them.
+  the other team ignore them. Details (Open question 22): `EnemyDown` is
+  sent only when the killer's and the victim's teams differ (no call-out
+  for a team kill or a suicide), from the killer's position, in the
+  killer's voice set; `ManDown` is spoken by the **living teammate of the
+  victim nearest to the victim, within 1000 u** (none if no living
+  teammate is that close), from that teammate's position. Both are sent
+  at the moment of the death, as team
+  call-outs: only clients on that team play them, 3D with radius 1000,
+  attached to the speaking player so they move with them, in the
+  speaker's sound template.
 - **Map sounds**: a placed `SoundFX` object has `Sound`, `OuterRadius`
   (default 500), `InnerRadius` (100), `Volume` (100), `PitchShift`,
   `Ambient` (default on), `Loop` (on), `PlayAttached`, `StartOn` and
   `Priority`; it is a server sound. Messages
-  ON, OFF, TOGGLE, TRIGGER, KILL control it.
+  ON, OFF, TOGGLE, TRIGGER, KILL control it. Details (Open question 22):
+  `StartOn` plays it when the object is created; ON and TRIGGER (re)start
+  it from the beginning (a playing copy is stopped first); OFF and KILL
+  stop it; TOGGLE stops a playing one or starts a stopped one. A
+  non-looping sound plays once and is considered finished after its
+  length; it is not repeated. `Ambient` plays it with distance gain but no
+  direction, otherwise 3D at the object; a `Sound` that names a sound set
+  picks a file of the set, otherwise the file is played directly; both use
+  the object's own radii and volume. Census of the plaintext maps read
+  (older extracted release): 355 objects, 290 looping and 65 not; outer
+  radii from 150 to 6000 u. Server sounds are sent only to clients within
+  2R (section 12).
 
 ### 12. Who hears what
 
@@ -908,8 +1133,9 @@ One weapon effect (client), in order:
 12. **Quiet movement factor unused**: the 0.65 "moving quietly" factor
     applies only to your own steps while walking or crouched, which are
     already silent. Omit.
-13. **Dry fire heard far**: others hear your empty-gun click with the
-    weapon's **fire** sound radius (2000 u on an M4A1). Keep.
+13. **Dry fire heard far** (withdrawn): the radius rule would apply if a
+    dry-fire sound were ever sent, but no dry-fire sound is played in this
+    build (section 11). Nothing to implement.
 14. **Server-wide hurt limit**: one hurt sound per kind across the whole
     server; while one player's `DeathbyGuns` plays, nobody else's does.
     Keep.
@@ -1020,7 +1246,8 @@ section 10 with V = 100 and default sliders. Detail: effect detail high.
 35. **Flash look**: `Flashbang_Ini` light radius 512 u at 0.127 s, 0 at
     0.28 s; sprites hidden when a wall is between them and you.
 36. **Dry fire**: an enemy pulls the trigger of an empty M4A1 1500 u away
-    → `dryfire.wav` at gain 0.3553.
+    → `dryfire.wav` at gain 0.3553. (Superseded by case 48: no dry-fire
+    sound plays in this build; the gain holds only if one ever did.)
 37. **Reload keys**: M4A1 reload → `reload1.wav` at 403 ms, `reload2.wav`
     at 834 ms, `reload3.wav` at 1725 ms; others hear them with R 300 (to
     ≈ 280 u). Drawing the M4A1 plays `reload3.wav` at 666 ms (its select
@@ -1030,6 +1257,73 @@ section 10 with V = 100 and default sliders. Detail: effect detail high.
 39. **Melee impact**: knife on Wood → one of `melee\wood\impact1..2.wav`,
     R 153, silent in half of the hits.
 
+**Follow-up cases** (Open questions 1, 4, 6, 8, 17–25). "Old release" =
+map objects and model files of an older extracted client release;
+"install" = re-measure on the Steam install (build 25595979).
+
+40. **Placement mode, socket attach (logic).** An effect key in mode 4 on a
+    weapon's `Flash` socket, offset (0, 0, 2): when the parent turns 90°
+    the key moves with the socket and is 2 u along the socket's forward
+    axis; in mode 0 the same key stays at the creation point, only its
+    offset turning.
+41. **Key curve (logic).** Colour keys at u = 0 (alpha 1) and u = 0.5
+    (alpha 0) on a 2 s looping key: at 0.5 s alpha 0.5, at 1.0 s 0, at
+    1.5 s 0 (held), at 2.5 s 0.5 again.
+42. **Cone emitter (logic).** `Type` 3, rmin 10, rmax 40: every start point
+    lies within the cone of height 40 along n whose radius grows from 0 at
+    the apex to 10 at h = 40; more than half the points lie at h > 20.
+43. **Bounce (logic).** A marked particle moving down at 100 u/s toward a
+    floor: after the step that would cross it, v = (0, +75, 0) and its
+    position is unchanged; an unmarked one passes through.
+44. **Third-person muzzle point (old release; install).** Another player's
+    M4A1 shot: the muzzle group and the shot sound start at the attached
+    `HH_AR_M4A1_SH` `Flash` socket, model-space (0, 2.685, 24.440) at
+    bind, moved by the character's current pose.
+45. **Head vs limb impact (logic).** Another player hits a victim's head:
+    every client shows `Impact_Head`; on an arm or a leg: `Impact_Body`,
+    the same as on the chest.
+46. **Decal offset (logic).** A bullet hitting a wall at 60° from the
+    normal: the decal centre is 0.5 u off the wall; with `MarksClip` 0 a
+    decal over the wall's edge hangs past it.
+47. **Under-water shot (data; install).** Standing in water, firing an M4A1
+    at a wall 800 u away inside the water: a bubble trail reaching the wall
+    in 0.3 s, 30 bubbles (15 at medium detail) rising at 5–6 u/s, all gone
+    0.5 s after the last; no tracer, no decal, no burst; the impact sound at
+    volume 50. A shot from dry ground into a pool: the ray ignores the
+    water surface and hits the pool floor with no splash.
+48. **Dry fire silent (logic; install).** An enemy pulls the trigger of an
+    empty gun next to you → no sound for you or for them.
+49. **Others' footsteps cadence (old release).** An enemy running forward
+    slowly (half speed, run flag set): footsteps every 300 ms, the same as
+    at full speed; walking: silent.
+50. **Kill call-outs (logic).** Alpha kills Bravo; Bravo's teammate C is
+    800 u from Bravo and teammate D 1200 u: Alpha's team hears `EnemyDown`
+    from Alpha (radius 1000), Bravo's team hears C's `ManDown` (if the set
+    has a file); with C dead, nobody speaks `ManDown`. Alpha kills a
+    teammate → no `EnemyDown`.
+51. **Map sound messages (logic).** A looping `SoundFX` with `StartOn` off:
+    TOGGLE → plays; TOGGLE → stops; TRIGGER twice → one copy playing,
+    restarted from the beginning.
+52. **No special impacts (data).** A rocket hitting a wall 50 u from you:
+    no push on your movement (pusher radius 0), no screen tint, no
+    ricochet, no blast light at the release detail.
+53. **Gain follows motion (logic).** A looping map sound, r 100, R 1000;
+    you stand 500 u away and walk to 900 u: its gain goes down smoothly
+    with the formula's values at each frame; walk out to 1100 u and back:
+    from 1000 u inward it follows the formula again.
+54. **Instance cap (logic).** With 255 sounds playing a 256th fails to
+    start; no playing sound is stopped.
+55. **Jitters add (logic).** Two frag detonations 300 u away in the same
+    frame, each giving amplitude a: the camera offset per axis ranges over
+    [−2a, 2a].
+56. **Camera rise (logic).** Stepping onto an 18 u ledge: the camera rises
+    at 180 u/s (18 / 0.1) and reaches the new height in 0.1 s; a 4 u step:
+    140 u/s, about 29 ms; a 1 u step: no smoothing.
+57. **Bomb detonation look (old release).** Ghost Town site A after the
+    bomb goes off: `Explode_S` / `Explode_L` effects appear at the site in
+    turn between about 0.4 and 5.3 s while the map camera shows them; no
+    camera jitter and no damage to players at the site.
+
 ## Open questions
 
 1. **Beyond the outer radius**: the game's gain is not recomputed beyond R,
@@ -1037,6 +1331,10 @@ section 10 with V = 100 and default sliders. Detail: effect detail high.
    library mutes samples beyond their maximum distance (R + 0.01). If it
    does not, sounds started out of range play at full gain. Test: stand
    2100 u from a firing M4A1 in an open map.
+   Still open. Checked again: the sound manager sets gain and low-pass only
+   for distances inside R (at start and on each move, Open question 21)
+   and sets the library's maximum distance to R + 0.01; nothing else mutes
+   the sample, so the answer is the library's own behaviour.
 2. **Fly-by position** (Quirk 6): confirm the fly-by is inaudible away from
    the map origin. Test on a map with the origin far from the play area.
 3. **Particle and sprite size convention**: we read a particle of size s as
@@ -1046,6 +1344,11 @@ section 10 with V = 100 and default sliders. Detail: effect detail high.
    a bullet hole beside a known 64 u crate.
 4. **Light through walls**: engine dynamic lights are assumed unshadowed.
    Check a muzzle flash behind a thin wall at medium detail.
+   Partly answered: the lights are created world-only and do not light
+   back-facing polygons (DynaLight, "The effect file"), so a wall's side facing
+   away from the light stays dark; a surface facing the light behind a
+   thin wall may still be lit. Still open for that case; measure as
+   above.
 5. **Frozen off-screen smoke** (Quirk 7): confirm that a smoke cloud lasts
    longer when you look away (look away for 10 s after detonation, turn
    back).
@@ -1053,11 +1356,19 @@ section 10 with V = 100 and default sliders. Detail: effect detail high.
    type and normal; whether the server re-derives the character surface
    (head/body) for client-reported hits or sends what the shooter reported
    was not traced.
+   **Answered:** the server derives it from the reported node: head
+   surface for head-location nodes, body surface for every other one
+   (section 5, What other clients learn); case 45.
 7. **Hit confirm on teammates**: whether the server sends the hit event (and
    so a ding) for hits on teammates with friendly fire off.
 8. **Others' footstep keys while unseen**: footsteps of characters you
    cannot see depend on their animation being advanced on your client; not
    traced.
+   Partly answered: the keys come from the server-chosen leg animation,
+   replicated and advanced on each client at rate 1 (section 11); case 49.
+   Still open: whether the client advances a character's animation while
+   it is outside the view or not drawn. Measure: stand behind a wall while
+   an enemy runs on the other side and listen for steps.
 9. **Server decal times on movers**: the server's solid-time setter writes
    the fade time instead, so the solid time keeps its initial value (not
    traced). Check how long a decal on a door lasts.
@@ -1097,3 +1408,35 @@ section 10 with V = 100 and default sliders. Detail: effect detail high.
     except the grenade groups' camera jitter (BR `Grenade_Dirt`: 20 u at all
     details instead of 60 u at high detail; small end-time differences).
     Re-check against the Steam build's archives when the readers work.
+17. **Effect file details** (placement modes, key curves, emitter shapes,
+    motion, bounce, sprites, other key types).
+    **Answered:** "The effect file", Placement modes in detail and after; cases
+    40–43.
+18. **Third-person effect points and others' shot sounds.**
+    **Answered:** section 3 (the attached weapon model's `Flash` and
+    `Breach` sockets, stock socket points); case 44. Install: re-measure
+    the sockets on the Steam models.
+19. **Decal clipping and offset.**
+    **Answered:** `MarksClip` defaults to 0; offset 1 u back along the ray
+    (section 6); case 46.
+20. **Liquids** (impacts, bubbles, rays through water).
+    **Answered:** section 6a; case 47.
+21. **Gain and low-pass while a sound plays; priorities and the instance
+    cap.**
+    **Answered:** section 10 (recomputed each frame the listener or the
+    source moved, inside R only; 255 live sounds, a new one is refused,
+    priorities unused); cases 53, 54.
+22. **Kill call-outs and map sounds.**
+    **Answered:** section 11, Kill call-outs and Map sounds details; cases
+    50, 51.
+23. **Special impacts** (pusher, blast light, screen tint, ricochet,
+    critical hit).
+    **Answered:** section 6, step 2; case 52. All are absent or inert in
+    the stock data except the critical effect, which depends on the
+    attachment (`gear_perks.md`).
+24. **Several camera jitters at once; camera rise.**
+    **Answered:** "The effect file", CamJitter (they add up) and camera rise; cases
+    55, 56.
+25. **Bomb detonation look and dry fire.**
+    **Answered:** section 9 (map effects and camera, no weapon effect);
+    dry fire never plays (section 11, Quirk 13 withdrawn); cases 48, 57.

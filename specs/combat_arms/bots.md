@@ -11,6 +11,11 @@ data), the single-play AI goal file, the bot profile file, the game-room
 file and the per-map game-mode files of the bot maps (BR client build).
 Status: draft
 
+A follow-up session (Open questions 16–24) added the bot volume, path,
+patrol, look-around, sense-recorder, crouch-request and chat code, the
+bot maps' AI objects from an older extracted client release and their
+third-person fire animations.
+
 Sections: Summary; Does the game have bots; Units and conventions;
 Constants; Difficulty, profiles and loadouts; Behavior (1 think loop,
 2 goals and states, 3 navigation, 4 patrol, 5 perception, 6 target
@@ -179,6 +184,31 @@ in the same item set is padded with copies of its own first entries until
 all lengths differ. Note the goggle slot reads the item set's `Face_*`
 keys (Quirk 9).
 
+**The profile file's fields by role** (Open question 22; the bot info file
+of the attribute data):
+
+- **Profile** (`Profile<n>`): `Difficulty` (`Normal`, `Hard`, `Extreme`,
+  `Tutorial` = Easy, Normal, Veteran, Tutorial lists), `BotInfoIndex` (the
+  bot base), `NickName` and `Clan` (string-table keys such as
+  `$Normal_Profile0_Nick`), `Rank`, `ClanMarkEmblem`, `ClanMarkBackground`,
+  `KDR` (shown only), `NationIndex`, `BaseModelID`, `NextChatTime` (chat
+  cooldown, default 10 when absent), `ItemInfoIndex0..` (item sets).
+- **Bot base** (`BotInfo<n>`, 36): `Brain`, `Template`, `BotTemplate` (the
+  same name, for example `Normal_N_Flash`), `GoalSet` (`BDM_Bot`), `MaxHP`,
+  `MaxAmmor` (100 / 100, unread).
+- **Item set** (`ItemInfo<n>`, 36): per slot a `<slot>_UsePercent` and a
+  list `<slot>_ItemNo<k>` of item numbers: `Model`, `Backpack`, `Head`,
+  `Face` (read for the goggle slot, Quirk 9), `M_P_Weapon` (mid-range
+  primary), `L_P_Weapon` (long-range primary), `S_S_Weapon` (secondary),
+  `M_Weapon` (melee), `G_Weapon` (grenade), `M_S_Weapon` (mine).
+- **Chat sets** (`AIChatMessage0..2`), see 10.
+
+The draw ρ (Open question 22): milliseconds since the machine started plus
+one C-library random number, made fresh for each bot and for each chat-set
+choice; it is not seeded by the game. Nothing depends on its exact values
+beyond the correlations described above, so any uniform seeded draw that
+keeps "one number for all slots of a bot" is parity.
+
 The bot's object name is `AI_Alpha_<profile>` or `AI_Bravo_<profile>`; its
 bot ID is the profile number.
 
@@ -226,6 +256,17 @@ unless a variant is named):
 | Safe distance to shoot a placed device (× its blast radius) | 0.3 | 0.3 | 0.3 | 0.4 | 0.4 | 0.4 | 0.5 | 0.5 | 0.5 | 0.3 | 0.3 | 0.3 |
 | Patrol mine interval (s) | 8–12 | 5–12 | 3–12 | 8–12 | 5–12 | 3–12 | 8–12 | 5–12 | 3–12 | 8–12 | 5–12 | 3–12 |
 
+Speeds for an implementation that moves bots with its own mover
+(Open question 6, answered for the speeds): jump-over speed equals the jump
+speed (300 Normal and Tutorial, 315 Hard and Veteran); crawl 100 u/s
+exists in every template but no bot state crawls; swim and fly 0. Patrol,
+chase, investigate and attack moves all use the run speed; only scripted
+walks use 70. These are ground speeds in u/s, constant (no acceleration,
+no stamina, no sprint), multiplied by the gear and weapon penalties of 3.
+At an AI volume's edge the next position is refused when it lies outside
+every enabled volume: the bot stops for that update and the waypoint counts
+as reached (3); it never slides along the edge. A mover that uses the
+player's physics must therefore clamp bots to the volumes itself to match.
 Same everywhere: walk 70, ladder 200, fall 500 u/s; hearing roll for
 footsteps 100 % up to 100 u falling linearly to 60 % at 800 u; for gunfire
 100 % up to 100 u falling to 50 % at 1000 u.
@@ -332,7 +373,9 @@ X and Z extents. Its connection point is the rectangle's centre, at a
 height chosen from the two boxes' vertical ranges (the touching face if one
 box is on top of the other, otherwise the middle of the overlapping height
 range). The link is cut into **gates** of 48 u; a link shorter than 48 u is
-invalid and dropped. A volume keeps at most a fixed number of neighbours.
+invalid and dropped. A volume keeps at most 32 neighbour candidates (the
+link builder's table size); a candidate whose shared rectangle has a
+diagonal below 0.71 u (squared length 0.5) is not a neighbour at all.
 More than 1024 volumes in a level disables path finding entirely.
 
 **Path search.** A path request names a destination position, node or
@@ -379,6 +422,45 @@ volume brushes the bot stands in. A new position that falls outside every
 enabled AI volume is refused: the bot stops and the waypoint counts as
 reached. This is what keeps bots on the navigation boxes.
 
+**What each volume type does** (Open question 16; the bot maps use only
+three: every bot map has plain volumes, Death Room, Junk Flea, Oil Rig and
+Short Fuse jump-up volumes, Downhill, Neptune, Oil Rig and Short Fuse ladder
+volumes; none has stairs, ledge, jump-over, junction or teleport volumes,
+of the seven bot maps' objects read on an older extracted client release):
+
+- **Plain**: walkable box; links as above, both ways.
+- **Ladder**: a bot may enter it only if its template allows ladders
+  (`CanUseVolumeLadder`, true for every bot template); the path climbs it at
+  the ladder speed (200 u/s) instead of walking; links both ways.
+- **Jump-up**: a 64 u deep box in the jump's direction (a box not 64 u
+  deep along the link it is entered from is refused), **entered only in the
+  direction of its jump**; leaving it, the next volume must be **higher**
+  (top of the next box above this one's top), unless the volume says
+  `OnlyJumpDown`, in which case the next box's bottom must not be higher
+  than this one's (a drop). `OnlyJumpWhenAlert` limits it to alert bots
+  (unused: the stock volumes have it off). The bot crosses it with a
+  parabolic jump at the jump speed. So jump-up links are **one-way**. Stock:
+  Death Room's four are all `OnlyJumpDown`.
+- **Jump-over**: entered and left only along its forward axis, with exactly
+  one neighbour on each side (otherwise unusable); a jump at the jump-over
+  speed (300 / 315 u/s). Not in bot maps.
+- **Stairs**, **ledge**: plain volumes as far as linking goes; excluded
+  from the "straight path" tests of the attack moves, dodges and sight
+  short cut. Not in bot maps.
+- **Junction**: up to four named exits (north, east, south, west) with up to
+  four actions each (look, peek, search; each with a chance) that a bot
+  passing through may play. Not in bot maps.
+- **Teleport**: linked to a named destination volume, one-way. Not in bot
+  maps.
+- **Ambient-life**: never used by bots.
+
+**Path weights**: every volume has `PreferredPath` and a weight, but every
+volume of the seven bot maps has `PreferredPath` off and the default
+weight, so in practice all weights are 1 and paths are the squared-distance
+shortest ones. **Regions** (`AIRegion`): each bot map has exactly one
+region holding all volumes, with no permission keys set; it changes
+nothing. There are no `AINodeGoto` objects in the bot maps.
+
 **Doors** are passed if not locked for the bot; a closed unlocked door is
 opened by walking into it. **Drops** happen only where a jump-up/ledge
 volume pair or overlapping boxes of different heights connect; a bot never
@@ -386,7 +468,11 @@ walks off an edge that is not linked. **Getting stuck**: bots step aside
 from other characters on their path (dynamic obstacle avoidance); a bot
 that ends up below its volume's floor is popped back to the floor height
 and 1 u toward its last valid position; there is no other unstick logic
-(Open question 11).
+(Open question 11). The one retry rule found: a bot waiting for a door that
+does not open for more than 2 updates gives up the door step and tries it
+again from the start; if the door is blocked and the bot is alert with a
+target, it shoots through the door when the door's surface can be shot
+through.
 
 ### 4. Patrol
 
@@ -397,7 +483,24 @@ bot gets the next patrol start node of its team, round robin. Patrol nodes
 are linked into a graph (next / previous links placed in the map). A bot
 runs (not walks) from node to node; at a node with a wait action it waits
 3 + U(0, 3) s; at a look-around node it plays look-around (head sweeps,
-cosmetic). Choosing the next node when a node has several links: among
+cosmetic). Data and details (Open question 17): the start nodes are the
+mission file's `AIStartNodeList` section (`PatrolNode_Bravo0` =
+`AI_Node_B_01` … `PatrolNode_Alpha7` = `AI_Node_A_08` on Death Room); every
+patrol node in the seven bot maps (772 nodes) has the action `LookAround`,
+no `Command` and a `Next` link, so there are no wait-only nodes. At a
+look-around node, if the bot's template has `StopLookAroundPercentage` P
+(25 for every bot template) and a 0..99 draw is **above** P, the bot does
+not stop (it keeps running to the next node, 74 % of the time); otherwise it
+stops, faces the node's forward if the node says so (`Face`), and looks
+around for 3 + U(0, 3) s: repeated head turns to a random yaw in ±67.5°
+and, one time in three, a random pitch in −45°..+22.5° (else level). While
+**moving** on patrol it also looks around now and then: every
+U(0, `NextLookAroundTime`) s it looks around for `NextLookAroundTime` s
+(8, 10, 12 s for the `_N`, `_N_Flash`, `_N_Smoke` templates; 5, 4, 5
+for `_H`, `_H_Mine`, `_H_SR`; 15, 11, 13, 20 for `_E`, `_E_Launch`,
+`_E_SG`, `_E_MG`; the same at every level; the templates' separate
+`LookAroundTime` is not used by this rule). Look-around turns only the
+head and the eye forward used by sight (5.2), not the body. Choosing the next node when a node has several links: among
 links other than the node it came from, score each linked node by
 
 ```math
@@ -410,7 +513,10 @@ the lowest score wins, ties to the first link. Unvisited nodes therefore
 always win, then the least recently visited, with up to a 10 s bonus for
 going straight on. At the end of a chain it turns back.
 
-**Guards**: the data supports a guard role for bots carrying a long-range
+**Guards**: the maps' guard data is `AINodeGuard` objects with up to 16
+linked `AINodeUseObject` nodes (Oil Rig: two guard nodes, five use-object
+nodes with the action `SniperStand`, a 512 u radius, run movement and
+commands that disable a node for a few seconds while used); the data supports a guard role for bots carrying a long-range
 primary, chosen by `AIGuradSpawnInfo<n>` sections (bot count limit, minimum
 and maximum guard count, selection percent), but every shipped map sets the
 maximum to 0, so **no bot ever guards** (Quirk 10).
@@ -479,7 +585,9 @@ Sight test on a character or device at position T (sight range R = 3000):
 1. If the target is dead: not seen. If it is a placed device with blast
    radius ρ and the bot is closer than ρ × (safe factor, table above): not
    seen (the bot will not shoot a mine it stands next to).
-2. The ray start is the bot's eye node. The aim spot cycles over a small
+2. The ray start is the bot's **eye point**: its own hull centre's x and z
+   with the height of its `Head` node (`Bip01 Head` on bodies without
+   `Head`), re-evaluated once per sense pass (Open question 18). The aim spot cycles over a small
    grid on the target's facing plane (one grid step per failed pass); for
    characters it is then replaced by exact node tests below.
 3. Distance² ≥ R²: not seen.
@@ -489,13 +597,16 @@ Sight test on a character or device at position T (sight range R = 3000):
 5. If a straight walk exists through AI volumes from the eye to the spot
    (ignoring ladder/stairs/jump/teleport volumes), it is visible without a
    ray (only when the target stands inside a volume, not under it).
-6. Ray from eye to target centre. Ignored by the ray: the bot itself,
+6. Ray from eye to the target's **object position** (a player's hull
+   centre, 50 u above the feet standing, 40 u crouched). Ignored by the ray: the bot itself,
    bodies, hitboxes, **all characters** (teammates and enemies do not block
    sight), liquids, see-through surfaces, and anything non-solid (so
    **smoke never blocks sight**, as `grenades.md` says). Hit nothing, or hit
    the target: seen.
-7. Otherwise one more ray to the target's **head node**: if clear, seen,
-   and the bot remembers that only the head was visible (7.4).
+7. Otherwise one more ray to the target's **head node** (`Head`, or
+   `Bip01 Head`, at its current animated position): if clear, seen, and the
+   bot remembers that only the head was visible (7.4). There is no torso or
+   socket test besides these two points.
 
 Seen inside the 5000 u instant-see distance (always, given R = 3000)
 means m is huge: the sight sense fires at once. A hidden target (scripted
@@ -531,13 +642,41 @@ dodge) there is no roll: sight is deterministic.
   the single-play data ignores.
 - **Footsteps**: every footstep of a character on the ground or a ladder
   posts a stimulus with radius 256 × the surface's movement-noise
-  modifier; the bot hears it within 1500 + that radius and ±128 u
+  modifier (Open question 18 for the details: the stimulus is posted at
+  each `FOOTSTEP_KEY` of the character's **server-side** leg animation; the
+  stock leg animations carry them only in the running (`LRF` 50 and
+  350 ms, every 300 ms), sprinting (`LRRF` 63 and 312 ms, about every
+  250 ms) and jump (`LSJ`, `LJJ` 600 ms, the landing) animations, while
+  walking (`LW*`) and crouch-walking (`LC*`) carry only footprint keys, so
+  **walking and crouching are silent to bots**; there is no speed
+  threshold: the run animation plays whenever a movement key is held with
+  the run flag, even against a wall; surface modifiers (`MoveNoiseMod`):
+  1.0 for most (cement, wood, dirt, rock), 2.0 tile, tin, porcelain and
+  untyped, 1.5 metal, liquid and water, 1.25 metal doors, 0.75 snow,
+  grass, mud, sand, foliage, 0.5 carpet and cloth, 0.0 ladders and air); the bot hears it within 1500 + that radius and ±128 u
   vertically. Each heard step adds 0.5; between steps it decays by about
   0.0013–0.0025 per pass, so in practice the **third** heard step (or the
   third "false" one) fires the sense.
 - **Grenade bounces** play a sound with a radius (`grenades.md`), but no
   hearing stimulus is posted from it; the danger path (5.4) is how bots
   react to grenades.
+- **False stimulations** (Open question 18): for the two senses with a
+  lower threshold (enemy visible, footsteps; threshold 0.5–1.0): a sense
+  whose level rose past 0.5 without reaching 1.0 and then decays back below
+  0.5 counts one false stimulation and is handled by the current state as a
+  weak cue (the visible sense is reported as the "lean" sense, which the
+  bot data switches off; a footstep as an unconfirmed footstep); the third
+  one (`FalseStimulationLimit` 3) is turned into a full stimulation (level
+  set to 1.0) and the counter restarts. With sight in practice always
+  instant (5.2) this matters only for footsteps.
+- **Ally gunfire** (Open question 14, answered): the bot data's ally
+  stimuli (`AllyWeaponFireSound`, `AllyDeathVisible`, `AllyDeathSound`,
+  `AllyPainSound`, `AllyDisturbanceVisible`, `AllyDistressVisible`,
+  `AllySpecialDamageVisible`) all have `Activity` FALSE, and only four
+  stimuli are active (`EnemyVisible`, `EnemyWeaponFireSound`,
+  `EnemyFootstepSound`, `AllyDisturbanceSound`, the ally call). So bots do
+  not react to teammates being shot, hurt or killed, whatever the
+  templates' `CanHearAllyWeaponFire` and distances say.
 
 What a heard sound does: the investigate goal takes it (chase is only
 started by sight). The bot calls allies (5.1 ally call, 512 u), then:
@@ -562,9 +701,10 @@ server tells every bot of another team:
    now + U(delay min, delay max) (difficulty table).
 3. When that time passes, the dodge goal (importance 100) takes over:
    - if the bot is already outside the radius: it stays (keeps fighting);
-   - else it tries 6 directions away from the grenade, starting straight
-     away and stepping 45° (skipping the three directions toward the
-     grenade): the first point at 1.1 × radius from the grenade with a
+   - else it tries **5** directions (corrected, Open question 19): straight
+     away from the grenade, then 45° and 90° to one side, then 90° and 45°
+     to the other side (the three directions toward the grenade, 135°,
+     180° and 225°, are skipped): the first point at 1.1 × radius from the grenade with a
      straight volume path and no bot in the way;
    - else the nearest scripted dodge node with a path;
    - if it sees its target from the weapon it moves while shooting
@@ -690,8 +830,11 @@ a = \operatorname{clamp}\big((a_w + B(0.1))\cdot k_{head},\ 0,\ 1\big),\qquad k_
 The shot leaves from the weapon socket toward S. **No weapon spread, no
 recoil, no movement or stance penalty** apply to bot shots; one ray per
 shot, shotguns included (Quirk 7). The ray, impact and damage rules are
-the player rules of `weapon_firing.md` (AI shooters never get the head /
-limb zone factor there).
+the player rules of `weapon_firing.md`. **Corrected** (Open question 24):
+bots **do** get the hit-zone factor: the server tests the target's spheres
+itself (`characters.md` 11, server test), records the struck node and
+applies its zone factor (head ×6 on the stock tables) for bot damagers;
+only AI that is not in bot mode (PvE enemies) gets none.
 
 Resulting hit cycles (ignoring camping and head-only):
 
@@ -764,7 +907,18 @@ in while shooting.
 #### 8.3 Firing cadence, bursts, reloads
 
 - Shots are triggered by the "fire" keys of the bot's third-person fire
-  animation (three fire variants, re-picked at random every 10 s). While a
+  animation (three fire variants, re-picked at random every 10 s). The fire
+  animation loops while the bot fires, and every stock gun fire animation
+  carries one fire key at 0 ms, so the bot's interval is the fire
+  animation's **length** (Open question 3, answered). Standing lengths in
+  the male library of an older extracted release (re-measure on Steam):
+  rifle class (`AniType` 0: M4A1, AK-47, M16A3, M60 …) 100 ms; SMG and P90
+  100; pistol 100; sniper 1000; automatic shotgun (`AniType` 6, R870)
+  466; double barrel 1000; snowball gun 900; rocket launchers 1200; chain
+  gun 133; knife 500 (key at 233 ms; stab 800, key at 366). The bot also
+  measures its weapon's fire animation length the first time it fires it
+  and uses that as the forced interval during hit reactions (else the
+  data's fire-frame). While a
   hit reaction plays, a shot is instead forced every fire-frame seconds
   (first one after half of it). The server still refuses shots closer than
   the weapon's `FireDelay` ms and **spends the round** (the same server
@@ -868,6 +1022,13 @@ On entering the attack state, with probability 0.01 a bot crouches (if no
 other bot is crouch-attacking the same target) for up to 10 s, then
 stands. A bot whose line of fire is blocked by a teammate bot asks that
 bot to crouch (if more than 48 u apart); otherwise it dodges sideways.
+Details (Open question 20): the request is granted only if the blocking
+bot is itself attacking with a ranged weapon, its crouch chance is above 0
+(0.01) and it has crouched for less than its crouch time (10 s) so far;
+the two must be at least 48 u apart. When granted, the asking bot does
+nothing that update (no shot, no dodge) and the other crouches for the rest
+of its 10 s; when refused, the asking bot forces a dodge on its next dodge
+check.
 
 #### 9.4 Cover and retreat
 
@@ -883,7 +1044,13 @@ map nodes of those kinds (Open question 9).
 - **Spawning**: each bot spawns at a start point of its team (start-point
   selection as for players), with full health and armour from its model
   (the `MaxHP`/`MaxAmmor` keys of the bot base are never read), and is
-  invulnerable for 3 s.
+  invulnerable for 3 s. (Open question 21:) the 3 s is the bot brain's own
+  `GodModeTime` (3.0 in every bot brain), started at the bot's first update
+  after each spawn; while it runs the bot takes no damage of any kind. The
+  room's or mode's spawn protection (`game_modes.md` S6) applies only to
+  the human. The 7 s respawn delay is a fixed delayed command the bot mode
+  sends at each bot's death, whatever the mode's respawn waits; the human
+  respawns by the TDM rules.
 - **Death**: the body stays 5 s; 7 s after death the bot respawns with the
   same profile and a new patrol start node. All bots respawn when a new
   round starts.
@@ -898,6 +1065,23 @@ map nodes of those kinds (Open question 9).
   client; if the bot's chat cooldown (15/20/25 s) has passed, it restarts
   the cooldown and shows a random line of that bot's chat set with
   probability (P + 1)/100 (P per event, e.g. kill 60, battle 25).
+  Details (Open question 23): the events are a kill by the bot (the
+  victim's death handler), the bot's death, its respawn, the start of its
+  ranged attack ("battle"), the start of its patrol ("search"), the start of
+  a grenade dodge, sighting a mine; "conceal" and "escape" are never sent.
+  Each bot gets one of the three chat sets (`AIChatMessage0..2`) at roster
+  time, by (milliseconds since start + C rand) mod 3. Per set and event:
+  ten lines with string-table keys of the form
+  `$Message<set>_<Event>_<0..9>` (events `Kill`, `Death`, `Respawn`,
+  `Battle`, `Search`, `Grenade`, `Mine`, `Conceal`, `Escape`), and a percent
+  P (`<Event>_Message_PrintPrecent`, as spelled): kill 60, death 60, respawn
+  25, battle 25, search 25, grenade 25, mine 60, conceal 10, escape 10.
+  The cooldown restarts **before** the percent roll, so a failed roll still
+  silences the bot for the whole cooldown; the roll is (milliseconds since
+  start mod 100) > P → nothing. The line is shown in the chat box for 10 s
+  as "nickname : line", in the friendly colour if the bot is on the
+  human's team, else the enemy colour. The first line is possible one
+  cooldown after the roster is built.
 - **Bot Training** adds captions triggered by deaths (count, chain,
   body part, damage type) on top of the same rules.
 
@@ -1142,6 +1326,63 @@ row), random sources replaced by the stated draws.
 44. **Freeze.** Round reaches the kill goal → all bots stop moving and
     firing on the next update.
 
+**Follow-up cases** (Open questions 3, 6, 11, 14, 16–24). "Old release" = map
+objects and animation files of an older extracted client release;
+re-measure on the Steam install (build 25595979).
+
+45. **Zone factor for bots (logic).** An Easy bot's aimed M4A1 shot whose
+    ray passes within the radius of the target's `Face_Jaw` sphere (head,
+    factor 6) on the server's pose → the damage is 6 × the base before
+    armour, as for a player's head shot. A PvE (non-bot) AI's shot on the
+    same line → factor 1.
+46. **Bot fire interval (old release).** A bot firing an M4A1 (class 0)
+    standing: one shot per 100 ms of its fire animation (plus frame
+    rounding at the local server's rate); an R870 (class 6): 466 ms; an
+    L96A1 (class 5): 1000 ms; a knife slash: 500 ms with the hit at 233 ms.
+47. **Speeds (data).** Normal-level bot: run 270, jump 300, jump-over 300;
+    Veteran: run 300, jump 315; `Normal_N_Flash`: run 300. A bot whose next
+    step would leave every AI volume stops on that update and takes its
+    next waypoint.
+48. **Jump-down volume (old release).** Death Room `AIVolumeJump01`
+    (`OnlyJumpDown`, box (40, 96, 24) half-extents): a path may use it only
+    from its upper neighbour down to a lower one, never upward.
+49. **Look-around stop (data).** Patrolling `Normal_N` bot reaching a
+    `LookAround` node: with a 0..99 draw of 30 (> 25) it runs on; with 20 it
+    stops for 3 + U(0, 3) s, head yaw targets in ±67.5°. While running it
+    starts a look-around every U(0, 8) s lasting 8 s.
+50. **Footsteps (old release, logic).** A player running forward (`LRF`):
+    footstep stimuli at 50 and 350 ms of each 600 ms cycle (every 300 ms);
+    walking (`LWF`) or crouch-walking (`LCF`): none; a jump: one at the
+    landing key (600 ms of `LSJ` / `LJJ`). On carpet (0.5) the stimulus
+    radius is 128 u, on tile (2.0) 512 u; a bot hears it within 1500 + that
+    radius.
+51. **False footsteps (logic).** Footstep sense fed one step (level 0.5),
+    then nothing: it decays below 0.5 → one false stimulation (weak cue);
+    after the third such false stimulation the sense is set to 1.0 and
+    fires.
+52. **Ally gunfire (data).** A bot's teammate fires a rifle 300 u away and is
+    killed 200 u away, outside the bot's view → no stimulus at all; the bot
+    keeps patrolling.
+53. **Grenade dodge directions (logic).** Bot 100 u east of a grenade with
+    blast radius 300: it tries the point 330 u from the grenade straight
+    east first, then 45° and 90° to one side, then 90° and 45° to the other;
+    never the three directions with a westward component of 135°–225°.
+54. **Crouch request (logic).** Bot A's line of fire is blocked by teammate
+    B 100 u ahead, B attacking with a rifle and having crouched 0 s: B
+    crouches, A does nothing that update. B 40 u ahead → refused, A forces
+    a dodge.
+55. **Bot spawn protection (logic).** A bot spawns at t = 0; a frag blast at
+    t = 2.9 s → no damage; at t = 3.1 s → damage. The bot dies at t = 10 s →
+    respawns at t = 17 s whatever the room's respawn settings.
+56. **Chat roll (data).** A bot with chat set 0 kills the player at t = 30 s
+    with its cooldown (20 s) elapsed: the cooldown restarts; with a
+    millisecond clock ending in 42 (≤ 60) a kill line `$Message0_Kill_<0..9>`
+    is shown for 10 s; ending in 75 → no line, and no line from this bot
+    until t = 50 s.
+57. **Door retry (logic).** A bot waiting at a door that has not opened for
+    3 updates restarts its door step; if alert with a target and the door's
+    surface can be shot through, it shoots through it.
+
 ## Open questions
 
 1. **Local server frame rate.** Bot Deathmatch runs a local server inside
@@ -1156,6 +1397,17 @@ row), random sources replaced by the stated draws.
    reference), capped by the weapon's fire delay. Measure the bot's rate of
    fire per weapon in the live game and from the third-person animation
    data.
+   **Answered:** the fire animation loops and each stock gun fire
+   animation has one fire key at 0, so the interval is its length (rifle,
+   SMG, pistol 100 ms, sniper 1000, automatic shotgun 466, double barrel
+   1000, rocket launchers 1200, chain gun 133, knife 500), measured on an
+   older release's library; the server's `FireDelay` floor (30 ms default)
+   never binds. Applied in 8.3; case 46. Re-measure the Steam library; a
+   class whose fire name is missing from the library (the machine-gun `M`
+   family in the US library, `characters.md` Quirk 1) plays no fire
+   animation and so fires only through the hit-reaction path: check in game
+   whether a bot with an M60-class gun of `AniType` 8 fires at all (stock
+   M60 is class 0).
 4. **Throw keys.** The throw angle and power carried by the throw
    animations' keys (defaults 0° and 1) were not read.
 5. **Contradiction with `grenades.md`.** That spec says "a grenade at rest
@@ -1176,6 +1428,10 @@ row), random sources replaced by the stated draws.
    (`weapon_firing.md`), grenade flight (`grenades.md`), ammo data. An
    implementation that drives bots through the player controller would
    behave differently; decide which one we want.
+   **Answered for the numbers:** run, walk, jump, jump-over, ladder and fall
+   speeds per template (Difficulty table and the paragraph after it), the
+   volume-edge rule (stop, waypoint reached), and the zone factor (bots do
+   get it, Open question 24). The design choice itself stays with us.
 7. **Shotgun single ray** (Quirk 7): confirm in the live game that a bot
    shotgun blast deals one pellet's damage.
 8. **Bot Training level.** Which profile level Bot Training uses (the
@@ -1189,6 +1445,13 @@ row), random sources replaced by the stated draws.
 11. **Stuck bots.** Beyond obstacle avoidance and the fall-through pop-up,
     no unstick logic was found. Watch for bots stuck on volume edges in the
     live game.
+    Still open. Checked again: the path follower, the volume refusal and the
+    states; the only retry found is the door rule (3, case 57). A bot that
+    makes no progress against a wall stays until its goal changes (a new
+    sense, the chase timer, the attack-move timer). Measure: on Short Fuse,
+    block a narrow corridor with a crate-sized prop (or stand in it as a
+    teammate in a modded room) and time how long a patrolling bot pushes
+    against it before turning.
 12. **Investigate details.** The alarm-level bookkeeping that decides
     between "just look" and "go there" was not fully traced; the reading
     that gunshots always send the bot is an inference from the alarm
@@ -1199,5 +1462,50 @@ row), random sources replaced by the stated draws.
 14. **Ally gunfire.** The single-play data switches off the ally-gunfire,
     ally-death and impact stimuli; confirm that bots do not react to their
     teammates being shot or killed.
+    **Answered:** confirmed from the data: every ally stimulus except the
+    ally call has `Activity` FALSE; only four stimuli are active. Applied in
+    5.3; case 52.
 15. **PvE AI.** Fireteam and other PvE enemies (section 11) need a separate
     spec, from the multiplayer AI data files.
+16. **Navigation volumes** (types, doors, path weights, neighbour cap).
+    **Answered:** 3 (What each volume type does; 32 candidates; weights all
+    1 in the bot maps; one region, no goto nodes); case 48.
+17. **The bot game-mode file's patrol start nodes, node actions, guard and
+    use-object nodes.**
+    **Answered:** 4 (the `AIStartNodeList` section; all 772 patrol nodes are
+    look-around nodes with the 25 % stop rule and the 3–6 s look; guard
+    nodes with sniper-stand use-object nodes exist on Oil Rig only and are
+    never used, Quirk 10); case 49.
+18. **Senses: sight points, footsteps, false stimulations.**
+    **Answered:** 5.2 (eye = own hull x/z at the `Head` node height; target
+    = hull centre, then the head node), 5.3 (footsteps from the server's
+    leg-animation keys only: running, sprinting and landings; surface
+    multipliers; false stimulations); cases 50, 51.
+19. **Grenade danger: bot-thrown grenades and the dodge directions.**
+    **Answered:** only player-thrown grenades are announced (a bot's own
+    grenades never warn other bots); the dodge tries 5 directions, not 6
+    (5.4 corrected); case 53.
+20. **Small timings** (catch breath, crouch request, roll, knife, reload
+    move).
+    **Answered:** the crouch request (9.3; case 54); the roll is 140 u
+    (9.2); the knife: approach until within its 130 u range, every fire key
+    of the melee animation then deals the damage at that range with no
+    swing trace (8.4); the reload's attack move starts on the update the
+    reload starts (the clip refill and the reload animation start are the
+    same event, 8.3). **Still open:** the length of the "catch breath" stop:
+    it is a one-shot action animation of the AI animation set, which the
+    bots' player-style animation driver may not have (then it ends at
+    once). Measure: let a bot chase you out of sight for its endurance time
+    (12 s on Easy) and time its pause.
+21. **Bots' spawn protection and respawn wait.**
+    **Answered:** the brain's `GodModeTime` 3.0 s (all damage), and a fixed
+    7 s respawn delay, independent of the mode (10); case 55.
+22. **Profiles and the draw ρ.**
+    **Answered:** field roles in "Choosing the bots"; ρ = milliseconds
+    since start + rand(), any uniform draw is parity.
+23. **Bot chat.**
+    **Answered:** 10 (events, sets, string keys, percents, the cooldown
+    before the roll); case 56.
+24. **Hit-zone factor for AI shooters** (with Open question 6).
+    **Answered:** bots get it, from the server's sphere test (7.3
+    corrected); PvE AI does not; case 45.

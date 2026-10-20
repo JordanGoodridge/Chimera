@@ -642,6 +642,13 @@ The moving classes share: `PowerOnTime` (1 s; doors also `OpeningTime` / `Closin
 | `DamageVolume` | Damage restricted to `TargetTeam`, can be `Locked` |
 | `WorldVolume`, `JumpVolume` | Mode volumes (`JumpVolume` launches players: `Velocity`) |
 
+Property defaults and meanings shared by all volume classes (players' use of them: `movement.md`, "Volumes"):
+
+- `Friction` (real, default 1 in every class, `Ice` 0) and `Viscosity` (real, default 0; liquids 0.035, `Ladder` 0.4) are clamped to [0, 1] on load; `PlayerSpeedFactor` (real, default 1 in every class) is clamped to at least 0. `Current` is a vector in u/s, default (0, 0, 0).
+- `DamageType` (string) names an entry of the game's damage-type table, matched without regard to case; a name not in the table gives an invalid type. Class defaults: `VolumeBrush` `CHOKE`; `CorrosiveFluid` and `Burn` `BURN`; `FreezingWater` and `ColdAir` `FREEZE`; `PoisonGas` `POISON`; `Electricity` `ELECTROCUTE`; `EndlessFall` `ENDLESS FALL`; `DamageVolume` `FAK_HEAL` (a heal); the others `UNSPECIFIED`. Seen in the older regional client's maps: `CHOKE`, `BURN`, `FREEZE`, `POISON`, `ENDLESS FALL`, `FAK_HEAL`, `UNSPECIFIED`.
+- `JumpVolume`: `Velocity` (real, default 1000) is a speed in u/s, and a `VELOCITY <speed>` message changes it. The launch direction is the forward vector of the object's `Rotation` (Objects, "Rotation to matrix"); the object itself is then given no rotation. Observed: the gravity map's 7 pads point straight up (forward within 1° of +Y; six at 800, one at 1400), the dam map's 3 pads (2000, 2000, 3000) have forward (0, −0.707, −0.707) (`movement.md` Open question 29).
+- `Gravity`: `PlayerGravity` (real, u/s², default −2000) replaces the player's gravity; overlapping volumes add up. Observed −300 in both gravity maps.
+
 ## Map identity
 
 (Open question 15.) Neither the engine nor the game checks a map file's hash or size between server and client. The server sends each client its list of used files (an id, the file size and the file name per entry); the client looks each name up in its own mounted archives, ignores the size, and treats every entry as present even when it cannot find it (it only prints a console line). The world to load is then named by its file id, and the client loads its **own** copy of that name; a copy that fails to parse fails the load with an invalid-world error. The game's own start-up file check covers program files and the attribute archive, not the world archives. So two different maps with the same archive path are not told apart.
