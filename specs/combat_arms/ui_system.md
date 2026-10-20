@@ -3,7 +3,7 @@
 Source basis: the client's widget library and its layout loader, the HUD item base and HUD manager, the in-match chat, scoreboard and in-game menu, the popup and screen managers, the font and string-table loaders and the system font renderer; checked against the XML layouts, font list, string table, HUD layout attributes and client interface attributes of a classic-client data set. The Steam build's encrypted layouts were not read (see Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Behavior (L: layout data; S: scaling and anchoring; T: text and fonts; R: string tables; W: widget types; I: input, focus and sounds; M: screens, popups and stacking; H: the screens of a match; D: data versus code); Per-frame order; Edge cases; Quirks; Answers to hud_crosshair.md open questions 2 and 3; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Behavior (L: layout data; S: scaling and anchoring; T: text and fonts; R: string tables; W: widget types; I: input, focus and sounds; M: screens, popups and stacking; H: the screens of a match; D: data versus code); Per-frame order; Edge cases; Quirks; Answers to hud_crosshair.md open questions 2 and 3; Corrections (2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -54,7 +54,7 @@ x_r = \frac{W}{1024}, \qquad y_r = \frac{H}{768}
 | chat message life | 10000 | ms | player, team, whisper and clan lines; system lines use 5000 or 15000 |
 | chat history kept | 20 | lines | for chat-record export only |
 | chat input max | 119 | characters | layout MaxLength 120, minus 1 |
-| round-result banner | 3000 | ms | scoreboard result display after a round |
+| round-result display | until the next round's setup | | scoreboard result after a round; the 3000 in the code is given to a seconds timer, so it never runs out first (Corrections 1) |
 | result screen timeout | 60000 | ms | auto-return to the room |
 | wheel step | raw wheel delta / 12 | units | one notch (120) = 10 |
 | button state suffixes | A normal, B hover, C pressed, D disabled | | appended to the button texture prefix |
@@ -321,7 +321,7 @@ w = \Big\lfloor \frac{w_{px}}{s_x} \Big\rfloor, \qquad h = \Big\lfloor \frac{h_{
   - The language code comes from a command-line option, else from the code the player saved through the options screen, else "ENG". The saved choice takes effect at the next start.
   - The table read is the language pack's table for that code.
   - An optional per-user override file in the same format can link a value to it. A value written `#key#fallback` looks up `key` in the override file and uses `fallback` if that key is absent.
-  - The pack can also map texture names to per-language replacements.
+  - The pack also ships a per-language texture map, but nothing applies it: the only lookup that reads it throws its result away, so textures are never swapped per language (Corrections 8). The only texture-name swap in effect is the event table of the client event attributes, which replaces a texture name by an event's while an event is configured.
   - Codes seen in one data set: ENG, POR, TUR, DEU, ITA, POL, ARB, SCN.
 - **Builds without the pack:** one fixed table is read.
 - **No reload:** strings are never reloaded while running.
@@ -420,6 +420,7 @@ b_l = T_w u,\quad b_r = T_w (1 - u - u_w),\quad b_t = T_h v,\quad b_b = T_h (1 -
   2. **Match:** in a match, the HUD's key handling (chat when its input is open, otherwise the game's bindings).
   3. **Menus:** in menus, the current screen.
 - **Chat input open:** the chat panel consumes every key.
+- **Movement and look under a popup or chat** (Corrections 4): while the chat input is open, or an in-game popup is visible (the Esc menu, the user report box, a message box, the user tooltip, a discard confirmation, the help box), each frame the movement control flags are cleared **except crouch** (a crouch held when it opened stays down), a running sprint ends, mouse look is ignored, and new game command presses (fire, reload, weapon keys, jump) are ignored. The world keeps running.
 - **Fixed keys in a match:**
   - Esc opens the in-game menu, or closes chat input if that is open.
   - Enter sends chat.
@@ -489,21 +490,28 @@ b_l = T_w u,\quad b_r = T_w (1 - u - u_w),\quad b_t = T_h v,\quad b_b = T_h (1 -
 
 | Screen | Layout data | Opened / closed by | Scale |
 |---|---|---|---|
-| Loading screen | loading-screen layout | map load start / end | x_r, y_r |
+| Loading screen | loading-screen layout (see "Loading screen" below) | map load start / end | x_r, y_r |
 | HUD panels: health block, weapon panel, kill feed, chat, notices, progress messages, captions, radar, item alerts and others | named top-level controls of the main HUD layout (`character`, `weaponRoot`, `KillDeath`, `Chat`, `Notice`, `Progress`, `Caption`, `Radar`, `ItemAlert`, ...) | entering the world; per-panel rules (hud_crosshair.md) | x_r, y_r |
-| Mode score panel | mode indicator layout: one `indicator` control with a child per mode; TDM uses `Eli`, and the shared message line is `Etc` | game type known | x_r, y_r |
+| Mode score panel | mode indicator layout: one `indicator` control with a child per mode (table in Corrections 6; TDM uses `Eli`), and the shared message line is `Etc` | game type known | x_r, y_r |
 | Crosshair and damage overlays | drawn by code with HUD layout attributes (hud_crosshair.md) | | x_r (crosshair), x_r, y_r (overlays) |
 | Death / kill cam | kill-cam layout, `KillCam` | death / respawn | x_r, y_r |
 | Vote kick | vote layout, `VoteKick` | vote messages | x_r, y_r |
-| Scoreboard | six scoreboard layouts: common frame `Result_Normal`, team list `Team_UserList`, no-team list, fireteam and two hunted-mode variants | while the score key is held and no in-game popup is up; also forced on for 3000 ms as the round-result banner | x_r, y_r, modal channel |
+| Scoreboard | six scoreboard layouts: common frame `Result_Normal`, team list `Team_UserList`, no-team list, fireteam and two hunted-mode variants | while the score key is held and no in-game popup is up; also forced on from the round-result message until the next round's setup message, ignoring the score key meanwhile (Corrections 1, 2) | x_r, y_r, modal channel |
 | Team swap notice (VIP modes) | team-change layout | server team swap | x_r, y_r |
 | Chat | `Chat` panel of the main HUD layout | always on; input opened by the chat binds or keys | x_r, y_r |
-| In-game menu (Esc) | in-game menu layout | Esc toggles; buttons return to lobby, report a user, start/stop recording, cancel | 1:1, centred |
+| In-game menu (Esc) | in-game menu layout | Esc toggles; buttons return to lobby, report a user, start/stop recording, cancel, and the title bar's close button (Corrections 5) | 1:1, centred |
 | Message boxes | message-box layout | code | 1:1, centred |
 | End-of-match result | result screen layouts (common, player chart, team, no-team, fireteam, MVP, reward tooltip, abuse notice) | after the match, as a menu screen at 1024 x 768; Enter (when its abuse notice is shown) or 60000 ms returns to the room | none (1024 x 768) |
 
 - **No in-match team, loadout or buy screens:** they do not exist in PvP. Team and loadout are chosen in the waiting room, a menu screen at 1024 x 768. The only in-match shop is a co-op NPC shop button.
-- **No pause:** online play has none. The Esc menu does not stop the game.
+- **No pause:** online play has none. The Esc menu does not stop the game, but it stops the local player's movement and look (I2).
+- **Loading screen (from the reference; Corrections 7):**
+  - **Texts:** `mapName` and `mapName_shadow` the map's name from the room data; `mapmode` the mode's full name (with the string table's "official" word and a space in front in official rooms); `operation_description` the map's loading description from the room data.
+  - **Picture:** `MapImage` shows the room data's loading picture for that map and mode; when that texture does not exist, the same map's picture for team deathmatch.
+  - **Tips:** the `Bottom_Info` window holds two banners: `Banner_1` the map's guide entry, `Banner_2` the mode's, each with its icon (`Banner_icon`), title (`Banner_Title`) and one description picked at random (`banner_description`); a banner with no guide entry is hidden. The tutorial hides `Bottom_Info` and takes its texts from layout attributes.
+  - **Quarantine backdrop:** the control `Quarantine` is shown only for that mode.
+  - **Gauge** (`LoadingGauge`, percent p, real milliseconds): until the engine starts setting the new level, p rises by 0.2 per ms, capped at 15, and the time spent T is summed; when entering the world starts, p jumps to 55 and the speed becomes 15 / T per ms; afterwards p rises at that speed, capped at 100. It is only advanced while `Bottom_Info` shows.
+  - The cursor is hidden while it shows.
 - **Chat panel (from the layout):**
   - **Queue:** the queue window `ChatQueue` is at (0, 520), 400 x 180.
   - **Line template:** `ChatMsg` at (6, 525), bold 13, white with a stroke at alpha 150, wrap width 380.
@@ -610,6 +618,46 @@ These are settled here; hud_crosshair.md itself is not changed by this spec.
   - Confirmed: right- and centre-aligned texts align inside their **parent** widget's box, and their own Position is ignored on the aligned axis, so the (100, 100) dummy positions have no effect.
   - The rules are in T4. The weapon name's right edge is at 769 + 250 = 1019 ref.
   - A text with DEFAULT vertical alignment keeps its own y even when centred horizontally.
+
+## Corrections (2026-10-19)
+
+A second pass over the reference's widget library, scoreboard, in-match popups and loading screen, compared with this spec and with our implementation in `games/combat_arms/src/ui/`. Each entry: the reference behaviour, what we do now (file:line), why it matters, the numbers. The body text is already corrected; test cases 23 to 32 cover these entries. HUD-panel corrections (action prompts and gauge, kill feed, name tags, timers) are in hud_crosshair.md's own Corrections.
+
+1. **The round result stays up until the next round's setup, not 3000 ms.**
+   - Reference: the scoreboard's result display is started with the value 3000 on a timer that counts seconds, so it never runs out first; it is ended by the next round's setup message (or the round-live message), or replaced by the match's result screen. With the stock times (game_modes.md S3: ObjectEnd 3 s + MissionEnd 3 s) it shows for about 6 s. While it shows, the score key does nothing (the board stays up whether or not it is held).
+   - Ours: `games/combat_arms/src/ui/scoreboard.rs:47` and `scoreboard.rs:130` show it for 3000 real ms after the round-over phase begins, then fall back to the score key.
+   - Why: the result banner vanishes halfway through the gap between rounds in ours.
+2. **Single-round modes show the banner without the player lists.**
+   - Reference: in modes the room data marks as not multi-round, showing the result hides the player lists and the `result_info` window, leaving the banner alone; multi-round modes show the banner over the lists. Hiding the result shows them again.
+   - Ours: `scoreboard.rs:149` and the bound board (`scoreboard.rs:200` onwards) always draw the lists with the banner.
+   - Why: the end of a team deathmatch looks different (banner only).
+3. **Which banner and sound.**
+   - Reference: a winner equal to the local player's team: the win texture, else the lose texture. Last Man Standing, One Man Army, Arms Race, and Spy Hunt for players not on Alpha: the free-for-all win or lose textures. Quarantine: the human-win or infector-win texture (`HumanRoundWinTex`, `InfectorRoundWinTex`) by winner, with the interface sounds `QRTHumanWinSound` / `QRTInfectorWinSound`. Other team modes (not co-op, not Spy Hunt, not hosted modes) play `RoundAlphaTeamWinSound` or `RoundBravoTeamWinSound` by winner. No winner: the draw texture, except in a training round or while the team-change notice is up (then no banner). Hosted (tutorial-like) modes show no banner.
+   - Ours: `scoreboard.rs:226-235` picks win, lose, draw or the free-for-all pair by the board's type only; no Quarantine textures, no sounds, a draw banner in training rounds.
+   - Why: wrong banner art in Quarantine and Spy Hunt, a "draw" after every warm-up.
+4. **Movement and look stop under a popup or the chat input, except crouch** (I2; answers Open question 6).
+   - Reference: while the chat input is open or an in-game popup is visible (Esc menu, user report box, message box, user tooltip, discard confirmation, help box) the movement flags are cleared each frame except crouch, a sprint ends, mouse look is ignored and new game command presses are ignored. The game does not pause.
+   - Ours: `games/combat_arms/src/ui/menu.rs:29-31` stops moving and looking while the menu is open, like the shell's free mouse; whether a held crouch stays down is not specified or tested.
+   - Why: a player who opens the menu crouched stays crouched in the game.
+5. **The Esc menu's buttons and keys.**
+   - Reference: five controls are bound by name: `button_lobby` (leave to the lobby; in ladder-match builds disabled unless the connection has stalled), `button_userreport`, `button_record` (its label `btn_text_record` is the string `$button_record_start` or `$button_record_stop` filled with the name of the key bound to recording), `button_cancel` and `button_exit_title` (both just close it). Esc while it is open closes it; every other key is swallowed while it is open. It is centred each time it opens. A button the layout has but code does not bind (an options button) keeps its normal look and does nothing.
+   - Ours: `menu.rs:72` binds `button_option` and shows it disabled (the D look); report and record are disabled too (no flow yet: a known shortcut).
+   - Why: low; the look of the options button.
+6. **The mode indicator's child per mode** (answers Open question 7).
+   - Reference, by mode key: TDM, clan TDM and Snowball Fight `Eli`; Elimination Pro and its clan version `Eli_pro`; Search & Destroy, its clan version and Bombing Run `s&d`; Go4CA `ESL`; CTF and clan CTF `CTF`; One Man Army `Indicator_OMA`; Last Man Standing `LMS`; Spy Hunt `Indicator_SPY`; Quarantine `QRT`; Seize and Secure `HQT`; Hired Guns `Squad`; Squad Match 2 `HG2`; VIP Elimination `VIP_Eli`; VIP Escort and its clan version `VIP_Esct`; Arms Race `WeaponRace`; Hunted `HungerGame`; Fireteam `FRT`; Infected Ship `FRT_IShip`; bot Elimination `Eli_single`. The shared message line is `Etc`.
+   - Ours: `games/combat_arms/src/ui/hud/bound.rs:202-219` maps `SQM2` to `Squad` (should be `HG2`), and `SBT`, `ESC`, `SQM` fall to `Eli` (should be `s&d`, `VIP_Esct`, `Squad`).
+   - Why: Bombing Run, VIP Escort and Squad Match 2 draw another mode's panel.
+7. **The loading screen** (H, "Loading screen").
+   - Reference: the gauge is time-based (0.2 % per ms to 15 % until the level is being set up, then 55 % and 15 / T % per ms to 100, T the time the first part took); the picture comes from the room data per map and mode, falling back to the map's team-deathmatch picture; the mode name, the map description and two tip banners (map and mode guide, a random line each) are filled; the Quarantine backdrop shows in that mode; the cursor is hidden.
+   - Ours: `games/combat_arms/src/ui/loading.rs:53-66` jumps by join stage (10, 25, 35, 45, 55, 80 %); `loading.rs:44-50` builds the picture's name from the map name; `loading.rs:14-21` hides the mode line, description and tips and never shows the Quarantine backdrop.
+   - Why: the loading screen is the first thing seen per map; the tips and mode line are always there in the game.
+8. **Per-language textures are not swapped** (R1; answers the per-language textures question).
+   - Reference: the language pack's per-language texture map is loaded at start, but no texture lookup applies it (the one routine that reads it discards what it finds). Textures are drawn by their own names in every language; only the client event attributes' event table can replace a texture name.
+   - Ours: `games/combat_arms/src/ui/install.rs:35-37` does not read that map: matches; the doubt in that comment can go.
+9. **Popups suppress the scoreboard** (M2).
+   - Reference (as M2 says): while an in-game popup is visible the score key does not show the board.
+   - Ours: `scoreboard.rs:24-26` lists "no suppression by popups (the in-game menu draws over it)".
+   - Why: with Tab held, opening the menu shows the board under it in ours.
 
 ## Test cases
 
@@ -737,6 +785,16 @@ The string table holds `t_title = "ABCDE"` and nothing else. Rects are screen px
     - At 1920 x 1080 it renders 75 x 18 px (advance ⌊8·1.875⌋ = 15), with reference width ⌊75/1.875⌋ = 40.
     - At 1280 x 1024 it renders 50 x 17 px (advance 10, height ⌊13·1.3333⌋ = 17), with reference width 40.
 22. **Missing font:** a Text whose Font is "bold 99" (not in the font list) fails the load with an error naming the control.
+23. **Result duration** (Corrections 1): Search & Destroy, stock ObjectEnd 3 s and MissionEnd 3 s; the round result arrives at t = 0 -> the board and banner are shown at t = 3.0 s and t = 5.9 s, and hidden on the frame the next round's setup message arrives (about t = 6 s). Pressing and releasing the score key during that time changes nothing.
+24. **Banner only in single-round modes** (Corrections 2): TDM round result -> the banner shows, the team lists and `result_info` are hidden. Search & Destroy round result -> banner and lists. Hiding the result in TDM shows the lists again for the score key.
+25. **Banner choice** (Corrections 3): local player on Alpha, winner Alpha -> win texture; winner Bravo -> lose texture. One Man Army, another player wins -> the free-for-all lose texture. Quarantine, Alpha (humans) win -> `HumanRoundWinTex` and `QRTHumanWinSound`. TDM, Bravo wins -> `RoundBravoTeamWinSound` plays. No winner in a training round -> no banner; no winner in a real round -> the draw texture.
+26. **Input under the Esc menu** (Corrections 4): the player holds forward and crouch, then opens the Esc menu -> from the next frame no forward movement, still crouched, mouse movement does not turn the view, pressing fire does nothing; the match clock keeps running. Closing the menu with forward still held -> walking resumes on the next frame. The same with the chat input open instead of the menu.
+27. **Esc menu keys and buttons** (Corrections 5): the menu is open; Esc -> it closes; Enter or a letter key -> swallowed, the menu stays. `button_cancel` and `button_exit_title` -> close it. A layout with an unbound options button -> drawn with its normal texture, clicking it does nothing and the menu stays open. The record button's text is `$button_record_start` with the record key's name filled in (`$button_record_stop` while recording).
+28. **Mode indicator children** (Corrections 6): TDM -> `Eli`; Elimination Pro -> `Eli_pro`; Search & Destroy -> `s&d`; Bombing Run -> `s&d`; CTF -> `CTF`; One Man Army -> `Indicator_OMA`; Last Man Standing -> `LMS`; Spy Hunt -> `Indicator_SPY`; Quarantine -> `QRT`; Seize and Secure -> `HQT`; Hired Guns -> `Squad`; Squad Match 2 -> `HG2`; VIP Elimination -> `VIP_Eli`; VIP Escort -> `VIP_Esct`; Arms Race -> `WeaponRace`; Go4CA -> `ESL`; Hunted -> `HungerGame`; Snowball Fight -> `Eli`; Fireteam -> `FRT`; Infected Ship -> `FRT_IShip`.
+29. **Loading gauge** (Corrections 7): the early loading states last T = 300 ms in all -> the gauge reads 15 % from 75 ms on; when entering the world starts it jumps to 55 %, then rises 15 / 300 = 0.05 % per ms and reaches 100 % 900 ms later. At 1024 x 768 with MaxRange 600 -> bar widths 90, 330, 600.
+30. **Loading picture fallback** (Corrections 7): map M has a loading picture for TDM but none for CTF; a CTF room on M -> M's TDM picture. `mapmode` in an official room -> the "official" string, a space, then the mode's full name.
+31. **No per-language textures** (Corrections 8): language POR whose texture map lists X -> Y; a layout naming X -> X is drawn.
+32. **Popups hide the scoreboard** (Corrections 9): score key held, the Esc menu opens -> the board is hidden while the menu shows and comes back when it closes (key still held).
 
 ## Open questions
 
@@ -755,5 +813,7 @@ The string table holds `t_title = "ABCDE"` and nothing else. Rects are screen px
    - The code-drawn HUD items (crosshair, damage overlays) are drawn with clamping. This bears on hud_crosshair.md open question 5, which predicts clamp.
    - Confirm both with a screenshot.
 6. **Input while the Esc menu is open:** whether movement and mouse-look stay active (the cursor is shown, and the game does not pause). Check in a live match.
+   **Answered:** they stop. While any in-game popup or the chat input is open, movement flags are cleared each frame except crouch, sprint ends, mouse look and new command presses are ignored (I2; Corrections 4; test case 26).
 7. **Mode naming:** that team deathmatch uses the `Eli` child of the mode indicator layout. Confirm against the room's game-type list.
+   **Answered:** yes, and every mode's child is in Corrections 6 (test case 28).
 8. **Wrapped-text height mismatch:** the height used as a *parent* box ignores the last line gap, while the text's own reference height includes it (T3 versus T4). No shipping layout puts a child under a wrapped text, so the effect is unobserved.

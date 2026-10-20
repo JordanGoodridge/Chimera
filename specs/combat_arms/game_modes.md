@@ -170,7 +170,7 @@ A match runs through these phases (our names). All transitions are made by the s
 t_{\text{between rounds}} = \text{ObjectEnd} + \text{MissionEnd} + \text{ObjectStart} + \text{(frames)} \approx 3 + 3 + 0 = 6\ \text{s with the client's file}
 ```
 
-The HUD's round timer (`hud_crosshair.md` D7) is fed the round timer's remaining time when the round goes live; TDM sends no time (no timer).
+The HUD's round timer (`hud_crosshair.md` D7) is fed the round timer's remaining time when the round goes live; TDM sends no time (no timer). Corrected (Corrections, HUD and scoreboard, 2): it is also fed the setup delay at each round setup (hidden when that is 0, the stock value), it is stopped and hidden at the round result, and in S&D and Bombing Run a plant hides it and shows the bomb timer counting the 40 s fuse instead (the round timer's own +40 s, M3, is not what the HUD shows).
 
 ### S4. Spawn points and spawn choice
 
@@ -354,6 +354,8 @@ Team boards list Alpha in the upper list and every other team in the lower list.
 The scoreboard is re-sorted on every player-info update.
 
 **HUD goal and mission column** (Open question 31; what the reference settles): the HUD's goal text is built from the room goal G by mode: round modes (S&D, Quarantine, Elimination Pro, Last Man Standing, Bombing Run, Hired Guns, Go4CA Cup, VIP Escort, VIP Elimination, Hunted) show "G Rounds" (`IDS_GAMEROOM_ROUND`, US text "%d Rounds"), with "current round / " in front when the HUD passes the round number; kill modes (TDM, One Man Army, Arms Race, Snowball, bot Elimination) "G Kills"; Spy Hunt and Seize and Secure "G Min."; CTF "G Points"; Squad Match 2 and VIP Elimination override with "G Points"; co-op modes the difficulty name. The scoreboard's mode column title is fixed per mode: S&D "Explode / Defuse", Bombing Run "Explode/Defuse", CTF "Thouch Down / Recover" (as spelled), Spy Hunt "Intels / Total", Quarantine "H./I. Survival", Last Man Standing "Last Man Points", Seize and Secure "HQ Point", Hunted "Hunted Points", co-op "Mission"; other modes have none. The S&D column shows the player's plant/detonation and defuse counts. The rest of the HUD layout (objective lines, gauge looks, icons, emblems, result screens) is `hud_crosshair.md`'s and `lobby.md`'s; it was not settled here.
+
+**HUD panel per mode and the round result** (added 2026-10-19; Corrections, HUD and scoreboard): the goal texts above are the string table's entries (`IDS_GAMEROOM_KILL`, `IDS_GAMEROOM_ROUND`, `IDS_GAMEROOM_MIN` with the number filled in, or the number, a space and `IDS_POINTS`), never built by code. Each mode draws its own child of the mode indicator layout (`ui_system.md` Corrections 6: TDM `Eli`, Elimination Pro `Eli_pro`, S&D and Bombing Run `s&d`, CTF `CTF`, One Man Army `Indicator_OMA`, Last Man Standing `LMS`, Spy Hunt `Indicator_SPY`, Quarantine `QRT`, Seize and Secure `HQT`, Hired Guns `Squad`, Squad Match 2 `HG2`, VIP Elimination `VIP_Eli`, VIP Escort `VIP_Esct`, Arms Race `WeaponRace`, Go4CA `ESL`, Hunted `HungerGame`, Snowball `Eli`). In Elimination Pro, S&D and Bombing Run the two row titles show each team's living players. The counters on the panel are the server's team counters (TDM: kills per team; round modes: round wins). At a round's result the scoreboard shows the result banner until the next round's setup message (single-round modes: banner without lists) and the mode panel hides (`ui_system.md` Corrections 1 and 2). Players tied on every sort key come out in no defined order (the sort is not stable): any order is parity.
 
 ### S15. Map commands the modes run
 
@@ -610,6 +612,28 @@ H = \begin{cases} 1 & N \le 3 \\ \max\big(\mathrm{round}(N \cdot r),\ H_{\min}\b
 14. **The S&D bomb always goes to team 1.** The hand-out names the objective's team but gives the weapon to every living team-1 player; harmless on stock maps (JSF always attacks). Keep.
 15. **The mutation box weights favour the winners** for the strongest items (the table in S12). Keep (data).
 
+## Corrections (2026-10-19): HUD and scoreboard
+
+Only the HUD and scoreboard parts of this spec (S3's HUD timer sentence, S13), checked against the reference's mode HUD panels, scoreboard and string use, and against our implementation. Test cases 87 to 91.
+
+1. **The goal text is the string table's, per mode.**
+   - Reference: S13's list was right; the texts are the string-table entries `IDS_GAMEROOM_KILL`, `IDS_GAMEROOM_ROUND`, `IDS_GAMEROOM_MIN` (formats filled with G), or G, a space and `IDS_POINTS` (CTF, Squad Match 2, VIP Elimination).
+   - Ours: `games/combat_arms/src/ui/hud/score.rs:109-118` writes its own lower-case English units: S&D, Elimination Pro, Bombing Run and VIP Escort "wins" (should be the rounds text), CTF "captures" (points), Squad Match 2 "min" (points).
+   - Why: the goal text sits in the top-centre panel all match long.
+2. **The HUD timer in round modes** (S3).
+   - Reference: setup delay countdown at each round setup (hidden at 0), the round length when live, hidden at the result; in S&D and Bombing Run the plant hides the round timer and shows the 40 s bomb timer in its own control.
+   - Ours: `score.rs:200-205` shows the live round timer only, from the server's round end, so after a plant it shows remaining + 40 s. See `hud_crosshair.md` Corrections 8.
+   - Why: the defuse race is timed off the top-centre clock.
+3. **Round modes show living players, not team names.**
+   - Reference: Elimination Pro, S&D and Bombing Run fill the panel's row titles with each team's living-player count.
+   - Ours: `games/combat_arms/src/ui/hud/bound.rs:24-31` hides them and writes "Alpha" / "Bravo" (`score.rs:192-193`). See `hud_crosshair.md` Corrections 9.
+4. **Each mode's own indicator panel.**
+   - Reference: the table in S13 (and `ui_system.md` Corrections 6).
+   - Ours: `bound.rs:202-219` gives Squad Match 2 `Squad`, and Bombing Run, VIP Escort and Hired Guns `Eli`.
+5. **The round result on the scoreboard.**
+   - Reference: shown from the result until the next round's setup message, banner only in single-round modes, the mode panel hidden meanwhile (`ui_system.md` Corrections 1 to 3).
+   - Ours: `games/combat_arms/src/ui/scoreboard.rs:47` 3000 ms; lists always drawn; panel kept.
+
 ## Test cases
 
 Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Team Death Match` points (P0..P11 in map order per team), fallback hull (15, 50, 15), server 20 Hz, `ObjectEnd` 3 s, `MissionEnd` 3 s, `ObjectStart` 0 s, friendly fire off, spawn protection 3.0 / 4.0 s, respawn waits 7.0 / 5.0 s.
@@ -732,6 +756,11 @@ Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Tea
 84. **Hunted start (data).** Every player spawns into a round holding only weapon 934 (`fist`).
 85. **Occupied test crouched (logic).** A fully crouched player (half-extents (15, 40, 15)) at (0, 0, 0): a point at (0, 79.9, 0) is occupied, at (0, 80, 0) free (standing: 100).
 86. **Box half-extents (data).** Ghost Town site A at (284.7, −1618.8, −1419.5) with `Dims` (133.5, 64, 123.5): a planter at x = 284.7 + 183.4 = 468.1 is inside the plant test (≤ 133.5 + 50), at x = 468.3 outside.
+87. **Goal text (HUD, Corrections 1).** Room goal 7: S&D, Elimination Pro, Bombing Run, VIP Escort -> the `IDS_GAMEROOM_ROUND` text with 7 (US "7 Rounds"); CTF goal 5 -> "5 " + `IDS_POINTS`; Squad Match 2 goal 300 -> "300 " + `IDS_POINTS`; TDM goal 100 -> the `IDS_GAMEROOM_KILL` text with 100; Seize and Secure goal 10 -> the `IDS_GAMEROOM_MIN` text with 10.
+88. **Timer across a S&D round (HUD, Corrections 2).** Stock files (ObjectStart 0, TimeLimit 180): setup -> no timer; live -> "03 : 00"; plant with 75.4 s left -> round timer hidden, bomb timer "00 : 40"; defuse 7 s later -> round result: both hidden.
+89. **Living players on the panel (HUD, Corrections 3).** Elimination Pro 4 v 4, one Bravo player dies -> row titles "4" (Alpha) and "3" (Bravo); next round's start -> "4" and "4".
+90. **Indicator panel per mode (HUD, Corrections 4).** Bombing Run -> `s&d`; VIP Escort -> `VIP_Esct`; Squad Match 2 -> `HG2`; Hired Guns -> `Squad`.
+91. **Round result (HUD, Corrections 5).** TDM: the deciding kill at t = 0 -> from the round result the banner alone (no lists) and no mode panel, until the match result screen. Elimination Pro: the round result at t = 0 -> banner over the lists until the next round's setup message (about t = 6 s with stock times).
 
 ## Open questions
 
@@ -785,6 +814,7 @@ Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Tea
     **Answered:** `Dims` are half-extents (Units and conventions); a player's box is the current hull, (15, 50, 15) standing (S4); the bomb and intel pick-ups are (10, 25, 10), dropped to the floor by a straight-down ray (M9, M7); cases 85, 86.
 31. **HUD and scoreboard per mode.**
     Partly answered: the goal text and the scoreboard's mode-column title per mode (S13). Still open (the HUD's and lobby's specs own them): objective lines, gauge looks, column order beyond S13, level icon and clan emblem rules, tie order and the result screens. Measure: screenshots of the scoreboard and result screen in each mode with two players tied on kills.
+    **Answered further (2026-10-19):** each mode's indicator panel, the row titles of the round modes (living players), the timers (setup countdown, bomb timer), the round result's length and look, tie order (undefined, the sort is not stable) and the action gauge's looks (`hud_crosshair.md` D9) are settled in S13's "HUD panel per mode and the round result" and in Corrections, HUD and scoreboard. Still open: Last Man Standing's and Spy Hunt's own panel fields, level icon and clan emblem rules.
 32. **Random draws.**
     **Answered:** one C-library generator, reseeded from the clock; any uniform draw is parity (S16); case 82.
 33. **S&D side swaps and the bomb hand-out's timing.**
