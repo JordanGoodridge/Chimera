@@ -262,7 +262,13 @@ pub fn save(world: &mut World) -> Result<(), String> {
 /// Open the screen (P): refused during a match. The profile is saved
 /// first, so Cancel can go back to exactly this state.
 pub fn open(world: &mut World) -> Result<(), String> {
-    if in_match(world) {
+    open_with(world, false)
+}
+
+/// `open`, or with `force` in a match too (the `options force` command:
+/// there is no lobby to leave the match for).
+pub fn open_with(world: &mut World, force: bool) -> Result<(), String> {
+    if !force && in_match(world) {
         return Err("the options can't be opened during a match".into());
     }
     with_options(world, |world, o| {
@@ -567,7 +573,7 @@ pub fn row_text(world: &World, action: usize) -> String {
 pub fn register(app: &mut App) {
     app.console_command(
         "options",
-        "options [open|ok|cancel|default <tab>|tab <name>|save|applybinds|show]: Combat Arms' options screen state.",
+        "options [open [force]|force|ok|cancel|default <tab>|tab <name>|save|applybinds|show]: Combat Arms' options screen state.",
         |w, a| {
             let tab_of = |s: Option<&String>| match s.map(|s| s.to_lowercase()).as_deref() {
                 Some("graphic") => Ok(Tab::Graphic),
@@ -577,7 +583,8 @@ pub fn register(app: &mut App) {
                 _ => Err("tab: graphic, sound, control or other".to_string()),
             };
             match a.first().map(|s| s.to_lowercase()).as_deref() {
-                None | Some("open") => open(w).map(|_| None),
+                None | Some("open") => open_with(w, a.get(1).is_some_and(|f| f == "force")).map(|_| None),
+                Some("force") => open_with(w, true).map(|_| None),
                 Some("ok") => ok(w).map(|_| None),
                 Some("cancel") => {
                     cancel(w);

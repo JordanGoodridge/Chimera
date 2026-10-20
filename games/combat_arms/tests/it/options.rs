@@ -810,6 +810,13 @@ fn p_the_screen_does_not_open_in_a_match() {
     s.app.world_mut().resource_mut::<CaMatch>().phase = Phase::Live;
     assert!(flow::open(s.app.world_mut()).is_err());
     assert!(!opts(&s).open);
+    // The command refuses too; `options force` opens it all the same.
+    s.app.world_mut().resource_mut::<Console>().submit("options");
+    s.app.update();
+    assert!(!opts(&s).open);
+    s.app.world_mut().resource_mut::<Console>().submit("options force");
+    s.app.update();
+    assert!(opts(&s).open);
 }
 
 #[test]

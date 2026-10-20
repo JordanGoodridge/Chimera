@@ -38,7 +38,7 @@
 //!   config), not the game's folder, and plain text; the Steam build's
 //!   encryption (Open question 1) isn't there.
 //! - There is no lobby, so the screen opens by the `options` console
-//!   command (any time no match is running).
+//!   command (refused in a match; `options force` opens it there too).
 //! - Resolution, depth, anti-aliasing, window mode, vsync, quality
 //!   presets and the Custom block are stored, derived (`Derived`) and
 //!   kept; the renderer applies none of them, only brightness (a ramp)
