@@ -19,6 +19,8 @@
 //!   kill-cam layout, and the death camera's input and camera on the shell;
 //!   `chat`: the match chat's queue (the model); `talk`: the chat panel,
 //!   input bar and radio menu on it, and their keys;
+//!   `hud::radar`, `hud::full_map` (with `hud::scene`): the radar and the
+//!   full-screen map (radar_minimap.md);
 //!   `visuals`: placeholder looks (box guns); `effects`: decals, tracers,
 //!   casings, the first-person muzzle flash and effect lights
 //!   (game::effects).

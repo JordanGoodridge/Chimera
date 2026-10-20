@@ -36,6 +36,7 @@ mod net_modes_2;
 mod radio_chat;
 mod radio_chat_net;
 mod other_modes;
+mod radar;
 mod search_destroy;
 mod skeleton;
 mod special_devices;
@@ -63,6 +64,7 @@ mod heavy {
     mod mount;
     mod props;
     mod radio;
+    mod radar;
     mod view_model;
     mod world;
     mod world_objects;
