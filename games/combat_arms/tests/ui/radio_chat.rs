@@ -227,3 +227,35 @@ fn talk_icon() {
     sim.ticks(1);
     assert!(!talk(&sim).talking);
 }
+
+/// The console reads the same keyboard messages as the chat input. With
+/// no chat input open the talk keys must leave them for it (they used to
+/// drain every frame, so the console could not be typed into), and with
+/// the console open the chat input and radio menu get none.
+#[test]
+fn console_keeps_its_keys() {
+    use chimera_client::client::console::ConsoleUi;
+    #[derive(Resource, Default)]
+    struct Seen(Vec<String>);
+    fn console_reads(mut ev: MessageReader<KeyboardInput>, mut seen: ResMut<Seen>) {
+        for e in ev.read() {
+            if let Key::Character(s) = &e.logical_key {
+                seen.0.push(s.to_string());
+            }
+        }
+    }
+    let mut sim = sim();
+    sim.app.init_resource::<Seen>().init_resource::<ConsoleUi>().add_systems(Update, console_reads);
+    // Console open, no chat: every typed key reaches the console.
+    sim.app.world_mut().resource_mut::<ConsoleUi>().open = true;
+    typed(&mut sim, "sv_gravity");
+    assert_eq!(sim.app.world().resource::<Seen>().0.concat(), "sv_gravity");
+    // No chat typing happened.
+    assert!(!sim.app.world().resource::<CaChat>().is_open());
+    // With a chat input open under an open console, the chat takes none.
+    assert!(chat::open_enter(sim.app.world_mut()));
+    sim.app.world_mut().resource_mut::<Seen>().0.clear();
+    typed(&mut sim, "ab");
+    assert_eq!(sim.app.world().resource::<Seen>().0.concat(), "ab");
+    assert_eq!(sim.app.world().resource::<CaChat>().input.clone().unwrap_or_default(), "");
+}

@@ -191,9 +191,16 @@ fn sync_ui_state(
 /// The keys: typing into the open input, the radio menu's number keys.
 /// Runs before the binds see the keyboard and clears what it used.
 fn typing(world: &mut World) {
-    let events: Vec<KeyboardInput> = world.resource_mut::<Messages<KeyboardInput>>().drain().collect();
+    // The console owns the keyboard while it is open (it reads the same
+    // messages): leave them, and the key state, alone.
+    if world.get_resource::<crate::client::console::ConsoleUi>().is_some_and(|c| c.open) {
+        return;
+    }
     let open = world.resource::<CaChat>().is_open();
     if open {
+        // Only an open input takes the messages: draining them every
+        // frame would starve the console's typing.
+        let events: Vec<KeyboardInput> = world.resource_mut::<Messages<KeyboardInput>>().drain().collect();
         for e in &events {
             if e.state != ButtonState::Pressed {
                 continue;
