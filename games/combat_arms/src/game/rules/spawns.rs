@@ -15,7 +15,8 @@
 //!   else the map's first point.
 //! - The respawn (`respawn`, S5): the loadout rebuilt (`inventory::
 //!   respawn_inventory`), full health (`spawning::revive`, Chimera's) and
-//!   armour (`CaArmor`'s default), at the point facing its yaw; then a
+//!   armour (the pool and pieces of its gear, `gear::spawn_gear`), at the
+//!   point facing its yaw; then a
 //!   telefrag of every unprotected player inside the doubled box of the
 //!   new position (only when every point was occupied: a crush death
 //!   credited to themselves, `TELEFRAG`); then protection.
@@ -29,7 +30,9 @@
 //!   round setup). Players on this machine (single player, a listen
 //!   server's host) ask as their client would, once dead for more than
 //!   `respawn_wait_client` (`ask_for_respawns`); a network client asks
-//!   through `game::net` (`CaRespawnRequest`).
+//!   through `game::net` (`CaRespawnRequest`). The machine's own player
+//!   is asked for by its death camera (`game::death_cam`: the countdown,
+//!   Relentless's shorter wait, F7's fast flag: `request_respawn_with`).
 //!
 //! Known shortcuts: every player's box is the fallback hull (15, 50, 15)
 //! (no per-figure dimensions); dead players count as player objects where
@@ -42,16 +45,18 @@
 //! respawn item isn't there.
 
 use avian3d::prelude::ColliderDisabled;
+use serde::{Deserialize, Serialize};
 use bevy::prelude::*;
 
 use super::{
-    super::inventory,
+    super::{death_cam::{CaFastRespawn, FAST_MODES}, inventory},
     CaRuleSettings, current_mode,
     state::side,
 };
 use crate::{
     core::{
-        Connecting, Damage, DamageFilter, DamageKind, Dead, Health, Hitgroup, Intent, MapLoads, Npc, RemotePlayer,
+        Connecting, Damage, DamageFilter, DamageKind, Dead, Health, Hitgroup, Intent, LocalPlayer, MapLoads, Npc,
+        RemotePlayer,
         SimClock, SpawnPoint, Spectating, Team,
     },
     spawning,
@@ -83,7 +88,7 @@ pub struct CaAsked;
 
 /// Held out until the next round setup (a late joiner in a round mode,
 /// S1): dead, not solid, spawned with everyone at the next setup.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CaHeld;
 
 /// Spawn protection (S6), from the respawn at `since` (game seconds).
@@ -371,6 +376,15 @@ pub fn unprotect(world: &mut World, e: Entity) {
 
 /// S5's server check of `e`'s respawn request; Ok when it respawned.
 pub fn request_respawn(world: &mut World, e: Entity) -> Result<(), String> {
+    request_respawn_with(world, e, false)
+}
+
+/// The same with the request's fast flag (S5; death_killcam.md 6, 9): it
+/// skips the wait test entirely, is refused as illegal when the player has
+/// no fast respawns left (the premium pass has unlimited uses and spends
+/// none), otherwise spends one. Only the modes with a fast respawn take
+/// the flag.
+pub fn request_respawn_with(world: &mut World, e: Entity, fast: bool) -> Result<(), String> {
     let Some(mode) = current_mode(world) else {
         return Err("no game mode".into());
     };
@@ -387,7 +401,18 @@ pub fn request_respawn(world: &mut World, e: Entity) -> Result<(), String> {
         warn!("illegal respawn request: {} doesn't respawn", mode.key);
         return Err("this mode doesn't respawn".into());
     }
-    if now - dead.since < wait - 1e-9 {
+    if fast {
+        let has = world.get::<CaFastRespawn>(e).copied().unwrap_or_default();
+        if !FAST_MODES.contains(&mode.key) || !(has.premium || has.left > 0) {
+            warn!("illegal respawn request: no fast respawn left");
+            return Err("no fast respawns left".into());
+        }
+        if !has.premium
+            && let Some(mut f) = world.get_mut::<CaFastRespawn>(e)
+        {
+            f.left -= 1;
+        }
+    } else if now - dead.since < wait - 1e-9 {
         warn!("illegal respawn request: {:.3} s after the death", now - dead.since);
         return Err("too early".into());
     }
@@ -414,6 +439,7 @@ pub(super) fn ask_for_respawns(world: &mut World) {
             Without<Connecting>,
             Without<Spectating>,
             Without<Npc>,
+            Without<LocalPlayer>,
         )>()
         .iter(world)
         .filter(|(_, d, t)| super::state::plays(t.0) && now - d.since > wait + 1e-9)

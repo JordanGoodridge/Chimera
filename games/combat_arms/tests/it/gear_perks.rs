@@ -1054,7 +1054,7 @@ fn fast_respawn_counts_are_checked() {
 /// 47. Relentless: the respawn wait the death camera takes is 5.6 s, in
 /// the modes it works in only.
 #[test]
-fn case_47_relentless() {
+fn relentless_modes_and_levels() {
     let data = GearData::built_in();
     let working = |mode: &str| perks::working(&data, &perks_of(&[16010]), mode, true, true);
     let list = working("TDM");
@@ -1558,4 +1558,172 @@ fn the_consoles_settings_are_the_local_players_gear() {
     let l = sim.app.world().get::<CaLoadout>(p).unwrap();
     assert_eq!((l.perks.clone(), l.fast_left), (vec![16012, 16001], 2));
     assert_eq!(sim.app.world().get::<CaPerks>(p).unwrap().list.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Relentless and fast respawns reach the death camera (47-49)
+
+mod respawn {
+    use bevy::prelude::*;
+    use chimera_core::core::{Dead, LocalPlayer};
+    use chimera_world::harness::Sim;
+    use combat_arms::game::{
+        death_cam::{CaDeathInput, CaFastRespawn, CaKillCamRoom, CaRelentless, CaSlot, machine::Input},
+        gear::CaOwnGear,
+        rules::spawns,
+    };
+
+    use crate::mode_kit::*;
+
+    /// The local player `me` (Alpha) with `own` as its console loadout in
+    /// `mode`, live, and an enemy `b`.
+    fn rig(mode: &str, own: CaOwnGear) -> (Sim, Entity, Entity) {
+        let mut sim = game(mode, 12);
+        let me = join(&mut sim, JSF);
+        let c = join(&mut sim, JSF);
+        let b = join(&mut sim, CREED);
+        let d = join(&mut sim, JSF);
+        let w = sim.app.world_mut();
+        for (e, slot, name) in [(me, 2, "Me"), (c, 3, "Charlie"), (b, 4, "Bravo"), (d, 5, "Delta")] {
+            w.entity_mut(e).insert((CaSlot(slot), Name::new(name)));
+        }
+        w.entity_mut(me).insert(LocalPlayer);
+        w.insert_resource(CaKillCamRoom(-1));
+        w.insert_resource(own);
+        until_live(&mut sim);
+        if m(&sim).warmup {
+            past_warmup(&mut sim);
+        }
+        unprotect_all(&mut sim);
+        sim.ticks(5);
+        (sim, me, b)
+    }
+
+    fn since(sim: &Sim, me: Entity) -> f64 {
+        now(sim) - sim.app.world().get::<Dead>(me).expect("dead").since
+    }
+
+    /// 47. Relentless, Elimination: die, wait: the request goes at 5.6 s
+    /// and is accepted (the server's limit is 5.0 s).
+    #[test]
+    fn case_47_relentless() {
+        let own = CaOwnGear {
+            perks: "16010".into(),
+            ..Default::default()
+        };
+        let (mut sim, me, b) = rig("TDM", own);
+        assert_eq!(sim.app.world().get::<CaRelentless>(me).map(|r| r.0), Some(5.6));
+        kill_now(&mut sim, me, b);
+        let died = sim.app.world().get::<Dead>(me).unwrap().since;
+        let mut at = None;
+        for _ in 0..800 {
+            sim.ticks(1);
+            if !dead(&sim, me) {
+                at = Some(now(&sim) - died);
+                break;
+            }
+        }
+        let t = at.expect("respawned");
+        assert!(t > 5.6 && t < 5.7, "asked at {t}");
+        // Without the perk, 7 s.
+        let (mut sim, me, b) = rig("TDM", CaOwnGear::default());
+        assert!(sim.app.world().get::<CaRelentless>(me).is_none());
+        kill_now(&mut sim, me, b);
+        sim.seconds(6.0);
+        assert!(dead(&sim, me), "still waiting at 6 s");
+    }
+
+    /// 48. Elimination, 2 fast respawns left, no pass: F7 at 1 s respawns
+    /// at once; the counter is 1.
+    #[test]
+    fn case_48_fast_respawn() {
+        let own = CaOwnGear {
+            fast_respawns: 2,
+            fast_respawns_max: 3,
+            ..Default::default()
+        };
+        let (mut sim, me, b) = rig("TDM", own);
+        let f = sim.app.world().get::<CaFastRespawn>(me).copied().expect("the allowance");
+        assert_eq!((f.left, f.max, f.premium), (2, 3, false));
+        kill_now(&mut sim, me, b);
+        sim.seconds(1.0);
+        assert!(dead(&sim, me));
+        sim.app.world_mut().insert_resource(CaDeathInput(Input {
+            fast: true,
+            ..Default::default()
+        }));
+        sim.ticks(1);
+        sim.app.world_mut().insert_resource(CaDeathInput::default());
+        sim.ticks(3);
+        assert!(!dead(&sim, me), "respawned at once");
+        assert_eq!(sim.app.world().get::<CaFastRespawn>(me).unwrap().left, 1);
+    }
+
+    /// 49. Elimination, no fast respawns left, no pass: F7 does nothing; a
+    /// forged fast request is refused and the player stays dead.
+    #[test]
+    fn case_49_no_fast_respawn_left() {
+        let (mut sim, me, b) = rig("TDM", CaOwnGear::default());
+        kill_now(&mut sim, me, b);
+        sim.seconds(1.0);
+        sim.app.world_mut().insert_resource(CaDeathInput(Input {
+            fast: true,
+            ..Default::default()
+        }));
+        sim.ticks(1);
+        sim.app.world_mut().insert_resource(CaDeathInput::default());
+        sim.ticks(3);
+        assert!(dead(&sim, me), "F7 does nothing");
+        let refused = spawns::request_respawn_with(sim.app.world_mut(), me, true);
+        assert!(refused.is_err(), "{refused:?}");
+        assert!(dead(&sim, me), "stays dead");
+        assert!(since(&sim, me) < 7.0);
+    }
+
+    /// The pass is unlimited: fast respawns spend nothing.
+    #[test]
+    fn the_pass_spends_nothing() {
+        let own = CaOwnGear {
+            fast_pass: 1,
+            ..Default::default()
+        };
+        let (mut sim, me, b) = rig("TDM", own);
+        kill_now(&mut sim, me, b);
+        sim.seconds(0.5);
+        assert!(spawns::request_respawn_with(sim.app.world_mut(), me, true).is_ok());
+        assert!(!dead(&sim, me));
+        assert!(sim.app.world().get::<CaFastRespawn>(me).unwrap().premium);
+    }
+}
+
+/// Opportunist (14): the nearest dead body within the distance gives up
+/// one of the primaries it carried (after the wait; a body is looted
+/// once, an empty one fails).
+#[test]
+fn opportunist_loots_a_body() {
+    let (mut sim, p, _w) = perk_sim(perks_of(&[16009]));
+    // A dead enemy two metres away carrying two primaries.
+    let body = sim.spawn_character(Vec3::new(0.0, 1.0, -2.0), movement::ID);
+    sim.app.world_mut().entity_mut(body).insert(Team(2));
+    sim.seconds(0.5);
+    for id in ["combat_arms:mp5a4", "combat_arms:l96a1"] {
+        weapon::give(sim.app.world_mut(), body, id).unwrap();
+    }
+    sim.seconds(0.5);
+    let drops = |sim: &mut Sim| {
+        let w = sim.app.world_mut();
+        w.query::<&combat_arms::game::inventory::Dropped>().iter(w).count()
+    };
+    let before = drops(&mut sim);
+    // Alive bodies aren't looted.
+    assert!(perks::use_perk(sim.app.world_mut(), p, 1).is_err(), "nobody dead in reach");
+    let now = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+    sim.app.world_mut().entity_mut(body).insert(Dead { since: now });
+    perks::use_perk(sim.app.world_mut(), p, 1).expect("starts");
+    sim.seconds(1.0);
+    assert_eq!(drops(&mut sim), before, "not before the wait (1.5 s)");
+    sim.seconds(1.0);
+    assert_eq!(drops(&mut sim), before + 1, "DropWeaponMax 1");
+    // Looted once.
+    assert!(perks::use_perk(sim.app.world_mut(), p, 1).is_err(), "the body is empty");
 }

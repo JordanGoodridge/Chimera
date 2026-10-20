@@ -75,11 +75,14 @@ in the lowest crate whose public API it needs:
   WAREHOUSE; `heavy::model`: a prop model converts and animates as
   LithTech samples it; `heavy::movement_volumes`: the volume census of
   the 105 maps and players in their sea, ladders, gravity volumes, safety
-  nets and jump pads); its front end's (the
+  nets and jump pads); the death camera (`death_killcam.rs`: the
+  pull-back and orbit maths, the phase machine and the respawn countdown
+  headless, and `CaDeathCam` on players in a match); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`; the kill
   feed, score panel, scoreboard and loading screen bound by name,
-  `bound.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
+  `bound.rs`; the death screen bound by role and the dead player's name
+  tags, `death_screen.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
   install's own layouts and string tables through the UI system's
   readers, the game's HUD panels, scoreboard and loading screen bound
   by name and its in-game menu, V1 key);
@@ -1272,6 +1275,25 @@ centre or within the radius: name, class, bounds (Combat Arms units,
 engine axes), damage per second, pending time, hidden, and `INSIDE`
 for the ones the player is in (`heavy::junk_flea2` is such a spot as a
 test).
+
+Combat Arms' world objects (`game::objects`: doors, moving and spinning
+world models, keyframers, breakables, triggers and the command strings
+they run; the server's): `ca_objects [filter]` lists the map's objects
+whose class or name contains the filter (without one, every world model
+and logic object) with their state: pose in Combat Arms units (the world
+file's axes), visible/solid/ray-hit, a mover's machine state, angles and
+timer, a trigger's fires and pending time, a counter's value, a
+keyframer's clock and next key, hit points. `ca_object_msg <name>
+<message...>` delivers a message now as a map's `msg` would (`ca_object_msg
+VIP_Door trigger`, `ca_object_msg SlidingWater on`, `ca_object_msg
+Level04StartTrigger trigger`) and prints the target's state;
+`ca_object_cmd <command string>` runs a whole command string (`delay`,
+`rand`, variables); `ca_object_vars` lists the command manager's variables
+and pending delayed commands. A map's objects and their properties as
+stored: `cargo run --bin dump -- combat_arms --objects <map> [--filter
+text]` (keyed maps need the V2 key). The spec's cases: `--test it
+world_objects::` (synthetic) and `heavy::world_objects` (FREEZER,
+SNOWSTORM, HGOILRIG, BLOODMONEY, CITYOFWINGS, the census).
 
 Combat Arms' dedicated server: `cargo run --features dev --bin
 combat_arms_server -- -port 27042 +map combat_arms:warehouse +ca_mode TDM

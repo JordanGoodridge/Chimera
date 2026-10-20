@@ -973,11 +973,14 @@ mod tests {
     /// the specs replace them.
     #[test]
     fn placeholder_data_says_so() {
-        use_builtin_data_only();
         for (name, text) in WEAPON_DATA.iter().filter(|(n, _)| n.starts_with("placeholder_")) {
             assert!(text.contains("PLACEHOLDER"), "{name}: no PLACEHOLDER note");
         }
-        assert_eq!(weapon_set().weapons.len(), WEAPON_DATA.len());
+        // The built-in documents parse on their own; `weapon_set()` is
+        // process-wide and may already hold the install's merged set
+        // (another test in this binary loaded it first).
+        let builtin = WeaponSet::parse(WEAPON_DATA, &[]).unwrap();
+        assert_eq!(builtin.weapons.len(), WEAPON_DATA.len());
     }
 
     #[test]

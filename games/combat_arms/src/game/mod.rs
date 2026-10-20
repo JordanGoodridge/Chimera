@@ -46,7 +46,12 @@
 //! - `volumes`: the maps' volumes (water, kill and damage volumes);
 //! - `gear`: what a player's vest, helmet, goggles, backpack, gear mods and
 //!   set items change, and the loadout that brings them (gear_perks.md);
-//! - `perks`: the perks a loadout switches on and what each changes.
+//! - `perks`: the perks a loadout switches on and what each changes;
+//! - `objects`: the maps' world objects: doors, moving and spinning world
+//!   models, keyframers, breakables, triggers and the command strings
+//!   they run (world_objects.md);
+//! - `death_cam`: the death camera, the kill-cam screen's values and the
+//!   respawn countdown, the client's own (death_killcam.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -55,6 +60,7 @@ pub mod attachments;
 pub mod bots;
 pub mod characters;
 pub mod data;
+pub mod death_cam;
 pub mod effects;
 pub mod gear;
 pub mod grenades;
@@ -65,6 +71,7 @@ pub mod mount;
 pub mod movement;
 pub mod net;
 pub mod perks;
+pub mod objects;
 pub mod props;
 pub mod render_style;
 pub mod rules;
@@ -179,6 +186,7 @@ impl PluginGroup for CombatArmsPlugins {
             // loads.
             .add(inventory::CaInventoryPlugin)
             .add(volumes::CaVolumesPlugin)
+            .add(objects::CaObjectsPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(special::CaSpecialPlugin)
             .add(attachments::CaAttachmentsPlugin)
@@ -186,6 +194,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(effects::CaEffectsPlugin)
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
+            .add(death_cam::CaDeathCamPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
             .add(gear::CaGearPlugin)

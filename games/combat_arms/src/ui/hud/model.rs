@@ -612,8 +612,12 @@ pub struct TagInputs {
     pub flashing: bool,
     /// The camera sees the tag point.
     pub seen: bool,
-    /// Followed by the chase camera.
+    /// Followed by the chase camera (the watched player, in the death
+    /// camera too).
     pub chased: bool,
+    /// Dead in Hunted: every other player's tag shows
+    /// (death_killcam.md 5).
+    pub everyone: bool,
     /// A "state viewer" weapon or item.
     pub state_viewer: bool,
     /// Dead: its body is there and visible (the tag floats over it).
@@ -647,7 +651,7 @@ pub fn name_tag(t: TagInputs) -> Option<Tag> {
     } else if t.local_alive {
         t.teammate || t.aimed || t.revealed
     } else {
-        t.teammate || t.aimed || t.chased
+        t.teammate || t.aimed || t.chased || t.everyone
     };
     if !shown {
         return None;

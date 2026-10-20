@@ -35,8 +35,9 @@
 //! - The Pitcher bar (`CaPerkState::pitcher`): grows 1 per 8 ms while
 //!   fire is held with a thrown weapon in hand and the player isn't
 //!   sprinting; `throw_force` is what a throw takes.
-//! - Fast respawn and Relentless reach the respawn rules through
-//!   `respawn_wait` and the loadout's counts (`gear::CaLoadout`).
+//! - Fast respawn and Relentless reach the death camera and the respawn
+//!   request as its `CaRelentless` (`respawn_wait`) and `CaFastRespawn`
+//!   (the loadout's counts and pass), set by `wire_respawn`.
 //!
 //! Known shortcuts (docs/tech-debt.md):
 //! - Timers are checked each tick, not once per 20 Hz server frame.
@@ -65,6 +66,7 @@ use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    death_cam::{CaFastRespawn, CaRelentless},
     gear::{CaGearData, CaLoadout, records::{GearData, PerkKind, PerkRecord}},
     grenades,
     inventory::{self, Dropped, UNIT},
@@ -378,6 +380,7 @@ impl Plugin for CaPerksPlugin {
                 FixedUpdate,
                 (
                     derive_perks.after(SimSet::Weapons),
+                    wire_respawn.run_if(core::authoritative).after(derive_perks),
                     spread_cuts.before(SimSet::Weapons),
                     (ensure_state, perk_tick)
                         .chain()
@@ -1220,6 +1223,39 @@ pub fn throw_force(world: &mut World, thrower: Entity) -> f32 {
     }
     let (min, max) = (value(&data, PITCHER, "MinForce", l), value(&data, PITCHER, "MaxForce", l));
     min + (max - min) * g / 100.0
+}
+
+/// The death camera's inputs (death_killcam.md; the server's, replicated):
+/// Relentless gives the client's respawn wait (`CaRelentless`: min(wait,
+/// `RespawnTime`)), and the loadout's fast-respawn counts and pass become
+/// the player's `CaFastRespawn` when the loadout arrives or changes (the
+/// respawn request spends them).
+#[allow(clippy::type_complexity)]
+fn wire_respawn(
+    data: Res<CaGearData>,
+    perks: Query<(Entity, &CaPerks, Option<&CaRelentless>), Changed<CaPerks>>,
+    loadouts: Query<(Entity, &CaLoadout), Changed<CaLoadout>>,
+    mut commands: Commands,
+) {
+    for (e, p, have) in &perks {
+        match (respawn_wait(&data.0, p), have) {
+            (Some(wait), Some(h)) if (h.0 - wait).abs() < 1e-6 => {}
+            (Some(wait), _) => {
+                commands.entity(e).insert(CaRelentless(wait));
+            }
+            (None, Some(_)) => {
+                commands.entity(e).remove::<CaRelentless>();
+            }
+            (None, None) => {}
+        }
+    }
+    for (e, l) in &loadouts {
+        commands.entity(e).insert(CaFastRespawn {
+            left: l.fast_left,
+            max: l.fast_max,
+            premium: l.premium,
+        });
+    }
 }
 
 /// Eagle Eye's and a set's cuts of the cone's limits, on every weapon the
