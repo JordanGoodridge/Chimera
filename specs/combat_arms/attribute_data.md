@@ -16,8 +16,8 @@ Sections: Summary; Units and conventions; Where the data sits; Encoding;
 Document syntax; Value types; Tables, records and lookups; Defaults and
 overrides; Weapons file: record kinds and load order; Field table: weapons;
 Field table: ammo; Field table: armour and global spread; Field table:
-movement; Reference values (one rifle); Edge cases; Quirks; Test cases;
-Open questions.
+movement; Reference values (one rifle); Edge cases; Quirks; Corrections
+(2026-10-19); Test cases; Open questions.
 
 ---
 
@@ -613,6 +613,48 @@ reads the real install). Weapon record `M4A1` with ammo `5.56mm M4A1`:
 - **Base speeds in `[Player]`** (90/240/485) differ from the client's
   built-in movement speeds (70/285/330). See Open questions.
 
+## Corrections (2026-10-19)
+
+From a second pass over the reference's model, weapon and server
+configuration readers, compared with this spec and our implementation. Test
+cases 33–36.
+
+1. **Skeleton node hit priority.**
+   - Reference: each skeleton node record carries `Node<i>Priority` (number)
+     next to its radius, location and damage factor. A missing key reads as
+     the read's no-default value (effectively 0). The server uses it to pick
+     the sphere of a character its own ray finds (`weapon_firing.md`
+     Corrections 5): the highest wins, a tie goes to the later node.
+   - Ours: no spec lists the field, and our character data has no priority
+     (`games/combat_arms/data/characters.toml`; `weapons.rs:889-911`
+     builds the hit table without one).
+   - Why it matters: wall-bang and second-victim zones follow it.
+2. **Defaults of our built-in weapon documents differ from the record
+   defaults.**
+   - Reference defaults (Field table: weapons, already correct above):
+     `TripleShotBaseCamRecoilPitch` 1.0, `TripleShotMaxCamRecoilPitch` 50.0,
+     `TripleShotMinPerturb`/`MaxPerturb` 7/100,
+     `TripleShotPerturbIncSpeed`/`DecSpeed` 1.0/1.0, `ZoomedMinPerturb`/`MaxPerturb`
+     1/500, `ZoomedPerturbIncSpeed`/`DecSpeed` 3.0/3.0.
+   - Ours: the install reader uses these
+     (`games/combat_arms/src/game/data/attributes.rs:385-408`). A built-in
+     document that leaves them out gets other values instead: burst kick 0/0, which falls back to the
+     normal kick (`games/combat_arms/src/game/weapons.rs:449-450`, `777-781`), and no burst or zoomed cone, which falls
+     back to the plain cone and speeds (`weapons.rs:577-593`).
+   - Why it matters: a burst or scoped weapon written by hand without
+     those keys plays differently with and without an install.
+3. **Two server settings used by firing.**
+   - Reference: the server configuration's `[TimeWeight]` section has
+     `ReloadCheckTime` (number, built-in 0.8): the server's reload window
+     is the third-person reload length ÷ (rate × (2 − this))
+     (`weapon_classes.md` 5.6, Corrections 2). The server console
+     variable `AIDamageFactor` (built-in 0.8) scales all damage dealt by
+     AI and bots (`weapon_firing.md` Corrections 7). It is a console
+     variable, not attribute data.
+   - Ours: neither exists (`games/combat_arms/src/game/data.rs:62-76`
+     lists what is not mapped; neither is mentioned).
+   - Why it matters: bot damage and the server's reload window.
+
 ## Test cases
 
 Each fixture is a byte string; "␍␊" means the two bytes 0D 0A. A reader
@@ -769,6 +811,18 @@ is invalid. Read results use the field tables' fallbacks.
     no icon; `TripleShotMode=1 TripleShotRoundNum=2` in burst mode →
     2-round icon, `TripleShotRoundNum` missing (3) → 3-round icon.
     `HudFireMode=5` changes nothing.
+33. **Node priority read (Corrections 1).** Skeleton record with
+    `Node4Priority=2.5` → node 4's priority 2.5; a node without the key →
+    0.
+34. **Burst defaults (Corrections 2).** Weapon record with
+    `TripleShotMode=1` and no other `TripleShot*` key → burst kick 1.0°,
+    burst cap 50°, burst cone 7/100, burst speeds 1.0/1.0, delays 300/400
+    ms, 3 rounds.
+35. **Zoomed defaults (Corrections 2).** Weapon record with a scope and no
+    `Zoomed*` key → zoomed cone 1/500, zoomed speeds 3.0/3.0.
+36. **Server settings (Corrections 3).** No `[TimeWeight]` section →
+    `ReloadCheckTime` 0.8. `[TimeWeight] ReloadCheckTime=1.0` → the server's
+    reload window equals the third-person reload length at rate 1.
 
 ## Open questions
 
