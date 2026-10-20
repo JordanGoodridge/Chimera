@@ -638,7 +638,14 @@ pub fn builtin_weapon_ids() -> &'static std::collections::HashSet<String> {
     IDS.get_or_init(|| {
         WEAPON_DATA
             .iter()
-            .filter_map(|(_, text)| doc_id(&text.parse::<Table>().ok()?).map(String::from))
+            .filter_map(|(_, text)| {
+                let t = text.parse::<Table>().ok()?;
+                // A detonator is never seen in a hand (no held model).
+                if t.get("hooks").and_then(|h| h.get(super::special::CONTROLLER)).is_some() {
+                    return None;
+                }
+                doc_id(&t).map(String::from)
+            })
             .collect()
     })
 }
