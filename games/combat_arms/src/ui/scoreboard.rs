@@ -1,11 +1,16 @@
 //! The scoreboard (specs/combat_arms/ui_system.md's team list, I2 and its
 //! test case 18; game_modes.md S13 for its rows): while the score key is
-//! held (`+showscores`, Tab) and, as the round-result banner, for
-//! `RESULT_MS` after a round's result. Alpha's rows in the upper list,
-//! every other team's in the lower (a free-for-all mode's in one list,
-//! "Players"), each in the mode's order (`game::rules::scoreboard`); the
-//! team scores (the score panel's numbers) in the lists' headers; the
-//! mode's column (captures, mission points) where it has one.
+//! held (`+showscores`, Tab) and no in-game popup is up (Corrections 9),
+//! and from a round's result until the next round's setup (Corrections 1:
+//! the score key does nothing meanwhile), with the result's banner (by
+//! mode and winner, Corrections 3: `round_result`; none for a training
+//! round without a winner) and the sound it played; a single-round mode's
+//! result shows the banner alone, without the lists (Corrections 2).
+//! Alpha's rows in the upper list, every other team's in the lower (a
+//! free-for-all mode's in one list, "Players"), each in the mode's order
+//! (`game::rules::scoreboard`); the team scores (the score panel's
+//! numbers) in the lists' headers; the mode's column (captures, mission
+//! points) where it has one.
 //!
 //! `CaScoreboardStatePlugin` reads the world into `CaScoreboard` with no
 //! window (the tests'); `CaScoreboardPlugin` adds it and draws it with
@@ -17,20 +22,30 @@
 //! them ours below.
 //!
 //! Known shortcuts: without the install the columns' places are ours
-//! (name, kills, deaths, assists, ping across the 766 px row) and the
-//! panel and rows flat placeholder boxes; with it no level icon, clan,
-//! nation flag, name background or infection mark (hidden), the ping
-//! icon's buckets ours (`ping_icon`), the frame's room and operation
-//! texts hidden (samples), the team title images the layout's (its
-//! "win" ones); no suppression by popups (the in-game menu draws over
-//! it).
+//! (name, kills, deaths, assists, ping across the 766 px row), the panel
+//! and rows flat placeholder boxes and the banner its name; with it no
+//! level icon, clan, nation flag, name background or infection mark
+//! (hidden), the ping icon's buckets ours (`ping_icon`), the frame's room
+//! and operation texts hidden (samples), the team title images the
+//! layout's (its "win" ones); the result sound is counted
+//! (`CaScoreboard::sound`), not played (the client interface attributes
+//! are keyed); the match's result screen isn't there, so the last
+//! round's result stays up once the match is over; "multi-round" is our
+//! list of round modes (`hud::model::round_mode`: the room data's flag
+//! isn't read); the team-change notice and hosted modes don't exist yet.
 
 use bevy::prelude::*;
 
 use super::{
     CaUi,
-    hud::{HudScreen, PenParams, bound, hud_text, layer, model::Screen, pen, rect, rebuild},
+    hud::{
+        HudScreen, PenParams, bound, hud_text, layer,
+        model::{Screen, round_mode},
+        pen, rect, rebuild,
+        score::result_showing,
+    },
     layout::{Effect, Layout},
+    menu::InGameMenu,
 };
 use crate::{
     client::{
@@ -38,13 +53,10 @@ use crate::{
         console::HeldActions,
     },
     game::rules::{
-        CaMatchView, Panel, Phase, ScoreOrder, Teams,
+        CaMatchView, Panel, ScoreOrder, Teams,
         scoreboard::{ScoreRow, board_for, rows},
     },
 };
-
-/// How long the board shows a round's result, ms (ui_system.md).
-pub const RESULT_MS: f64 = 3000.0;
 
 /// The panel and its lists (ref px).
 pub mod places {
@@ -74,6 +86,10 @@ pub struct CaScoreboard {
     pub shown: bool,
     /// Alpha's rows, then every other team's.
     pub lists: [Vec<ScoreRow>; 2],
+    /// The lists (and the frame's `result_info`) show: not while a
+    /// single-round mode's result shows (the banner alone, ui_system.md
+    /// Corrections 2).
+    pub lists_shown: bool,
     /// The team scores (Alpha, Bravo).
     pub scores: [i32; 2],
     /// The lists' names ("Alpha", "Bravo"; "Players" in a free-for-all
@@ -85,26 +101,62 @@ pub struct CaScoreboard {
     pub mode: Option<String>,
     /// A free-for-all mode (one list).
     pub ffa: bool,
-    /// The round's result for the local player while the banner shows
-    /// (`RESULT_MS`).
+    /// The round's result banner while the result shows (none in a
+    /// training round without a winner).
     pub result: Option<RoundResult>,
+    /// The interface sound the result played when it came in
+    /// (Corrections 3; counted, not played: the client interface
+    /// attributes are keyed).
+    pub sound: Option<&'static str>,
 }
 
-/// A round's result as the local player sees it (the result banner).
+/// A round's result banner as the local player sees it (ui_system.md
+/// Corrections 3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RoundResult {
     Win,
     Lose,
     Draw,
+    /// The free-for-all pair (Last Man Standing, One Man Army, Arms Race,
+    /// and Spy Hunt for players not on Alpha).
+    FfaWin,
+    FfaLose,
+    /// Quarantine's, by winner (Alpha the humans).
+    HumanWin,
+    InfectorWin,
 }
 
-/// When the last round's result came in (real ms), and how many results
-/// there were.
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
-struct ResultShown {
-    since: Option<f64>,
-    phase_over: bool,
+/// Mode `key`'s banner and sound for a round won by `winner` (a team id;
+/// none: no winner), the local player's team id `mine`, in a training
+/// round or not (ui_system.md Corrections 3).
+pub fn round_result(key: &str, winner: Option<u8>, mine: Option<u8>, training: bool) -> (Option<RoundResult>, Option<&'static str>) {
+    let Some(w) = winner else {
+        return ((!training).then_some(RoundResult::Draw), None);
+    };
+    let ffa = matches!(key, "LMS" | "FFA" | "VWRM") || (key == "BNT" && mine != Some(1));
+    let banner = if key == "QRT" {
+        if w == 1 { RoundResult::HumanWin } else { RoundResult::InfectorWin }
+    } else if ffa {
+        if Some(w) == mine { RoundResult::FfaWin } else { RoundResult::FfaLose }
+    } else if Some(w) == mine {
+        RoundResult::Win
+    } else {
+        RoundResult::Lose
+    };
+    let sound = match (key, w) {
+        ("QRT", 1) => Some("QRTHumanWinSound"),
+        ("QRT", _) => Some("QRTInfectorWinSound"),
+        ("LMS" | "FFA" | "VWRM" | "BNT", _) => None,
+        (_, 1) => Some("RoundAlphaTeamWinSound"),
+        (_, 2) => Some("RoundBravoTeamWinSound"),
+        _ => None,
+    };
+    (Some(banner), sound)
 }
+
+/// The result shown: its banner and sound, fixed when it came in.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+struct ResultShown(Option<(Option<RoundResult>, Option<&'static str>)>);
 
 /// The board's state without a window.
 pub struct CaScoreboardStatePlugin;
@@ -121,34 +173,40 @@ impl Plugin for CaScoreboardStatePlugin {
 
 fn update(world: &mut World) {
     let view = world.resource::<CaMatchView>().clone();
-    let now = world.resource::<Time<Real>>().elapsed().as_secs_f64() * 1000.0;
-    let over = matches!(view.phase, Phase::RoundOver { .. });
-    let mut result = *world.resource::<ResultShown>();
-    if over && !result.phase_over {
-        result.since = Some(now);
-    }
-    result.phase_over = over;
-    world.insert_resource(result);
-    let banner = result.since.is_some_and(|s| now - s < RESULT_MS);
     let mode = view.mode();
-    let shown = mode.is_some() && (world.resource::<HeldActions>().showscores || banner);
-    let order = mode.map_or(ScoreOrder::Kills, |m| m.order);
-    let ffa = mode.is_some_and(|m| m.teams == Teams::FreeForAll);
     let mine = world
         .query_filtered::<&crate::core::Team, With<crate::core::LocalPlayer>>()
         .iter(world)
         .next()
         .map(|t| t.0);
-    let result = banner.then(|| match view.winner {
-        None => RoundResult::Draw,
-        Some(w) if Some(w) == mine => RoundResult::Win,
-        Some(_) => RoundResult::Lose,
-    });
+    // The result: from the round's result message until the next round's
+    // setup (Corrections 1); its banner and sound fixed when it came in.
+    let showing = mode.is_some() && result_showing(view.phase);
+    let mut result = *world.resource::<ResultShown>();
+    match (showing, result.0) {
+        (true, None) => {
+            let key = mode.map_or("", |m| m.key);
+            result.0 = Some(round_result(key, view.winner, mine, view.warmup));
+        }
+        (false, Some(_)) => result.0 = None,
+        _ => {}
+    }
+    world.insert_resource(result);
+    // The score key, unless an in-game popup is up (Corrections 9); while
+    // the result shows it does nothing (the board stays up).
+    let popup = world.get_resource::<InGameMenu>().is_some_and(|m| m.open);
+    let held = world.resource::<HeldActions>().showscores && !popup;
+    let shown = mode.is_some() && (showing || held);
+    let order = mode.map_or(ScoreOrder::Kills, |m| m.order);
+    let ffa = mode.is_some_and(|m| m.teams == Teams::FreeForAll);
+    let multi = mode.is_some_and(|m| round_mode(m.key));
     let next = CaScoreboard {
         shown,
         ffa,
-        result,
+        result: result.0.and_then(|r| r.0),
+        sound: result.0.and_then(|r| r.1),
         lists: if shown { board_for(rows(world), order, ffa) } else { Default::default() },
+        lists_shown: !(showing && !multi),
         scores: if mode.is_some_and(|m| m.panel == Panel::RoundWins) {
             view.round_wins.map(|w| w as i32)
         } else {
@@ -186,8 +244,8 @@ pub struct BoundBoard {
     pub team: Option<Layout>,
     pub no_team: Option<Layout>,
     /// The result banners' textures: win, lose, draw, free-for-all win
-    /// and lose.
-    pub banners: [Option<String>; 5],
+    /// and lose, Quarantine's human and infector wins.
+    pub banners: [Option<String>; 7],
 }
 
 impl BoundBoard {
@@ -204,6 +262,8 @@ impl BoundBoard {
                 t("scoreboarddrawtex"),
                 t("scoreboardffawintex"),
                 t("scoreboardffalosetex"),
+                t("humanroundwintex"),
+                t("infectorroundwintex"),
             ],
         }
     }
@@ -227,12 +287,14 @@ impl BoundBoard {
             let id = l.tree.graft(0, &frame.tree, f);
             let game_result = l.tree.find_from(id, "Game_Result");
             let banner = board.result.and_then(|r| {
-                let i = match (r, board.ffa) {
-                    (RoundResult::Win, false) => 0,
-                    (RoundResult::Lose, false) => 1,
-                    (_, _) if r == RoundResult::Draw => 2,
-                    (RoundResult::Win, true) => 3,
-                    _ => 4,
+                let i = match r {
+                    RoundResult::Win => 0,
+                    RoundResult::Lose => 1,
+                    RoundResult::Draw => 2,
+                    RoundResult::FfaWin => 3,
+                    RoundResult::FfaLose => 4,
+                    RoundResult::HumanWin => 5,
+                    RoundResult::InfectorWin => 6,
                 };
                 self.banners[i].clone()
             });
@@ -241,7 +303,13 @@ impl BoundBoard {
             if let Some(b) = &banner {
                 bound::set_texture(&mut l, game_result, b);
             }
+            // A single-round mode's result: the banner alone.
+            let info = l.tree.find_from(id, "result_info");
+            bound::show(&mut l, info, board.lists_shown);
             bound::hide_samples(&mut l, id);
+        }
+        if !board.lists_shown {
+            return Some(l);
         }
         let from = src.find(panel)?;
         let panel = l.tree.graft(0, &src.tree, from);
@@ -401,6 +469,14 @@ fn draw(
     let centred = (HAlign::Centre, VAlign::Centre);
     let white = [230, 230, 230, 255];
     commands.entity(*root).with_children(|p| {
+        // PLACEHOLDER for the result banner: its name over the panel.
+        if let Some(r) = board.result {
+            let at = (places::PANEL.0 - Vec2::Y * 40.0, Vec2::new(places::PANEL.1.x, 36.0), Vec2::ZERO);
+            hud_text(p, pen, at, &format!("{r:?}").to_uppercase(), "bold 30", centred, Effect::Shadow, white);
+        }
+        if !board.lists_shown {
+            return;
+        }
         p.spawn(rect(screen.rect(places::PANEL.0, places::PANEL.1), Color::srgba(0.04, 0.05, 0.06, 0.82)));
         for (i, list) in board.lists.iter().enumerate() {
             if board.headers[i].is_empty() {

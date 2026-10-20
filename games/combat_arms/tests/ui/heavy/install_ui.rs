@@ -191,6 +191,16 @@ fn install_ingame_menu() {
     assert_eq!(l.widget(lobby).cmd, CMD_LOBBY);
     assert_eq!(l.widget(l.find("button_cancel").unwrap()).cmd, CMD_CANCEL);
     assert!(!l.widget(l.find("button_userreport").unwrap()).enabled);
+    // ui_system.md 27: the options button unbound: its normal look, no
+    // command; the record label names the record key.
+    if let Some(option) = l.find("button_option") {
+        assert!(l.widget(option).enabled);
+        assert_eq!(l.widget(option).cmd, combat_arms::ui::menu::CMD_NONE);
+    }
+    if let Some(label) = l.find(combat_arms::ui::menu::RECORD_LABEL) {
+        let set = l.widget(label).text().and_then(|t| t.set.clone()).unwrap_or_default();
+        assert!(!set.starts_with('$') && !set.contains("%s"), "{set}");
+    }
     menu.screen = bevy::math::IVec2::new(1280, 720);
     menu.place();
     let b = menu.layout().find(INSTALL_BOX).unwrap();
@@ -266,7 +276,8 @@ fn install_hud_rest_binds() {
         for d in draws {
             match d {
                 Draw::Quad(_, q) => assert!(
-                    inst.art.contains_key(&install::texture_key(&q.texture)),
+                    q.texture == combat_arms::ui::hud::bound::DIVIDER
+                        || inst.art.contains_key(&install::texture_key(&q.texture)),
                     "{what}: {} not in the install's art",
                     q.texture
                 ),
@@ -316,22 +327,77 @@ fn install_hud_rest_binds() {
         rows,
         labels: ["Alpha".into(), "Bravo".into()],
         highlight,
+        titles_are_counts: false,
+        dividers: 0,
     };
-    let draws = score.build("TDM", &view, None, Scale::ONE).expect("Eli").draw(&ui.ctx());
+    let draws = score.build("TDM", &view, (None, None), Scale::ONE).expect("Eli").draw(&ui.ctx());
     eprintln!("score: {:?}", texts(&draws));
     check("score panel", &draws);
     let t = texts(&draws);
     let at = |s: &str| t.iter().find(|x| x.0 == s).map(|x| x.1).unwrap_or_else(|| panic!("{s} not drawn"));
     assert!(at("12").x >= 612 && at("12").x < 677, "Alpha's score in its box (612, 23) 65 wide");
     assert!(at("7").y >= 43 && at("7").y < 61);
-    for key in ["TSV", "TMM", "CTF", "FFA", "LMS", "QRT", "ESL"] {
-        let l = score.build(key, &view, Some("02 : 00"), Scale::ONE).unwrap_or_else(|| panic!("{key}"));
-        check(key, &l.draw(&ui.ctx()));
+    // Every mode's own child (ui_system.md 28, game_modes.md 90).
+    for mode in combat_arms::game::rules::MODES {
+        let l = score.build(mode.key, &view, (Some("02 : 00"), None), Scale::ONE);
+        let l = l.unwrap_or_else(|| panic!("{}: no {}", mode.key, combat_arms::ui::hud::bound::child_for(mode.key)));
+        check(mode.key, &l.draw(&ui.ctx()));
     }
-    // The pickup prompt.
-    let draws = action.build(Some("Press [E] to pick up M4A1"), None, Scale::ONE).unwrap().draw(&ui.ctx());
+    // A round mode: the living counts in the row titles, the bars'
+    // dividers, a plant's fuse in `BombTime` (hud_crosshair.md 92, 93).
+    let round = ScorePanelView {
+        mode_key: "TMM".into(),
+        labels: ["5".into(), "3".into()],
+        titles_are_counts: true,
+        dividers: 7,
+        ..view.clone()
+    };
+    let l = score.build("TMM", &round, (None, Some("00 : 40")), Scale::ONE).unwrap();
+    let draws = l.draw(&ui.ctx());
+    eprintln!("s&d: {:?}", texts(&draws));
+    check("s&d", &draws);
+    let t = texts(&draws);
+    assert!(t.iter().any(|x| x.0 == "5") && t.iter().any(|x| x.0 == "3"), "{t:?}");
+    let marks = draws
+        .iter()
+        .filter(|d| matches!(d, Draw::Quad(_, q) if q.texture == combat_arms::ui::hud::bound::DIVIDER))
+        .count();
+    assert_eq!(marks, 12, "G - 1 dividers a bar");
+    if l.find("BombTime").is_some() {
+        assert!(t.iter().any(|x| x.0 == "00 : 40"), "the bomb timer: {t:?}");
+    }
+    // The pickup prompt: the string table's, centred on `ActionDesc`
+    // (hud_crosshair.md 95).
+    let prompt = ui.strings.resolve("IDS_HUD_ITEMGET_MSG");
+    assert!(!prompt.starts_with('$') && !prompt.is_empty());
+    let l = action.build(Some(&prompt), None, Scale::ONE, &ui.fonts).unwrap();
+    let draws = l.draw(&ui.ctx());
+    eprintln!("action: {:?}", texts(&draws));
     check("action", &draws);
     assert_eq!(texts(&draws).len(), 1);
+    let (desc, message) = (l.find("ActionDesc").unwrap(), l.find("Message").unwrap());
+    let desc_mid = l.tree.abs_pos(desc).x + l.tree.get(desc).size.x / 2;
+    let font = ui.fonts.get(&l.widget(message).text().unwrap().font).unwrap();
+    let w = combat_arms::ui::layout::text::measure(&prompt, font, 0, Scale::ONE).reference.x;
+    assert!((l.tree.abs_pos(message).x + w / 2 - desc_mid).abs() <= 1, "centred on ActionDesc");
+    // The action gauge's titles (hud_crosshair.md 97).
+    use combat_arms::ui::hud::model::GaugeKind;
+    for kind in [GaugeKind::Plant, GaugeKind::Defuse] {
+        let title = ui.strings.resolve(kind.title());
+        assert!(!title.starts_with('$'), "{title}");
+        let icon = kind.icon_key().and_then(|k| hud.texture(k));
+        let draws = action.build(None, Some((&title, 50, icon)), Scale::ONE, &ui.fonts).unwrap().draw(&ui.ctx());
+        check("gauge", &draws);
+    }
+    // The gauge sight's images (hud_crosshair.md 98) and the range
+    // readout's font (99).
+    let (l, r) = (inst.hud_prefix("CrossHairLeftTex").unwrap(), inst.hud_prefix("CrossHairRightTex").unwrap());
+    let (left, right) = combat_arms::ui::hud::model::gauge_images(&l, &r, 67, 46);
+    eprintln!("gauge sight: {left} {right}");
+    assert!(inst.art.contains_key(&left) && inst.art.contains_key(&right), "{left} {right}");
+    let range = ui.fonts.get(combat_arms::ui::hud::model::RANGE_FONT).expect("SysFont13 at 20");
+    let sys13 = inst.fonts.iter().find(|f| f.number == 13).expect("SysFont13");
+    assert_eq!((range.height, &range.face), (20, &ui.fonts.get(&sys13.name).unwrap().face));
     // The scoreboard.
     let row = |name: &str, team: u8| ScoreRow {
         player: bevy::prelude::Entity::PLACEHOLDER,
@@ -355,6 +421,8 @@ fn install_hud_rest_binds() {
         ffa: false,
         mode: None,
         result: Some(RoundResult::Win),
+        lists_shown: true,
+        sound: None,
     };
     let bound = BoundBoard::of(&ui);
     let draws = bound.build(&board, Scale::ONE).expect("the team list").draw(&ui.ctx());
@@ -366,11 +434,21 @@ fn install_hud_rest_binds() {
     assert!((217..242).contains(&a1.y) && (392..417).contains(&b0.y), "{a1} {b0}");
     let banner = bound.banners[0].clone().expect("the win banner");
     assert!(draws.iter().any(|d| matches!(d, Draw::Quad(_, q) if install::texture_key(&q.texture) == banner)));
+    // A single-round mode's result: the banner alone (ui_system.md 24).
+    let alone = CaScoreboard {
+        lists_shown: false,
+        ..board.clone()
+    };
+    let draws = bound.build(&alone, Scale::ONE).unwrap().draw(&ui.ctx());
+    check("result alone", &draws);
+    assert!(texts(&draws).iter().all(|x| x.0 != "A1"), "no lists");
+    assert!(draws.iter().any(|d| matches!(d, Draw::Quad(_, q) if install::texture_key(&q.texture) == banner)));
     // The loading screen (the map picture read as the screen opens).
     let src = inst.loading.as_ref().expect("hud_maploading.xml");
     let state = CaLoading {
         label: Some("combat_arms:junkflea".into()),
         progress: 0.5,
+        mode: Some("QRT".into()),
     };
     let image = loading::map_image("junkflea").unwrap();
     assert!(install::decode(&mount, &image).is_some(), "{image}");
@@ -378,5 +456,7 @@ fn install_hud_rest_binds() {
     eprintln!("loading: {:?}", texts(&draws));
     let t = texts(&draws);
     assert!(t.iter().any(|x| x.0 == "JUNKFLEA"));
+    // The mode's line (ui_system.md 30) and Quarantine's backdrop.
+    assert!(t.iter().any(|x| x.0 == "Quarantine Regen"), "{t:?}");
     assert!(t.iter().all(|x| !x.0.starts_with('$')), "{t:?}");
 }

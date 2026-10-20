@@ -1,34 +1,36 @@
 //! The rest of the HUD from the game's own layouts (specs/combat_arms/
-//! ui_system.md L1, H, D; hud_crosshair.md D5-D7; game_modes.md M3,
-//! M10's action gauge), bound by control name as `install` binds the
-//! health and weapon panels: the places, sizes, fonts, colours and
-//! textures are the layouts', the values and what shows are code's.
+//! ui_system.md L1, H, D; hud_crosshair.md D5-D7, D9), bound by control
+//! name as `install` binds the health and weapon panels: the places,
+//! sizes, fonts, colours and textures are the layouts', the values and
+//! what shows are code's.
 //!
 //! - `FeedPanel` (the main HUD layout's `KillDeath`, D5): one clone of
 //!   its line template (`KillLogLine1`) per kill line, 20 ref px apart;
 //!   in it `Name1` the killer, `weapon` the weapon icon, `icon` the first
-//!   badge (later badges in a copy of it, the spec's second slot), `Name2`
-//!   the victim, each at the running x of `model::feed_line` (the
+//!   badge (the second slot, at the last badge's x, in a copy of it),
+//!   `Name2` the victim, each at the running x of `model::feed_line` (the
 //!   layout's positions are samples); the texts' colours the spec's.
 //! - `ScorePanel` (the mode indicator layout's `indicator`, D6, D7): the
-//!   mode's child (`child_for`: TDM's `Eli`, the spec's; the others by
-//!   their names) with `mode_text`, `goal_text`, `top_round` and
-//!   `bottom_round` (the counters, in their highlight colours),
-//!   `alpha_gauge` and `bravo_gauge` (the bars), `bg_up` or `bg_down` (your
-//!   row's highlight), `top_title` and `bottom_title` (the labels, where
-//!   the layout's are samples) and `round_timer` in `RoundTime` (D7).
-//! - `ActionPanel` (the main HUD layout's `Action`): `ActionDesc`'s
-//!   `Message` the pickup prompt (inventory.md 11), `ActionGauge` the
-//!   plant, defuse or seize gauge (`Gauge`, `ActionTitle`, `ActionIcon`:
-//!   the HUD layout attributes' bomb icons).
+//!   mode's child (`child_for`, ui_system.md Corrections 6) with
+//!   `mode_text`, `goal_text`, `top_round` and `bottom_round` (the
+//!   counters, in their highlight colours), `alpha_gauge` and
+//!   `bravo_gauge` (the bars; a round mode's with G - 1 divider marks),
+//!   `bg_up` or `bg_down` (your row's highlight), `top_title` and
+//!   `bottom_title` (the labels where the layout's are samples; a round
+//!   mode's living counts), `round_timer` in `RoundTime` and `bomb_timer`
+//!   in `BombTime` (D7).
+//! - `ActionPanel` (the main HUD layout's `Action`, D9): `ActionDesc`'s
+//!   `Message` the action message, re-centred on `ActionDesc` by its
+//!   reference width; `ActionGauge` the plant, defuse or custom gauge
+//!   (`Gauge` in whole percent, `ActionTitle`, `ActionIcon`: the HUD
+//!   layout attributes' icons).
 //!
-//! Known shortcuts (the most literal reading): which indicator child a
-//! mode other than TDM uses, and the pickup prompt's panel (`Action`, the
-//! game's "press E" line), are our reading of their names; controls
-//! nothing drives (alive counts, flag states, intel, the gauges' counts,
-//! the feed's `SubInfo`) are hidden, a text whose layout value is a
-//! sample (not a string id) and that nothing sets is hidden; the
-//! seize gauge has no icon of its own (the plant one).
+//! Known shortcuts (the most literal reading): controls nothing drives
+//! (flag states, intel, the gauges' counts, the feed's `SubInfo`) are
+//! hidden, a text whose layout value is a sample (not a string id) and
+//! that nothing sets is hidden; the custom gauge has no icon; the
+//! divider marks are our stand-in texture (`DIVIDER`: the spec gives
+//! their places, not their look).
 
 use bevy::math::{IVec2, Vec2};
 
@@ -39,7 +41,7 @@ use super::{
 };
 use crate::{
     client::canvas::{Scale, WidgetId},
-    ui::layout::{Kind, Layout},
+    ui::layout::{FontList, Kind, Layout},
 };
 
 /// A layout of the named control alone (cloned under a fresh root) and
@@ -85,6 +87,14 @@ pub fn set_gauge(l: &mut Layout, id: Option<WidgetId>, bar: f32) {
     if let Kind::Gauge(g) = &mut l.widget_mut(id).kind {
         let range = g.max_range.max(1) as f64;
         g.fill = if bar <= 0.0 { 0.0 } else { bar as f64 * 100.0 / range + 1e-6 };
+    }
+}
+
+/// Fill a gauge to `p` whole percent (W5: the bar ⌊p · MaxRange / 100⌋).
+pub fn set_percent(l: &mut Layout, id: Option<WidgetId>, p: u32) {
+    let Some(id) = id else { return };
+    if let Kind::Gauge(g) = &mut l.widget_mut(id).kind {
+        g.fill = p as f64;
     }
 }
 
@@ -197,27 +207,36 @@ impl FeedPanel {
 // ---------------------------------------------------------------------------
 // The score panel (D6, D7)
 
-/// The indicator layout's child for game mode `key` (TDM's `Eli`, the
-/// spec's; the rest our reading of the children's names).
+/// The indicator layout's child for game mode `key` (ui_system.md
+/// Corrections 6; game_modes.md S13).
 pub fn child_for(key: &str) -> &'static str {
     match key {
-        "TDM" => "Eli",
-        "TSV" => "Eli_pro",
-        "TMM" => "s&d",
+        "TDM" | "CDM" | "SFM" => "Eli",
+        "TSV" | "CTSV" => "Eli_pro",
+        "TMM" | "CMM" | "SBT" => "s&d",
+        "ESL" => "ESL",
+        "CTF" | "CCTF" => "CTF",
         "FFA" => "Indicator_OMA",
-        "CTF" => "CTF",
-        "BNT" => "Indicator_SPY",
         "LMS" => "LMS",
+        "BNT" => "Indicator_SPY",
         "QRT" => "QRT",
         "HQM" => "HQT",
-        "SQM2" => "Squad",
-        "HG" => "HungerGame",
-        "ESL" => "ESL",
-        "VWRM" => "WeaponRace",
+        "SQM" => "Squad",
+        "SQM2" => "HG2",
         "VTDM" => "VIP_Eli",
+        "ESC" | "CESC" => "VIP_Esct",
+        "VWRM" => "WeaponRace",
+        "HG" => "HungerGame",
+        "FRT" => "FRT",
+        "FRT_IShip" => "FRT_IShip",
+        "BOT" => "Eli_single",
         _ => "Eli",
     }
 }
+
+/// The stand-in texture of a round mode's bar divider marks (ours:
+/// `ui::CaUi`).
+pub const DIVIDER: &str = "ours/round_divider.dtx";
 
 /// The mode indicator layout.
 #[derive(Clone, Debug, PartialEq)]
@@ -231,9 +250,9 @@ impl ScorePanel {
         Some(Self { source: indicator.clone() })
     }
 
-    /// Mode `key`'s panel showing `view` and `timer` at `scale`; None
-    /// when the layout has no child for it.
-    pub fn build(&self, key: &str, view: &ScorePanelView, timer: Option<&str>, scale: Scale) -> Option<Layout> {
+    /// Mode `key`'s panel showing `view` and the round and bomb timers
+    /// at `scale`; None when the layout has no child for it.
+    pub fn build(&self, key: &str, view: &ScorePanelView, (timer, bomb): (Option<&str>, Option<&str>), scale: Scale) -> Option<Layout> {
         let (mut l, root) = graft_named(&self.source, "indicator")?;
         l.scale = scale;
         let want = child_for(key);
@@ -262,6 +281,27 @@ impl ScorePanel {
             set_text(&mut l, id_, Some(&row.score), Some(row.colour));
             let id_ = find(&l, gauge);
             set_gauge(&mut l, id_, row.bar);
+            // A round mode's bars: G - 1 divider marks in the bar's frame.
+            if let Some(g) = id_
+                && view.dividers > 1
+            {
+                let (at, size) = (l.tree.get(g).pos.as_vec2(), l.tree.get(g).size.as_vec2());
+                let parent = l.tree.get(g).parent.unwrap_or(child);
+                for (k, (mark, h)) in super::model::round_dividers(at, size, view.dividers).into_iter().enumerate() {
+                    let look = crate::ui::layout::ImageLook {
+                        texture: DIVIDER.to_string(),
+                        ..Default::default()
+                    };
+                    let name = format!("divider_{i}_{k}");
+                    l.add(parent, &name, mark.as_ivec2(), IVec2::new(1, h as i32), Kind::Image(look));
+                }
+            }
+            // Round modes: each team's living players (Corrections 9).
+            if view.titles_are_counts {
+                let id_ = find(&l, title);
+                set_text(&mut l, id_, Some(&view.labels[i]), None);
+                continue;
+            }
             // The label: the layout's string id, else ours, unless a
             // sibling carries the label (then this one is a count).
             if let Some(t) = find(&l, title) {
@@ -287,6 +327,13 @@ impl ScorePanel {
             let id_ = find(&l, "round_timer");
             set_text(&mut l, id_, Some(t), None);
         }
+        // A planted bomb's fuse in its own control (D7, Corrections 8).
+        let bomb_time = find(&l, "BombTime");
+        show(&mut l, bomb_time, bomb.is_some());
+        if let Some(t) = bomb {
+            let id_ = find(&l, "bomb_timer");
+            set_text(&mut l, id_, Some(t), None);
+        }
         hide_samples(&mut l, child);
         Some(l)
     }
@@ -308,9 +355,16 @@ impl ActionPanel {
         Some(Self { source, root })
     }
 
-    /// The panel with the pickup prompt and the action gauge (title,
-    /// fullness 0 to 1, icon texture); None when it shows neither.
-    pub fn build(&self, prompt: Option<&str>, gauge: Option<(&str, f32, Option<&str>)>, scale: Scale) -> Option<Layout> {
+    /// The panel with the action message, re-centred on `ActionDesc` by
+    /// its reference width in `fonts` (D9), and the action gauge (title,
+    /// fill in whole percent, icon texture); None when it shows neither.
+    pub fn build(
+        &self,
+        prompt: Option<&str>,
+        gauge: Option<(&str, u32, Option<&str>)>,
+        scale: Scale,
+        fonts: &FontList,
+    ) -> Option<Layout> {
         if prompt.is_none() && gauge.is_none() {
             return None;
         }
@@ -321,17 +375,31 @@ impl ActionPanel {
         let find = |l: &Layout, name: &str| l.tree.find_from(root, name);
         let desc = find(&l, "ActionDesc");
         show(&mut l, desc, prompt.is_some());
-        let id_ = find(&l, "Message");
-        set_text(&mut l, id_, prompt, None);
+        let message = find(&l, "Message");
+        set_text(&mut l, message, prompt, None);
+        if let (Some(m), Some(d), Some(text)) = (message, desc, prompt) {
+            let width = l
+                .widget(m)
+                .text()
+                .and_then(|t| fonts.get(&t.font))
+                .map_or(0, |f| crate::ui::layout::text::measure(text, f, 0, scale).reference.x);
+            // `Message` in `ActionDesc`'s coordinates: its x so its centre
+            // is on `ActionDesc`'s.
+            let desc_w = l.tree.get(d).size.x;
+            let parent = l.tree.get(m).parent;
+            let (desc_abs, parent_abs) = (l.tree.abs_pos(d).x, parent.map_or(0, |p| l.tree.abs_pos(p).x));
+            let x = super::model::message_x(desc_abs, desc_w, width) - parent_abs;
+            l.tree.get_mut(m).pos.x = x;
+        }
         let id_ = find(&l, "bullion_icon");
         show(&mut l, id_, false);
         let bar = find(&l, "ActionGauge");
         show(&mut l, bar, gauge.is_some());
-        if let Some((title, fraction, icon)) = gauge {
+        if let Some((title, percent, icon)) = gauge {
             let id_ = find(&l, "ActionTitle");
             set_text(&mut l, id_, Some(title), None);
             let id_ = find(&l, "Gauge");
-            set_fraction(&mut l, id_, fraction);
+            set_percent(&mut l, id_, percent);
             let icon_id = find(&l, "ActionIcon");
             match icon {
                 Some(t) => set_texture(&mut l, icon_id, t),

@@ -12,7 +12,7 @@ use combat_arms::{
         CaUi,
         hud::{
             FeedLineView,
-            bound::{ActionPanel, FeedArt, FeedPanel, ScorePanel, child_for},
+            bound::{self, ActionPanel, FeedArt, FeedPanel, ScorePanel, child_for},
             model::{Badge, Kill, KillIcon, SCORE_ALPHA, SCORE_PLAIN, feed_line, score_panel},
             score::ScorePanelView,
         },
@@ -173,7 +173,8 @@ fn kill_feed_binds_by_name() {
     assert_eq!(first.2, [132.0, 45.0]);
     // Later badges into the second slot: only the last one stays (quirk).
     let second = quad("badge_Groin").expect("the second slot");
-    assert_eq!(second.2, [164.0, 45.0]);
+    // At the last badge's x (Corrections 6): the first's + 64.
+    assert_eq!(second.2, [196.0, 45.0]);
     assert!(quad("badge_Revenge").is_none());
     assert!(quad("suicide").is_some_and(|s| s.2[1] == 65.0));
     assert!(quad("sample_weapon").is_none() && quad("sample_icon").is_none());
@@ -207,6 +208,8 @@ fn indicator() -> Layout {
         if name == "s&d" {
             let r = l.add(c, "RoundTime", IVec2::new(2, 63), IVec2::new(336, 17), image("blank"));
             l.add(r, "round_timer", IVec2::new(100, -3), IVec2::ZERO, text("number 20", "99 : 99 : 99", [255; 4]));
+            let b = l.add(c, "BombTime", IVec2::new(2, 63), IVec2::new(336, 17), image("blank"));
+            l.add(b, "bomb_timer", IVec2::new(100, -3), IVec2::ZERO, text("number 20", "99 : 99", [255; 4]));
         }
     }
     l
@@ -230,8 +233,10 @@ fn score_panel_binds_by_name() {
         rows,
         labels: ["Alpha".into(), "Bravo".into()],
         highlight,
+        titles_are_counts: false,
+        dividers: 0,
     };
-    let l = panel.build("TDM", &view, None, Scale::ONE).unwrap();
+    let l = panel.build("TDM", &view, (None, None), Scale::ONE).unwrap();
     let draws = l.draw(&ui.ctx());
     let t = texts(&draws);
     eprintln!("{t:?}");
@@ -250,9 +255,59 @@ fn score_panel_binds_by_name() {
     assert_eq!(bars, [77.0, 31.0]);
     // Only one child drawn: the panel's quads all from it (no s&d timer).
     assert!(!q.iter().any(|x| x.1 == "blank"));
-    let l = panel.build("TMM", &view, Some("01 : 59"), Scale::ONE).unwrap();
+    let l = panel.build("TMM", &view, (Some("01 : 59"), None), Scale::ONE).unwrap();
     let t = texts(&l.draw(&ui.ctx()));
     assert!(t.iter().any(|x| x.0 == "01 : 59"), "{t:?}");
+    // hud_crosshair.md 92, 93 bound: a plant shows the fuse in `BombTime`
+    // (the round timer hidden); a round mode's rows carry the living
+    // counts over the layout's labels, and its bars the dividers.
+    let round = ScorePanelView {
+        mode_key: "TMM".into(),
+        labels: ["5".into(), "3".into()],
+        titles_are_counts: true,
+        dividers: 7,
+        ..view.clone()
+    };
+    let l = panel.build("TMM", &round, (None, Some("00 : 40")), Scale::ONE).unwrap();
+    let draws = l.draw(&ui.ctx());
+    let t = texts(&draws);
+    assert!(t.iter().any(|x| x.0 == "00 : 40") && !t.iter().any(|x| x.0 == "01 : 59"), "{t:?}");
+    assert!(t.iter().any(|x| x.0 == "5") && t.iter().any(|x| x.0 == "3"), "{t:?}");
+    assert!(!t.iter().any(|x| x.0.starts_with("$hud_indicator")), "counts, not labels");
+    let marks: Vec<[f64; 2]> = quads(&draws).into_iter().filter(|x| x.1 == bound::DIVIDER).map(|x| x.2).collect();
+    assert_eq!(marks.len(), 12, "G - 1 a bar");
+    // The alpha bar's frame at (342 + 106, 32): the marks at 449 + 22 ...
+    let alpha: Vec<f64> = marks.iter().filter(|m| m[1] == 34.0).map(|m| m[0]).collect();
+    assert_eq!(alpha, [471.0, 493.0, 515.0, 537.0, 559.0, 581.0]);
+}
+
+/// ui_system.md 28, game_modes.md 90: the mode indicator's child per mode.
+#[test]
+fn ui28_gm90_indicator_children() {
+    for (key, child) in [
+        ("TDM", "Eli"),
+        ("TSV", "Eli_pro"),
+        ("TMM", "s&d"),
+        ("SBT", "s&d"),
+        ("CTF", "CTF"),
+        ("FFA", "Indicator_OMA"),
+        ("LMS", "LMS"),
+        ("BNT", "Indicator_SPY"),
+        ("QRT", "QRT"),
+        ("HQM", "HQT"),
+        ("SQM", "Squad"),
+        ("SQM2", "HG2"),
+        ("VTDM", "VIP_Eli"),
+        ("ESC", "VIP_Esct"),
+        ("VWRM", "WeaponRace"),
+        ("ESL", "ESL"),
+        ("HG", "HungerGame"),
+        ("SFM", "Eli"),
+        ("FRT", "FRT"),
+        ("FRT_IShip", "FRT_IShip"),
+    ] {
+        assert_eq!(child_for(key), child, "{key}");
+    }
 }
 
 /// The action panel: the pickup prompt in `ActionDesc`'s `Message`, the
@@ -271,18 +326,28 @@ fn action_panel_binds_by_name() {
     src.add(g, "ActionCount", IVec2::new(60, 14), IVec2::ZERO, text("number 18", "99 / 99", [255; 4]));
     src.add(g, "ActionIcon", IVec2::ZERO, IVec2::new(64, 64), image("sample_icon"));
     let panel = ActionPanel::new(&src).unwrap();
-    assert!(panel.build(None, None, Scale::ONE).is_none());
-    let l = panel.build(Some("Press [E] to pick up M4A1"), None, Scale::ONE).unwrap();
+    assert!(panel.build(None, None, Scale::ONE, &ui.fonts).is_none());
+    let prompt = ui.strings.resolve("IDS_HUD_ITEMGET_MSG");
+    let l = panel.build(Some(&prompt), None, Scale::ONE, &ui.fonts).unwrap();
     let t = texts(&l.draw(&ui.ctx()));
     assert_eq!(t.len(), 1, "{t:?}");
-    assert_eq!(t[0].0, "Press [E] to pick up M4A1");
-    let l = panel.build(None, Some(("Planting", 0.5, Some("plant_icon"))), Scale::ONE).unwrap();
+    assert_eq!(t[0].0, prompt);
+    // hud_crosshair.md 95: `Message` centred on `ActionDesc` by its
+    // reference width: (x + ⌊w_desc / 2⌋) − ⌊w / 2⌋.
+    let w = combat_arms::ui::layout::text::measure(&prompt, ui.fonts.get("bold 14").unwrap(), 0, Scale::ONE)
+        .reference
+        .x;
+    let message = l.find("Message").unwrap();
+    assert_eq!(bound::at(&l, message).x as i32, -7 + 1044 / 2 - w / 2);
+    // hud_crosshair.md 97: the gauge in whole percent (W5's floor of
+    // p · MaxRange / 100).
+    let l = panel.build(None, Some(("Planting", 49, Some("plant_icon"))), Scale::ONE, &ui.fonts).unwrap();
     let draws = l.draw(&ui.ctx());
     let t = texts(&draws);
     assert_eq!(t.iter().map(|x| x.0.as_str()).collect::<Vec<_>>(), ["Planting"]);
     let q = quads(&draws);
     assert!(q.iter().any(|x| x.1 == "plant_icon"));
-    assert_eq!(q.iter().find(|x| x.1 == "bar").unwrap().3[0], 91.0);
+    assert_eq!(q.iter().find(|x| x.1 == "bar").unwrap().3[0], 89.0, "49 % of 182");
 }
 
 /// The team list layout (ui_system.md's places): `Team_UserList` at (93,
@@ -331,7 +396,7 @@ fn row(name: &str, team: u8, kills: u32) -> ScoreRow {
 /// in the common frame's `Game_Result` while it shows.
 #[test]
 fn scoreboard_binds_by_name() {
-    let ui = ui_with(&["bg_list", "listAlpha_", "listBravo_", "rank", &ping_icon(Some(120)), "sample_result", "lose", "blank"]);
+    let ui = ui_with(&["bg_list", "listAlpha_", "listBravo_", "rank", &ping_icon(Some(120)), "sample_result", "lose", "win", "blank"]);
     let mut frame = Layout::new();
     let f = frame.add(0, "Result_Normal", IVec2::ZERO, IVec2::new(1024, 768), window());
     let r1 = frame.add(f, "Root1", IVec2::new(0, 30), IVec2::new(1024, 64), image("blank"));
@@ -340,7 +405,7 @@ fn scoreboard_binds_by_name() {
         frame: Some(frame),
         team: Some(team_list()),
         no_team: None,
-        banners: [Some("win".into()), Some("lose".into()), Some("draw".into()), None, None],
+        banners: [Some("win".into()), Some("lose".into()), Some("draw".into()), None, None, None, None],
     };
     let board = CaScoreboard {
         shown: true,
@@ -354,6 +419,8 @@ fn scoreboard_binds_by_name() {
         ffa: false,
         mode: None,
         result: None,
+        lists_shown: true,
+        sound: None,
     };
     let l = bound.build(&board, Scale::ONE).unwrap();
     let draws = l.draw(&ui.ctx());
@@ -378,6 +445,15 @@ fn scoreboard_binds_by_name() {
     let draws = l.draw(&ui.ctx());
     assert!(texts(&draws).iter().filter(|x| x.0 == "2").count() >= 6);
     assert!(quads(&draws).iter().any(|x| x.1 == "lose"));
+    // ui_system.md 24: a single-round mode's result: the banner alone.
+    let alone = CaScoreboard {
+        lists_shown: false,
+        result: Some(RoundResult::Win),
+        ..board.clone()
+    };
+    let draws = bound.build(&alone, Scale::ONE).unwrap().draw(&ui.ctx());
+    assert!(quads(&draws).iter().any(|x| x.1 == "win"));
+    assert!(texts(&draws).iter().all(|x| !x.0.starts_with('A')), "no lists");
     let _ = Vec2::ZERO;
 }
 
@@ -398,7 +474,8 @@ fn loading_screen_binds_by_name() {
     assert!(loading::build(&src, &CaLoading::default(), None, &ui.strings, Scale::ONE).is_none());
     let state = CaLoading {
         label: Some("combat_arms:warehouse".into()),
-        progress: loading::progress(chimera_net::net::client::JoinStage::LoadingMap),
+        progress: 0.8,
+        mode: None,
     };
     assert_eq!(loading::map_image("combat_arms:warehouse").as_deref(), Some("ui_scr_loading/maploading/mapimage/warehouse.dtx"));
     assert_eq!(loading::map_image("127.0.0.1:27042"), None);
@@ -409,4 +486,52 @@ fn loading_screen_binds_by_name() {
     let q = quads(&draws);
     assert!(q.iter().any(|x| x.1 == "map_pic"));
     assert_eq!(q.iter().find(|x| x.1 == "bar").unwrap().3[0], 784.0);
+}
+
+/// ui_system.md 29: the loading gauge on the real clock: 0.2 % a ms to
+/// 15 % while the early states last (T = 300 ms), then 55 % and 15 / T %
+/// a ms to 100 %.
+#[test]
+fn ui29_loading_gauge() {
+    use loading::{LoadingGauge, LoadingPart};
+    let mut g = LoadingGauge::default();
+    g.advance(75.0, LoadingPart::Early);
+    assert!((g.percent - 15.0).abs() < 1e-9, "15 % from 75 ms");
+    g.advance(225.0, LoadingPart::Early);
+    assert_eq!(g.percent, 15.0);
+    g.advance(500.0, LoadingPart::Level);
+    assert_eq!(g.percent, 15.0, "it holds while the level is set up");
+    g.advance(16.0, LoadingPart::Entering);
+    assert_eq!(g.percent, 55.0);
+    g.advance(450.0, LoadingPart::Entering);
+    assert!((g.percent - 77.5).abs() < 1e-9, "0.05 % a ms");
+    g.advance(450.0, LoadingPart::Entering);
+    assert!((g.percent - 100.0).abs() < 1e-9, "100 % 900 ms after");
+    for (p, bar) in [(15u32, 90), (55, 330), (100, 600)] {
+        assert_eq!(combat_arms::ui::hud::model::gauge_bar(p, 600), bar);
+    }
+}
+
+/// ui_system.md 30: the loading picture falls back to the map's team
+/// deathmatch one; an official room's mode line.
+#[test]
+fn ui30_loading_picture_and_mode_line() {
+    let picture = |map: &str, mode: &str| Some(format!("{map}_{mode}.dtx"));
+    let exists = |t: &str| t == "m_TDM.dtx";
+    assert_eq!(loading::loading_picture("m", "CTF", picture, exists).as_deref(), Some("m_TDM.dtx"));
+    assert_eq!(loading::loading_picture("m", "CTF", picture, |_| true).as_deref(), Some("m_CTF.dtx"));
+    assert_eq!(loading::mode_line("Capture the Flag", Some("Official")), "Official Capture the Flag");
+    assert_eq!(loading::mode_line("Capture the Flag", None), "Capture the Flag");
+}
+
+/// ui_system.md 31: textures are drawn by their own names in every
+/// language (no per-language texture map applies).
+#[test]
+fn ui31_no_per_language_textures() {
+    let mut ui = ui_with(&["x"]);
+    ui.strings = combat_arms::ui::layout::Strings::parse("x = \"y\"\n");
+    let mut l = Layout::new();
+    l.add(0, "pic", IVec2::ZERO, IVec2::new(64, 32), image("x"));
+    let q = quads(&l.draw(&ui.ctx()));
+    assert_eq!(q.iter().map(|x| x.1.as_str()).collect::<Vec<_>>(), ["x"]);
 }

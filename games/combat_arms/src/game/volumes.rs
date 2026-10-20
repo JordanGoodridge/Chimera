@@ -5,10 +5,12 @@
 //!
 //! `world` hands them over as map entities (`MapEntities`: the class, its
 //! `Viscosity`, `Current`, `Damage`, `PendingSec`, `Hidden`, `Friction`,
-//! `PlayerSpeedFactor`, `PlayerGravity` and `Velocity`, and the world
-//! model's polygons as one hull of planes). `load_volumes` makes a
-//! `CaVolume` of each (class defaults where a property is missing) when a
-//! map loads. A point is inside when it is behind every plane.
+//! `PlayerSpeedFactor`, `PlayerGravity`, `Velocity` and a jump pad's
+//! `JumpDirection`, and the world model's polygons as one hull of
+//! planes). `load_volumes` makes a `CaVolume` of each (class defaults
+//! where a property is missing) when a map loads. A point is inside when
+//! it is behind every plane; a box touches it when it overlaps the bounds
+//! and isn't wholly in front of any plane (`touches_box`).
 //!
 //! What they do: viscosity and current slow and carry non-player objects
 //! (grenades, `grenades::step`) and the liquids (`Water`,
@@ -16,8 +18,9 @@
 //! (`in_liquid`: also the effects' under-water tests and the first-person
 //! muzzle flash's); players' movement in them (ladders, liquids,
 //! viscosity, currents, friction, speed factors, player gravity, jump
-//! pads, safety nets) is movement.md's (`movement`);
-//! players inside take `Damage` per second (`volume_damage`, on the
+//! pads, safety nets; by the hull's box, and the eye volume,
+//! `eye_volume`) is movement.md's (`movement`); players whose hull box
+//! touches one take `Damage` per second (`volume_damage`, on the
 //! server; burn for `CorrosiveFluid` and `Burn`), `EndlessFall`'s 10⁸
 //! killing them, after `PendingSec` inside when it is set.
 //! `ca_volumes_here [radius]` lists the volumes at the player's centre
@@ -32,7 +35,9 @@
 //! read (freezing damage is generic);
 //! the class defaults of `Friction` (1, `Ice` 0) and `PlayerSpeedFactor`
 //! (1) are ours (world_dat.md gives Ice's and Wind's only); the pending
-//! time is checked every tick, not every 0.5 s.
+//! time is checked every tick, not every 0.5 s; the box test has no edge
+//! axes (a box near a convex brush's edge, outside it, can count); of
+//! overlapping eye volumes a liquid or ladder wins (`eye_volume`).
 
 use std::collections::HashMap;
 
@@ -78,6 +83,17 @@ pub const VOLUME_CLASSES: &[(&str, bool, f32, f32)] = &[
 /// A `Gravity` volume's `PlayerGravity` by default, u/s^2.
 pub const DEFAULT_PLAYER_GRAVITY: f32 = -2000.0;
 
+/// A `JumpVolume`'s `Velocity` by default, u/s (world_dat.md).
+pub const DEFAULT_PAD_SPEED: f32 = 1000.0;
+
+/// The classes the eye test never takes as the eye volume (movement.md
+/// "Membership"; `CorrosiveFluid` and `Ice` by its quirk).
+const NOT_EYE_VOLUMES: &[&str] = &["SafteyNet", "JumpVolume", "Weather", "CorrosiveFluid", "Ice"];
+
+/// The classes left out of the players' ground friction (movement.md
+/// "Volumes"): filters, safety nets and jump pads.
+const NO_FRICTION_VOLUMES: &[&str] = &["Filter", "SafteyNet", "JumpVolume"];
+
 /// The classes whose damage burns (corrosive 5 burn/s, `Burn`).
 const BURNING: &[&str] = &["CorrosiveFluid", "Burn"];
 
@@ -112,9 +128,11 @@ pub struct CaVolume {
     /// A `Gravity` volume's `PlayerGravity` (u/s^2 along Y, −2000): the
     /// players' gravity inside is the sum of these.
     pub player_gravity: Option<f32>,
-    /// A `JumpVolume`'s `Velocity` (u/s, a number in the maps, taken as
-    /// straight up: ours): added to a player's velocity by a jump inside,
-    /// in place of the jump speed.
+    /// A `JumpVolume`'s launch velocity (u/s, engine axes): its
+    /// `Velocity` (a speed, 1000 by default) along the forward vector of
+    /// the object's `Rotation` (world_dat.md; the map entity's
+    /// `JumpDirection`). A player whose hull touches the pad and stood on
+    /// ground is launched by it (movement.md "Jump pads").
     pub jump_velocity: Option<Vec3>,
     /// The damage's kind: burn for the burning classes, else generic.
     pub kind: DamageKind,
@@ -149,7 +167,8 @@ impl CaVolume {
             friction: if class == "Ice" { 0.0 } else { 1.0 },
             speed_factor: 1.0,
             player_gravity: (class == "Gravity").then_some(DEFAULT_PLAYER_GRAVITY),
-            jump_velocity: (class == "JumpVolume").then_some(Vec3::ZERO),
+            // No rotation: forward is the file's +Z, engine -Z.
+            jump_velocity: (class == "JumpVolume").then_some(Vec3::NEG_Z * DEFAULT_PAD_SPEED),
             kind: if BURNING.contains(&class) { DamageKind::Burn } else { DamageKind::Generic },
         })
     }
@@ -163,6 +182,22 @@ impl CaVolume {
     /// A safety net (`SafteyNet`): no fall damage inside.
     pub fn is_safety_net(&self) -> bool {
         self.class == "SafteyNet"
+    }
+
+    /// Whether it counts for the players' ground friction (not a filter,
+    /// safety net or jump pad; hidden ones do).
+    pub fn sets_friction(&self) -> bool {
+        !NO_FRICTION_VOLUMES.contains(&self.class.as_str())
+    }
+
+    /// Whether the axis-aligned box from `min` to `max` (m) touches it
+    /// (touching counts), hidden or not: the box against its bounds and
+    /// each of its planes (movement.md "Membership", the hull box).
+    pub fn touches_box(&self, min: Vec3, max: Vec3) -> bool {
+        let (c, h) = ((min + max) / 2.0, (max - min) / 2.0);
+        min.cmple(self.max + 1e-4).all()
+            && max.cmpge(self.min - 1e-4).all()
+            && self.planes.iter().all(|(n, d)| n.dot(c) - n.abs().dot(h) <= d + 1e-4)
     }
 
     /// Whether the point `p` (m) is inside.
@@ -199,7 +234,13 @@ impl CaVolume {
             friction: real("Friction").unwrap_or(defaults.friction),
             speed_factor: real("PlayerSpeedFactor").unwrap_or(defaults.speed_factor),
             player_gravity: defaults.player_gravity.map(|g| real("PlayerGravity").unwrap_or(g)),
-            jump_velocity: defaults.jump_velocity.map(|v| real("Velocity").map_or(v, |up| Vec3::Y * up)),
+            jump_velocity: defaults.jump_velocity.map(|v| {
+                let dir = match e.get("JumpDirection") {
+                    Some(_) => e.vector("JumpDirection"),
+                    None => v.normalize_or_zero(),
+                };
+                dir * real("Velocity").unwrap_or(DEFAULT_PAD_SPEED)
+            }),
             ..defaults
         })
     }
@@ -233,6 +274,30 @@ pub fn startup_switches(command: &str) -> Vec<(String, bool)> {
 /// tests, view_models.md's muzzle flash.
 pub fn in_liquid<'a>(volumes: impl IntoIterator<Item = &'a CaVolume>, p: Vec3) -> bool {
     volumes.into_iter().any(|v| v.liquid && v.contains(p))
+}
+
+/// The player's eye volume at the eye point `p` (m), movement.md
+/// "Membership": a visible volume it is in, a `Filter` only when there is
+/// no other; never a safety net, jump pad, weather, corrosive fluid or
+/// ice volume. Of overlapping ones the spec takes the first found, in an
+/// order we don't have: ours prefers a liquid or ladder (HGOILRIG's sea
+/// lies inside a poison-gas volume), then the first.
+pub fn eye_volume<'a>(volumes: impl IntoIterator<Item = &'a CaVolume>, p: Vec3) -> Option<&'a CaVolume> {
+    let rank = |v: &CaVolume| match () {
+        _ if v.liquid || v.is_ladder() => 0,
+        _ if v.class == "Filter" => 2,
+        _ => 1,
+    };
+    let mut found: Option<&CaVolume> = None;
+    for v in volumes {
+        if NOT_EYE_VOLUMES.contains(&v.class.as_str()) || !v.contains(p) {
+            continue;
+        }
+        if found.is_none_or(|f| rank(v) < rank(f)) {
+            found = Some(v);
+        }
+    }
+    found
 }
 
 /// The map's volumes, made when it loads; players' damage inside them.
@@ -315,8 +380,8 @@ fn load_volumes(entities: Res<MapEntities>, old: Query<Entity, With<CaVolume>>, 
 #[derive(Resource, Default)]
 struct TimeInside(HashMap<(Entity, Entity), f64>);
 
-/// Players inside a damaging volume take its damage × the tick (after its
-/// pending time).
+/// Players whose hull box touches a damaging volume take its damage × the
+/// tick (after its pending time).
 fn volume_damage(
     volumes: Query<(Entity, &CaVolume)>,
     players: Query<(Entity, &Transform, &MovementState, &Health), With<Intent>>,
@@ -332,8 +397,9 @@ fn volume_damage(
             continue;
         }
         let centre = t.translation + (state.hull_min + state.hull_max) / 2.0;
+        let (lo, hi) = (t.translation + state.hull_min, t.translation + state.hull_max);
         for (ve, v) in &volumes {
-            if v.damage <= 0.0 || !v.contains(centre) {
+            if v.damage <= 0.0 || v.hidden || !v.touches_box(lo, hi) {
                 continue;
             }
             let since = *inside.0.get(&(p, ve)).unwrap_or(&now);

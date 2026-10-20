@@ -244,6 +244,7 @@ pub(super) fn class_rules(
         Option<&mut CaSpin>,
         Option<&CaAltFire>,
         Has<super::CaDamage>,
+        Has<crate::game::special::CaProjectileData>,
     )>,
     clock: Res<SimClock>,
 ) {
@@ -261,8 +262,8 @@ pub(super) fn class_rules(
                 }
                 continue;
             }
-            let Ok((mut st, mag, spin, alt, ours)) = weapons.get_mut(w) else { continue };
-            if !ours {
+            let Ok((mut st, mag, spin, alt, ours, special)) = weapons.get_mut(w) else { continue };
+            if !ours && !special {
                 continue;
             }
             let clip = mag.map_or(0, |m| m.clip);
