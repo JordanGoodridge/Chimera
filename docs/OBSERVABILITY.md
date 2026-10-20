@@ -1252,7 +1252,19 @@ for the bot, `setpos`/`setang` beside it (Source-style inches, z up)
 and `screenshot <file.png>`. Your own look: `ca_model`, `ca_face`,
 `ca_head`, `ca_camo`, `ca_goggle`, `ca_backpack` (a client sends it to the
 server, which shows it to every player; bots draw theirs from data/characters.toml's
-`[loadouts]`).
+`[loadouts]`); these choose the gear too (the body is the vest, the head
+piece the helmet, the goggle and backpack as such: armour, speed and
+stamina from data/gear.toml). Your loadout (gear_perks.md; it goes to the
+server, which checks it and shows it to every player): `ca_perks "16012
+16001"` (perk items; they must fit 3 slots, 4 with `ca_skill_extender 1`),
+`ca_head_mods`, `ca_face_mods`, `ca_vest_mods` (up to 3 gear mod ids each),
+`ca_items` (equipped item numbers for set tiers), `ca_fast_respawns`,
+`ca_fast_respawns_max`, `ca_fast_pass` (F7's allowance), `ca_infected_item`
+(Fighting Chance in Quarantine), `ca_perks_enabled` (the room's Perks
+option) and `ca_gear_byte_ids 1` (the reference's byte-wide gear ids: quirk
+1). `ca_perk <1-4>` starts the active perk in that position. Live: `world.query`
+`CaArmor` (points and pieces), `CaCharacter` (the figure's and worn terms),
+`CaPerks`, `CaPerkEffects`, `CaLoadout` on a player.
 When a spot hurts or kills (a playtest's
 `setpos` line: the feet, in inches as CS:S's, not Combat Arms units),
 `ca_volumes_here [radius u]` lists the map's volumes at the player's

@@ -45,7 +45,7 @@ use avian3d::prelude::ColliderDisabled;
 use bevy::prelude::*;
 
 use super::{
-    super::{inventory, weapons::CaArmor},
+    super::inventory,
     CaRuleSettings, current_mode,
     state::side,
 };
@@ -251,10 +251,10 @@ pub fn respawn(world: &mut World, e: Entity) {
     if !spawning::revive(world, e, picked.map(|(t, _)| t)) {
         return;
     }
-    world
-        .entity_mut(e)
-        .remove::<(CaAsked, CaHeld)>()
-        .insert(CaArmor::default());
+    world.entity_mut(e).remove::<(CaAsked, CaHeld)>();
+    // The pool at the vest's `MaxArmor` and the gear's pieces
+    // (gear_perks.md 3, 9).
+    crate::game::gear::spawn_gear(world, e);
     protect(world, e);
     if let Some((at, true)) = picked {
         telefrag(world, e, at.translation);

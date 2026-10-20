@@ -1,0 +1,809 @@
+# Combat Arms' gear and perks: specs/combat_arms/gear_perks.md's stock
+# tables as our data (section numbers below are its), not a file from the
+# game. The install's records (WEAPONS.TXT `Gear#`, MODELBUTES.TXT `Model#`
+# and `Hair#`, ATTACHMENTS.TXT `Goggle#` and `Backpack#`, MOD.TXT gear
+# mods, PERKSKILLINFO.TXT, SETITEM.TXT) replace these by id when the V1
+# key is configured (game/gear/records.rs). Read by game/gear.rs.
+#
+# Fractions are plain numbers (0.15 = 15 %); a penalty P slows by 1 - P
+# (negative: faster). Damage types by the game's numbers: 2 bullet, 3 burn,
+# 7 explode, 9 poison, 13 melee, 34 flash.
+
+# ---------------------------------------------------------------------------
+# Section 4: gear pieces (`Gear#`). `protects`: per damage type `ty` the
+# head, torso, arm and leg fractions (`all` sets the four); `consumable`
+# (default true): the blocked amount wears the armour pool. `armor`: what
+# adding the piece to a living player repairs.
+
+# Body pieces: bullets on the torso, arms and legs, burn everywhere.
+[[piece]]
+id = 0
+name = "AP_Type_Default"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.15, arm = 0.15, leg = 0.15 }, { ty = 3, all = 0.5 }]
+
+[[piece]]
+id = 1
+name = "AP_Type_Light"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.05, arm = 0.05, leg = 0.05 }, { ty = 3, all = 0.5 }]
+
+[[piece]]
+id = 2
+name = "AP_Type_Heavy"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.30, arm = 0.30, leg = 0.30 }, { ty = 3, all = 0.5 }]
+
+[[piece]]
+id = 19
+name = "AP_Type_Balanced_Vest"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.25, arm = 0.25, leg = 0.25 }, { ty = 3, all = 0.5 }]
+
+[[piece]]
+id = 34
+name = "AP_Type_Tanker"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.32, arm = 0.32, leg = 0.32 }, { ty = 3, all = 0.5 }]
+
+# The mercenary bodies' own pieces (the spec gives the bullet fraction
+# for the Commando Vest; the Scorpion's burn and poison as stated).
+[[piece]]
+id = 25
+name = "Commando Vest"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.35, arm = 0.35, leg = 0.35 }, { ty = 3, all = 0.5 }]
+
+[[piece]]
+id = 52
+name = "Codename_Scorpion"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.30, arm = 0.30, leg = 0.30 }, { ty = 3, all = 1.0 }, { ty = 9, all = 0.5 }]
+
+# Head pieces (helmets): bullets on the head; no armour of their own.
+[[piece]]
+id = 3
+name = "AP_Head_default"
+protects = [{ ty = 2, head = 0.25 }]
+
+[[piece]]
+id = 4
+name = "AP_Head_Midium"
+protects = [{ ty = 2, head = 0.30 }]
+
+[[piece]]
+id = 8
+name = "AP_Head_Heavy"
+protects = [{ ty = 2, head = 0.325 }]
+
+[[piece]]
+id = 17
+name = "Bonehead_Helmet"
+protects = [{ ty = 2, head = 0.35 }]
+
+# Gas masks: poison, not consumable.
+[[piece]]
+id = 5
+name = "MK1_Gas_Mask"
+protects = [{ ty = 9, all = 0.28, consumable = false }]
+
+[[piece]]
+id = 7
+name = "MK3_Gas_Mask"
+protects = [{ ty = 9, all = 0.35, consumable = false }]
+
+[[piece]]
+id = 18
+name = "Russian_Gasmask"
+protects = [{ ty = 9, all = 0.32, consumable = false }]
+
+[[piece]]
+id = 28
+name = "Chemical_Gassmask"
+protects = [{ ty = 9, all = 0.50, consumable = false }]
+
+# Fire masks: burn.
+[[piece]]
+id = 9
+name = "AF-II Fire Mask"
+protects = [{ ty = 3, all = 0.35 }]
+
+[[piece]]
+id = 10
+name = "FG-1 Fire Mask"
+protects = [{ ty = 3, all = 0.35 }]
+
+# Anti-flash pieces: flash, not consumable; each repairs 100 armour
+# points when added to a living player.
+[[piece]]
+id = 36
+name = "Anti-Flash"
+armor = 100.0
+protects = [{ ty = 34, all = 1.0, consumable = false }]
+
+[[piece]]
+id = 42
+name = "Anti-Flash_70"
+armor = 100.0
+protects = [{ ty = 34, all = 0.7, consumable = false }]
+
+[[piece]]
+id = 40
+name = "Anti-Flash_50"
+armor = 100.0
+protects = [{ ty = 34, all = 0.5, consumable = false }]
+
+[[piece]]
+id = 38
+name = "Anti-Flash_30"
+armor = 100.0
+protects = [{ ty = 34, all = 0.3, consumable = false }]
+
+# Face guards and skull masks.
+[[piece]]
+id = 33
+name = "Santa_Beard"
+protects = [{ ty = 2, head = 0.03 }]
+
+[[piece]]
+id = 35
+name = "Patriot_Skull_Mask"
+protects = [{ ty = 2, head = 0.10 }]
+
+# The infection forms (mode): bullets, burn, poison, flash, explode,
+# melee, none consumable.
+[[piece]]
+id = 23
+name = "Infected"
+protects = [
+    { ty = 2, all = 0.96, consumable = false },
+    { ty = 3, all = 0.75, consumable = false },
+    { ty = 9, all = 1.0, consumable = false },
+    { ty = 34, all = 1.0, consumable = false },
+    { ty = 7, all = 0.10, consumable = false },
+    { ty = 13, all = 0.70, consumable = false },
+]
+
+[[piece]]
+id = 24
+name = "Host_Infected"
+protects = [
+    { ty = 2, all = 0.96, consumable = false },
+    { ty = 3, all = 0.75, consumable = false },
+    { ty = 9, all = 1.0, consumable = false },
+    { ty = 34, all = 1.0, consumable = false },
+    { ty = 7, all = 0.10, consumable = false },
+    { ty = 13, all = 0.70, consumable = false },
+]
+
+# Quirk 1's pieces (the US data has 258 records): 255 is what a missing
+# id wraps to when ids are sent as bytes; 257 wraps to the Light vest's.
+[[piece]]
+id = 255
+name = "Heartseeker Glasses"
+protects = [{ ty = 2, head = 0.17 }, { ty = 34, all = 0.30, consumable = false }]
+
+[[piece]]
+id = 257
+name = "Heartseeker Uniform"
+armor = 100.0
+protects = [{ ty = 2, torso = 0.54, arm = 0.54, leg = 0.54 }, { ty = 3, all = 0.5 }]
+
+# Section 8: the protection steps gear mods give (ours: the spec lists
+# pieces 67-120 by kind only).
+[[piece]]
+id = 67
+name = "Protect_all_3"
+protects = [{ ty = 2, torso = 0.03, arm = 0.03, leg = 0.03 }]
+
+[[piece]]
+id = 68
+name = "Protect_all_5"
+protects = [{ ty = 2, torso = 0.05, arm = 0.05, leg = 0.05 }]
+
+[[piece]]
+id = 69
+name = "Protect_head_5"
+protects = [{ ty = 2, head = 0.05 }]
+
+[[piece]]
+id = 70
+name = "Protect_fire_10"
+protects = [{ ty = 3, all = 0.10 }]
+
+[[piece]]
+id = 71
+name = "Protect_gas_10"
+protects = [{ ty = 9, all = 0.10, consumable = false }]
+
+[[piece]]
+id = 72
+name = "Protect_Explosive_5"
+protects = [{ ty = 7, all = 0.05 }]
+
+# ---------------------------------------------------------------------------
+# Section 3: vests (`Model#`): the real vest of a selection's model id.
+# `gear`: its piece, `max_armor`: the pool at every spawn, `max_hp`: 0 takes
+# the figure's, `figure`: 0 male, 1 female (identical numbers).
+# `dash_speed` 0.4 and `max_stamina` 0 unless stated.
+
+[[vest]]
+id = 0
+name = "Normal"
+gear = 0
+move_penalty = 0.10
+
+[[vest]]
+id = 7
+name = "Female Normal"
+gear = 0
+move_penalty = 0.10
+figure = 1
+
+[[vest]]
+id = 1
+name = "Light"
+gear = 1
+move_penalty = 0.0
+
+[[vest]]
+id = 8
+name = "Female Light"
+gear = 1
+move_penalty = 0.0
+figure = 1
+
+[[vest]]
+id = 2
+name = "Heavy"
+gear = 2
+move_penalty = 0.16
+
+[[vest]]
+id = 9
+name = "Female Heavy"
+gear = 2
+move_penalty = 0.16
+figure = 1
+
+[[vest]]
+id = 25
+name = "balance"
+gear = 19
+move_penalty = 0.13
+
+[[vest]]
+id = 26
+name = "Female balance"
+gear = 19
+move_penalty = 0.13
+figure = 1
+
+[[vest]]
+id = 28
+name = "balance_NX"
+gear = 19
+move_penalty = 0.07
+
+[[vest]]
+id = 29
+name = "Female balance_NX"
+gear = 19
+move_penalty = 0.07
+figure = 1
+
+[[vest]]
+id = 30
+name = "light_NX"
+gear = 1
+move_penalty = -0.05
+
+[[vest]]
+id = 31
+name = "Female light_NX"
+gear = 1
+move_penalty = -0.05
+figure = 1
+
+[[vest]]
+id = 33
+name = "Tanker_Vest"
+gear = 34
+move_penalty = 0.145
+
+[[vest]]
+id = 34
+name = "Female Tanker_Vest"
+gear = 34
+move_penalty = 0.145
+figure = 1
+
+[[vest]]
+id = 35
+name = "AdvMedVest"
+gear = 0
+move_penalty = 0.06
+
+[[vest]]
+id = 36
+name = "Female AdvMedVest"
+gear = 0
+move_penalty = 0.08
+figure = 1
+
+[[vest]]
+id = 22
+name = "Specialist01_M"
+gear = 52
+move_penalty = 0.03
+max_stamina = 0.2
+
+[[vest]]
+id = 24
+name = "Hauser"
+gear = 25
+move_penalty = 0.19
+
+# ---------------------------------------------------------------------------
+# Section 5: head pieces (`Hair#`), section 6: goggles and masks
+# (`Goggle#`), section 7: backpacks (`Backpack#`): `gear` -1 none.
+
+[[head]]
+id = 0
+name = "HBasic"
+
+[[head]]
+id = 1
+name = "Goggle_Helmet"
+gear = 3
+
+[[head]]
+id = 2
+name = "Combat_Helmet"
+gear = 3
+
+[[head]]
+id = 5
+name = "protect_helmet"
+gear = 3
+
+[[head]]
+id = 8
+name = "EOD_helmet"
+gear = 4
+
+[[head]]
+id = 11
+name = "Pilot_Helmet"
+gear = 8
+
+[[head]]
+id = 12
+name = "Skull_Helmet"
+gear = 8
+
+[[head]]
+id = 16
+name = "IBH_Mk2_Seal"
+gear = 17
+
+[[head]]
+id = 19
+name = "Bonehead_Helmet"
+gear = 17
+
+[[head]]
+id = 22
+name = "VBSS_Helmet"
+gear = 17
+
+[[head]]
+id = 9
+name = "Combat_Beanie"
+move_penalty = -0.018
+
+[[head]]
+id = 10
+name = "Bandana_default"
+move_penalty = -0.03
+
+[[head]]
+id = 15
+name = "Boonie_Hat"
+move_penalty = -0.03
+
+[[head]]
+id = 17
+name = "Green_Beret"
+move_penalty = -0.03
+
+[[head]]
+id = 24
+name = "Black_Beret"
+max_stamina = 0.2
+
+[[goggle]]
+id = 0
+name = "Glass"
+
+[[goggle]]
+id = 1
+name = "Inline_Goggle"
+
+[[goggle]]
+id = 2
+name = "Board_Goggle"
+gear = 38
+
+[[goggle]]
+id = 39
+name = "Anti-FlashGoggles"
+gear = 36
+move_penalty = -0.03
+
+[[goggle]]
+id = 42
+name = "Anti-FlashGoggles II"
+gear = 36
+max_stamina = 0.05
+
+[[goggle]]
+id = 43
+name = "Orange_AntiFlash_Goggle"
+gear = 40
+
+[[goggle]]
+id = 44
+name = "Metal_AntiFlash"
+gear = 42
+
+[[goggle]]
+id = 3
+name = "Mk1 gas mask"
+gear = 5
+
+[[goggle]]
+id = 4
+name = "Mk3 gas mask"
+gear = 7
+
+[[goggle]]
+id = 16
+name = "Russian gas mask"
+gear = 18
+
+[[goggle]]
+id = 18
+name = "Chemical gas mask"
+gear = 28
+
+[[goggle]]
+id = 5
+name = "AF-II Fire Mask"
+gear = 9
+
+[[goggle]]
+id = 6
+name = "FG-1 Fire Mask"
+gear = 10
+
+[[goggle]]
+id = 7
+name = "Face guard"
+gear = 33
+
+[[goggle]]
+id = 8
+name = "Face guard 2"
+gear = 33
+
+[[goggle]]
+id = 9
+name = "Skull mask"
+gear = 33
+
+[[goggle]]
+id = 10
+name = "Skull mask 2"
+gear = 33
+
+[[goggle]]
+id = 11
+name = "Skull mask 3"
+gear = 33
+
+[[goggle]]
+id = 12
+name = "FP-1 Face Guard"
+gear = 33
+
+[[goggle]]
+id = 14
+name = "Santa Beard"
+gear = 33
+
+[[goggle]]
+id = 13
+name = "Red Nose"
+max_stamina = 0.2
+
+[[goggle]]
+id = 19
+name = "Elite_Red_Nose"
+max_stamina = 0.3
+
+# The Worldcup skull masks: ids 24-38 and 45-54 (generated below by
+# game/gear.rs from this template).
+[worldcup_mask]
+ids = [24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54]
+gear = 35
+move_penalty = -0.03
+max_stamina = 0.1
+
+[[backpack]]
+id = 0
+name = "normal_backpack_slot0"
+move_penalty = 0.0
+
+[[backpack]]
+id = 1
+name = "normal_backpack_slot1"
+move_penalty = 0.01
+
+[[backpack]]
+id = 2
+name = "normal_backpack_slot2"
+move_penalty = 0.03
+
+[[backpack]]
+id = 3
+name = "normal_backpack_slot3"
+move_penalty = 0.03
+
+[[backpack]]
+id = 4
+name = "normal_backpack_slot4"
+move_penalty = 0.0
+
+# ---------------------------------------------------------------------------
+# Section 8: gear mods (`Mod#` with `Kinds` 5 head, 6 face, 7 vest). The
+# ids are ours until the install's MOD.TXT is read.
+
+[[gear_mod]]
+id = 1
+name = "speed_1"
+slot = "vest"
+move_penalty = -0.005
+
+[[gear_mod]]
+id = 2
+name = "speed_2"
+slot = "vest"
+move_penalty = -0.007
+
+[[gear_mod]]
+id = 3
+name = "speed_3"
+slot = "vest"
+move_penalty = -0.009
+
+[[gear_mod]]
+id = 4
+name = "stamina_1"
+slot = "vest"
+max_stamina = 0.05
+
+[[gear_mod]]
+id = 10
+name = "Protect_all_3"
+slot = "vest"
+gear = 67
+
+[[gear_mod]]
+id = 11
+name = "Protect_all_5"
+slot = "vest"
+gear = 68
+
+[[gear_mod]]
+id = 12
+name = "Protect_head_5"
+slot = "head"
+gear = 69
+
+[[gear_mod]]
+id = 13
+name = "Protect_fire_10"
+slot = "face"
+gear = 70
+
+[[gear_mod]]
+id = 14
+name = "Protect_gas_10"
+slot = "face"
+gear = 71
+
+[[gear_mod]]
+id = 15
+name = "Protect_Explosive_5"
+slot = "vest"
+gear = 72
+
+[[gear_mod]]
+id = 16
+name = "Protect_flash_100"
+slot = "face"
+gear = 36
+
+# ---------------------------------------------------------------------------
+# Section 12: set items. `[[item]]` maps an item number to the weapon it
+# is (for per-weapon bonuses; ours, none in the stock data). `[[set]]`:
+# its items and tiers; an effect is `kind` (`EffectType`), `value` and
+# optionally `only` (condition items) and `locations` (kind 4: the
+# locations it covers, 1 head 2 torso 3 arm 4 leg; none: everywhere).
+# The stock sets are the install's (SETITEM.TXT); none are built in.
+
+# ---------------------------------------------------------------------------
+# Sections 13-14: the perks (`PerkSkill_N`): `type`, the shop items
+# (`items`: basic, Expert), `slots`, `kind` (passive, active or mode) and
+# the numbers: one value for both levels or [basic, Expert].
+
+[[perk]]
+type = 1
+name = "Resourceful"
+slots = 1
+items = [16001, 16019]
+kind = "passive"
+[perk.values]
+DropProbability = [40, 50]
+HealthDrop_HP = [40, 45]
+AmmoDrop_Ammo = [50, 55]
+BoxHideTime = 10
+BoxLifeTime = 20
+
+[[perk]]
+type = 2
+name = "Awareness"
+slots = 1
+items = [16002]
+kind = "active"
+[perk.values]
+SPDecrease = 5
+FootSoundVolume = 1.0
+SoundRadius = 0.9
+
+[[perk]]
+type = 3
+name = "Specter"
+slots = 1
+items = [16003, 16020]
+kind = "passive"
+[perk.values]
+FootSoundVolume = [0.4, 0.3]
+DashSoundVolume = [1.0, 0.75]
+
+[[perk]]
+type = 4
+name = "Victory Lap"
+slots = 1
+items = [16004]
+kind = "passive"
+[perk.values]
+StartKill = 3
+Time = 8
+
+[[perk]]
+type = 5
+name = "Steady Hand"
+slots = 1
+items = [16005, 16021]
+kind = "passive"
+[perk.values]
+SPDecrease = [10, 8]
+
+[[perk]]
+type = 6
+name = "Pitcher"
+slots = 1
+items = [16006]
+kind = "passive"
+[perk.values]
+MinForce = 0.8
+MaxForce = 1.35
+BarRightSpeed = 0.8
+BarLeftSpeed = 0
+
+[[perk]]
+type = 7
+name = "Parting Gift"
+slots = 2
+items = [16007, 16022]
+kind = "passive"
+[perk.values]
+WeaponID = [472, 846]
+Probability = 100
+
+[[perk]]
+type = 8
+name = "Spoils of War"
+slots = 2
+items = [16008]
+kind = "active"
+[perk.values]
+MaxCount = 10
+AddGP = 10
+TargetDistance = 250
+WaitTime = 1.8
+
+[[perk]]
+type = 9
+name = "Opportunist"
+slots = 2
+items = [16009]
+kind = "active"
+[perk.values]
+TargetDistance = 250
+WaitTime = 1.5
+OwnerTime = 10
+DropWeaponMax = 1
+
+[[perk]]
+type = 10
+name = "Relentless"
+slots = 3
+items = [16010]
+kind = "passive"
+[perk.values]
+RespawnTime = 5.6
+
+[[perk]]
+type = 11
+name = "Warlord"
+slots = 3
+items = [16011]
+kind = "active"
+[perk.values]
+WeaponID = 499
+WaitTime = 2.5
+CoolTime = 180
+SoundRange = 2200
+RechargeCount = 10
+
+[[perk]]
+type = 12
+name = "War Cry"
+slots = 2
+items = [16012, 16023]
+kind = "active"
+[perk.values]
+Time = 30
+CoolTime = 150
+TargetDistance = [1300, 1625]
+
+[[perk]]
+type = 13
+name = "Eagle Eye"
+slots = 2
+items = [16013, 16024]
+kind = "active"
+[perk.values]
+Time = 30
+CoolTime = 150
+Purturb = 0.1
+TargetDistance = [1300, 1625]
+
+[[perk]]
+type = 17
+name = "Caution"
+slots = 1
+items = [16017]
+kind = "passive"
+
+[[perk]]
+type = 18
+name = "Inner Focus"
+slots = 2
+items = [16018]
+kind = "active"
+[perk.values]
+HealHP = 100

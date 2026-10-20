@@ -47,6 +47,9 @@ pub const MODELS_FILE: &str = "attributes/modelbutes.txt";
 pub const MOD_FILE: &str = "attributes/mod.txt";
 pub const MARKS_FILE: &str = "attributes/marks.txt";
 pub const ATTACHMENTS_FILE: &str = "attributes/attachments.txt";
+/// The perk and set item files (gear_perks.md).
+pub const PERKS_FILE: &str = "attributes/perkskillinfo.txt";
+pub const SETS_FILE: &str = "attributes/setitem.txt";
 
 /// The "none" fallback of `Maxstamina`, `DashGauge`, `GaugeRec`.
 pub const NO_INT: i32 = i32::MIN;

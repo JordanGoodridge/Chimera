@@ -43,7 +43,10 @@
 //! - `effects`: muzzle flashes, tracers, impacts and decals by surface,
 //!   blood, casings, grenade looks, and how every sound is chosen and
 //!   played (effects_sounds.md);
-//! - `volumes`: the maps' volumes (water, kill and damage volumes).
+//! - `volumes`: the maps' volumes (water, kill and damage volumes);
+//! - `gear`: what a player's vest, helmet, goggles, backpack, gear mods and
+//!   set items change, and the loadout that brings them (gear_perks.md);
+//! - `perks`: the perks a loadout switches on and what each changes.
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -53,6 +56,7 @@ pub mod bots;
 pub mod characters;
 pub mod data;
 pub mod effects;
+pub mod gear;
 pub mod grenades;
 pub mod hud;
 pub mod inventory;
@@ -60,6 +64,7 @@ pub mod model;
 pub mod mount;
 pub mod movement;
 pub mod net;
+pub mod perks;
 pub mod props;
 pub mod render_style;
 pub mod rules;
@@ -183,6 +188,8 @@ impl PluginGroup for CombatArmsPlugins {
             .add(rules::CaRulesPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
+            .add(gear::CaGearPlugin)
+            .add(perks::CaPerksPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
     }

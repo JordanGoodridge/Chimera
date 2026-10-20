@@ -20,6 +20,7 @@ mod characters;
 mod clan_modes;
 mod effects_sounds;
 mod free_for_all;
+mod gear_perks;
 mod game_modes;
 mod grenades;
 mod hired_guns;

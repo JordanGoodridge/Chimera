@@ -113,7 +113,7 @@ use lithtech_formats::attributes::Document;
 use toml::{Table, Value};
 
 use self::attributes::{
-    ATTACHMENTS_FILE, AmmoRecord, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, ServerTimeWeight, WEAPONS_FILE,
+    ATTACHMENTS_FILE, AmmoRecord, PERKS_FILE, SETS_FILE, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, ServerTimeWeight, WEAPONS_FILE,
  WeaponRecord,
     WeaponsFile,
 };
@@ -285,6 +285,9 @@ pub struct InstallAttributes {
     pub marks: Option<MarksFile>,
     /// The character attachments (`Goggle#`, `Backpack#`).
     pub attachments: Option<AttachmentsFile>,
+    /// The gear and perk records (gear_perks.md), read from the weapons,
+    /// models, attachments, modification, perk and set files.
+    pub gear: Option<super::gear::records::GearInstall>,
 }
 
 /// Parse one attribute document, errors naming it and the line.
@@ -310,6 +313,19 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
     let mods = doc(MOD_FILE);
     let marks = doc(MARKS_FILE);
     let attachments = doc(ATTACHMENTS_FILE);
+    let perks = doc(PERKS_FILE);
+    let sets = doc(SETS_FILE);
+    let any_gear_file = [&weapons, &models, &attachments, &mods, &perks, &sets].iter().any(|d| d.is_some());
+    let gear = any_gear_file.then(|| {
+        super::gear::records::GearInstall::read(
+            weapons.as_ref(),
+            models.as_ref(),
+            attachments.as_ref(),
+            mods.as_ref(),
+            perks.as_ref(),
+            sets.as_ref(),
+        )
+    });
     let weapons = weapons.and_then(|d| {
         WeaponsFile::read(&d)
             .map_err(|e| problems.push(format!("{WEAPONS_FILE}: {e}")))
@@ -323,6 +339,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
         mods: mods.map(|d| ModFile::read(&d)),
         marks: marks.and_then(|d| MarksFile::read(&d)),
         attachments: attachments.map(|d| AttachmentsFile::read(&d)),
+        gear,
     };
     (attrs, problems)
 }
