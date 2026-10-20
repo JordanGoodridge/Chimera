@@ -1323,6 +1323,7 @@ mod tests {
                     held_parts: Vec::new(),
                     model: 0,
                     skin: 0,
+                    body: 0,
                     joints: Vec::new(),
                     held: None,
                 },

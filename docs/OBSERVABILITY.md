@@ -77,10 +77,12 @@ in the lowest crate whose public API it needs:
   the 105 maps and players in their sea, ladders, gravity volumes, safety
   nets and jump pads); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
-  text and input cases and the in-game menu, `ui_system.rs`) in
-  tests/ui/, built with `ui` (`heavy::install_ui`: the install's own
-  layouts and string tables through the UI system's readers, the
-  game's HUD panels bound by name and its in-game menu, V1 key);
+  text and input cases and the in-game menu, `ui_system.rs`; the kill
+  feed, score panel, scoreboard and loading screen bound by name,
+  `bound.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
+  install's own layouts and string tables through the UI system's
+  readers, the game's HUD panels, scoreboard and loading screen bound
+  by name and its in-game menu, V1 key);
 - `combat_arms_server` (apps/combat_arms_server/tests/it/): Combat
   Arms' dedicated server as its binary composes it (`ServerPlugin`, its
   command line) with headless clients over UDP on loopback (`dedicated`:
@@ -1233,15 +1235,19 @@ triangles, textures, spawns and warnings. The world files' numbers:
 (`every_plain_map_summary` prints each map's version and counts).
 `+ingamemenu` opens Combat Arms' in-game menu (Esc) for a screenshot of
 it, e.g. `--window 1280x720 --screenshot menu.png --frames 120
-+ingamemenu`. With the V1 key the HUD's health and weapon panels and the
-menu are the install's own layouts, strings and art (`ui::install`; the
++ingamemenu`. With the V1 key the HUD's panels (health, weapon, kill
+feed, score panel, pickup prompt), the scoreboard (`+showscores`), the
+loading screen and the menu are the install's own layouts, strings,
+fonts and art (`ui::install`; the
 log says `combat_arms ui: the install's layouts ...`); the string table
 is the system language's, `CHIMERA_CA_LANGUAGE=DEU` (ENG, POR, RUS, TUR,
 DEU, ITA, POL, ARB, SCN) picks one. To see a bot from another player's
 view, run the game live and use the remote console: `ca_bot_add alpha`,
 then `world.query` the `Transform` of entities with `Intent` and `Name`
 for the bot, `setpos`/`setang` beside it (Source-style inches, z up)
-and `screenshot <file.png>`.
+and `screenshot <file.png>`. Your own look: `ca_model`, `ca_face`,
+`ca_head`, `ca_camo` (bots draw theirs from data/characters.toml's
+`[loadouts]`).
 
 Combat Arms' dedicated server: `cargo run --features dev --bin
 combat_arms_server -- -port 27042 +map combat_arms:warehouse +ca_mode TDM

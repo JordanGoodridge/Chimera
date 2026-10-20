@@ -2,7 +2,7 @@
 //! skeleton of joints at its feet), what it holds in the body's hand, and
 //! a dead character's body handed over to its ragdoll. What is drawn is
 //! the simulation's own state (`map::bodies`: the character's team,
-//! `BodyName` and class pick the model, `BodySkin` its skin family,
+//! `BodyName` and class pick the model, `BodySkin` its skin family, `BodyNumber` its body parts,
 //! `Held` the held model; a
 //! `map::ragdoll::Ragdoll` takes the body over); these systems fulfil it,
 //! and a server without rendering leaves it undrawn.
@@ -76,6 +76,20 @@ pub struct BodyAssets {
     pub bindposes: Handle<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
     pub bones: Vec<MapBone>,
     pub root: Transform,
+    /// Choices per body part and each part's (part, choice), when the
+    /// model has body parts (`MapModel::body_parts`, `MapMesh::body`).
+    pub body_parts: Vec<u16>,
+    pub mesh_bodies: Vec<Option<(u16, u16)>>,
+}
+
+impl BodyAssets {
+    /// Whether mesh `k` shows with body number `body` (`BodyNumber`).
+    pub fn shows(&self, k: usize, body: i32) -> bool {
+        match self.mesh_bodies.get(k).copied().flatten() {
+            Some((part, choice)) => body_choice(&self.body_parts, body, part as usize) == choice,
+            None => true,
+        }
+    }
 }
 
 /// A joint of a character body's skeleton: its bone index.
@@ -88,6 +102,8 @@ pub struct CharacterBody {
     pub model: usize,
     /// The skin family shown (`BodySkin`).
     pub skin: i32,
+    /// The body number shown (`BodyNumber`).
+    pub body: i32,
     /// Joint entities by bone index.
     pub joints: Vec<Entity>,
     /// The held model shown and its key.
@@ -110,6 +126,7 @@ pub fn attach_bodies(
                 Option<&BodyName>,
                 Option<&crate::core::PlayerClass>,
                 Option<&BodySkin>,
+                Option<&BodyNumber>,
             ),
             &ColliderAabb,
             &GlobalTransform,
@@ -126,17 +143,18 @@ pub fn attach_bodies(
     let (Some(models), Some(bodies)) = (models, bodies) else {
         return;
     };
-    for (e, (team, name, class, skin), aabb, at, children, local) in &characters {
+    for (e, (team, name, class, skin, number), aabb, at, children, local) in &characters {
         let Some((index, _)) = models.for_character(team.copied(), name, class) else {
             continue;
         };
         let skin = skin.map_or(0, |s| s.0);
+        let number = number.map_or(0, |n| n.0);
         let current = children
             .into_iter()
             .flatten()
-            .find_map(|c| existing.get(*c).ok().map(|b| (*c, (b.model, b.skin))));
+            .find_map(|c| existing.get(*c).ok().map(|b| (*c, (b.model, b.skin, b.body))));
         match current {
-            Some((_, m)) if m == (index, skin) => continue,
+            Some((_, m)) if m == (index, skin, number) => continue,
             Some((old, _)) => commands.entity(old).despawn(),
             None => {}
         }
@@ -170,6 +188,7 @@ pub fn attach_bodies(
         commands.entity(body).insert(CharacterBody {
             model: index,
             skin,
+            body: number,
             joints: joints.clone(),
             held: None,
             held_parts: Vec::new(),
@@ -179,6 +198,9 @@ pub fn attach_bodies(
         let family = usize::try_from(skin).ok().and_then(|s| assets.skins.get(s));
         let mut own = Vec::new();
         for (k, (mesh, material)) in assets.parts.iter().enumerate() {
+            if !assets.shows(k, number) {
+                continue;
+            }
             let material = family.and_then(|f| f.get(k)).unwrap_or(material);
             let material = match materials.as_mut() {
                 Some(m) => probe_lit::instance(m, material),
@@ -594,6 +616,8 @@ pub fn body_assets(
         bindposes: bindposes.add(bevy::mesh::skinning::SkinnedMeshInverseBindposes::from(inverse)),
         bones: bones.to_vec(),
         root,
+        body_parts: model.body_parts.clone(),
+        mesh_bodies: model.meshes.iter().map(|m| m.body).collect(),
     }
 }
 
@@ -643,6 +667,7 @@ mod pose_tests {
         world.entity_mut(body).insert(CharacterBody {
             model: 0,
             skin: 0,
+            body: 0,
             joints: vec![joint],
             held: None,
             held_parts: Vec::new(),
