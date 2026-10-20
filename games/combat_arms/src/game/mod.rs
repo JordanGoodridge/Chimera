@@ -43,6 +43,10 @@
 //! - `effects`: muzzle flashes, tracers, impacts and decals by surface,
 //!   blood, casings, grenade looks, and how every sound is chosen and
 //!   played (effects_sounds.md);
+//! - `radar`: the radar's and the full-screen map's data and rules (the
+//!   spec's arithmetic, who is shown, the mission files' map images, the
+//!   scanner items, what the server sends at a round start;
+//!   radar_minimap.md);
 //! - `volumes`: the maps' volumes (water, kill and damage volumes);
 //! - `gear`: what a player's vest, helmet, goggles, backpack, gear mods and
 //!   set items change, and the loadout that brings them (gear_perks.md);
@@ -73,6 +77,7 @@ pub mod net;
 pub mod perks;
 pub mod objects;
 pub mod props;
+pub mod radar;
 pub mod render_style;
 pub mod rules;
 pub mod special;
@@ -147,6 +152,11 @@ pub const DEFAULT_BINDS: &[(&str, &str)] = &[
     ("6", "slot6"),
     // The scoreboard while held (ui_system.md I2; the key is ours).
     ("tab", "+showscores"),
+    // The radar's zoom (`=` expands, `-` decreases) and the full-screen
+    // map while held (radar_minimap.md R3, F1; the engine's defaults).
+    ("=", "+incradarscale"),
+    ("-", "+decradarscale"),
+    ("m", "+fulltacticalmap"),
 ];
 
 /// The defaults before walk and sprint were two keys (`GameInfo::
@@ -189,6 +199,8 @@ impl PluginGroup for CombatArmsPlugins {
             .add(objects::CaObjectsPlugin)
             .add(grenades::CaGrenadesPlugin)
             .add(special::CaSpecialPlugin)
+            // Its scanner hook must be there when the weapons' data loads.
+            .add(radar::CaRadarPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(view_model::CaViewModelPlugin)
             .add(effects::CaEffectsPlugin)

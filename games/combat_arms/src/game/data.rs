@@ -193,6 +193,10 @@ pub const WEAPON_DATA: &[(&str, &str)] = &[
     data_file!("tiger_strider.toml"),
     data_file!("tracker_knife.toml"),
     data_file!("uamc_ka_bar.toml"),
+    // The scanner items (radar_minimap.md S1, S2).
+    data_file!("heartbeat_sensor.toml"),
+    data_file!("heartbeat_detector.toml"),
+    data_file!("satellite_scanner.toml"),
 ];
 
 /// The namespace of our weapon and ammo IDs.

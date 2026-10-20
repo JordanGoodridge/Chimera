@@ -1,0 +1,626 @@
+//! specs/combat_arms/radar_minimap.md's test cases that read the panels'
+//! state from the world (`t25_` is test case 25): the radar (`CaRadar`:
+//! zoom keys, the profile, the rotate option, who is on it, the arrows,
+//! the scanner items' contacts), the scene (`CaScene`) and the full map
+//! (`CaFullMap`: the legend, the spawn markers, the death marks), headless
+//! on `CaSim` with the HUD's state plugin and no window.
+//!
+//! The local player is at the file's origin facing north unless a case
+//! moves it; positions in the cases are the spec's "rel" (file X, Z).
+
+use bevy::prelude::*;
+use chimera_core::core::{Dead, LocalPlayer, MapLoads, SpawnPoint, Team};
+use chimera_sim::weapon::{Inventory, give};
+use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim};
+use combat_arms::{
+    game::{
+        inventory::UNIT,
+        radar::{
+            CaRadarProfile, CaRadarRound, CaScanner, CaScans, CaSeen,
+            look::{self},
+            mission::MapImage,
+        },
+        rules::{
+            objectives::{CaCarry, CaObjectives, Flag, FlagAt},
+            objects::BombZone,
+        },
+    },
+    harness::{CaSim, with_mode},
+    ui::hud::{
+        CaHudStatePlugin, HudScreen,
+        full_map::CaFullMap,
+        model::Screen,
+        radar::{CaRadar, RadarKeys},
+        scene::DeathMarks,
+    },
+};
+
+#[path = "../it/mode_kit.rs"]
+mod mode_kit;
+use mode_kit::*;
+
+/// A file point as an engine position.
+fn at(x: f32, z: f32) -> Vec3 {
+    Vec3::new(x * UNIT, 1.0, -z * UNIT)
+}
+
+fn showdown() -> MapImage {
+    let t = "[Object0]\nLargeMap = \"UI_HUD_Map\\mapImage\\Map_showdown.dtx\"\nLargeMapWidth = 1024\nLargeMapHeight = 1024\nLargeMapPoint0_2D = (128, 128)\nLargeMapPoint0_3D = <-2048, 0, 2304>\nLargeMapPoint1_2D = (895, 895)\nLargeMapPoint1_3D = <1536, 0, -1280>\n";
+    MapImage::of_document(&lithtech_formats::attributes::Document::parse(t.as_bytes()).unwrap(), 0)
+}
+
+/// A match of `mode` with the local player on Alpha at the origin; the
+/// round live. Others join with `others`.
+fn live(mode: &str) -> (Sim, Entity) {
+    // `mode_kit::game` with the HUD's state plugin.
+    let mut sim = Sim::with(CaSim, |app| {
+        app.add_plugins((GreyboxMapPlugin, CaHudStatePlugin));
+    });
+    {
+        let w = sim.app.world_mut();
+        let old: Vec<Entity> = w.query_filtered::<Entity, With<SpawnPoint>>().iter(w).collect();
+        for e in old {
+            w.despawn(e);
+        }
+        for (k, team) in [JSF, CREED].into_iter().enumerate() {
+            for i in 0..2 {
+                w.spawn((
+                    Name::new(format!("Spawn {}", k * 2 + i)),
+                    SpawnPoint { team: Some(Team(team)) },
+                    Transform::from_translation(point(team, i)),
+                ));
+            }
+        }
+        with_mode(w, mode);
+    }
+    let me = join(&mut sim, JSF);
+    sim.app.world_mut().entity_mut(me).insert((LocalPlayer, Name::new("Me")));
+    until_live(&mut sim);
+    if m(&sim).warmup {
+        past_warmup(&mut sim);
+    }
+    unprotect_all(&mut sim);
+    (sim, me)
+}
+
+fn radar(sim: &Sim) -> CaRadar {
+    sim.app.world().resource::<CaRadar>().clone()
+}
+fn map(sim: &Sim) -> CaFullMap {
+    sim.app.world().resource::<CaFullMap>().clone()
+}
+
+/// A player of `team` held at the file point (x, z).
+fn spot(sim: &mut Sim, team: u8, x: f32, z: f32, name: &str) -> Entity {
+    let e = join(sim, team);
+    sim.app.world_mut().entity_mut(e).insert(Name::new(name.to_string()));
+    put(sim, e, at(x, z));
+    e
+}
+
+/// `n` rendered frames (one tick each), `who` held where the case puts
+/// them.
+fn frames(sim: &mut Sim, n: usize, who: &[(Entity, Vec3)]) {
+    for _ in 0..n {
+        for (e, p) in who {
+            put(sim, *e, *p);
+        }
+        sim.ticks(1);
+    }
+}
+
+/// Keep everyone where the cases put them for a few frames.
+fn settle(sim: &mut Sim, who: &[(Entity, Vec3)]) {
+    for _ in 0..3 {
+        for (e, p) in who {
+            put(sim, *e, *p);
+        }
+        sim.ticks(1);
+    }
+}
+
+fn mark_of(r: &CaRadar, e: Entity) -> Option<&combat_arms::ui::hud::radar::Mark> {
+    r.marks.iter().find(|m| m.entity == Some(e))
+}
+
+fn place(sim: &mut Sim, me: Entity, others: &[(Entity, f32, f32)]) {
+    let mut who: Vec<(Entity, Vec3)> = vec![(me, at(0.0, 0.0))];
+    who.extend(others.iter().map(|(e, x, z)| (*e, at(*x, *z))));
+    settle(sim, &who);
+}
+
+// ---------------------------------------------------------------------------
+// R4 to R6 in the world
+
+#[test]
+fn t01_an_ally_on_the_radar() {
+    let (mut sim, me) = live("TDM");
+    let ally = spot(&mut sim, JSF, 300.0, 400.0, "Ally");
+    place(&mut sim, me, &[(ally, 300.0, 400.0)]);
+    let r = radar(&sim);
+    assert!(r.visible);
+    let m = mark_of(&r, ally).expect("the ally is on the radar");
+    assert_eq!(m.centre, (948, 48));
+    assert_eq!(m.look.icon, look::icon("character_ally.dtx"));
+    assert!(m.wedge.is_some(), "an ally has a facing wedge");
+}
+
+#[test]
+fn t08_an_enemy_that_fires_is_not_shown() {
+    let (mut sim, me) = live("TDM");
+    let enemy = spot(&mut sim, CREED, 100.0, 100.0, "Enemy");
+    place(&mut sim, me, &[(enemy, 100.0, 100.0)]);
+    sim.intent(enemy).fire = true;
+    sim.ticks(10);
+    place(&mut sim, me, &[(enemy, 100.0, 100.0)]);
+    assert!(mark_of(&radar(&sim), enemy).is_none());
+    assert!(map(&sim).marks.iter().all(|m| m.entity != Some(enemy)));
+}
+
+#[test]
+fn t09_an_enemy_flag_carrier_is_shown_with_the_badge() {
+    let (mut sim, me) = live("TDM");
+    let enemy = spot(&mut sim, CREED, 100.0, 100.0, "Enemy");
+    sim.app.world_mut().entity_mut(enemy).insert(CaCarry { flag: Some(JSF), ..default() });
+    place(&mut sim, me, &[(enemy, 100.0, 100.0)]);
+    let r = radar(&sim);
+    let m = mark_of(&r, enemy).expect("a flag carrier is revealed");
+    assert_eq!(m.look.icon, look::icon("character_enemy.dtx"));
+    assert_eq!(m.look.badge, Some(look::icon("character_flag_A.dtx")));
+}
+
+#[test]
+fn t10_a_far_carrier_gets_an_edge_arrow() {
+    let (mut sim, me) = live("TDM");
+    let enemy = spot(&mut sim, CREED, 2000.0, 0.0, "Enemy");
+    sim.app.world_mut().entity_mut(enemy).insert(CaCarry { flag: Some(JSF), ..default() });
+    // The same height.
+    let y = sim.app.world().get::<Transform>(me).unwrap().translation.y;
+    let mut who = vec![(me, at(0.0, 0.0)), (enemy, at(2000.0, 0.0))];
+    who[0].1.y = y;
+    who[1].1.y = y;
+    settle(&mut sim, &who);
+    let r = radar(&sim);
+    assert!(mark_of(&r, enemy).is_none(), "out of range: no icon");
+    let a = r.arrows.iter().find(|a| a.entity == Some(enemy)).expect("an arrow");
+    // The exact point is `it::radar::t10` (the arithmetic); in the world
+    // the characters' heights drift by a hair, which the 3D
+    // normalisation turns into a pixel at this boundary.
+    assert!((979..=980).contains(&a.point.0) && a.point.1 == 98, "{:?}", a.point);
+}
+
+// ---------------------------------------------------------------------------
+// R3 zoom and the profile
+
+#[test]
+fn t25_holding_the_zoom_key() {
+    let (mut sim, _) = live("TDM");
+    sim.ticks(2);
+    let z0 = radar(&sim).zoom;
+    assert_eq!(z0, 1.0);
+    sim.app.world_mut().resource_mut::<RadarKeys>().expand = true;
+    for _ in 0..30 {
+        sim.ticks(1);
+    }
+    let r = radar(&sim);
+    assert!((r.zoom - 1.30).abs() < 1e-4, "{}", r.zoom);
+    assert_eq!(r.knob, 88);
+    frames(&mut sim, 100, &[]);
+    let r = radar(&sim);
+    assert_eq!((r.zoom, r.knob), (2.0, 18));
+}
+
+#[test]
+fn t26_the_zoom_clamps_at_half() {
+    let (mut sim, _) = live("TDM");
+    sim.app.world_mut().resource_mut::<RadarKeys>().decrease = true;
+    frames(&mut sim, 80, &[]);
+    let r = radar(&sim);
+    assert_eq!((r.zoom, r.knob), (0.5, 168));
+}
+
+#[test]
+fn t27_the_zoom_is_saved_when_it_hides_and_restored_on_a_new_map() {
+    let (mut sim, me) = live("TDM");
+    sim.app.world_mut().resource_mut::<RadarKeys>().expand = true;
+    frames(&mut sim, 40, &[]);
+    sim.app.world_mut().resource_mut::<RadarKeys>().expand = false;
+    sim.ticks(1);
+    assert!((radar(&sim).zoom - 1.4).abs() < 1e-4);
+    // Dead: the radar hides and the zoom goes to the profile.
+    kill_now(&mut sim, me, me);
+    sim.ticks(3);
+    assert!(!radar(&sim).visible);
+    let saved = sim.app.world().resource::<CaRadarProfile>().scale;
+    assert!((saved - 1.4).abs() < 1e-4, "{saved}");
+    // A map load: shown again at the saved zoom.
+    sim.app.world_mut().insert_resource(MapLoads(5));
+    let w = sim.app.world_mut();
+    w.entity_mut(me).remove::<Dead>();
+    w.get_mut::<chimera_core::core::Health>(me).unwrap().current = 1.0;
+    sim.ticks(3);
+    let r = radar(&sim);
+    assert!(r.visible);
+    assert!((r.zoom - 1.4).abs() < 1e-4, "{}", r.zoom);
+}
+
+#[test]
+fn t45_rotating_the_radar_mid_map_waits_for_the_next_map() {
+    let (mut sim, _) = live("TDM");
+    sim.ticks(2);
+    assert!(!radar(&sim).rotate);
+    sim.app.world_mut().resource_mut::<CaRadarProfile>().rotate = 1;
+    sim.ticks(5);
+    assert!(!radar(&sim).rotate, "no change until the next map");
+    sim.app.world_mut().insert_resource(MapLoads(9));
+    sim.ticks(2);
+    assert!(radar(&sim).rotate);
+}
+
+// ---------------------------------------------------------------------------
+// S1 to S3: the scanner items
+
+/// Give `me` the item `id` and hold it with fire down.
+fn hold_scanner(sim: &mut Sim, me: Entity, id: &'static str) {
+    let w = sim.app.world_mut();
+    give(w, me, id);
+    let weapon = w
+        .get::<Inventory>(me)
+        .unwrap()
+        .weapons
+        .iter()
+        .copied()
+        .find(|e| w.get::<chimera_sim::weapon::Weapon>(*e).is_some_and(|x| x.id == id))
+        .expect("the item");
+    w.get_mut::<Inventory>(me).unwrap().wanted = Some(weapon);
+    // Looking north, level.
+    {
+        let mut i = sim.intent(me);
+        i.yaw = 0.0;
+        i.pitch = 0.0;
+    }
+    sim.ticks(80);
+    assert_eq!(in_hand(sim, me), Some(id));
+}
+
+#[test]
+fn t28_a_heartbeat_contact_is_on_the_radar_only() {
+    let (mut sim, me) = live("TDM");
+    let enemy = spot(&mut sim, CREED, 0.0, 900.0, "Enemy");
+    hold_scanner(&mut sim, me, "combat_arms:heartbeat_sensor");
+    sim.intent(me).fire = true;
+    for _ in 0..3 {
+        put(&mut sim, me, at(0.0, 0.0));
+        put(&mut sim, enemy, at(0.0, 900.0));
+        sim.ticks(1);
+    }
+    assert!(sim.app.world().get::<CaScanner>(me).unwrap().on);
+    // 900 u is past the radar's 750 at zoom 1: zoomed out it is on it.
+    assert!(mark_of(&radar(&sim), enemy).is_none(), "out of the default window");
+    sim.app.world_mut().resource_mut::<RadarKeys>().decrease = true;
+    frames(&mut sim, 60, &[(me, at(0.0, 0.0)), (enemy, at(0.0, 900.0))]);
+    sim.app.world_mut().resource_mut::<RadarKeys>().decrease = false;
+    assert!(mark_of(&radar(&sim), enemy).is_some(), "on its own radar");
+    // Not on the full map ...
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    sim.ticks(2);
+    let f = map(&sim);
+    assert!(f.visible);
+    assert!(f.marks.iter().all(|m| m.entity != Some(enemy)), "{:?}", f.marks.iter().find(|m| m.entity == Some(enemy)));
+    // ... and on no teammate's radar (option 0 shares nothing).
+    assert_eq!(sim.app.world().get::<CaSeen>(enemy).copied().unwrap_or_default(), CaSeen::default());
+}
+
+#[test]
+fn t29_30_out_of_range_or_behind_is_not_a_contact() {
+    let (mut sim, me) = live("TDM");
+    let far = spot(&mut sim, CREED, 0.0, 1100.0, "Far");
+    let behind = spot(&mut sim, CREED, 0.0, -500.0, "Behind");
+    hold_scanner(&mut sim, me, "combat_arms:heartbeat_sensor");
+    sim.intent(me).fire = true;
+    for _ in 0..3 {
+        put(&mut sim, me, at(0.0, 0.0));
+        put(&mut sim, far, at(0.0, 1100.0));
+        put(&mut sim, behind, at(0.0, -500.0));
+        sim.ticks(1);
+    }
+    let r = radar(&sim);
+    assert!(mark_of(&r, far).is_none(), "1100 u ahead");
+    assert!(mark_of(&r, behind).is_none(), "500 u behind");
+}
+
+#[test]
+fn t31_a_detector_shares_its_list_with_the_team() {
+    let (mut sim, me) = live("TDM");
+    let mate = spot(&mut sim, JSF, 1200.0, 1200.0, "Mate");
+    let enemy = spot(&mut sim, CREED, 0.0, 900.0, "Enemy");
+    hold_scanner(&mut sim, me, "combat_arms:heartbeat_detector");
+    sim.intent(me).fire = true;
+    let keep = |sim: &mut Sim| {
+        put(sim, me, at(0.0, 0.0));
+        put(sim, mate, at(1200.0, 1200.0));
+        put(sim, enemy, at(0.0, 900.0));
+    };
+    for _ in 0..8 {
+        keep(&mut sim);
+        sim.ticks(1);
+    }
+    let seen = sim.app.world().get::<CaSeen>(enemy).copied().unwrap_or_default();
+    assert!(seen.contact_of(JSF), "within about 100 ms: {seen:?}");
+    // On the teammate's radar: it is the local player now.
+    {
+        let w = sim.app.world_mut();
+        w.entity_mut(me).remove::<LocalPlayer>();
+        w.entity_mut(mate).insert(LocalPlayer);
+    }
+    // The teammate's radar range is 750 u: bring it near the enemy.
+    for _ in 0..3 {
+        put(&mut sim, me, at(0.0, 0.0));
+        put(&mut sim, mate, at(300.0, 900.0));
+        put(&mut sim, enemy, at(0.0, 900.0));
+        sim.ticks(1);
+    }
+    assert!(mark_of(&radar(&sim), enemy).is_some(), "on the teammate's radar");
+    // Gone when the sender releases fire.
+    sim.intent(me).fire = false;
+    for _ in 0..3 {
+        put(&mut sim, me, at(0.0, 0.0));
+        put(&mut sim, mate, at(300.0, 900.0));
+        put(&mut sim, enemy, at(0.0, 900.0));
+        sim.ticks(1);
+    }
+    assert!(mark_of(&radar(&sim), enemy).is_none());
+}
+
+#[test]
+fn t32_a_satellite_scan_shows_every_enemy_for_seven_seconds() {
+    let (mut sim, me) = live("TDM");
+    let enemy = spot(&mut sim, CREED, 300.0, -200.0, "Enemy");
+    hold_scanner(&mut sim, me, "combat_arms:satellite_scanner");
+    let keep = |sim: &mut Sim| {
+        put(sim, me, at(0.0, 0.0));
+        put(sim, enemy, at(300.0, -200.0));
+    };
+    sim.intent(me).fire = true;
+    keep(&mut sim);
+    sim.ticks(1);
+    sim.intent(me).fire = false;
+    let t0 = now(&sim);
+    assert!(sim.app.world().resource::<CaScans>().satellite[0].is_some());
+    // Mid-scan.
+    while now(&sim) - t0 < 6.9 {
+        keep(&mut sim);
+        sim.ticks(1);
+    }
+    sim.ticks(1);
+    assert!(mark_of(&radar(&sim), enemy).is_some(), "still scanned at 6.9 s");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    keep(&mut sim);
+    sim.ticks(1);
+    assert!(map(&sim).marks.iter().any(|m| m.entity == Some(enemy)), "and on the full map");
+    while now(&sim) - t0 < 7.1 {
+        keep(&mut sim);
+        sim.ticks(1);
+    }
+    sim.ticks(2);
+    assert!(mark_of(&radar(&sim), enemy).is_none(), "over at 7 s");
+}
+
+#[test]
+fn t33_the_battery_runs_out_in_ten_seconds() {
+    let (mut sim, me) = live("TDM");
+    hold_scanner(&mut sim, me, "combat_arms:heartbeat_sensor");
+    sim.intent(me).fire = true;
+    let t0 = now(&sim);
+    while now(&sim) - t0 < 10.2 {
+        put(&mut sim, me, at(0.0, 0.0));
+        sim.ticks(1);
+    }
+    let s = *sim.app.world().get::<CaScanner>(me).unwrap();
+    assert!(s.battery <= 0.01 && !s.on, "{s:?}");
+}
+
+// ---------------------------------------------------------------------------
+// F4: deaths
+
+#[test]
+fn t34_a_killed_ally_vanishes_from_the_radar_and_leaves_a_mark() {
+    let (mut sim, me) = live("TDM");
+    let ally = spot(&mut sim, JSF, 300.0, 400.0, "Ally");
+    let enemy = spot(&mut sim, CREED, -3000.0, 0.0, "Enemy");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    place(&mut sim, me, &[(ally, 300.0, 400.0), (enemy, -3000.0, 0.0)]);
+    assert!(mark_of(&radar(&sim), ally).is_some());
+    kill(&mut sim, ally, enemy);
+    for _ in 0..3 {
+        put(&mut sim, me, at(0.0, 0.0));
+        put(&mut sim, ally, at(300.0, 400.0));
+        sim.ticks(1);
+    }
+    assert!(mark_of(&radar(&sim), ally).is_none(), "the dead vanish from the radar");
+    let f = map(&sim);
+    let a = f.marks.iter().find(|m| m.entity == Some(ally)).expect("on the full map");
+    assert_eq!(a.look.icon, look::icon("area_death_ally.DTX"));
+    assert_eq!(f.deaths.len(), 1, "a death mark");
+    let d = f.deaths[0];
+    assert!((d.size().x - 54.0).abs() < 1e-3 && (d.size().y - 54.0).abs() < 1e-3);
+    // Centred on the victim's icon.
+    let c = (d.min + d.max) / 2.0;
+    assert!((c.x - a.centre.0 as f32).abs() < 1.0 && (c.y - a.centre.1 as f32).abs() < 1.0);
+}
+
+#[test]
+fn t35_the_twenty_first_kill_reuses_the_oldest_mark() {
+    let mut marks = DeathMarks::default();
+    for i in 0..21 {
+        marks.push(combat_arms::ui::hud::scene::DeathMark((i as f64, 0.0)));
+    }
+    assert_eq!(marks.marks.len(), 20);
+    assert_eq!(marks.marks[0].0.0, 20.0, "the first mark moved to the 21st position");
+    assert_eq!(marks.marks[1].0.0, 1.0);
+}
+
+#[test]
+fn t36_a_fall_leaves_no_death_mark_but_the_death_icon() {
+    let (mut sim, me) = live("TDM");
+    let ally = spot(&mut sim, JSF, 300.0, 400.0, "Ally");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    place(&mut sim, me, &[(ally, 300.0, 400.0)]);
+    hit(&mut sim, ally, None, 500.0, chimera_core::core::DamageKind::Fall, None);
+    for _ in 0..3 {
+        put(&mut sim, me, at(0.0, 0.0));
+        put(&mut sim, ally, at(300.0, 400.0));
+        sim.ticks(1);
+    }
+    let f = map(&sim);
+    assert!(f.deaths.is_empty(), "no death mark for a fall");
+    assert!(f.marks.iter().any(|m| m.entity == Some(ally) && m.look.icon == look::icon("area_death_ally.DTX")));
+}
+
+// ---------------------------------------------------------------------------
+// R6: objectives
+
+fn site(number: i32, family: &str, x: f32, z: f32) -> BombZone {
+    bomb_zone(family, number, CREED, at(x, z))
+}
+
+#[test]
+fn t37_search_and_destroy_sites() {
+    let (mut sim, me) = live("TMM");
+    {
+        let mut o = objects(&mut sim);
+        o.bomb_zones = vec![site(0, "Doobic", 200.0, 0.0), site(1, "Doobic", 3000.0, 0.0)];
+    }
+    place(&mut sim, me, &[]);
+    let r = radar(&sim);
+    assert!(r.marks.iter().any(|k| k.look.icon == look::icon("area_bomb_A.dtx")), "site A in range");
+    let b = r.arrows.iter().find(|a| a.look.icon == look::icon("area_bomb_B.dtx"));
+    assert!(b.is_some(), "site B out of range: an edge arrow");
+}
+
+#[test]
+fn t38_bombing_run_site() {
+    let (mut sim, me) = live("SBT");
+    {
+        let mut o = objects(&mut sim);
+        o.bomb_zones = vec![site(0, "Sabotage", 200.0, 0.0)];
+    }
+    place(&mut sim, me, &[]);
+    assert!(radar(&sim).marks.iter().any(|k| k.look.icon == look::icon("area_bomb.dtx")));
+}
+
+// ---------------------------------------------------------------------------
+// F2, F5: the full map's layout
+
+#[test]
+fn t39_the_legend_and_the_spawn_markers() {
+    let (mut sim, me) = live("TDM");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    sim.app.world_mut().resource_mut::<CaRadarRound>().spawns = [Some([100.0, 100.0]), Some([-100.0, -100.0])];
+    place(&mut sim, me, &[]);
+    let f = map(&sim);
+    assert!(f.visible);
+    assert_eq!(f.legend.len(), 6, "six rows");
+    for (i, row) in f.legend.iter().enumerate() {
+        assert_eq!(row.at, (101.0, 109.0 + 37.0 * i as f32));
+    }
+    let icons: Vec<String> = f.marks.iter().map(|m| m.look.icon.clone()).collect();
+    assert!(icons.contains(&look::icon("area_respawn_A.dtx")), "{icons:?}");
+    assert!(icons.contains(&look::icon("area_respawn_B.dtx")), "{icons:?}");
+}
+
+#[test]
+fn t40_vip_escort_markers() {
+    let (mut sim, me) = live("ESC");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    sim.app.world_mut().resource_mut::<CaRadarRound>().spawns = [Some([100.0, 100.0]), Some([-100.0, -100.0])];
+    sim.app.world_mut().resource_mut::<CaObjectives>().escort = 2;
+    place(&mut sim, me, &[]);
+    let f = map(&sim);
+    let icons: Vec<String> = f.marks.iter().map(|m| m.look.icon.clone()).collect();
+    assert!(icons.contains(&look::icon("area_respawn_DF.dtx")), "{icons:?}");
+    assert!(icons.contains(&look::icon("area_respawn_OF.dtx")), "{icons:?}");
+}
+
+#[test]
+fn t42_without_map_fields_there_is_no_image_but_icons_still_work() {
+    let (mut sim, me) = live("TDM");
+    let ally = spot(&mut sim, JSF, 100.0, 100.0, "Ally");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    *sim.app.world_mut().resource_mut::<CaRadarRound>() = CaRadarRound::default();
+    place(&mut sim, me, &[(ally, 100.0, 100.0)]);
+    let r = radar(&sim);
+    assert!(r.map.is_none(), "no picture under the radar");
+    assert!(mark_of(&r, ally).is_some(), "icons still work");
+    assert!(map(&sim).picture.is_none(), "and none on the full map");
+}
+
+// ---------------------------------------------------------------------------
+// R6, F4: Spy Hunt and Capture the Flag
+
+#[test]
+fn t43_spies_see_each_other() {
+    let (mut sim, me) = live("TDM");
+    let enemy = spot(&mut sim, CREED, 200.0, 0.0, "Spy");
+    sim.app.world_mut().entity_mut(enemy).insert(CaCarry { intel: 1, ..default() });
+    sim.app.world_mut().entity_mut(me).insert(CaCarry { intel: 1, ..default() });
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    place(&mut sim, me, &[(enemy, 200.0, 0.0)]);
+    let r = radar(&sim);
+    let m = mark_of(&r, enemy).expect("shown to an intel holder");
+    assert_eq!(m.look.icon, look::icon("character_spy_pre.DTX"));
+    assert!(map(&sim).marks.iter().any(|k| k.entity == Some(enemy) && k.look.icon == look::icon("character_spy_pre.DTX")));
+    sim.app.world_mut().entity_mut(me).remove::<CaCarry>();
+    place(&mut sim, me, &[(enemy, 200.0, 0.0)]);
+    let r = radar(&sim);
+    assert!(mark_of(&r, enemy).is_none(), "hidden once the local player drops its intel");
+}
+
+#[test]
+fn t44_capture_the_flag_icons() {
+    let (mut sim, me) = live("CTF");
+    let (flag_a, zone_a) = flag_and_zone(JSF, at(200.0, 0.0));
+    {
+        let mut o = objects(&mut sim);
+        o.flags = vec![flag_a];
+        o.flag_zones = vec![zone_a];
+    }
+    sim.app.world_mut().resource_mut::<CaObjectives>().flags = vec![Flag {
+        team: JSF,
+        home: at(200.0, 0.0),
+        at: FlagAt::Home,
+    }];
+    place(&mut sim, me, &[]);
+    let icons = |r: &CaRadar| r.marks.iter().map(|m| m.look.icon.clone()).collect::<Vec<_>>();
+    assert!(icons(&radar(&sim)).contains(&look::icon("area_flag_A.dtx")), "{:?}", icons(&radar(&sim)));
+    // Dropped: the base shows the flag away and the loose flag its place.
+    sim.app.world_mut().resource_mut::<CaObjectives>().flags = vec![Flag {
+        team: JSF,
+        home: at(200.0, 0.0),
+        at: FlagAt::Dropped {
+            at: at(-300.0, 100.0),
+            returns: 1e9,
+        },
+    }];
+    place(&mut sim, me, &[]);
+    let got = icons(&radar(&sim));
+    assert!(got.contains(&look::icon("area_flagPoint_A.dtx")), "{got:?}");
+    assert!(got.contains(&look::icon("character_flag_A.dtx")), "{got:?}");
+}
+
+#[test]
+fn the_screen_is_stretched_not_squashed() {
+    // x_r, y_r: the window's rect at 1920 x 1080 (R4's last line).
+    let (mut sim, _) = live("TDM");
+    sim.app.world_mut().insert_resource(HudScreen(Screen::new(1920.0, 1080.0)));
+    sim.ticks(2);
+    let w = radar(&sim).window.unwrap();
+    assert!((w.min.x - 818.0 * 1.875).abs() < 1e-3 && (w.min.y - 5.0 * 1.40625).abs() < 1e-3);
+}

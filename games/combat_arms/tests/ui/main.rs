@@ -16,6 +16,7 @@ mod camera;
 mod death_screen;
 mod hud;
 mod net_hud;
+mod radar;
 mod score;
 mod ui_system;
 
