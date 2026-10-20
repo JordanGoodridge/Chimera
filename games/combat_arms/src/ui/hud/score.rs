@@ -1,37 +1,53 @@
-//! The score panel (hud_crosshair.md D6) and the round timer (D7), driven
-//! by the match (`game::rules::CaMatchView`: the server's, or a network
-//! client's copy): the mode's name and goal, each team's counter with its
+//! The score panel (hud_crosshair.md D6), the round and bomb timers (D7)
+//! and the action gauge (D9), driven by the match
+//! (`game::rules::CaMatchView`: the server's, or a network client's
+//! copy): the mode's name and its goal text (the string table's,
+//! game_modes.md S13: `model::goal_text`), each team's counter with its
 //! progress bar (the mode's `Panel`: team counters, round wins; in a
 //! free-for-all mode the local player's and the leader's), the local
-//! player's row highlighted; the timer in the round modes while a round
-//! is live; the objectives' lines (`game::rules::objectives`: the planted
-//! bomb's fuse, the flags, the pole, the intel, what you carry; Hired
-//! Guns' bars banked, in bags and unclaimed, your pocket, bank and
-//! mercenaries with their order; VIP Escort's roles, the VIP, the exit,
-//! the rounds until the swap and its notice; the clan modes' half) and the
-//! action gauge (plant 4 s, defuse 7 s, seize 5 s: game_modes.md M3,
-//! M10). `update_score` reads the world into `CaScoreHud` (headless, for
-//! the tests); `draw_score` draws it.
+//! player's row highlighted; in Elimination Pro, Search & Destroy and
+//! Bombing Run each team's living players in the row titles and the bars'
+//! round dividers (Corrections 9); the timer (Corrections 8): the setup's
+//! delay counting down (none when it is 0), the round's time while live,
+//! and after a plant the bomb's fuse in its own timer (`BombTime`) with
+//! the round timer hidden; at a round's result (until the next round's
+//! setup, `result_showing`) the panel, its timers and our objectives'
+//! lines hide (Corrections 10). The objectives' lines
+//! (`game::rules::objectives`: the planted bomb's site, the flags, the
+//! pole, the intel, what you carry; Hired Guns' bars banked, in bags and
+//! unclaimed, your pocket, bank and mercenaries with their order; VIP
+//! Escort's roles, the VIP, the exit, the rounds until the swap and its
+//! notice; the clan modes' half) are ours. The action gauge is the viewed player's
+//! (whom a first-person spectator watches): its title the string table's,
+//! its fill in whole percent on its own game-clock timer, hidden at its
+//! total even while held (`model::ActionGauge`, Corrections 12).
+//! `update_score` reads the world into `CaScoreHud` (headless, for the
+//! tests); `draw_score` draws it.
 //!
 //! With the install's layouts the panel is the game's mode indicator
 //! (`bound::ScorePanel`) and the gauge the game's action panel
 //! (`bound::ActionPanel`); without them, ours at D6's places.
 //!
-//! Known shortcuts: the goal text is ours ("G kills" / "G wins": the
-//! mode's goal string isn't in our string table); the round modes show
-//! their round wins on the same counters (D6 describes TDM's only); the
-//! objectives' lines are ours (text under the timer: the spec gives
-//! their lengths, not their looks), the gauge too without the install;
-//! the panel stays up while the scoreboard shows the round's result (no
-//! separate result screen); without the install the panel's textures
-//! are flat placeholder boxes.
+//! Known shortcuts: the round modes show their round wins on the same
+//! counters (D6 describes TDM's only); the living counts are counted
+//! every frame (the game's on each frag and round start); the objectives'
+//! lines are ours (text under the timer: the spec gives their lengths,
+//! not their looks), the gauge too without the install; the seize gauge
+//! is the custom kind with the default title (the pole's trigger has no
+//! title of its own in our data), and the team-change gauge isn't driven
+//! (no clan modes); Last Man Standing's and Spy Hunt's own panel fields
+//! aren't filled; without the install the panel's textures are flat
+//! placeholder boxes, the dividers 1 px dark marks.
 
 use bevy::prelude::*;
 
 use super::{PenParams, colour, hud_text, layer, model::*, pen, rect, rebuild};
 use crate::{
-    client::canvas::{HAlign, VAlign},
-    core::{LocalPlayer, SimClock, Team},
+    client::{
+        canvas::{HAlign, VAlign},
+        spectate::SpecView,
+    },
+    core::{Dead, Health, Intent, LocalPlayer, SimClock, Team},
     game::rules::{
         CaMatchView, CaStats, Panel, Phase,
         escort::CaVip,
@@ -39,7 +55,7 @@ use crate::{
         mercs::{CaMerc, CaSquadOrder, MercOrder},
         objectives::{ActionKind, CaAction, CaCarry, CaObjectives, FlagAt},
     },
-    ui::layout::Effect,
+    ui::{CaUi, layout::Effect},
 };
 
 /// The panel as drawn.
@@ -56,18 +72,34 @@ pub struct ScorePanelView {
     pub labels: [String; 2],
     /// The highlight's top-left (ref px) for the local player's team.
     pub highlight: Option<Vec2>,
+    /// The row titles are counts (each team's living players), not
+    /// labels (D6, Corrections 9).
+    pub titles_are_counts: bool,
+    /// The bars' round dividers: the goal G (G - 1 marks); 0 none.
+    pub dividers: u32,
+}
+
+/// The action gauge as shown (D9): what, its title (the string table's),
+/// its fill in whole percent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GaugeView {
+    pub kind: GaugeKind,
+    pub title: String,
+    pub percent: u32,
 }
 
 /// The score panel and the round timer, as shown now.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct CaScoreHud {
     pub panel: Option<ScorePanelView>,
-    /// The timer's text (D7); None: no timer.
+    /// The round timer's text (D7); None: no timer.
     pub timer: Option<String>,
+    /// The bomb timer's (`BombTime`): a planted bomb's fuse.
+    pub bomb_timer: Option<String>,
     /// The objectives' lines.
     pub objectives: Vec<String>,
-    /// The action gauge: what, and how full (0 to 1).
-    pub gauge: Option<(String, f32)>,
+    /// The action gauge.
+    pub gauge: Option<GaugeView>,
 }
 
 /// The panel's places (D6, D7), ref px.
@@ -111,31 +143,17 @@ pub mod looks {
     pub const HEADER: [u8; 4] = [218, 218, 218, 255];
 }
 
-/// The goal's unit as the panel prints it ("G kills").
-pub fn goal_unit(key: &str) -> &'static str {
-    match key {
-        "TDM" | "FFA" | "VWRM" => "kills",
-        "VTDM" => "points",
-        "CTF" => "captures",
-        "HQM" | "SQM2" | "BNT" => "min",
-        "LMS" | "HG" | "QRT" | "ESL" | "SQM" | "CMM" | "CTSV" | "CESC" => "rounds",
-        "CDM" => "kills",
-        "CCTF" => "captures",
-        _ => "wins",
-    }
-}
-
 /// The objectives' lines (ours: the spec places only the gauges and the
-/// dropped flag's seconds): the planted bomb's fuse, the bomb on the
-/// ground, each flag, the pole, the intel; `mine` what the local player
-/// carries.
+/// dropped flag's seconds; the planted bomb's fuse is the bomb timer):
+/// the planted bomb's site, the bomb on the ground, each flag, the pole,
+/// the intel; `mine` what the local player carries.
 pub fn objective_lines(o: &CaObjectives, mine: CaCarry, now: f64) -> Vec<String> {
     let team = |t: u8| if t == 1 { "Alpha" } else { "Bravo" };
     let secs = |until: f64| ((until - now).max(0.0)).trunc() as u64;
     let mut lines = Vec::new();
     if let Some(p) = o.planted {
         let site = if p.number == 0 { "A" } else { "B" };
-        lines.push(format!("Bomb planted at {site}: {}", round_timer((p.detonates - now) * 1000.0)));
+        lines.push(format!("Bomb planted at {site}"));
     }
     if o.loose_bomb.is_some() {
         lines.push("The bomb is on the ground".into());
@@ -226,31 +244,74 @@ pub fn squad_lines(bank: Option<i32>, order: Option<MercOrder>, units: &[(String
     lines
 }
 
+/// Whether a round's result shows (ui_system.md Corrections 1): from the
+/// round's result until the next round's setup (or for good once the
+/// match's result is in); the mode panel hides meanwhile (D6,
+/// Corrections 10).
+pub fn result_showing(phase: Phase) -> bool {
+    matches!(phase, Phase::RoundOver { .. } | Phase::Intermission { .. } | Phase::MatchOver)
+}
+
+/// The score panel's memory: the round setup's delay (when its setup
+/// began, s) and the action gauge's timer.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct ScoreMemory {
+    pub setup: Option<(f64, f64)>,
+    pub gauge: ActionGauge,
+}
+
 /// The match into `CaScoreHud`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_score(
     view: Res<CaMatchView>,
     objectives: Option<Res<CaObjectives>>,
-    local: Query<(&Team, Option<&CaStats>, Option<&CaAction>, Option<&CaCarry>), With<LocalPlayer>>,
+    local: Query<(Entity, &Team, Option<&CaStats>, Option<&CaCarry>), With<LocalPlayer>>,
+    actions: Query<&CaAction>,
+    spec: Option<Res<SpecView>>,
     squad: (
         Query<(Entity, Option<&CaBank>, Option<&CaSquadOrder>, Has<CaVip>), With<LocalPlayer>>,
         Query<(&CaMerc, Option<&Name>, Option<&crate::core::Health>)>,
         Query<Option<&Name>, With<CaVip>>,
     ),
     everyone: Query<&CaStats>,
-    clock: Option<Res<SimClock>>,
-    time: Res<Time>,
+    living: Query<(&Team, &Health, Has<Dead>), With<Intent>>,
+    (clock, time, ui): (Option<Res<SimClock>>, Res<Time>, Res<CaUi>),
+    mut memory: ResMut<ScoreMemory>,
     mut hud: ResMut<CaScoreHud>,
 ) {
     let now = clock.map_or_else(|| time.elapsed_secs_f64(), |c| c.now);
     let me = local.single().ok();
+    // The setup's delay, from its first frame (D7: hidden when it is 0).
+    match view.phase {
+        Phase::Setup { until } => {
+            if memory.setup.is_none_or(|(u, _)| u != until) {
+                memory.setup = Some((until, until - now));
+            }
+        }
+        _ => memory.setup = None,
+    }
+    // The action gauge (D9, Corrections 12): the viewed player's (whom a
+    // first-person spectator watches), on its own timer.
+    let viewed = spec.as_deref().and_then(|s| s.in_eye).or(me.map(|m| m.0));
+    let action = viewed.and_then(|e| actions.get(e).ok()).copied();
+    let kind = action.map(|a| match a.kind {
+        ActionKind::Plant => GaugeKind::Plant,
+        ActionKind::Defuse => GaugeKind::Defuse,
+        ActionKind::Seize => GaugeKind::Custom,
+    });
+    let percent = memory.gauge.frame(kind, action.map_or(0.0, |a| a.length as f64), now);
+    let gauge = kind.zip(percent).map(|(kind, percent)| GaugeView {
+        kind,
+        title: ui.strings.resolve(kind.title()),
+        percent,
+    });
     let next = match view.mode() {
         None => CaScoreHud::default(),
         Some(mode) => {
             let round_based = mode.timer_shown;
-            let mine_stats = me.and_then(|(_, s, ..)| s.copied()).unwrap_or_default();
+            let mine_stats = me.and_then(|(_, _, s, _)| s.copied()).unwrap_or_default();
             let best = |f: fn(&CaStats) -> u32| everyone.iter().map(f).max().unwrap_or(0);
-            let team_side = me.and_then(|(t, ..)| match t.0 {
+            let team_side = me.and_then(|(_, t, ..)| match t.0 {
                 1 => Some(0),
                 2 => Some(1),
                 _ => None,
@@ -264,19 +325,46 @@ pub(super) fn update_score(
                 }
             };
             let (rows, highlight) = score_panel(counters, view.goal, mine);
-            let goal = format!("{} {}", view.goal, goal_unit(mode.key));
-            let timer = view
-                .round_ends
-                .filter(|_| view.phase == Phase::Live)
-                .and_then(|ends| timer(round_based, (ends - now) * 1000.0));
+            // Round modes: each team's living players in the row titles,
+            // the bars' round dividers (D6, Corrections 9).
+            let counts = rows_count_living(mode.key);
+            let labels = if counts {
+                let mut alive = [0u32; 2];
+                for (t, h, dead) in &living {
+                    if let (Some(i), false) = (t.0.checked_sub(1).filter(|i| *i < 2), dead || h.current <= 0.0) {
+                        alive[i as usize] += 1;
+                    }
+                }
+                alive.map(|n| n.to_string())
+            } else {
+                labels.map(String::from)
+            };
+            let goal = goal_text(mode.key, view.goal, |id| ui.strings.resolve(id));
+            // The timer (D7, Corrections 8): the setup's delay counting
+            // down (none when it is 0), the round's time while live, none
+            // at the result; a planted bomb's fuse in the bomb timer, the
+            // round timer hidden.
+            let planted = objectives.as_deref().and_then(|o| o.planted).filter(|_| view.phase == Phase::Live);
+            let timer = match view.phase {
+                Phase::Setup { until } if memory.setup.is_some_and(|(_, delay)| delay > 0.0) => {
+                    timer(round_based, (until - now) * 1000.0)
+                }
+                Phase::Live if planted.is_none() => {
+                    view.round_ends.and_then(|ends| timer(round_based, (ends - now) * 1000.0))
+                }
+                _ => None,
+            };
+            let bomb_timer = planted.map(|p| round_timer((p.detonates - now) * 1000.0));
             let carry = me.and_then(|(.., c)| c.copied()).unwrap_or_default();
-            let gauge = me.and_then(|(_, _, a, _)| a.copied()).map(|a| {
-                let what = match a.kind {
-                    ActionKind::Plant => "Planting",
-                    ActionKind::Defuse => "Defusing",
-                    ActionKind::Seize => "Seizing",
-                };
-                (what.to_string(), a.fraction())
+            let panel = (!result_showing(view.phase)).then(|| ScorePanelView {
+                mode_key: mode.key.to_string(),
+                mode_name: mode.shown_as.to_string(),
+                goal,
+                rows,
+                labels,
+                highlight,
+                titles_are_counts: counts,
+                dividers: if counts { view.goal } else { 0 },
             });
             let mut lines = objectives.map_or_else(Vec::new, |o| objective_lines(&o, carry, now));
             let (local_squad, mercs, vips) = &squad;
@@ -297,20 +385,15 @@ pub(super) fn update_score(
                 }
             }
             CaScoreHud {
-                panel: Some(ScorePanelView {
-                    mode_key: mode.key.to_string(),
-                    mode_name: mode.shown_as.to_string(),
-                    goal,
-                    rows,
-                    labels: labels.map(String::from),
-                    highlight,
-                }),
-                timer,
-                objectives: lines,
-                gauge,
+                timer: panel.as_ref().and(timer),
+                bomb_timer: panel.as_ref().and(bomb_timer),
+                objectives: if panel.is_some() { lines } else { Vec::new() },
+                panel,
+                gauge: gauge.clone(),
             }
         }
     };
+    let next = CaScoreHud { gauge, ..next };
     if *hud != next {
         *hud = next;
     }
@@ -340,15 +423,24 @@ pub(super) fn draw_score(
     if !rebuild(&mut last, (hud.clone(), screen, loaded), *root, &mut commands) {
         return;
     }
-    let Some(panel) = &hud.panel else { return };
     let pen = pen(&params, screen);
     let centred = (HAlign::Centre, VAlign::Centre);
+    // The mode panel hides at a round's result (D6); the gauge doesn't.
+    let Some(panel) = &hud.panel else {
+        if bound.action.is_none() {
+            commands.entity(*root).with_children(|p| draw_gauge(p, pen, screen, &hud, centred));
+        }
+        return;
+    };
     // The game's own mode panel, bound by name (`bound::ScorePanel`); the
     // objectives' lines stay ours, the gauge the action panel's.
     let installed = bound
         .score
         .as_ref()
-        .and_then(|s| s.build(&panel.mode_key, panel, hud.timer.as_deref(), super::scale(screen)));
+        .and_then(|s| {
+            let timers = (hud.timer.as_deref(), hud.bomb_timer.as_deref());
+            s.build(&panel.mode_key, panel, timers, super::scale(screen))
+        });
     if let Some(layout) = installed {
         let ui = &params.0;
         let draws = layout.draw(&ui.ctx());
@@ -386,8 +478,12 @@ pub(super) fn draw_score(
                 let fill = if i == 0 { SCORE_ALPHA } else { SCORE_BRAVO };
                 p.spawn(rect(screen.rect(at + Vec2::ONE, Vec2::new(row.bar, 8.0)), colour(fill)));
             }
+            // PLACEHOLDER look for the round dividers (D6 gives where).
+            for (mark, h) in round_dividers(at, size, panel.dividers) {
+                p.spawn(rect(screen.rect(mark, Vec2::new(1.0, h)), Color::srgba(0.08, 0.08, 0.08, 0.85)));
+            }
         }
-        if let Some(t) = &hud.timer {
+        if let Some(t) = hud.timer.as_ref().or(hud.bomb_timer.as_ref()) {
             let (at, size) = places::TIMER_STRIP;
             p.spawn(rect(screen.rect(at, size), Color::srgba(0.0, 0.0, 0.0, 0.45)));
             let (at, size) = places::TIMER;
@@ -407,12 +503,12 @@ pub(super) fn draw_score(
 /// Ours: the action gauge (its label and bar) when the game's action
 /// panel isn't there.
 fn draw_gauge(p: &mut ChildSpawnerCommands, pen: super::Pen, screen: Screen, hud: &CaScoreHud, centred: (HAlign, VAlign)) {
-    if let Some((what, fill)) = &hud.gauge {
+    if let Some(g) = &hud.gauge {
         let (at, size) = places::GAUGE_LABEL;
-        hud_text(p, pen, (at, size, Vec2::ZERO), what, looks::MODE, centred, Effect::Shadow, looks::HEADER);
+        hud_text(p, pen, (at, size, Vec2::ZERO), &g.title, looks::MODE, centred, Effect::Shadow, looks::HEADER);
         let (at, size) = places::GAUGE;
         p.spawn(rect(screen.rect(at, size), Color::srgba(0.0, 0.0, 0.0, 0.55)));
-        let bar = Vec2::new((size.x - 2.0) * fill, size.y - 2.0);
+        let bar = Vec2::new(gauge_bar(g.percent, size.x as i32 - 2) as f32, size.y - 2.0);
         p.spawn(rect(screen.rect(at + Vec2::ONE, bar), Color::srgba(0.9, 0.8, 0.2, 0.9)));
     }
 }
