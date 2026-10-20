@@ -142,7 +142,10 @@ fn bots_play_no_objective_on_grayhammer() {
         bots::add_bot(sim.app.world_mut(), Some(team)).unwrap();
     }
     let mut taken = false;
-    for _ in 0..(90.0 / TICK_INTERVAL / 10.0) as usize {
+    // 180 s: the map waits in its load state for the mode's start
+    // trigger (the mission data's, not read yet), its gate (`Gate_Nml`,
+    // a world object) hidden, so the teams take longer to meet.
+    for _ in 0..(180.0 / TICK_INTERVAL / 10.0) as usize {
         sim.ticks(10);
         let o = sim.app.world().resource::<CaObjectives>();
         taken |= o.flags.iter().any(|f| f.at != FlagAt::Home);

@@ -81,9 +81,9 @@
 //!   `WorldModel`s that are keyframed, start hidden, can be destroyed,
 //!   attach others or are named in another object's commands) are the
 //!   map's first entities, each a mover node of its own placed at its
-//!   BSP's centre (its meshes relative to it, its polygons' corner groups
-//!   as convex hulls; where they stand at load they stay floors for the
-//!   spawns' drop only); the logic objects (triggers, counters, start-up
+//!   BSP's centre (its meshes relative to it, its polygons as hulls the
+//!   node collides as triangles; where they stand at load they stay
+//!   floors for the spawns' drop only); the logic objects (triggers, counters, start-up
 //!   commands, keyframers with their keys' blind data, explosions,
 //!   sounds, lights, cameras, points) pass through with every property
 //!   (`object_keyvalues`), for `objects`.
@@ -440,8 +440,8 @@ fn blend_of(o: &Object) -> MapAlpha {
 /// (world_objects.md 1): placed at its BSP's centre with no rotation,
 /// every property as text (`object_keyvalues`, `Pos` kept as itself:
 /// the default pivot), its box's half-extents, whether it collides and
-/// stops rays (`model_flags`), and its polygons' corners as convex hulls
-/// (one per group of polygons sharing corners) about the centre. By
+/// stops rays (`model_flags`), and each polygon's corners as a hull
+/// about the centre (`objects` collides the node as their triangles). By
 /// name: its entity index and centre (engine axes).
 fn world_model_nodes(world: &World, map: &mut MapData, scale: f32) -> HashMap<String, (usize, Vec3)> {
     use super::objects::runtime::keys;
@@ -470,24 +470,21 @@ fn world_model_nodes(world: &World, map: &mut MapData, scale: f32) -> HashMap<St
         keyvalues.push((keys::HALF.into(), e(half)));
         keyvalues.push((keys::SOLID.into(), (solid as u8).to_string()));
         keyvalues.push((keys::RAYHIT.into(), (rayhit as u8).to_string()));
-        let hulls = if true {
-            polygon_groups(m)
-                .into_iter()
-                .map(|points| MapHull {
-                    planes: Vec::new(),
-                    points: points
-                        .into_iter()
-                        .map(|p| {
-                            let d = Vec3::from(p) - centre;
-                            Vec3::new(d.x, d.z, d.y)
-                        })
-                        .collect(),
-                })
-                .filter(|h| h.points.len() >= 4)
-                .collect()
-        } else {
-            Vec::new()
-        };
+        // Each polygon as a hull of its corners (about the centre, entity
+        // axes): the node collides as their triangles (`objects`).
+        let hulls = (0..m.polygons.len())
+            .map(|i| MapHull {
+                planes: Vec::new(),
+                points: m
+                    .polygon_vertices(i)
+                    .map(|p| {
+                        let d = Vec3::from(p) - centre;
+                        Vec3::new(d.x, d.z, d.y)
+                    })
+                    .collect(),
+            })
+            .filter(|h| h.points.len() >= 3)
+            .collect();
         let index = map.entities.len();
         map.entities.push(MapEntity {
             keyvalues,
@@ -501,44 +498,6 @@ fn world_model_nodes(world: &World, map: &mut MapData, scale: f32) -> HashMap<St
         map.entity_scale = scale;
     }
     out
-}
-
-/// A world model's polygons' corners, grouped where polygons share a
-/// corner (file frame).
-fn polygon_groups(m: &lt::WorldModel) -> Vec<Vec<lt::Vec3>> {
-    fn root(p: &mut [usize], mut i: usize) -> usize {
-        while p[i] != i {
-            p[i] = p[p[i]];
-            i = p[i];
-        }
-        i
-    }
-    let n = m.polygons.len();
-    let mut parent: Vec<usize> = (0..n).collect();
-    // Corners compared by position (a file may repeat a point).
-    let mut by_point: HashMap<[u32; 3], usize> = HashMap::new();
-    for i in 0..n {
-        for pt in m.polygon_vertices(i) {
-            let pt = pt.map(f32::to_bits);
-            match by_point.get(&pt) {
-                Some(&j) => {
-                    let (a, b) = (root(&mut parent, i), root(&mut parent, j));
-                    parent[a] = b;
-                }
-                None => {
-                    by_point.insert(pt, i);
-                }
-            }
-        }
-    }
-    let mut groups: HashMap<usize, Vec<lt::Vec3>> = HashMap::new();
-    for i in 0..n {
-        let r = root(&mut parent, i);
-        groups.entry(r).or_default().extend(m.polygon_vertices(i));
-    }
-    let mut out: Vec<(usize, Vec<lt::Vec3>)> = groups.into_iter().collect();
-    out.sort_by_key(|(r, _)| *r);
-    out.into_iter().map(|(_, g)| g).collect()
 }
 
 /// A colour property as 0..1 per channel (stored 0..255).
@@ -1309,8 +1268,8 @@ fn collision(
 /// The collision sets of the nodes' world models where they stand at load
 /// (solid faces, other faces): no collider, only floors for dropping
 /// spawns (`Floor`), as they were before they moved.
-const NODE_FLOORS: &str = "world models at load (solid)";
-const NODE_SURFACES: &str = "world models at load (ray-hit)";
+pub const NODE_FLOORS: &str = "world models at load (solid)";
+pub const NODE_SURFACES: &str = "world models at load (ray-hit)";
 
 /// The volume objects (`volumes::is_volume`) as map entities: their class
 /// and properties (engine axes: `Current` with Z mirrored; a jump

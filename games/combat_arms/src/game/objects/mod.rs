@@ -49,9 +49,9 @@
 //! the explosion's effect isn't drawn and its damage skips the armour
 //! step; riders are carried on the server only (a client's own player on
 //! a moving platform is corrected from the server, not carried by its
-//! prediction) and without the spec's 0.1 u drop; nodes collide as convex
-//! hulls of their polygons' connected groups (the boxes stand in for the
-//! game's own tests: `movers`); sliding and keyframed nodes snap to each
+//! prediction) and without the spec's 0.1 u drop; nodes collide as their
+//! polygons' triangles (the engine's own `BoxPhysics` boxes aren't used)
+//! while the game's tests use their boxes (`movers`); sliding and keyframed nodes snap to each
 //! server update on clients (no interpolation between them).
 
 pub mod commands;
@@ -372,8 +372,32 @@ fn bind(world: &mut World) {
         nodes.into_iter().filter(|(_, i)| o.world.objects.get(*i).is_some_and(|ob| ob.node)).collect();
     o.nodes = nodes.iter().map(|(e, i)| (*i as ObjId, *e)).collect();
     o.volumes = volumes.iter().map(|(e, i, _)| (*i as ObjId, *e)).collect();
+    let entities = world.get_resource::<MapEntities>().cloned();
     for (e, i) in nodes {
-        world.entity_mut(e).insert((CaNode(i as ObjId), Damageable));
+        // Its polygons as one triangle mesh (a world model needn't be
+        // convex: HELLGATE's rooms are world models).
+        let mesh = entities.as_ref().and_then(|m| {
+            let mut points = Vec::new();
+            let mut tris = Vec::new();
+            for h in &m.entities.get(i)?.hulls {
+                let base = points.len() as u32;
+                points.extend(h.points.iter().map(|p| crate::map::entities::entity_to_engine(*p, m.scale)));
+                for k in 1..h.points.len().saturating_sub(1) as u32 {
+                    tris.push([base, base + k, base + k + 1]);
+                }
+            }
+            (!tris.is_empty()).then(|| Collider::trimesh(points, tris))
+        });
+        let mut ent = world.entity_mut(e);
+        ent.insert((CaNode(i as ObjId), Damageable));
+        if let Some(c) = mesh {
+            ent.insert((
+                c,
+                RigidBody::Kinematic,
+                crate::core::MapBrushCollider,
+                crate::map::contact_filter::hooks(),
+            ));
+        }
     }
     for (e, i, v) in volumes {
         world.entity_mut(e).insert((CaVolumeObject(i as ObjId), VolumeAtLoad(v)));

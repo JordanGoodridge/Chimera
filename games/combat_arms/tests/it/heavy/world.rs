@@ -54,7 +54,15 @@ fn check_map(mount: &chimera_core::mount::Mount, name: &str) {
     // vertex-lit): a stub world, drawn as it is.
     if name != "twintower" {
         assert!(map.triangle_count() > 1000, "{name}");
-        assert!(map.collision_indices.len() > 1000, "{name}");
+        // Static collision, or world models' nodes (HELLGATE's rooms
+        // are world models it shows and hides).
+        let nodes: usize = map
+            .collision_sets
+            .iter()
+            .filter(|s| s.name == world::NODE_FLOORS)
+            .map(|s| s.indices.len())
+            .sum();
+        assert!(map.collision_indices.len() + nodes > 1000, "{name}");
     }
     assert!(lightmap.width <= world::ATLAS_MAX && lightmap.height <= world::ATLAS_MAX, "{name}");
     for m in &map.meshes {
