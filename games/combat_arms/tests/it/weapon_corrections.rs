@@ -152,7 +152,17 @@ fn sim_at(tick: f64) -> Sim {
             ("minigun", MINIGUN),
         ])
         .unwrap();
+    steady_surfaces(&mut sim);
     sim
+}
+
+/// No exit re-perturb on the shoot-through surfaces (its whole-thousandth
+/// draws are case 63's): a round through a panel stays on its line, as the
+/// cases aim it.
+pub fn steady_surfaces(sim: &mut Sim) {
+    for (_, s) in sim.app.world_mut().resource_mut::<ca::CaSurfaces>().0.iter_mut() {
+        s.perturb = 0.0;
+    }
 }
 
 fn sim() -> Sim {

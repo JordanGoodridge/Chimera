@@ -76,6 +76,8 @@ fn sim() -> Sim {
     sim.app
         .add_weapon_data(&[("exact", EXACT), ("rolling", ROLLING), ("range", RANGE_MOD)])
         .unwrap();
+    // Rounds through panels stay on their line (no exit re-perturb).
+    super::weapon_corrections::steady_surfaces(&mut sim);
     sim
 }
 

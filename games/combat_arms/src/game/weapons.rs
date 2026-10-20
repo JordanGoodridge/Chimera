@@ -156,9 +156,15 @@
 //! - The spread runs per tick (the spec's per frame), its sub-steps on an
 //!   exact 80 Hz clock (`SpreadOptions::quantised` drops the remainder
 //!   as the game does); the body's twist is ours to keep (`body_yaw`).
-//! - World surfaces are named only where a map or prop gives a
-//!   `PropSurface`; only those named in the table pass. A surface's
-//!   "flags" for the restart point are its name.
+//! - What a round passes is a collider's `PropSurface`, else the
+//!   world's surface type where it hit (the drawn triangles' types,
+//!   `effects::world_surface`) by name in the table; on another game's map
+//!   (a mashup) its surface names are Combat Arms' through the app's table
+//!   (`map::SurfaceNames`). A surface's "flags" for the restart point are
+//!   its name. A round that hits something with `core::Damageable` that
+//!   isn't a character (a map's breakable) deals it the round's damage
+//!   (banded and dampened, no zone) and, on the server's walk, goes on as
+//!   the surface lets it.
 //! - Armour: the gear (which pieces a character wears, Q7) is the default
 //!   body gear for everyone, with the spec's stock coverage (bullets and
 //!   burn on body gear, bullets on head gear, poison on the gas mask);
@@ -190,10 +196,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     core::{
-        Damage, DamageKind, DamageRules, FirstTimePredicted, Health, Hitgroup, Intent, MovementState, NetRole, Predict,
-        PredictedAppExt, PropSurface, SOLID_LAYERS, SimClock, Velocity,
+        Damage, DamageKind, DamageRules, Damageable, FirstTimePredicted, Health, Hitgroup, Intent, MovementState, NetRole,
+        Predict, PredictedAppExt, PropSurface, SOLID_LAYERS, SimClock, Velocity,
     },
-
+    map::{SurfaceNames, sound::SurfaceGrid},
     weapon::{
         AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, WeaponEvent,
         WeaponEventKind, WeaponFrame, Zoom, aim_of,
@@ -1744,6 +1750,14 @@ struct Delivery<'w, 's> {
     colliders: Query<'w, 's, &'static ColliderOf>,
     bodies: Query<'w, 's, (&'static RigidBody, Option<&'static ColliderAabb>)>,
     table: Res<'w, CaSurfaces>,
+    /// The world's surfaces (walls without a `PropSurface`), another
+    /// game's surface names as Combat Arms' (a mashup's map), and what
+    /// takes damage that isn't a character (map breakables, props).
+    ground: (
+        Option<Res<'w, SurfaceGrid>>,
+        Option<Res<'w, SurfaceNames>>,
+        Query<'w, 's, (), (With<Damageable>, Without<Intent>)>,
+    ),
     /// Live grenades, which rounds hit (grenades.md 13).
     grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
     damage: MessageWriter<'w, Damage>,
@@ -1849,13 +1863,25 @@ impl Delivery<'_, '_> {
         self.colliders.get(collider).map_or(collider, |c| c.body)
     }
 
-    /// A collider's surface name (its own, else its body's).
-    fn surface(&self, collider: Entity) -> Option<String> {
-        self.surfaces
-            .get(collider)
-            .or_else(|_| self.surfaces.get(self.body(collider)))
-            .ok()
-            .map(|s| s.0.clone())
+    /// The name of the surface a round hit (`CaSurfaces`' key): the
+    /// collider's `PropSurface` (or its body's), else the world's surface
+    /// type at `point`; another game's names (a mashup's map) as Combat
+    /// Arms' (`map::SurfaceNames`).
+    fn surface_name(&self, collider: Entity, body: Entity, point: Vec3) -> Option<String> {
+        let names = self.ground.1.as_deref();
+        let prop = self.surfaces.get(collider).or_else(|_| self.surfaces.get(body)).ok();
+        if let Some(p) = prop {
+            return Some(names.map_or(p.0.as_str(), |n| n.resolve(&p.0)).to_string());
+        }
+        let tables = super::effects::data::CaFxTables::built_in();
+        let ty = super::effects::world_surface_named(self.ground.0.as_deref(), names, point);
+        Some(tables.surface.iter().find(|s| s.id == ty)?.name.clone())
+    }
+
+    /// How a round passes what it hit (`surface_name` in `CaSurfaces`).
+    /// None: it stops there.
+    fn surface_at(&self, collider: Entity, body: Entity, point: Vec3) -> Option<SurfacePass> {
+        self.table.get(&self.surface_name(collider, body, point)?)
     }
 }
 
@@ -2597,9 +2623,26 @@ fn server_walk(w: &mut Delivery, dmg: &CaDamage, r: &Round, walk: Walk, bodies: 
         if show {
             out.push(event(from, point, Some(body), Some(hit.normal)));
         }
-        // Through it?
-        let name = w.surface(hit.entity);
-        let Some(pass) = name.as_deref().and_then(|n| w.table.get(n)) else { return };
+        // Something that takes damage (a map's breakable): the round's
+        // damage, banded and dampened as a character's, no zone.
+        let u = rng.next();
+        if walk.lands && (w.ground.2.contains(hit.entity) || w.ground.2.contains(body)) {
+            let d = base_damage(dmg, u, false, point.distance(r.origin)) * dampen;
+            w.damage.write(Damage {
+                target: if w.ground.2.contains(body) { body } else { hit.entity },
+                attacker: Some(r.owner),
+                amount: d,
+                point,
+                dir,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Bullet,
+                weapon: None,
+                force: Vec3::ZERO,
+            });
+        }
+        // Through it? A collider's surface, else the world's there.
+        let name = w.surface_name(hit.entity, body, point);
+        let Some(pass) = w.surface_at(hit.entity, body, point) else { return };
         let restart = if pass.thickness <= 0.0 {
             point
         } else {
@@ -2623,7 +2666,8 @@ fn server_walk(w: &mut Delivery, dmg: &CaDamage, r: &Round, walk: Walk, bodies: 
                 return;
             }
             // The exit when its surface is the entry's, else the entry.
-            if w.surface(h.entity) == name { far - dir * h.distance } else { point }
+            let exit = far - dir * h.distance;
+            if w.surface_name(h.entity, w.body(h.entity), exit) == name { exit } else { point }
         };
         left = (walk.range - restart.distance(r.origin)) * pass.range;
         dampen *= pass.damage;

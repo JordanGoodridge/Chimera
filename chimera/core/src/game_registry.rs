@@ -58,6 +58,10 @@ pub struct GameInfo {
     /// The movement cvars the debug UI's movement tab lists: (name, what
     /// it sets).
     pub movement_cvars: &'static [(&'static str, &'static str)],
+    /// The game's world unit in metres (Source's inch, 0.0254; Combat
+    /// Arms' 0.018): what its console variables' distances are in when
+    /// it is the gameplay (`cam_idealdist`).
+    pub meters_per_unit: f32,
 }
 
 impl GameInfo {
@@ -180,6 +184,7 @@ mod tests {
         default_binds: &[("w", "+forward")],
         old_default_binds: &[],
         movement_cvars: &[],
+        meters_per_unit: 0.0254,
     };
     static A: GameInfo = A_INFO;
     static B: GameInfo = GameInfo { id: "b_game", ..A_INFO };

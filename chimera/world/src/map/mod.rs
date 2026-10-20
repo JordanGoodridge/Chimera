@@ -81,7 +81,7 @@ pub use sound::{
 };
 pub mod shells;
 pub mod sources;
-pub use sources::{MapDressing, MapLoader, MapSources, SpawnTeams};
+pub use sources::{MapDressing, MapLoader, MapSources, SpawnTeams, SurfaceNames, SurfaceTable};
 pub mod surface_color;
 pub mod view_model;
 pub mod vis;
@@ -273,6 +273,7 @@ pub fn unload_map(world: &mut World) {
     }
     world.remove_resource::<nav::NavMesh>();
     world.remove_resource::<sound::SurfaceGrid>();
+    world.remove_resource::<sources::SurfaceNames>();
     world.remove_resource::<MapBrushes>();
     world.remove_resource::<MapBrushTree>();
     world.remove_resource::<KillHeight>();
