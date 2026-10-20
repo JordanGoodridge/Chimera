@@ -708,7 +708,7 @@ fn case_26_footsteps() {
     // Both heard (the roll at 300 u is 89 %), or one missed: either way no
     // investigation yet.
     assert!(!step(&mut sim) && !step(&mut sim), "fired before the third step");
-    let heard = b(&sim, bt).footsteps;
+    let heard = b(&sim, bt).footsteps.level;
     assert!(heard > 0.0 && heard < 1.0, "{heard}");
     for _ in 0..6 {
         if step(&mut sim) {

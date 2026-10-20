@@ -35,6 +35,10 @@
 //! (`MovementState`: (15, 50, 15) standing, (15, 40, 15) crouched; Open
 //! question 30).
 //!
+//! Bots (bots.md 10, Open question 21): 3 s of protection from every
+//! damage (`BOT_GOD_MODE`) and a respawn 7 s after their death
+//! (`BOT_RESPAWN`), whatever the mode's waits.
+//!
 //! Instant-hit shots stop at a protected player and do nothing (Open
 //! question 25, answered: no damage, no blood or impact, `effects`).
 //!
@@ -69,6 +73,10 @@ use crate::{
 pub const HULL: Vec3 = Vec3::new(15.0, 50.0, 15.0);
 /// A point is occupied inside a player's box scaled by this (S4).
 pub const OCCUPIED_SCALE: f32 = 2.0;
+/// A bot's spawn protection (`GodModeTime`) and respawn delay (s, bots.md
+/// 10).
+pub const BOT_GOD_MODE: f32 = 3.0;
+pub const BOT_RESPAWN: f64 = 7.0;
 /// What a telefrag's crush damage counts as.
 pub const TELEFRAG: &str = "combat_arms:telefrag";
 
@@ -306,7 +314,13 @@ fn telefrag(world: &mut World, me: Entity, at: Vec3) {
 
 /// S6: protect `e` from now (nothing with `protect_all` 0).
 pub fn protect(world: &mut World, e: Entity) {
-    let s = world.resource::<CaRuleSettings>().clone();
+    let mut s = world.resource::<CaRuleSettings>().clone();
+    // A bot's own `GodModeTime` (bots.md 10, Open question 21): 3 s of no
+    // damage at all, whatever the mode's protection.
+    if world.get::<crate::core::Bot>(e).is_some() {
+        s.protect_all = BOT_GOD_MODE;
+        s.protect_bullets = BOT_GOD_MODE;
+    }
     if s.protect_all <= 0.0 {
         return;
     }
@@ -423,9 +437,9 @@ pub(super) fn ask_for_respawns(world: &mut World) {
         return;
     }
     let now = world.resource::<SimClock>().now;
-    let wait = world.resource::<CaRuleSettings>().respawn_wait_client as f64;
+    let player_wait = world.resource::<CaRuleSettings>().respawn_wait_client as f64;
     let due: Vec<Entity> = world
-        .query_filtered::<(Entity, &Dead, &Team), (
+        .query_filtered::<(Entity, &Dead, &Team, Has<crate::core::Bot>), (
             With<Intent>,
             Without<RemotePlayer>,
             Without<CaAsked>,
@@ -435,7 +449,12 @@ pub(super) fn ask_for_respawns(world: &mut World) {
             Without<Npc>,
         )>()
         .iter(world)
-        .filter(|(_, d, t)| super::state::plays(t.0) && now - d.since > wait + 1e-9)
+        .filter(|(_, d, t, bot)| {
+            // A bot comes back 7 s after its death, whatever the mode's
+            // waits (bots.md 10).
+            let wait = if *bot { BOT_RESPAWN } else { player_wait };
+            super::state::plays(t.0) && now - d.since > wait + 1e-9
+        })
         .map(|(e, ..)| e)
         .collect();
     for e in due {

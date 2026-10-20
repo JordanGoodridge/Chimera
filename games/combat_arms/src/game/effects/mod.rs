@@ -54,29 +54,38 @@
 //! The front end (`ui::effects`) draws decals, tracers, casings, lights
 //! and the first-person muzzle flash; `sounds` plays `CaSound`s.
 //!
+//! The follow-up answers (Open questions 1, 4, 6, 8, 17-25): others'
+//! shot sounds start at their weapon (the fire point); dry fire is
+//! silent; several camera jitters add up; the mission bomb's show and
+//! beeps are `bomb`'s; the rules for the effect file's curves, cone
+//! emitters, bounces and placement modes, a playing sound's gain and
+//! low-pass, the 255-sound cap, the kill call-outs and map sounds are
+//! `rules`' (below, what of them draws or plays).
+//!
 //! Known shortcuts (the spec's most literal reading where unclear;
 //! docs/tech-debt.md):
-//! - Third-person points: others' muzzle and breach (casing start) are at
-//!   their posed `RightHand` socket (`characters::CaPose`; no weapon
-//!   models' own flash sockets without the V2 key), the sound of their
-//!   shots at their eye; hit-zone surfaces for others' shots on a
+//! - Third-person points: others' muzzle and breach (casing start) and
+//!   their shots' sound are at their posed `RightHand` socket
+//!   (`characters::CaPose`; the held model's own `Flash` and `Breach`
+//!   sockets aren't applied); hit-zone surfaces for others' shots on a
 //!   network client are the body's (6): a client sees no hit zones.
-//! - Liquids: the ammo's own under-water record (`UWBullet`: its
-//!   contents aren't in the spec) isn't swapped in, no bubble trail (its
-//!   look isn't either), a ray doesn't go on through a water surface (the
-//!   rays are `weapons`'); exit decals and debris are off (as in all stock
-//!   records).
+//! - Liquids: the ammo's own under-water record (`UWBullet`) isn't
+//!   swapped in and no bubble trail is drawn (section 6a); rays pass a
+//!   water surface (as the game's); exit decals and debris are off (as in
+//!   all stock records).
 //! - The world's surface types come by texture (`library::tag_surfaces`);
 //!   props and doors are the world's; movable objects take no decals
 //!   (none move yet), and no server-side decals on movers.
-//! - Others' footstep animation rate is 1 (no third-person animations
-//!   yet: characters.md); a network client takes others' gait from their
-//!   movement state as replicated.
-//! - Kill call-outs (`EnemyDown`) aren't played (they need the team
-//!   filter on each client); map `SoundFX` objects aren't placed (no
-//!   object classes yet); interface sounds are the UI's (`ui::desk`).
+//! - Kill call-outs and map `SoundFX` objects are rules only
+//!   (`rules::callouts`, `rules::SoundFxState`): the voice sets' files
+//!   aren't named and the maps' sound objects aren't placed yet; a playing
+//!   sound's gain isn't updated as the listener moves and no 255-sound cap
+//!   is kept (Chimera's one-shots: `rules::PlayingSound`, `LiveSounds`
+//!   say what the game does); interface sounds are the UI's
+//!   (`ui::desk`) but for the bomb's.
 //! - Critical hits, ricochets, the pusher, screen tints and blast lights
-//!   (never at detail 3: Quirk 9) aren't modelled.
+//!   are absent or inert in the stock data (Open question 23) and not
+//!   modelled.
 
 pub mod bomb;
 pub mod data;
@@ -597,7 +606,8 @@ fn shot_effects(
                 // The fire sound.
                 if let Some((file, radius)) = fire_sound(wfx, mods, mine) {
                     let silenced = mods.is_some_and(|m| m.silencer_level().is_some());
-                    let mut s = if mine { CaSound::local(file) } else { CaSound::at(file, *origin, radius) };
+                    // Others' shots sound at their weapon (Open question 18).
+                    let mut s = if mine { CaSound::local(file) } else { CaSound::at(file, fire, radius) };
                     if !silenced {
                         s = s.from_source(e.owner, CHANNEL_FIRE);
                     }
@@ -748,18 +758,9 @@ fn shot_effects(
                 }
                 emit_impact(&out, *point, *n, &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
             }
-            WeaponEventKind::DryFire => {
-                if wfx.dry_fire_sound.is_empty() {
-                    continue;
-                }
-                let radius = mods.map_or(wfx.fire_radius, |m| m.fire_sound_radius as f32);
-                let origin = characters.get(e.owner).ok().and_then(|c| c.3).map_or(Vec3::ZERO, |t| t.translation);
-                sounds.write(if mine {
-                    CaSound::local(&wfx.dry_fire_sound)
-                } else {
-                    CaSound::at(&wfx.dry_fire_sound, origin, radius)
-                });
-            }
+            // Dry fire never plays and makes no sound (Open question 25,
+            // view_models.md C6).
+            WeaponEventKind::DryFire => {}
             WeaponEventKind::Hit { target, .. } if mine => {
                 let (has_health, is_character, ..) = characters.get(*target).unwrap_or((false, false, None, None));
                 if has_health && is_character {

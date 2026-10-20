@@ -14,6 +14,7 @@ mod aim_points;
 mod attachments;
 mod attribute_data;
 mod bots;
+mod bots_followups;
 mod capture_the_flag;
 mod characters;
 mod effects_sounds;

@@ -22,11 +22,16 @@
 //!   turns back at a chain's end); each at its position dropped onto the
 //!   area under it.
 //!
-//! Known shortcuts: the volume types (ladder, stairs, ledge, jump-up,
-//! jump-over, junction, teleport) are plain volumes: no one-way links, no
-//! ladder climbs or jumps along them, no doors; path weights are 1 (no
-//! property of the map's volumes carries one: `PreferredPath` is read as
-//! nothing); a volume keeps every neighbour (no cap); nothing keeps a bot
+//! - Jump-up volumes (`AIVolumeJumpUp`, Open question 16) link one way:
+//!   left only for a higher box, or with `OnlyJumpDown` only for one not
+//!   higher (`AiVolume::may_leave_to`; Death Room's four drop); a volume
+//!   keeps at most 32 neighbours (`MAX_NEIGHBOURS`).
+//!
+//! Known shortcuts: the other volume types (ladder, stairs, ledge,
+//! jump-over, junction, teleport) are plain volumes: no ladder climbs or
+//! jumps along them (a jump-up is walked), no doors; path weights are 1
+//! (every bot map's volumes have the default weight and `PreferredPath`
+//! off, Open question 16); nothing keeps a bot
 //! inside the volumes (it moves as a player, bots.md Open question 6);
 //! the patrol start nodes of the bot game-mode file (`PatrolNode_Alpha0`
 //! ...) aren't read, so a bot starts at the node nearest it; node actions
@@ -67,13 +72,47 @@ pub fn is_ai_object(class: &str) -> bool {
     class.starts_with("AIVolume") || class.starts_with("AINode") || class == "AIRegion"
 }
 
-/// An AI volume: its box (engine metres).
+/// An AI volume: its box (engine metres) and, for a jump-up volume,
+/// whether it only drops (`OnlyJumpDown`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct AiVolume {
     pub name: String,
     pub class: String,
     pub min: Vec3,
     pub max: Vec3,
+    pub only_jump_down: bool,
+}
+
+/// A volume keeps at most this many neighbour candidates (3: the link
+/// builder's table).
+pub const MAX_NEIGHBOURS: usize = 32;
+
+impl AiVolume {
+    /// Whether a path may enter this volume from `from` (a jump-up volume
+    /// is entered from below its top, a drop's from above: the way that
+    /// leaves it as `may_leave_to` allows).
+    pub fn jump_or_any(&self, from: &AiVolume) -> bool {
+        if !self.jump_up() {
+            return true;
+        }
+        if self.only_jump_down { from.min.y >= self.min.y - 1e-4 } else { from.max.y <= self.max.y + 1e-4 }
+    }
+
+    /// A jump-up volume (3): one-way.
+    pub fn jump_up(&self) -> bool {
+        self.class == "AIVolumeJumpUp"
+    }
+
+    /// Whether a path may leave this volume for `next` (3, Open question
+    /// 16): out of a jump-up volume only to a higher box (its top above
+    /// this one's), or with `OnlyJumpDown` only to one whose bottom isn't
+    /// higher than this one's; out of any other, always.
+    pub fn may_leave_to(&self, next: &AiVolume) -> bool {
+        if !self.jump_up() {
+            return true;
+        }
+        if self.only_jump_down { next.min.y <= self.min.y + 1e-4 } else { next.max.y > self.max.y + 1e-4 }
+    }
 }
 
 /// A patrol node (engine metres) and the names it links to.
@@ -105,11 +144,13 @@ impl MapAi {
             if VOLUME_CLASSES.contains(&class) {
                 let c = origin(e, scale);
                 let half = entity_to_engine(e.vector("Dims"), scale).abs();
+                let flag = |k: &str| e.get(k).is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
                 out.volumes.push(AiVolume {
                     name: e.get("targetname").unwrap_or("").into(),
                     class: class.into(),
                     min: c - half,
                     max: c + half,
+                    only_jump_down: flag("OnlyJumpDown"),
                 });
             } else if class == PATROL_CLASS && e.get("StartDisabled") != Some("1") {
                 let next = ["Next", "Next1", "Next2", "Next3", "Next4"]
@@ -185,8 +226,14 @@ impl MapAi {
                 if length / unit < MIN_LINK {
                     continue;
                 }
-                areas[i].links.push((j, Via::Walk(side)));
-                areas[j].links.push((i, Via::Walk(side.opposite())));
+                // Jump-up volumes link one way (3); a volume keeps at most
+                // `MAX_NEIGHBOURS` candidates.
+                if a.may_leave_to(b) && b.jump_or_any(a) && areas[i].links.len() < MAX_NEIGHBOURS {
+                    areas[i].links.push((j, Via::Walk(side)));
+                }
+                if b.may_leave_to(a) && a.jump_or_any(b) && areas[j].links.len() < MAX_NEIGHBOURS {
+                    areas[j].links.push((i, Via::Walk(side.opposite())));
+                }
             }
         }
         Some(NavMesh {

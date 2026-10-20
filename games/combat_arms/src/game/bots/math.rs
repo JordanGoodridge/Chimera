@@ -392,3 +392,105 @@ mod tests {
         assert!((v - Vec3::new(0.0, 400.0, 1600.0)).length() < 1e-3);
     }
 }
+
+/// The bot's fire interval by weapon class (`AniType`; 8.3, Open question
+/// 3): its NPC fire animation loops with one fire key at 0, so the
+/// interval is that animation's length (ms): rifles, SMGs and pistols
+/// 100, snipers 1000, automatic and pump shotguns 466, the double barrel
+/// 1000, rocket launchers 1200, the chain gun 133, knives 500.
+pub fn fire_interval_ms(ani_type: i32) -> u32 {
+    match ani_type {
+        5 | 27 => 1000,
+        6 | 7 | 15 | 29 => 466,
+        12 | 19 => 1200,
+        28 => 133,
+        14 | 16 => 500,
+        _ => 100,
+    }
+}
+
+/// The footstep keys (ms) of a leg animation (5.3, Open question 18): the
+/// run (`LR` and its directions) at 50 and 350, the sprint (`LRR`) at 63
+/// and 312, the jumps (`LSJ`, `LJ`) at their landing, 600; walking and
+/// crouching carry none (silent to bots).
+pub fn footstep_keys(name: &str) -> &'static [u32] {
+    let name = name.trim_start_matches("VG").trim_start_matches('V');
+    if name.starts_with("LRR") {
+        &[63, 312]
+    } else if name.starts_with("LR") {
+        &[50, 350]
+    } else if name.starts_with("LSJ") || name.starts_with("LJ") {
+        &[600]
+    } else {
+        &[]
+    }
+}
+
+/// Whether a tracker that went from `before` to `now` ms (wrapping at
+/// `length` when looping) passed a key at `key` ms.
+pub fn passed_key(before: u32, now: u32, length: u32, key: u32) -> bool {
+    if now >= before {
+        key > before && key <= now
+    } else {
+        // Wrapped round a looping animation.
+        (key > before && key <= length) || key <= now
+    }
+}
+
+/// A lower-threshold sense (5.1, 5.3: footsteps, threshold 0.5-1.0): it
+/// fires on reaching 1.0; a rise past 0.5 that decays back below 0.5
+/// without firing is a false stimulation, and the third makes it fire
+/// (`FalseStimulationLimit` 3, the counter restarted).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Sense {
+    pub level: f32,
+    pub false_count: u8,
+    above: bool,
+}
+
+impl Sense {
+    pub const MIN: f32 = 0.5;
+    pub const MAX: f32 = 1.0;
+    pub const FALSE_LIMIT: u8 = 3;
+
+    /// A stimulus adds `x`; true when the sense fires (it is then reset).
+    pub fn add(&mut self, x: f32) -> bool {
+        self.level += x;
+        if self.level >= Self::MAX - 1e-6 {
+            self.level = 0.0;
+            self.above = false;
+            return true;
+        }
+        if self.level >= Self::MIN - 1e-6 {
+            self.above = true;
+        }
+        false
+    }
+
+    /// A pass without one decays it by `d`; true when a third false
+    /// stimulation makes it fire.
+    pub fn decay(&mut self, d: f32) -> bool {
+        self.level = (self.level - d).max(0.0);
+        if self.above && self.level < Self::MIN - 1e-6 {
+            self.above = false;
+            self.false_count += 1;
+            if self.false_count >= Self::FALSE_LIMIT {
+                self.false_count = 0;
+                self.level = 0.0;
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// The grenade dodge's directions (5.4, Open question 19): straight away
+/// from the grenade, 45° and 90° to one side, then 90° and 45° to the
+/// other (the three toward it never), as eighths of a turn.
+pub const DODGE_STEPS: [i32; 5] = [0, 1, 2, -2, -1];
+
+/// The chat roll (10): the line shows when the milliseconds since start
+/// mod 100 are at most the event's percent.
+pub fn chat_roll(ms: u64, percent: u32) -> bool {
+    (ms % 100) as u32 <= percent
+}

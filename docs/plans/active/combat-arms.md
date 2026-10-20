@@ -172,7 +172,7 @@ questions in "Follow-up brief (Wave 3 open questions)".
 | 18 | Game modes, part 2: Hired Guns (AI mercenaries, bullion and banks), VIP Escort (the VIP's spawn and the exit), the clan variants' half-time side swaps, Snowball Fight | `game_modes_2.md` | not started | none expected (builds on item 13's `game/rules/`) | Fills game_modes.md M11, M13, M16 and M18; the mission data they read is item 22's |
 | 19 | Bot objectives: bombs, flags, VIPs, seize points, bullion and intel per mode | `bots_objectives.md` | not started | none expected | On item 14's brain; today bots fight in every mode but play no objective |
 | 20 | Lobby, room flow and menus for offline and LAN play: main menu, room list, room creation, loadout, shop and inventory screens | `lobby.md` | not started | maybe L13's team and buy screens (survey: none to lift; CA's screens are its own canvas layouts) | On item 11's `ui::layout` and `client::canvas`; replaces the in-game menu's "Leave Game" stand-in |
-| 21 | Per-map mission files: the settings modes read (timers, goals, spawn families, objective data) | `missions.md` | not started | none (its reader may go in `lithtech/` if the format is LithTech's) | Replaces `game/rules/settings.rs`'s stock values |
+| 21 | Per-map mission files: the settings modes read (timers, goals, spawn families, objective data) | `missions.md` | implementing (`worktree-agent-ace948df86ba59b26`): spec cases 1-40 as tests (`tests/it/missions.rs`), 41-42 and a Steam mission played on the greybox in `heavy::missions` | none (the format is the attribute files': `lithtech_formats::attributes` reads it) | `game/missions.rs`: the room data's index (world, room key) to the V1-keyed `GMS.rez` files, `[Object0]`, the mode sections, `VTDM.GMS`, `VWRM.GMS`, `SERVER.CFG`; the modes' clocks by the spec's table; our data/modes.toml stays the fallback. Steam build 25595979: 817 files read, `snowstorm_boss.gms` doesn't parse; Ghost Town S&D's round is 120 s (the older client's 180); Quarantine's points differ; the Arms Race ladders' ids are weapon record indices (Steam's G 15 ladder starts with `ACR_Sandfire`) |
 | 22 | Gear, body types and perks: vests, helmets, backpacks, goggles, perks and what each changes | `gear_perks.md` | not started | none expected | Builds on characters.md's selection and attribute_data.md's records |
 
 ### Wave 5
@@ -426,6 +426,14 @@ Notes:
   from the characters, view model, game mode, bot, effects and UI
   modules' Known shortcuts) and Wave 4 briefs (18-22: game modes part 2,
   bot objectives, lobby, mission files, gear and perks) written.
+- 2026-10-20: Wave 3's 56 answered questions brought into the code
+  (each module's `//!` says what changed and what is left; new spec
+  cases as tests: `characters.rs` 43-57, `view_model.rs` 33-44,
+  `game_modes_followups.rs` 63-86, `bots_followups.rs` 45-56,
+  `effects_sounds.rs` 40-56): the S&D bomb's detonation hurts nobody
+  (game_modes.md Q17: its show, beeps and sounds), the plant is the
+  bomb's fire key with movement locked; the mission files read (item
+  21). Live checks left in windows-captures.md, Sitting 5, items 17-30.
 
 ## How to run a spec wave (for the user)
 

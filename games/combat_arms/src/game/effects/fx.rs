@@ -22,12 +22,15 @@
 //!   distance (`rules::jitter_falloff`), read by the front end;
 //! - `CreateFX`: another group.
 //!
+//! Several jitters add up (`jitter_at`, Open question 24).
+//!
 //! Known shortcuts (docs/tech-debt.md): keys are placed at the effect's
-//! point (`UpdatePos` attach modes and `Follow` aren't modelled; the
-//! first-person muzzle flash is the front end's own, at the view model's
-//! socket); multi-key scale and colour curves are drawn as a ramp from the
-//! first key to the last, alpha as a fade-in/hold/fade-out window; cone
-//! and cylinder emitters are circles; `AdditionalAcceleration` is left
+//! point (the attach modes, `rules::place_key`, aren't applied to the
+//! pool's particles; the first-person muzzle flash is the front end's
+//! own, at the view model's socket); multi-key scale and colour curves are
+//! drawn as a ramp from the first key to the last (`rules::key_curve` is
+//! the full curve), alpha as a fade-in/hold/fade-out window; cone and
+//! cylinder emitters are circles (`rules::cone_start` is the cone); `AdditionalAcceleration` is left
 //! out; a bouncing system's particles all bounce (Chimera's bounce planes
 //! probed once, 75 % ± 10 % kept); friction is Chimera's linear damping at
 //! the same per-second rate; `DisableZ` and `CastVisibleRay` sprites are
@@ -177,7 +180,7 @@ impl CaFx {
         self.jitters
             .iter()
             .map(|j| j.amplitude(j.at.distance(cam) / self.unit))
-            .fold(0.0, f32::max)
+            .sum()
     }
 
     /// One frame: start and emit keys, age lights and jitters.

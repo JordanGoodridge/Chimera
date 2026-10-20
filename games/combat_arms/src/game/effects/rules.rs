@@ -695,3 +695,177 @@ pub fn jitter_falloff(d: f32, inner: f32, outer: f32) -> f32 {
 pub fn friction_factor(f: f32, dt: f32) -> f32 {
     (1.0 - f).max(0.0).powf(dt)
 }
+
+// ---------------------------------------------------------------------------
+// The follow-up answers (Open questions 17-25): the effect file's details,
+// sounds while they play, call-outs and map sounds, as rules.
+
+/// A key curve's value (Open question 17, "The effect file"): keys of
+/// (u, value) on the key's normalised time, linear between keys and held
+/// after the last; a looping key starts over every `length` s.
+pub fn key_curve(keys: &[(f32, f32)], t: f32, length: f32, looping: bool, default: f32) -> f32 {
+    if length <= 0.0 {
+        return lithtech_formats::fxf::sample_keys(keys, 0.0, default);
+    }
+    let t = if looping { t.rem_euclid(length) } else { t.min(length) };
+    lithtech_formats::fxf::sample_keys(keys, t / length, default)
+}
+
+/// A cone emitter's start point (`Type` 3), in the effect's frame (+Z the
+/// axis n): uniform in the cone of height `rmax` whose radius grows from 0
+/// at the apex to `rmin` at that height (`u`: three draws in [0, 1)).
+pub fn cone_start(rmin: f32, rmax: f32, u: [f32; 3]) -> Vec3 {
+    let h = rmax * u[0].cbrt();
+    let r = rmin * (h / rmax.max(1e-6)) * u[1].sqrt();
+    let a = u[2] * std::f32::consts::TAU;
+    Vec3::new(r * a.cos(), r * a.sin(), h)
+}
+
+/// One step of a particle against its bounce plane at height `plane`: a
+/// marked particle whose step would cross it keeps its position and
+/// bounces (its velocity reflected, 75 % kept); an unmarked one passes.
+pub fn bounce_step(pos: Vec3, vel: Vec3, dt: f32, plane: f32, marked: bool) -> (Vec3, Vec3) {
+    let next = pos + vel * dt;
+    if marked && pos.y >= plane && next.y < plane {
+        (pos, Vec3::new(vel.x, -vel.y, vel.z) * BOUNCE_KEEP)
+    } else {
+        (next, vel)
+    }
+}
+
+/// What a bounce keeps of the speed.
+pub const BOUNCE_KEEP: f32 = 0.75;
+
+/// Where an effect key is (Open question 17, placement modes): attached to
+/// a socket (mode 4), it follows the socket, its offset along the socket's
+/// axes; fixed (mode 0), it stays at its creation point, only its offset
+/// turning with the parent.
+pub fn place_key(mode: u8, socket: Transform, created_at: Vec3, offset: Vec3, parent_turn: Quat) -> Vec3 {
+    match mode {
+        4 => socket.translation + socket.rotation * offset,
+        _ => created_at + parent_turn * offset,
+    }
+}
+
+/// A playing 3D sound's gain and low-pass (Open question 21): recomputed
+/// each frame the listener or the source moved, only for r < d < R; the
+/// last values kept outside that band.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlayingSound {
+    pub r: f32,
+    pub big_r: f32,
+    pub volume: f32,
+    pub gain: f32,
+    pub cutoff: f32,
+}
+
+impl PlayingSound {
+    /// A sound started at distance `d`.
+    pub fn start(d: f32, r: f32, big_r: f32, volume: f32) -> Self {
+        let mut s = Self {
+            r,
+            big_r,
+            volume,
+            gain: volume / 100.0,
+            cutoff: 1.0,
+        };
+        s.update(d);
+        s
+    }
+
+    /// The listener or the source moved: at distance `d` now.
+    pub fn update(&mut self, d: f32) {
+        if d > self.r && d < self.big_r {
+            self.gain = gain(d, self.r, self.big_r, self.volume);
+            self.cutoff = low_pass(d, self.r, self.big_r);
+        }
+    }
+}
+
+/// How many sounds may live at once; a new one beyond is refused, no
+/// playing one stopped (Open question 21).
+pub const LIVE_SOUNDS: usize = 255;
+
+/// The live sounds' count.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LiveSounds(pub usize);
+
+impl LiveSounds {
+    /// Start one: false (refused) at the cap.
+    pub fn start(&mut self) -> bool {
+        if self.0 >= LIVE_SOUNDS {
+            return false;
+        }
+        self.0 += 1;
+        true
+    }
+
+    pub fn ended(&mut self) {
+        self.0 = self.0.saturating_sub(1);
+    }
+}
+
+/// The call-outs radius (u, 11).
+pub const CALLOUT_RADIUS: f32 = 1000.0;
+
+/// A death's call-outs (11, Open question 22): `EnemyDown` by the killer
+/// when the teams differ (none for a team kill or a suicide), `ManDown` by
+/// the victim's living teammate nearest the victim within 1000 u. People
+/// are (entity, team, position in u).
+pub fn callouts(
+    killer: Option<(Entity, u8, Vec3)>,
+    victim: (Entity, u8, Vec3),
+    living: &[(Entity, u8, Vec3)],
+) -> (Option<Entity>, Option<Entity>) {
+    let enemy_down = killer.filter(|k| k.1 != victim.1 && k.0 != victim.0).map(|k| k.0);
+    let man_down = living
+        .iter()
+        .filter(|p| p.1 == victim.1 && p.0 != victim.0)
+        .map(|p| (p.0, p.2.distance(victim.2)))
+        .filter(|(_, d)| *d <= CALLOUT_RADIUS)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|p| p.0);
+    (enemy_down, man_down)
+}
+
+/// A map `SoundFX` object's play state (11, Open question 22): `StartOn`
+/// plays it at creation; ON and TRIGGER (re)start it from the beginning (a
+/// playing copy stopped first); OFF and KILL stop it; TOGGLE stops a
+/// playing one or starts a stopped one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SoundFxState {
+    pub playing: bool,
+    /// Times it was started from the beginning.
+    pub starts: u32,
+}
+
+impl SoundFxState {
+    pub fn created(start_on: bool) -> Self {
+        let mut s = Self::default();
+        if start_on {
+            s.start();
+        }
+        s
+    }
+
+    fn start(&mut self) {
+        self.playing = true;
+        self.starts += 1;
+    }
+
+    /// A message to the object (case ignored).
+    pub fn message(&mut self, msg: &str) {
+        match msg.to_ascii_uppercase().as_str() {
+            "ON" | "TRIGGER" => self.start(),
+            "OFF" | "KILL" => self.playing = false,
+            "TOGGLE" => {
+                if self.playing {
+                    self.playing = false;
+                } else {
+                    self.start();
+                }
+            }
+            _ => {}
+        }
+    }
+}

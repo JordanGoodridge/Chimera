@@ -38,7 +38,7 @@ use super::super::{
     rules::{CaMatch, Phase, spawns::CaHeld},
 };
 use crate::{
-    core::{Damage, Dead, FreezeTime, Health, Intent, MovementState, SimClock, Spectating, Team, Velocity},
+    core::{Damage, Dead, FreezeTime, Health, Intent, MovementState, SimClock, Spectating, Team},
     map::{SeeThrough, nav::NavMesh},
     weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, grenade::Throwable},
 };
@@ -68,10 +68,9 @@ pub const CALL_LIFE: f64 = 1.0;
 pub const REARM_GAP: f64 = 5.0;
 /// The investigate goal's decay time (s).
 pub const INVESTIGATE_TIME: f64 = 10.0;
-/// The bot's knife reach (u, 8.4: its swings reach that far,
-/// `inventory::KnifeReach`) and how close it closes in (ours, u).
+/// The bot's knife reach (u, 8.4: it closes in until within it, its
+/// swings reach that far, `inventory::KnifeReach`).
 pub const KNIFE_RANGE: f32 = 130.0;
-pub const KNIFE_SWING: f32 = 90.0;
 /// The chase path's rotating offset (u).
 pub const CHASE_OFFSET: f32 = 96.0;
 /// The camping radius (u) and onset (s).
@@ -97,14 +96,13 @@ pub const DANGER_MOVED: f32 = 5.0;
 /// The throw: hang time (s), gravity (u/s²).
 pub const HANG_TIME: f32 = 0.5;
 pub const GRAVITY: f32 = -1600.0;
-/// Ours: torso and head above a character's centre, the eye above the
-/// centre (the movement's eye offset x half height), m.
-pub const TORSO: f32 = 0.2;
-pub const HEAD: f32 = 0.6;
-pub const EYE: f32 = 0.66 * 0.9;
-/// Ours: footsteps while faster than this (u/s), every this (s).
-pub const STEP_SPEED: f32 = 100.0;
-pub const STEP_EVERY: f64 = 0.4;
+/// The sight points (5.2, Open question 18): the target's object position
+/// (its hull centre) and its `Head` node, the eye the bot's own hull x/z
+/// at its `Head` node's height; the node's height above the centre is the
+/// spec's measured standing pose (`Head` at 29.03 u), m.
+pub const TORSO: f32 = 0.0;
+pub const HEAD: f32 = 29.03 * UNIT;
+pub const EYE: f32 = HEAD;
 
 /// A kind of stimulus (5.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -183,9 +181,13 @@ pub struct CaCamping {
     pub time: f32,
 }
 
-/// Footstep clock of a character.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct StepClock(pub f64);
+/// A character's leg animation and its time at the last update (the
+/// footstep keys passed since).
+#[derive(Component, Clone, Debug, Default)]
+pub struct StepClock {
+    pub name: String,
+    pub time: u32,
+}
 
 // ---------------------------------------------------------------------------
 // Stimuli and camping
@@ -198,7 +200,10 @@ pub fn post_stimuli(
     mut damage: MessageReader<Damage>,
     weapons: Query<(&Weapon, Option<&CaMods>, Has<Magazine>)>,
     mut bots: Query<&mut CaBot>,
-    chars: Query<(Entity, &Team, &Transform, &Velocity, &MovementState, Option<&StepClock>), (Without<Dead>, With<Intent>)>,
+    chars: Query<
+        (Entity, &Team, &Transform, &MovementState, Option<&super::super::characters::CaAnim>, Option<&StepClock>),
+        (Without<Dead>, With<Intent>),
+    >,
     intents: Query<(), With<Intent>>,
     filters: Query<&crate::core::DamageFilter>,
     teams: Query<&Team>,
@@ -221,6 +226,10 @@ pub fn post_stimuli(
             stimuli.post(Kind::Gunfire, origin, radius, e.owner, team, now);
         }
         if let Ok(mut b) = bots.get_mut(e.owner) {
+            // The next round no sooner than the fire animation allows
+            // (8.3).
+            let class = super::super::characters::records::data().weapon(Some(w.id)).ani_type;
+            b.next_shot = now + math::fire_interval_ms(class) as f64 / 1000.0;
             b.aim_offset = None;
             b.release = true;
             if gun && data.gun_type(w.id) != Some("Knife") {
@@ -250,16 +259,24 @@ pub fn post_stimuli(
             b.dodge_hit = true;
         }
     }
-    for (e, team, t, v, state, step) in &chars {
-        let speed = Vec2::new(v.0.x, v.0.z).length() / UNIT;
-        if !state.on_ground || speed <= STEP_SPEED {
+    // Footsteps: at the keys of each character's (server-side) leg
+    // animation (5.3), on the ground or a ladder.
+    for (e, team, t, state, anim, step) in &chars {
+        let Some(anim) = anim else { continue };
+        let d = &anim.driver;
+        let name = d.name_of(&d.lower).to_string();
+        let time = d.lower.time;
+        let length = d.list.entries.get(d.lower.current).map_or(0, |e| e.length());
+        let last = step.map(|s| (s.name.clone(), s.time));
+        commands.entity(e).insert(StepClock { name: name.clone(), time });
+        let Some((last_name, before)) = last.filter(|(n, _)| *n == name) else { continue };
+        let _ = last_name;
+        if !(state.on_ground || state.on_ladder) {
             continue;
         }
-        if step.is_some_and(|s| now - s.0 < STEP_EVERY) {
-            continue;
+        if math::footstep_keys(&name).iter().any(|k| math::passed_key(before, time, length, *k)) {
+            stimuli.post(Kind::Footstep, t.translation, FOOTSTEP_RADIUS, e, team.0, now);
         }
-        commands.entity(e).insert(StepClock(now));
-        stimuli.post(Kind::Footstep, t.translation, FOOTSTEP_RADIUS, e, team.0, now);
     }
 }
 
@@ -1097,9 +1114,8 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
                 if relaxed && !math::roll(math::hearing_percent(d, 800.0, 60.0), bot.dice.r100()) {
                     continue;
                 }
-                bot.footsteps += 0.5;
-                if bot.footsteps >= 1.0 {
-                    bot.footsteps = 0.0;
+                bot.last_step_at = Some(s.at);
+                if bot.footsteps.add(0.5) {
                     investigate(ctx, bot, me, s.at, false, out);
                 }
                 break;
@@ -1107,7 +1123,12 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
         }
     }
     // 3: the records' decay and timers.
-    bot.footsteps = (bot.footsteps - if alert { 0.00125 } else { 0.0025 }).max(0.0);
+    if bot.footsteps.decay(if alert { 0.00125 } else { 0.0025 })
+        && let Some(at) = bot.last_step_at
+    {
+        // A third false stimulation: fully stimulated.
+        investigate(ctx, bot, me, at, false, out);
+    }
     if let Some(p) = bot.pending
         && bot.passes >= p.at_pass
     {
@@ -1347,7 +1368,7 @@ fn grenade_danger(ctx: &Ctx, bot: &mut CaBot, me: &Char) {
     }
     let away = Vec3::new(me.pos.x - at.x, 0.0, me.pos.z - at.z).normalize_or(Vec3::X);
     let r = danger.radius * DODGE_FACTOR * UNIT;
-    for k in [0i32, 1, -1, 2, -2] {
+    for k in math::DODGE_STEPS {
         let dir = Quat::from_rotation_y(k as f32 * std::f32::consts::FRAC_PI_4) * away;
         let mut to = at + dir * r;
         to.y = me.feet().y;
@@ -1446,7 +1467,7 @@ fn attack(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gun], ac
         }
     }
     // Moving: the attack move, or in to the knife's reach.
-    if melee && d > KNIFE_SWING {
+    if melee && d > KNIFE_RANGE {
         io.axis = axis_toward(target.pos - me.pos, io.yaw);
     } else if let Some(to) = bot.move_to {
         let d = to - me.feet();
@@ -1590,6 +1611,7 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
     let fire = drawn
         && in_reach
         && now >= bot.fire_at
+        && now >= bot.next_shot
         && bot.visible
         && line.is_none()
         && (knife || held.clip > 0)
