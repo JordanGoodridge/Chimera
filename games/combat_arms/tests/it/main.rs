@@ -24,6 +24,7 @@ mod inventory;
 mod mode_kit;
 mod model;
 mod movement;
+mod movement_corrections;
 mod movement_volumes;
 mod net;
 mod net_modes;

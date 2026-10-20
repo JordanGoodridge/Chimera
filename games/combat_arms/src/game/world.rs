@@ -1145,7 +1145,8 @@ fn collision(world: &World, map: &mut MapData, to_engine: &impl Fn(lt::Vec3) -> 
 
 /// The volume objects (`volumes::is_volume`) as map entities: their class
 /// and properties (engine axes: `Current` with Z mirrored; a jump
-/// volume's `Velocity` is a number; `Hidden` as the map's start-up
+/// volume's `Velocity` is a speed, and `JumpDirection` the forward vector
+/// of its `Rotation`; `Hidden` as the map's start-up
 /// commands leave it: `StartupCommand`'s `msg <name> off`) and their
 /// world model's faces as one hull (planes facing out), in entity space.
 fn volumes(world: &World, map: &mut MapData, scale: f32) {
@@ -1197,6 +1198,13 @@ fn volumes(world: &World, map: &mut MapData, scale: f32) {
                 let [x, y, z] = lt::to_right_handed(c);
                 keyvalues.push((key.into(), format!("{x} {y} {z}")));
             }
+        }
+        // A jump pad's launch direction: its `Rotation`'s forward vector
+        // (engine axes, as `Current`).
+        if o.class == "JumpVolume" {
+            let [pitch, yaw, roll] = o.rotation("Rotation").unwrap_or([0.0; 3]);
+            let [x, y, z] = lt::to_right_handed(lt::rotation_axes(pitch, yaw, roll)[2]);
+            keyvalues.push(("JumpDirection".into(), format!("{x} {y} {z}")));
         }
         let hidden = o
             .name()
