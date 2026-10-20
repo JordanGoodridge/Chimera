@@ -1,5 +1,6 @@
 //! What the effects take from the install, at map load
-//! (`add_to_map`, from `world::load_from`) and on first use:
+//! (`add_to_map`, from `world::load_from`; `add_looks` on another game's
+//! map, `world::dress`) and on first use:
 //!
 //! - the effect file (`clientfx/clientfx.fxf`, the unkeyed `CLIENTFX`
 //!   archive, `lithtech_formats::fxf`), parsed once per process
@@ -170,6 +171,13 @@ pub fn wanted_groups(tables: &CaFxTables, weapons: &[CaWeaponFx], view_muzzles: 
 /// on the drawn meshes. `world` is the map's world file.
 pub fn add_to_map(map: &mut MapData, world: &World, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     tag_surfaces(map, world);
+    add_looks(map, file);
+}
+
+/// The effects' part of any map, a world file or not (another game's map
+/// in a mashup, `world::dress`): the effect file (once) and the wanted
+/// groups' textures as the map's particle materials.
+pub fn add_looks(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let fx = match load_fx_file(file) {
         Ok(f) => f,
         Err(e) => {

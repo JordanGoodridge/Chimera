@@ -1,0 +1,58 @@
+[package]
+name = "mashup_demo"
+version = "0.1.0"
+description = "The first mashup app: Combat Arms' soldier, weapons, HUD, bots and Team Death Match on Counter-Strike: Source's maps"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The app composes two games as libraries (docs/DESIGN.md, "Vision"):
+# CS:S for its maps only (`cs_source::MAP_LOADER`; its simulation's
+# plugins and front end are never added, so no `ui`), Combat Arms for the
+# gameplay and its front end (`ui`), on Chimera's simulation, presentation,
+# network and client shell. Never another app (`cs_source_app`,
+# `combat_arms_app`) or `mashup` (checks/tests/it/architecture.rs).
+[dependencies]
+chimera_core.workspace = true
+chimera_world.workspace = true
+chimera_sim.workspace = true
+chimera_net.workspace = true
+chimera_present.workspace = true
+chimera_client.workspace = true
+cs_source.workspace = true
+combat_arms = { workspace = true, features = ["ui"] }
+avian3d.workspace = true
+bevy.workspace = true
+workspace-hack.workspace = true
+
+# The game.
+[[bin]]
+name = "mashup_demo"
+path = "src/main.rs"
+test = false
+
+# Its integration tests (tests/it/): the mashup on a real CS:S map
+# (`heavy::`, the user's installs).
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[features]
+# Faster iteration: link Bevy as a dynamic library, serve the remote
+# protocol. `cargo run --features dev --bin mashup_demo`. Never for
+# release builds.
+dev = [
+    "chimera_core/dev",
+    "chimera_world/dev",
+    "chimera_sim/dev",
+    "chimera_net/dev",
+    "chimera_present/dev",
+    "chimera_client/dev",
+    "cs_source/dev",
+    "combat_arms/dev",
+]

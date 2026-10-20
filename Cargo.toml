@@ -29,6 +29,7 @@ members = [
     "apps/cs_source_server",
     "apps/combat_arms",
     "apps/combat_arms_server",
+    "apps/mashup_demo",
     "checks",
 ]
 default-members = [
@@ -53,6 +54,7 @@ default-members = [
     "apps/cs_source_server",
     "apps/combat_arms",
     "apps/combat_arms_server",
+    "apps/mashup_demo",
     "checks",
 ]
 resolver = "3"

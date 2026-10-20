@@ -28,15 +28,9 @@ pub fn load_map_level(id: &str, hdr_level: u8) -> Result<MapData, String> {
     let (game, name) = id
         .split_once(':')
         .ok_or_else(|| format!("map ID `{id}` should look like game:name"))?;
-    let config = LocalConfig::load()?;
-    let install = config
-        .game_path(game)
-        .ok_or_else(|| format!("no `{game}` install found (chimera_install <folder>, or chimera.local.toml)"))?;
     match game {
-        cs_source::GAME => {
-            let mount = cs_source::mount::open(&install).map_err(|e| e.to_string())?;
-            cs_source::bsp::load_level(&mount, name, hdr_level)
-        }
+        // CS:S's loader (`cs_source::MAP_LOADER`), as a mashup app uses it.
+        cs_source::GAME => (cs_source::MAP_LOADER.load)(name, hdr_level),
         other => Err(format!("no map loader for `{other}` yet")),
     }
 }

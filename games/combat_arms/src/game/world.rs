@@ -98,6 +98,9 @@
 //!   world's outer box: over the void, onto the surface a ray meets, as
 //!   the sea's; else not at all), facing their yaw; `Teams` JSF is `Team(1)`, Creed `Team(2)`,
 //!   `<none>` neither.
+//! - Other apps: `MAP_LOADER` is these maps for an app's
+//!   `map::MapSources`; `DRESSING` (`dress`) is Combat Arms' parts on
+//!   another game's map (a mashup: a CS:S map played as Combat Arms).
 //! - No map file hash (Q15): the game checks none, a client loads its own
 //!   copy by name, so the network handshake compares only the name.
 //!
@@ -139,8 +142,9 @@ use lithtech_formats::{
 use crate::{
     core::Team,
     map::{
-        BlendMode, DetailMode, MapAlpha, MapBlend, MapCollisionSet, MapData, MapDetail, MapEntity, MapFlatEnvmap,
-        MapFog, MapHull, MapLightmap, MapMesh, MapSkyCamera, MapTexture, entities::engine_to_entity,
+        BlendMode, DetailMode, MapAlpha, MapBlend, MapCollisionSet, MapData, MapDetail, MapDressing, MapEntity,
+        MapFlatEnvmap, MapFog, MapHull, MapLightmap, MapLoader, MapMesh, MapSkyCamera, MapTexture,
+        entities::engine_to_entity,
     },
     mount::Mount,
 };
@@ -184,6 +188,39 @@ const ATLAS_WIDTH: u32 = 4096;
 /// 8192). A map whose lightmaps don't fit is laid out 8192 wide, then
 /// with its lightmaps at half resolution until they do (TERRORDOME).
 pub const ATLAS_MAX: u32 = 8192;
+
+/// Combat Arms' maps from the install (`map::MapLoader`), for an app's
+/// `map::MapSources`.
+pub static MAP_LOADER: MapLoader = MapLoader {
+    game: super::GAME,
+    load: |name, _| load(name),
+};
+
+/// What Combat Arms' gameplay brings to another game's map
+/// (`map::MapDressing`, a mashup's `map::MapSources`): `dress` with the
+/// install's archives.
+pub static DRESSING: MapDressing = MapDressing {
+    game: super::GAME,
+    dress: |map| {
+        let mount = super::INFO.mount().ok_or_else(|| {
+            "no Combat Arms install: set [games.combat_arms] path in chimera.local.toml".to_string()
+        })?;
+        dress(&mount, map);
+        Ok(())
+    },
+};
+
+/// Combat Arms' parts on any map (another game's, in a mashup): the
+/// effect looks (`effects::library::add_looks`), the weapons' view models
+/// and the character bodies and held models, as `load_from` adds them to
+/// its own. The map's surfaces keep their own names (Combat Arms' effects
+/// take an unknown surface's).
+pub fn dress(mount: &Mount, map: &mut MapData) {
+    let file = |path: &str| mount.read(path).ok();
+    super::effects::library::add_looks(map, &file);
+    super::view_model::add_view_models(map, &file);
+    super::characters::models::add_character_models(map, &file);
+}
 
 /// Map `id` (`combat_arms:<name>`, or the bare name) from the install.
 pub fn load(id: &str) -> Result<MapData, String> {
