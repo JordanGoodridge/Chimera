@@ -694,3 +694,172 @@ fn in_game_menu_draws_its_labels() {
     // The disabled ones in the disabled colour.
     assert_eq!(texts[2].colour, [110, 110, 110, 255]);
 }
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-19): test cases 26 and 27 (23-25, 32: score.rs;
+// 28-31: bound.rs)
+
+/// The shell's input for the local player each frame, as its bindings
+/// would write it (before the popup rule).
+#[derive(Resource, Clone, Default)]
+struct Keys(chimera_core::core::Intent);
+
+fn write_keys(keys: Res<Keys>, mut player: Query<&mut chimera_core::core::Intent, With<chimera_core::core::LocalPlayer>>) {
+    for mut i in &mut player {
+        *i = keys.0.clone();
+    }
+}
+
+/// 26. Input under the Esc menu (and the chat input): no movement, look or
+/// fire from the next frame, a held crouch stays down, the clock runs;
+/// closed, walking resumes.
+#[test]
+fn t26_input_under_the_esc_menu() {
+    use chimera_core::core::{Intent, LocalPlayer, SimClock};
+    use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim};
+    for chat in [false, true] {
+        let mut sim = Sim::with(combat_arms::harness::CaSim, |app| {
+            app.add_plugins((GreyboxMapPlugin, CaMenuStatePlugin))
+                .init_resource::<Keys>()
+                .add_systems(Update, write_keys.before(menu::PopupInput));
+        });
+        let me = sim.spawn_character(chimera_world::greybox::SPAWNS[0], combat_arms::game::movement::ID);
+        sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+        sim.seconds(0.5);
+        let held = Intent {
+            move_axis: Vec2::Y,
+            crouch: true,
+            ..default()
+        };
+        sim.app.world_mut().resource_mut::<Keys>().0 = held.clone();
+        sim.ticks(5);
+        let open = |sim: &mut Sim, on: bool| {
+            if chat {
+                sim.app.world_mut().insert_resource(chimera_client::client::chat::ChatInput {
+                    open: on.then_some(false),
+                    text: String::new(),
+                });
+            } else {
+                sim.app.world_mut().resource_mut::<InGameMenu>().set_open(on);
+            }
+        };
+        open(&mut sim, true);
+        sim.ticks(1);
+        let clock = sim.app.world().resource::<SimClock>().now;
+        // Keys still held, the mouse turning, fire pressed.
+        sim.app.world_mut().resource_mut::<Keys>().0 = Intent {
+            yaw: 1.0,
+            fire: true,
+            sprint: true,
+            ..held.clone()
+        };
+        sim.ticks(3);
+        let i = sim.app.world().get::<Intent>(me).unwrap().clone();
+        assert_eq!((i.move_axis, i.fire, i.sprint), (Vec2::ZERO, false, false), "chat {chat}");
+        assert!(i.crouch, "the crouch stays down");
+        assert_eq!(i.yaw, 0.0, "mouse look ignored");
+        assert!(sim.app.world().resource::<SimClock>().now > clock, "the clock runs");
+        // Closed with forward still held: walking on the next frame.
+        open(&mut sim, false);
+        sim.app.world_mut().resource_mut::<Keys>().0 = held.clone();
+        sim.ticks(1);
+        assert_eq!(sim.app.world().get::<Intent>(me).unwrap().move_axis, Vec2::Y);
+    }
+}
+
+/// The game's in-game menu layout, as the install has it (the controls
+/// code binds by name, and an options button it doesn't).
+const INSTALL_MENU: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CBALAYOUT>
+  <Control Type="window">
+    <Property Name="exit_popup" Size="220,200" Position="0,0" Texture="igm_back"/>
+    <Control Type="button">
+      <Property Name="button_lobby" Size="196,24" Position="12,27" ButtonTexture="igm_button_" Cmd_id="4"/>
+    </Control>
+    <Control Type="button">
+      <Property Name="button_record" Size="196,24" Position="12,55" ButtonTexture="igm_button_" Cmd_id="1"/>
+      <Control Type="buttontypetext">
+        <Property Name="btn_text_record" Font="bold 12" Element="sample" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210"/>
+      </Control>
+    </Control>
+    <Control Type="button">
+      <Property Name="button_option" Size="196,24" Position="12,83" ButtonTexture="igm_button_" Cmd_id="1"/>
+    </Control>
+    <Control Type="button">
+      <Property Name="button_cancel" Size="196,24" Position="12,111" ButtonTexture="igm_button_" Cmd_id="2"/>
+    </Control>
+    <Control Type="button">
+      <Property Name="button_exit_title" Size="20,20" Position="196,2" ButtonTexture="igm_button_" Cmd_id="1"/>
+    </Control>
+  </Control>
+</CBALAYOUT>
+"#;
+
+/// 27. The Esc menu's keys and buttons: Esc closes it, other keys don't;
+/// `button_cancel` and `button_exit_title` close it; the unbound options
+/// button looks normal and does nothing; the record label names the
+/// record key.
+#[test]
+fn t27_esc_menu_keys_and_buttons() {
+    let install = combat_arms::ui::install::InstallUi {
+        menu: Some(xml::read(INSTALL_MENU).unwrap()),
+        ..Default::default()
+    };
+    let ui = CaUi::with_install(std::sync::Arc::new(install));
+    let mut app = App::new();
+    app.insert_resource(ui.clone());
+    app.add_plugins(MinimalPlugins).add_plugins(CaMenuStatePlugin);
+    app.update();
+    let press = |app: &mut App, k: KeyCode| {
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(k);
+        app.update();
+        let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.release(k);
+        keys.clear();
+    };
+    let open = |app: &App| app.world().resource::<InGameMenu>().open;
+    press(&mut app, KeyCode::Escape);
+    assert!(open(&app));
+    for k in [KeyCode::Enter, KeyCode::KeyY] {
+        press(&mut app, k);
+        assert!(open(&app), "{k:?} swallowed");
+    }
+    press(&mut app, KeyCode::Escape);
+    assert!(!open(&app), "Esc closes it");
+    // The options button: enabled (its normal look), no command.
+    let m = app.world().resource::<InGameMenu>().clone();
+    let option = m.layout().find("button_option").unwrap();
+    assert!(m.layout().widget(option).enabled);
+    assert_eq!(m.layout().widget(option).cmd, menu::CMD_NONE);
+    // The record label: `$button_record_start` with the key's name.
+    let label = m.layout().find(menu::RECORD_LABEL).unwrap();
+    let set = m.layout().widget(label).text().unwrap().set.clone();
+    assert_eq!(set, Some(menu::record_label(&ui.strings, "", false)));
+    assert_eq!(menu::record_label(&ui.strings, "F8", false), "Record (F8)");
+    assert_eq!(menu::record_label(&ui.strings, "F8", true), "Stop recording (F8)");
+    // Clicks: the options button leaves it open; cancel and the title
+    // bar's close button close it.
+    let click = |app: &mut App, name: &str| {
+        let m = app.world().resource::<InGameMenu>();
+        let id = m.layout().find(name).unwrap();
+        let r = m.layout().hit_rect(id, &ui.ctx());
+        let centre = IVec2::new((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
+        app.world_mut().resource_mut::<MenuPointer>().0 = Some(centre);
+        app.update();
+        app.world_mut().resource_mut::<ButtonInput<MouseButton>>().press(MouseButton::Left);
+        app.update();
+        let mut b = app.world_mut().resource_mut::<ButtonInput<MouseButton>>();
+        b.release(MouseButton::Left);
+        b.clear();
+        app.update();
+    };
+    for (name, closes) in [("button_option", false), ("button_cancel", true), ("button_exit_title", true)] {
+        press(&mut app, KeyCode::Escape);
+        assert!(open(&app));
+        click(&mut app, name);
+        assert_eq!(open(&app), !closes, "{name}");
+        if open(&app) {
+            press(&mut app, KeyCode::Escape);
+        }
+    }
+}

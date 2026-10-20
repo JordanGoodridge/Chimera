@@ -173,6 +173,31 @@ fn hurt(sim: &mut Sim, target: Entity, attacker: Option<Entity>, amount: f32, di
     });
 }
 
+/// The local player's own shot trace (a gun's first segment) hitting
+/// `target`'s hit box, as the firing writes it (A10).
+fn shot(sim: &mut Sim, me: Entity, target: Entity) {
+    let weapon = active(sim, me);
+    sim.app.world_mut().write_message(WeaponEvent {
+        owner: me,
+        weapon,
+        kind: WeaponEventKind::Shot {
+            from: Vec3::ZERO,
+            to: Vec3::ZERO,
+            hit: Some(target),
+            normal: None,
+        },
+        replay: false,
+    });
+}
+
+/// Another character past its spawn window (more than 3.5 s since it
+/// appeared).
+fn veteran(sim: &mut Sim, me: Entity, ahead: f32, team: u8, name: &str) -> Entity {
+    let e = other(sim, me, ahead, team, name);
+    sim.seconds(3.6);
+    e
+}
+
 fn now_ms(sim: &Sim) -> f64 {
     sim.app.world().resource::<Time>().elapsed_secs_f64() * 1000.0
 }
@@ -531,11 +556,11 @@ fn t25_hit_indicator() {
         assert!(h.frame(t), "{t}");
     }
     assert!(!h.frame(516.7));
-    // In the game: damage dealt to an enemy turns the crosshair red for
-    // 500 ms.
+    // In the game: the local player's shot trace on an enemy turns the
+    // crosshair red for 500 ms.
     let (mut sim, me) = setup(&[RIFLE]);
-    let foe = other(&mut sim, me, 5.0, 2, "Foe");
-    hurt(&mut sim, foe, Some(me), 0.01, Vec3::NEG_Z);
+    let foe = veteran(&mut sim, me, 5.0, 2, "Foe");
+    shot(&mut sim, me, foe);
     sim.ticks(1);
     let t_hit = now_ms(&sim);
     assert_eq!(hud(&sim).crosshair.colour, HIT_CROSSHAIR);
@@ -562,8 +587,8 @@ fn t27_teammate_hit() {
     h.hit(0.0, false);
     assert!(!h.frame(0.0));
     let (mut sim, me) = setup(&[RIFLE]);
-    let mate = other(&mut sim, me, 5.0, 1, "Mate");
-    hurt(&mut sim, mate, Some(me), 0.01, Vec3::NEG_Z);
+    let mate = veteran(&mut sim, me, 5.0, 1, "Mate");
+    shot(&mut sim, me, mate);
     sim.ticks(1);
     assert_eq!(hud(&sim).crosshair.colour, DEFAULT_CROSSHAIR);
 }
@@ -577,8 +602,8 @@ fn t28_round_end_clears() {
     let (mut sim, me) = setup(&[RIFLE]);
     sim.app.world_mut().init_resource::<RoundRestarts>();
     sim.ticks(1);
-    let foe = other(&mut sim, me, 5.0, 2, "Foe");
-    hurt(&mut sim, foe, Some(me), 0.01, Vec3::NEG_Z);
+    let foe = veteran(&mut sim, me, 5.0, 2, "Foe");
+    shot(&mut sim, me, foe);
     sim.ticks(1);
     assert_eq!(hud(&sim).crosshair.colour, HIT_CROSSHAIR);
     sim.app.world_mut().resource_mut::<RoundRestarts>().0 += 1;
@@ -693,8 +718,9 @@ fn t34_range_nothing() {
 // ---------------------------------------------------------------------------
 // Damage taken (C)
 
-const F: Vec2 = Vec2::new(0.0, -1.0);
-const RT: Vec2 = Vec2::new(1.0, 0.0);
+/// Facing yaw 0, level: forward -Z, right +X.
+const F: Vec3 = Vec3::NEG_Z;
+const RT: Vec3 = Vec3::X;
 
 #[test]
 fn t35_from_ahead() {
@@ -753,25 +779,27 @@ fn t38_turning_keeps_pointing() {
 
 #[test]
 fn t39_fade_per_frame() {
+    // The n-th HUD frame counting the hit's own as 1 (Corrections 3).
     let mut d = DamageFeedback::hit(0.0, 1.0, F, RT, -F, 0.0).unwrap();
-    let frame = |n: u32| n as f64 * 1000.0 / 60.0;
+    let frame = |n: u32| (n - 1) as f64 * 1000.0 / 60.0;
     for n in 1..=30 {
         assert!(d.frame(frame(n)));
         assert_eq!(d.alpha, (255 - 2 * n) as u8);
     }
-    assert_eq!(d.alpha, 195);
-    for n in 31..60 {
+    assert_eq!(d.alpha, 195, "the 30th frame");
+    for n in 31..61 {
         assert!(d.frame(frame(n)), "{n}");
     }
-    assert!(!d.frame(frame(60)), "gone at t_dmg + 1000 ms");
-    // In the game: gone on the first frame 1000 ms after.
+    assert!(!d.frame(frame(61)), "gone at t_dmg + 1000 ms");
+    // In the game: 253 on the hit's frame; gone on the first frame 1000
+    // ms after.
     let (mut sim, me) = setup(&[RIFLE]);
     hurt(&mut sim, me, None, 0.01, Vec3::Z);
     sim.ticks(1);
     let t = now_ms(&sim);
-    assert_eq!(hud(&sim).damage.unwrap().alpha, 255);
-    sim.ticks(1);
     assert_eq!(hud(&sim).damage.unwrap().alpha, 253);
+    sim.ticks(1);
+    assert_eq!(hud(&sim).damage.unwrap().alpha, 251);
     while now_ms(&sim) - t < 1000.0 {
         assert!(hud(&sim).damage.is_some());
         sim.ticks(1);
@@ -808,9 +836,11 @@ fn t42_low_health() {
     let c = health_colours(true);
     assert_eq!((c.values, c.hp_ap_labels, c.silhouette), (LOW_HEALTH, LOW_HEALTH, Some(LOW_HEALTH)));
     assert_eq!(c.other_labels, [216, 216, 216, 255]);
+    // On the OS ms clock: silent on the first low frame, then a beat on
+    // each frame more than 1000 ms after the last (Corrections 4).
     let mut beat = Heartbeat::default();
-    let beats: Vec<u32> = (0..=180).filter(|n| beat.frame(*n as f64 / 60.0, true)).collect();
-    assert_eq!(beats, vec![0, 60, 120, 180], "at least every 1.0 s");
+    let beats: Vec<u32> = (0..=180).filter(|n| beat.frame((*n as f64 * 1000.0 / 60.0).floor(), true)).collect();
+    assert_eq!(beats, vec![61, 122], "more than 1000 ms apart");
     // In the game.
     let (mut sim, me) = setup(&[RIFLE]);
     set_health(&mut sim, me, 30.0);
@@ -1092,7 +1122,8 @@ fn t59_badges_overwrite() {
             _ => None,
         })
         .collect();
-    assert_eq!(badges, vec![(109.0, Badge::Revenge), (141.0, Badge::Groin)]);
+    // The second slot moves to the last badge's x (Corrections 6).
+    assert_eq!(badges, vec![(109.0, Badge::Revenge), (173.0, Badge::Groin)]);
     let icon_end = 45.0 + FEED_ICON_WIDTH;
     let victim_x = items
         .iter()
@@ -1183,9 +1214,9 @@ fn t65_hit_flash() {
     };
     assert_eq!(name_tag(TagInputs { flashing: true, ..base }).unwrap().name, [250, 80, 0, 200]);
     let (mut sim, me) = setup(&[RIFLE]);
-    let foe = other(&mut sim, me, 5.0, 2, "Foe");
+    let foe = veteran(&mut sim, me, 5.0, 2, "Foe");
     look_at(&mut sim, me, foe);
-    hurt(&mut sim, foe, Some(me), 0.01, Vec3::NEG_Z);
+    shot(&mut sim, me, foe);
     sim.ticks(1);
     let colour = |sim: &Sim| hud(sim).tags.iter().find(|t| t.entity == foe).unwrap().tag.name;
     assert_eq!(colour(&sim), TAG_FLASH);
@@ -1313,8 +1344,8 @@ fn t71_hit_indicator_and_feed_on_the_ms_clock() {
     // In the game the indicator runs on real time in whole ms: still red
     // 0.49 s on, green after 0.52 s.
     let (mut sim, me) = setup(&[RIFLE]);
-    let foe = other(&mut sim, me, 5.0, 2, "Foe");
-    hurt(&mut sim, foe, Some(me), 0.01, Vec3::NEG_Z);
+    let foe = veteran(&mut sim, me, 5.0, 2, "Foe");
+    shot(&mut sim, me, foe);
     sim.ticks(1);
     let start = sim.app.world().resource::<Time<Real>>().elapsed_secs_f64();
     while sim.app.world().resource::<Time<Real>>().elapsed_secs_f64() - start < 0.49 {
@@ -1423,6 +1454,609 @@ fn t77_panel_by_inventory_class() {
     assert_eq!((knife.ammo, knife.icon), (None, None));
     assert_eq!(panel(1, true, false, 30, 120), None, "the mission bomb");
     assert_eq!(panel(0, false, false, 30, 120), None, "in no order list");
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-19): test cases 78-100 (92-94 in score.rs, 98's
+// scenario in attachments.rs)
+
+/// 78. The hit indicator from the shot test: the local player's own round
+/// traced into an enemy's hit box turns the crosshair red on that frame,
+/// with nothing from the server, and B's tag flashes.
+#[test]
+fn t78_hit_indicator_from_the_shot_test() {
+    let mut h = HitIndicator::default();
+    h.hit(1000.0, hit_lights(true, false));
+    assert!(h.frame(1500.0) && !h.frame(1501.0));
+    // In the game: a real M4A1 round at B, 5 m ahead.
+    let (mut sim, me) = setup(&["combat_arms:m4a1"]);
+    let foe = veteran(&mut sim, me, 5.0, 2, "B");
+    look_at(&mut sim, me, foe);
+    assert_eq!(hud(&sim).crosshair.colour, DEFAULT_CROSSHAIR);
+    sim.intent(me).fire = true;
+    let mut frames = 0;
+    while hud(&sim).crosshair.colour != HIT_CROSSHAIR {
+        sim.ticks(1);
+        frames += 1;
+        // The round on the 3rd update after the press (weapon_firing.md
+        // Corrections 10), red on that one.
+        assert!(frames < 5, "red on the frame the round is traced");
+    }
+    sim.intent(me).fire = false;
+    let tag = hud(&sim).tags.into_iter().find(|t| t.entity == foe).expect("B's tag");
+    assert_eq!(tag.tag.name, TAG_FLASH);
+}
+
+/// 79. The spawn window: a hit within 3500 OS ms of B's (re)spawn, before
+/// B fires, leaves the crosshair green; past it, or once B has fired, red.
+#[test]
+fn t79_spawn_window() {
+    let mut w = SpawnWindow::default();
+    w.spawn(10000.0);
+    assert!(!hit_lights(true, w.open(13400.0)), "13400: green");
+    assert!(!hit_lights(true, w.open(13500.0)), "13500 is not more than 3500 later");
+    assert!(hit_lights(true, w.open(13501.0)), "13501: red");
+    w.fire();
+    assert!(hit_lights(true, w.open(12100.0)), "fired at 12000: red at 12100");
+    // In the game: B just appeared.
+    let (mut sim, me) = setup(&[RIFLE]);
+    let foe = other(&mut sim, me, 5.0, 2, "B");
+    shot(&mut sim, me, foe);
+    sim.ticks(1);
+    assert_eq!(hud(&sim).crosshair.colour, DEFAULT_CROSSHAIR, "inside B's window");
+    // B fires: its window shuts.
+    let weapon = active(&sim, foe);
+    sim.app.world_mut().write_message(WeaponEvent {
+        owner: foe,
+        weapon,
+        kind: WeaponEventKind::Thrown,
+        replay: false,
+    });
+    sim.ticks(1);
+    shot(&mut sim, me, foe);
+    sim.ticks(1);
+    assert_eq!(hud(&sim).crosshair.colour, HIT_CROSSHAIR, "B has fired");
+    // A respawn opens it again, for 3.5 s.
+    sim.app.world_mut().get_mut::<Health>(foe).unwrap().current = 0.0;
+    sim.ticks(1);
+    sim.app.world_mut().get_mut::<Health>(foe).unwrap().current = 1.0;
+    sim.ticks(1);
+    sim.seconds(0.6);
+    shot(&mut sim, me, foe);
+    sim.ticks(1);
+    assert_eq!(hud(&sim).crosshair.colour, DEFAULT_CROSSHAIR, "respawned 0.6 s ago");
+    sim.seconds(3.0);
+    shot(&mut sim, me, foe);
+    sim.ticks(1);
+    assert_eq!(hud(&sim).crosshair.colour, HIT_CROSSHAIR, "3.6 s after");
+}
+
+/// 80. Not from damage: the local player's grenade and fire hurting B
+/// light nothing.
+#[test]
+fn t80_not_from_damage() {
+    let (mut sim, me) = setup(&[RIFLE]);
+    let foe = veteran(&mut sim, me, 5.0, 2, "B");
+    look_at(&mut sim, me, foe);
+    for kind in [DamageKind::Blast, DamageKind::Burn, DamageKind::Bullet] {
+        sim.app.world_mut().write_message(Damage {
+            target: foe,
+            attacker: Some(me),
+            amount: 0.1,
+            point: Vec3::ZERO,
+            dir: Vec3::NEG_Z,
+            hitgroup: Hitgroup::Chest,
+            kind,
+            weapon: Some("combat_arms:m67"),
+            force: Vec3::ZERO,
+        });
+        sim.ticks(1);
+        let h = hud(&sim);
+        assert_eq!(h.crosshair.colour, DEFAULT_CROSSHAIR, "{kind:?}");
+        let tag = h.tags.iter().find(|t| t.entity == foe).unwrap();
+        assert_eq!(tag.tag.name, TAG_ENEMY, "no flash: {kind:?}");
+    }
+}
+
+/// 81. The damage direction uses the view's pitch: looking down 60
+/// degrees, shot from ahead and 45 degrees above -> behind (s 9); level
+/// -> ahead (s 3).
+#[test]
+fn t81_damage_direction_with_pitch() {
+    let down = chimera_core::core::Intent {
+        pitch: -60f32.to_radians(),
+        ..default()
+    };
+    let (f, rt) = combat_arms::ui::hud::view_axes(&down);
+    assert!((f - Vec3::new(0.0, -0.8660, -0.5)).length() < 1e-3, "{f}");
+    assert!((rt - Vec3::X).length() < 1e-6);
+    let d = Vec3::new(0.0, -0.7071, 0.7071);
+    assert!((f.dot(d) - 0.2588).abs() < 1e-3);
+    let s = DamageFeedback::hit(0.0, 1.0, f, rt, d, 0.0).unwrap().s;
+    assert!(near(s, 9.0, 1e-3), "{s}");
+    let (f, rt) = combat_arms::ui::hud::view_axes(&default());
+    assert!(near(DamageFeedback::hit(0.0, 1.0, f, rt, d, 0.0).unwrap().s, 3.0, 1e-3));
+    // In the game: the same hit while looking down shows the arc behind
+    // (t36's corners).
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.intent(me).pitch = -60f32.to_radians();
+    sim.ticks(1);
+    hurt(&mut sim, me, None, 0.01, d);
+    sim.ticks(1);
+    let v = hud(&sim).damage.expect("damage shown");
+    close(v.corners[0], Vec2::new(342.8, 552.8), 0.5);
+    close(v.corners[1], Vec2::new(680.8, 553.2), 0.5);
+}
+
+/// 82. Damage with no direction comes along the world's forward axis:
+/// behind at yaw 0 (s 9), on the right turned right by pi/2 (s 12).
+#[test]
+fn t82_directionless_damage() {
+    use combat_arms::ui::hud::{NO_DIRECTION, view_axes};
+    let (f, rt) = view_axes(&default());
+    assert!(near(DamageFeedback::hit(0.0, 1.0, f, rt, NO_DIRECTION, 0.0).unwrap().s, 9.0, 1e-3));
+    let right = chimera_core::core::Intent {
+        yaw: -std::f32::consts::FRAC_PI_2,
+        ..default()
+    };
+    let (f, rt) = view_axes(&right);
+    assert!(near(DamageFeedback::hit(0.0, 1.0, f, rt, NO_DIRECTION, 0.0).unwrap().s, 12.0, 1e-3));
+    // In the game: a zero direction at yaw 0 -> behind, never left.
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.intent(me).pitch = 0.0;
+    sim.ticks(1);
+    hurt(&mut sim, me, None, 0.01, Vec3::ZERO);
+    sim.ticks(1);
+    let v = hud(&sim).damage.expect("damage shown");
+    close(v.corners[0], Vec2::new(342.8, 552.8), 0.5);
+}
+
+/// 83. The overlay's first frame draws 253, the next 251; a round going
+/// live clears it.
+#[test]
+fn t83_overlay_first_frame_and_a_new_round() {
+    use combat_arms::game::rules::Phase;
+    let (mut sim, me) = setup(&[RIFLE]);
+    hurt(&mut sim, me, None, 0.01, Vec3::Z);
+    sim.ticks(1);
+    assert_eq!(hud(&sim).damage.unwrap().alpha, 253);
+    sim.ticks(1);
+    assert_eq!(hud(&sim).damage.unwrap().alpha, 251);
+    sim.app.world_mut().resource_mut::<combat_arms::game::rules::CaMatch>().phase = Phase::Live;
+    sim.ticks(1);
+    assert!(hud(&sim).damage.is_none(), "gone when the round goes live");
+}
+
+/// 84. The heartbeat: silent when health first drops (OS t 10000), beats
+/// at 11010 and 12020 with frames every 10 ms; low again at 20000 after a
+/// break: a beat at once.
+#[test]
+fn t84_heartbeat() {
+    let mut beat = Heartbeat::default();
+    let mut beats = Vec::new();
+    for t in (10000..=12490).step_by(10) {
+        if beat.frame(t as f64, true) {
+            beats.push(t);
+        }
+    }
+    assert_eq!(beats, vec![11010, 12020]);
+    for t in (12500..20000).step_by(10) {
+        assert!(!beat.frame(t as f64, false));
+    }
+    assert!(beat.frame(20000.0, true), "low again: a beat on the first frame");
+    // In the game: no beat on the first low frame.
+    let (mut sim, me) = setup(&[RIFLE]);
+    let before = hud(&sim).heartbeats;
+    set_health(&mut sim, me, 30.0);
+    assert_eq!(hud(&sim).heartbeats, before, "silent at first");
+    sim.seconds(0.9);
+    assert_eq!(hud(&sim).heartbeats, before);
+    sim.seconds(0.2);
+    assert_eq!(hud(&sim).heartbeats, before + 1);
+}
+
+fn died(sim: &mut Sim, entity: Entity, attacker: Option<Entity>, kind: DamageKind, weapon: Option<&'static str>, hitgroup: Hitgroup) {
+    sim.app.world_mut().write_message(Died {
+        entity,
+        attacker,
+        damage: Damage {
+            target: entity,
+            attacker,
+            amount: 1.0,
+            point: Vec3::ZERO,
+            dir: Vec3::NEG_Z,
+            hitgroup,
+            kind,
+            weapon,
+            force: Vec3::ZERO,
+        },
+    });
+    sim.ticks(1);
+}
+
+fn last_kill(sim: &Sim) -> Kill {
+    hud(sim).feed.last().expect("a kill line").kill.clone()
+}
+
+/// 85. An own grenade: "Me [the grenade's icon] Me", the first name in the
+/// killer's (own team's) colour.
+#[test]
+fn t85_own_grenade_kill() {
+    let (mut sim, me) = setup(&[RIFLE]);
+    died(&mut sim, me, Some(me), DamageKind::Blast, Some("combat_arms:m67"), Hitgroup::Chest);
+    let k = last_kill(&sim);
+    assert_eq!(k.killer, Some(("Me".into(), true)));
+    assert_eq!(k.icon, KillIcon::Weapon(Some("combat_arms:m67".into())), "not the barrel");
+    let items = feed_line(&k, width);
+    assert!(matches!(&items[0], FeedItem::Text { x, text, colour } if *x == 5.0 && text == "Me" && *colour == [124, 190, 221, 150]));
+    assert!(matches!(items.last(), Some(FeedItem::Text { text, colour, .. }) if text == "Me" && *colour == [124, 190, 221, 150]));
+}
+
+/// 86. Kill lines without a self-killer: a fall, an ownerless barrel, and
+/// another kind keeping its weapon's icon.
+#[test]
+fn t86_icons_without_a_self_killer() {
+    assert_eq!(kill_icon(false, false, DeathKind::Crush, None), KillIcon::Suicide);
+    assert_eq!(kill_icon(true, false, DeathKind::Crush, None), KillIcon::Suicide, "a fall dealt by the victim");
+    assert_eq!(kill_icon(false, false, DeathKind::Blast, None), KillIcon::Barrel);
+    assert_eq!(kill_icon(false, false, DeathKind::Burn, None), KillIcon::Fire);
+    assert_eq!(kill_icon(false, false, DeathKind::Poison, None), KillIcon::Poison);
+    assert_eq!(kill_icon(false, false, DeathKind::Bleeding, None), KillIcon::Bleeding);
+    assert_eq!(kill_icon(false, false, DeathKind::Other, Some("w".into())), KillIcon::Weapon(Some("w".into())));
+    assert_eq!(kill_icon(true, true, DeathKind::Other, Some("w".into())), KillIcon::Npc);
+    // In the game.
+    let (mut sim, me) = setup(&[RIFLE]);
+    died(&mut sim, me, None, DamageKind::Fall, None, Hitgroup::Generic);
+    let k = last_kill(&sim);
+    assert_eq!(k.icon, KillIcon::Suicide);
+    let items = feed_line(&k, width);
+    assert!(matches!(&items[0], FeedItem::Text { text, .. } if text == "Me"));
+    let v = other(&mut sim, me, 5.0, 2, "V");
+    died(&mut sim, v, None, DamageKind::Blast, None, Hitgroup::Generic);
+    let k = last_kill(&sim);
+    assert_eq!((k.killer.clone(), k.icon.clone()), (None, KillIcon::Barrel));
+    let items = feed_line(&k, width);
+    assert!(matches!(&items[0], FeedItem::Text { text, colour, .. } if text == "V" && *colour == feed_colour(false)));
+    died(&mut sim, v, None, DamageKind::Generic, Some("combat_arms:m4a1"), Hitgroup::Generic);
+    assert_eq!(last_kill(&sim).icon, KillIcon::Weapon(Some("combat_arms:m4a1".into())));
+}
+
+/// 87. The headshot badge without a named killer.
+#[test]
+fn t87_headshot_without_a_killer() {
+    assert_eq!(kill_badges(false, true, false, false, false), vec![Badge::Headshot]);
+    let (mut sim, me) = setup(&[RIFLE]);
+    let v = other(&mut sim, me, 5.0, 2, "V");
+    died(&mut sim, v, None, DamageKind::Bullet, None, Hitgroup::Head);
+    let k = last_kill(&sim);
+    assert_eq!((k.killer, k.badges), (None, vec![Badge::Headshot]));
+}
+
+/// 88. The badge slots: the second at the last badge's x.
+#[test]
+fn t88_badge_slots() {
+    let badges = |b: Vec<Badge>| {
+        let items = feed_line(&Kill { badges: b, ..kill("K", "V") }, width);
+        let slots: Vec<(f32, Badge)> = items
+            .iter()
+            .filter_map(|i| match i {
+                FeedItem::Badge { x, badge } => Some((*x, *badge)),
+                _ => None,
+            })
+            .collect();
+        let victim = items
+            .iter()
+            .find_map(|i| match i {
+                FeedItem::Text { x, text, .. } if text == "V" => Some(*x),
+                _ => None,
+            })
+            .unwrap();
+        (slots, victim)
+    };
+    let x_b = 5.0 + 10.0 + FEED_ICON_WIDTH;
+    let (slots, victim) = badges(vec![Badge::Revenge, Badge::Headshot, Badge::Groin]);
+    assert_eq!(slots, vec![(x_b, Badge::Revenge), (x_b + 64.0, Badge::Groin)]);
+    assert_eq!(victim, x_b + 96.0);
+    let (slots, victim) = badges(vec![Badge::Revenge, Badge::Headshot, Badge::Groin, Badge::Flag]);
+    assert_eq!(slots[1], (x_b + 96.0, Badge::Flag));
+    assert_eq!(victim, x_b + 128.0);
+}
+
+/// 89. The flag badge's image: the enemy flag for a victim on the local
+/// player's team, the team flag otherwise.
+#[test]
+fn t89_flag_badge_image() {
+    assert_eq!(kill_badges(false, false, false, true, true), vec![Badge::Flag]);
+    assert_eq!(kill_badges(false, false, false, true, false), vec![Badge::TeamFlag]);
+    let mut art = combat_arms::ui::hud::BoundHud::default();
+    art.textures.insert("killenemyflagimg".into(), "enemy_flag.dtx".into());
+    art.textures.insert("killteamflagimg".into(), "team_flag.dtx".into());
+    assert_eq!(art.badge(Badge::Flag).as_deref(), Some("enemy_flag.dtx"));
+    assert_eq!(art.badge(Badge::TeamFlag).as_deref(), Some("team_flag.dtx"));
+    // In the game: the victim carried a flag.
+    use combat_arms::game::rules::objectives::CaCarry;
+    let (mut sim, me) = setup(&[RIFLE]);
+    let foe = other(&mut sim, me, 5.0, 2, "Foe");
+    sim.app.world_mut().entity_mut(foe).insert(CaCarry {
+        flag: Some(1),
+        ..default()
+    });
+    died(&mut sim, foe, Some(me), DamageKind::Bullet, None, Hitgroup::Chest);
+    assert_eq!(last_kill(&sim).badges, vec![Badge::TeamFlag]);
+}
+
+/// 90. A dead player's tag shows to everyone, over its body, in the dead
+/// colour, while the body is there.
+#[test]
+fn t90_dead_players_tags() {
+    let dead = TagInputs {
+        local_alive: true,
+        alive: false,
+        seen: true,
+        body_visible: true,
+        ..default()
+    };
+    let t = name_tag(dead).expect("shown without aiming");
+    assert_eq!((t.name, t.opacity, t.rank), (TAG_DEAD, 255, false));
+    assert_eq!(name_tag(TagInputs { body_visible: false, ..dead }), None, "no body: no tag");
+    assert!(name_tag(TagInputs { local_alive: false, ..dead }).is_some(), "the local player dead too");
+    // In the game: B killed 10 m ahead, not aimed at.
+    let (mut sim, me) = setup(&[RIFLE]);
+    let foe = other(&mut sim, me, 10.0, 2, "B");
+    sim.intent(me).yaw += 1.2;
+    sim.ticks(1);
+    sim.app.world_mut().write_message(Damage {
+        target: foe,
+        attacker: Some(me),
+        amount: 5.0,
+        point: Vec3::ZERO,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Chest,
+        kind: DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.ticks(3);
+    let body = {
+        let w = sim.app.world_mut();
+        let mut q = w.query::<(Entity, &combat_arms::game::characters::CaBody)>();
+        q.iter(w).find(|(_, b)| b.owner == foe).map(|(e, b)| (e, b.at)).expect("a body")
+    };
+    let tag = hud(&sim).tags.into_iter().find(|t| t.entity == foe).expect("B's tag over its body");
+    assert_eq!(tag.tag.name, TAG_DEAD);
+    assert!((tag.anchor - body.1).length() < 1e-5);
+    sim.app.world_mut().despawn(body.0);
+    sim.ticks(1);
+    assert!(hud(&sim).tags.iter().all(|t| t.entity != foe), "the body gone: no tag");
+}
+
+/// 91. The rank icon: on the aimed living player only.
+#[test]
+fn t91_rank_icon() {
+    let mate = TagInputs {
+        local_alive: true,
+        teammate: true,
+        alive: true,
+        seen: true,
+        ..default()
+    };
+    assert!(name_tag(TagInputs { aimed: true, ..mate }).unwrap().rank);
+    assert!(!name_tag(mate).unwrap().rank);
+    let corpse = TagInputs {
+        aimed: true,
+        alive: false,
+        body_visible: true,
+        ..mate
+    };
+    assert!(!name_tag(corpse).unwrap().rank);
+    let (mut sim, me) = setup(&[RIFLE]);
+    let m = other(&mut sim, me, 5.0, 1, "Mate");
+    look_at(&mut sim, me, m);
+    assert!(hud(&sim).tags.iter().find(|t| t.entity == m).unwrap().tag.rank);
+}
+
+/// 95. The pickup prompt: the string table's `IDS_HUD_ITEMGET_MSG`
+/// centred on `ActionDesc` (bound.rs), for 100 ms after the aim leaves;
+/// none under the scope overlay.
+#[test]
+fn t95_pickup_prompt() {
+    let mut m = ActionMessage::default();
+    m.request("IDS_HUD_ITEMGET_MSG", 1000.0);
+    assert_eq!(m.frame(1100.0), Some("IDS_HUD_ITEMGET_MSG"));
+    assert_eq!(m.frame(1101.0), None);
+    assert_eq!(message_x(312, 400, 150), 437);
+    let on = PickupInputs {
+        draw_step: true,
+        weapon_data: true,
+        aiming_at_pickup: true,
+        ..default()
+    };
+    assert_eq!(pickup_prompt(on, false), Some("IDS_HUD_ITEMGET_MSG"));
+    assert_eq!(pickup_prompt(PickupInputs { scope_overlay: true, ..on }, false), None);
+    assert_eq!(pickup_prompt(on, true), Some("IDS_HUD_Search_mybag"));
+    // In the game (the view on a rifle, as the server reports it).
+    use combat_arms::game::net::CaPickup;
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.app.world_mut().entity_mut(me).insert(CaPickup(Some(RIFLE.into())));
+    sim.ticks(1);
+    let a = hud(&sim).action.expect("the prompt");
+    let ours = combat_arms::ui::CaUi::default().strings.resolve("IDS_HUD_ITEMGET_MSG");
+    assert_eq!((a.id.as_str(), a.text.as_str()), ("IDS_HUD_ITEMGET_MSG", ours.as_str()));
+    assert!(!a.text.contains("M4A1"), "no item name");
+    sim.app.world_mut().entity_mut(me).insert(CaPickup(None));
+    let left = now_ms(&sim);
+    sim.ticks(1);
+    while now_ms(&sim) - left <= 100.0 {
+        assert!(hud(&sim).action.is_some(), "still shown {}", now_ms(&sim) - left);
+        sim.ticks(1);
+    }
+    sim.ticks(1);
+    assert!(hud(&sim).action.is_none(), "gone after 100 ms");
+    // The scope overlay up: none.
+    let w = active(&sim, me);
+    let mut modes = chimera_sim::weapon::AltModes::new(2, 0.3, false);
+    modes.current = 1;
+    sim.app.world_mut().entity_mut(w).insert((
+        modes,
+        chimera_sim::weapon::Zoom {
+            fov: vec![20.0],
+            max_speed: None,
+            unzoom_after_shot: false,
+            scope: true,
+        },
+    ));
+    sim.app.world_mut().entity_mut(me).insert(CaPickup(Some(RIFLE.into())));
+    sim.ticks(2);
+    assert!(sim.app.world().get::<chimera_sim::weapon::Zoomed>(me).is_some_and(|z| z.scope));
+    sim.ticks(10);
+    assert!(hud(&sim).action.is_none(), "no prompt under the scope");
+}
+
+/// 96. The prompt's conditions: a mine in hand or infected, none; the
+/// bomb prompts in Search & Destroy.
+#[test]
+fn t96_prompt_conditions() {
+    let on = PickupInputs {
+        draw_step: true,
+        weapon_data: true,
+        aiming_at_pickup: true,
+        ..default()
+    };
+    assert_eq!(pickup_prompt(PickupInputs { mine: true, ..on }, false), None);
+    assert_eq!(pickup_prompt(PickupInputs { infected: true, ..on }, false), None);
+    assert_eq!(bomb_prompt(true, false, false, false, false), Some("IDS_HUD_BOMBDEFUSE_MSG"));
+    assert_eq!(bomb_prompt(true, true, false, false, false), None, "a defuse under way");
+    assert_eq!(bomb_prompt(false, false, true, false, true), Some("IDS_HUD_BOMBSET_MSG"));
+    assert_eq!(bomb_prompt(false, false, true, false, false), Some("IDS_HUD_BOMBSELECT_MSG"));
+    assert_eq!(bomb_prompt(false, false, true, true, true), None, "planting");
+    // In the game: a mine in hand.
+    use combat_arms::game::net::CaPickup;
+    let (mut sim, me) = setup(&[RIFLE]);
+    let w = active(&sim, me);
+    sim.app.world_mut().entity_mut(w).insert(CaHudData { mine: true, ..default() });
+    sim.app.world_mut().entity_mut(me).insert(CaPickup(Some(RIFLE.into())));
+    sim.ticks(2);
+    assert!(hud(&sim).action.is_none(), "a mine in hand");
+    // Search & Destroy on a site: Bravo aiming at it -> defuse; Alpha with
+    // the bomb in it, the round live -> plant (the bomb in hand or not).
+    use combat_arms::game::rules::{
+        CaMatch, Phase,
+        objectives::BOMB,
+        objects::{BombZone, CaMapObjects, ObjBox},
+    };
+    let (mut sim, me) = setup(&[RIFLE]);
+    combat_arms::harness::with_mode(sim.app.world_mut(), "TMM");
+    sim.ticks(2);
+    let at = sim.position(me);
+    sim.app.world_mut().resource_mut::<CaMapObjects>().bomb_zones = vec![BombZone {
+        family: "Doobic".into(),
+        number: 0,
+        defusers: 2,
+        can_defuse: true,
+        defuse_time: 7.0,
+        detonate_time: 40.0,
+        area: ObjBox {
+            centre: at + Vec3::new(0.0, 0.0, -3.0),
+            half: Vec3::new(1.5, 1.5, 1.5),
+        },
+    }];
+    sim.app.world_mut().entity_mut(me).insert(chimera_core::core::Team(2));
+    sim.intent(me).pitch = -0.2;
+    sim.ticks(2);
+    let id = |sim: &Sim| hud(sim).action.map(|a| a.id);
+    assert_eq!(id(&sim).as_deref(), Some("IDS_HUD_BOMBDEFUSE_MSG"), "Bravo aiming at a site");
+    sim.app.world_mut().entity_mut(me).insert(chimera_core::core::Team(1));
+    sim.app.world_mut().resource_mut::<CaMapObjects>().bomb_zones[0].area.centre = at;
+    {
+        let mut m = sim.app.world_mut().resource_mut::<CaMatch>();
+        m.phase = Phase::Live;
+        m.warmup = false;
+        m.round_ends = None;
+    }
+    combat_arms::game::rules::objectives::give_weapon(sim.app.world_mut(), me, BOMB);
+    sim.ticks(10);
+    assert_eq!(id(&sim).as_deref(), Some("IDS_HUD_BOMBSELECT_MSG"), "the bomb not in hand");
+}
+
+/// 97. The action gauge in whole percent on its own timer; its titles the
+/// string table's.
+#[test]
+fn t97_action_gauge() {
+    let mut g = ActionGauge::default();
+    let t0 = 100.0;
+    assert_eq!(g.frame(Some(GaugeKind::Defuse), 7.0, t0), Some(0));
+    assert_eq!(g.frame(Some(GaugeKind::Defuse), 7.0, t0 + 3.5), Some(50));
+    assert_eq!(gauge_bar(50, 200), 100);
+    assert_eq!(g.frame(Some(GaugeKind::Defuse), 7.0, t0 + 6.999), Some(99));
+    assert_eq!(gauge_bar(99, 200), 198);
+    assert_eq!(g.frame(Some(GaugeKind::Defuse), 7.0, t0 + 7.0), None, "hidden at the total");
+    assert_eq!(gauge_percent(1.999, 4.0), Some(49), "not 49.975");
+    assert_eq!(GaugeKind::Defuse.title(), "$GaugeBombDefuse");
+    assert_eq!(GaugeKind::Plant.title(), "$GaugeBombPlant");
+    // In the game: the local player's defuse.
+    use combat_arms::{
+        game::rules::objectives::{ActionKind, CaAction},
+        ui::hud::score::CaScoreHud,
+    };
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.app.world_mut().entity_mut(me).insert(CaAction {
+        kind: ActionKind::Defuse,
+        held: 0.0,
+        length: 7.0,
+    });
+    sim.ticks(1);
+    let start = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+    sim.seconds(3.5);
+    let now = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+    let g = sim.app.world().resource::<CaScoreHud>().gauge.clone().expect("the gauge");
+    assert_eq!(g.percent, (100.0 * (now - start) / 7.0 + 1e-9) as u32);
+    let ours = combat_arms::ui::CaUi::default().strings.resolve("$GaugeBombDefuse");
+    assert_eq!(g.title, ours);
+    sim.seconds(3.6);
+    assert!(sim.app.world().resource::<CaScoreHud>().gauge.is_none(), "hidden after 7 s, still held");
+}
+
+/// 98. The gauge sight's images: prefix, step, ".dtx".
+#[test]
+fn t98_gauge_sight_images() {
+    let l = "ui_hud/crosshair/left_";
+    let r = "ui_hud/crosshair/right_";
+    let clip = (100.0 * 14.0f32 / 30.0) as i32;
+    assert_eq!(gauge_images(l, r, 67, clip), (format!("{l}70.dtx"), format!("{r}50.dtx")));
+    assert_eq!(gauge_images(l, r, 4, 100).0, format!("{l}0.dtx"));
+    assert_eq!(gauge_images(l, r, 95, 100), (format!("{l}100.dtx"), format!("{r}100.dtx")));
+}
+
+/// 99. The range readout's look: `SysFont13` at 20 px, its right end at x
+/// 490 and its top at y 400 (scaled); a hit closer than 1 unit, empty.
+#[test]
+fn t99_range_readout_look() {
+    let ui = combat_arms::ui::CaUi::default();
+    let font = ui.fonts.get(RANGE_FONT).expect("the range font");
+    assert_eq!(font.height, 20);
+    let d = combat_arms::ui::hud::range_text(&ui.fonts, screen(), "50.0", RANGE_IN).unwrap();
+    assert_eq!((d.rect.x1, d.rect.y0), (490, 400), "{:?}", d.rect);
+    let big = Screen::new(1920.0, 1080.0);
+    let d = combat_arms::ui::hud::range_text(&ui.fonts, big, "50.0", RANGE_IN).unwrap();
+    // Within the layout's whole reference px (T4: the text's reference
+    // width ⌊80 / 1.875⌋ = 42 aligned in the box, so 1.25 px over).
+    assert!((d.rect.x1 as f32 - 918.75).abs() <= 1.5 && (d.rect.y0 as f32 - 562.5).abs() <= 1.0, "{:?}", d.rect);
+    assert_eq!(d.font.height, 28, "trunc(20 x 1.40625)");
+    assert_eq!(range_readout(Some(0.6), 3500.0, 0.0).0, "");
+}
+
+/// 100. The weapon panel's name is the item table's.
+#[test]
+fn t100_weapon_name_from_the_item_table() {
+    let (mut sim, _) = setup(&[RIFLE]);
+    assert_eq!(hud(&sim).weapon.unwrap().name, "M4A1", "the data's without an item name");
+    sim.app
+        .world_mut()
+        .resource_mut::<combat_arms::ui::hud::ItemNames>()
+        .0
+        .insert(RIFLE.into(), "M4A1 Custom".into());
+    sim.ticks(1);
+    assert_eq!(hud(&sim).weapon.unwrap().name, "M4A1 Custom");
 }
 
 /// grenades.md case 55: the flash's white is drawn over the HUD, chat and

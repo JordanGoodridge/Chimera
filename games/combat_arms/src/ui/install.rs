@@ -28,13 +28,18 @@
 //!   (`apply_font_list`); a layout's font still missing is added from
 //!   the face its name's prefix names (the number its height).
 //! - Art: every texture the two layouts name (buttons' four states), the
-//!   HUD's stance silhouettes and fire-mode icons, and the kill feed's
-//!   weapon icons and badges (`EXTRA_ART`, `kill_icon`), decoded to RGBA
-//!   by their names (`texture_key`: lower case, `/`, `.dtx` added).
+//!   HUD's stance silhouettes and fire-mode icons, the kill feed's
+//!   weapon icons and badges (`EXTRA_ART`, `kill_icon`) and the gauge
+//!   sight's images (`GAUGE_SIGHT_PREFIXES` with 0 to 100), decoded to
+//!   RGBA by their names (`texture_key`: lower case, `/`, `.dtx` added).
 //!
-//! Known shortcuts: the per-user override file and the pack's
-//! per-language texture table (`localresource_<code>.txt`: R1 says the
-//! pack maps texture names, not how) aren't read; the language comes
+//! The pack's per-language texture table (`localresource_<code>.txt`)
+//! isn't read: the game applies none (ui_system.md R1, Corrections 8),
+//! textures are drawn by their own names in every language.
+//!
+//! Known shortcuts: the per-user override file isn't read, nor the client
+//! event attributes' event table (the one texture-name swap the game
+//! has: no events are configured); the language comes
 //! from the environment, not an options screen; a font's average glyph
 //! width (when its `Width` is 0) is our face's estimate; the map
 //! pictures are decoded when the loading screen opens, not here (they
@@ -151,6 +156,8 @@ impl std::fmt::Debug for InstallUi {
 /// `FileName`, `Height` and `Width`, 0 natural).
 #[derive(Clone, Debug, PartialEq)]
 pub struct InstallFont {
+    /// Its section's number (`SysFont<n>`).
+    pub number: usize,
     pub name: String,
     pub file: String,
     pub height: i32,
@@ -172,7 +179,9 @@ pub fn font_list(mount: &Mount) -> Vec<InstallFont> {
     };
     doc.records("SysFont")
         .into_iter()
-        .map(|s| InstallFont {
+        .enumerate()
+        .map(|(number, s)| InstallFont {
+            number,
             name: text(s, "Name"),
             file: text(s, "FileName"),
             height: s.int("Height", 0),
@@ -256,7 +265,14 @@ pub const HUD_LAYOUT_ART: &[&str] = &[
     "scoreboardffalosetex",
     "guage_bombplant_tex",
     "guage_bombdefuse_tex",
+    "guage_teamchagne_tex",
+    "humanroundwintex",
+    "infectorroundwintex",
 ];
+
+/// The gauge sight's image name prefixes (`[HUDLayout0]` keys, lower
+/// case; hud_crosshair.md A12, Corrections 13).
+pub const GAUGE_SIGHT_PREFIXES: &[&str] = &["crosshairlefttex", "crosshairrighttex"];
 
 /// The two-letter language codes the pack's codes stand for.
 const LANGUAGES: &[(&str, &str)] = &[
@@ -399,6 +415,12 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         .collect();
     names.extend(EXTRA_ART.iter().map(|s| s.to_string()));
     names.extend(HUD_LAYOUT_ART.iter().filter_map(|k| hud_layout.get(*k).cloned()));
+    // The gauge sight's images: each prefix with 0, 10, ... 100.
+    for k in GAUGE_SIGHT_PREFIXES {
+        if let Some(prefix) = hud_layout.get(*k) {
+            names.extend((0..=10).map(|n| format!("{}{}.dtx", prefix.trim(), n * 10)));
+        }
+    }
     names.extend(extra_art.iter().cloned());
     let mut art = HashMap::new();
     for n in names {
@@ -442,6 +464,15 @@ impl InstallUi {
     /// as a texture key.
     pub fn hud_texture(&self, key: &str) -> Option<String> {
         self.hud_layout.get(&key.to_lowercase()).map(|t| texture_key(t))
+    }
+
+    /// A `[HUDLayout0]` texture name prefix by key (lower case, `/`, no
+    /// extension added): the gauge sight's `CrossHairLeftTex` and
+    /// `CrossHairRightTex` (hud_crosshair.md A12).
+    pub fn hud_prefix(&self, key: &str) -> Option<String> {
+        self.hud_layout
+            .get(&key.to_lowercase())
+            .map(|t| t.trim().replace('\\', "/").to_lowercase())
     }
 }
 
