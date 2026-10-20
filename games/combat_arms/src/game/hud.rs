@@ -2,7 +2,8 @@
 //! a weapon's crosshair fields (A3 to A8: `CrossHairType`,
 //! `CrossHairColor`, `CrossHairOffset`, `DisableCrosshair`,
 //! `DuckPerturb`/`MoveDuckPerturb`, `DotSightName`, the wide-fire pellet
-//! count) and the mission bomb flag for the weapon panel (D4), as the hook
+//! count), the mission bomb flag for the weapon panel (D4) and the mine
+//! flag for the pickup prompt (D9), as the hook
 //! `combat_arms:hud` of the weapon data (docs/weapon-data.md, "Hooks"),
 //! which puts them on the weapon as `CaHudData`. Nothing in the
 //! simulation reads it: it is here so every weapon document, the server's
@@ -44,6 +45,8 @@ pub struct CaHudData {
     /// The mission bomb (`Guntype` 8): no weapon panel. (The panel's
     /// class is the weapon's inventory class, its data `slot`: D4.)
     pub bomb: bool,
+    /// A mine: no pickup prompt while it is in hand (D9).
+    pub mine: bool,
 }
 
 /// Registers `combat_arms:hud` (before the weapon data loads).

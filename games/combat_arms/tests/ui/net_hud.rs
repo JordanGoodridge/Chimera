@@ -1,8 +1,9 @@
 //! The HUD on network clients (docs/plans/active/combat-arms.md, "Network
 //! part"): a server and two clients on chimera_net's `NetSim`, each
-//! client with the HUD's state (`CaHudStatePlugin`). A client deals no
-//! damage of its own, so its hit indicator comes from the server's
-//! confirmations and its damage feedback from the server's report; the
+//! client with the HUD's state (`CaHudStatePlugin`). The hit indicator
+//! comes from the client's own predicted shot test, before the server
+//! has the shot (hud_crosshair.md A10, Corrections 1); a client deals no
+//! damage of its own, so its damage feedback is the server's report; the
 //! armour shown is the server's.
 
 use std::time::Duration;
@@ -54,19 +55,26 @@ fn hits_damage_and_armour_come_from_the_server() {
     let clip = sim.clients[0].app.world().get::<Magazine>(rifle).unwrap().clip;
     client_intent(&mut sim, 0).pitch = -0.08;
     client_intent(&mut sim, 0).fire = true;
-    let (mut indicated, mut felt) = (false, false);
-    for _ in 0..120 {
+    let (mut indicated, mut hurt, mut felt) = (None, None, false);
+    let target = sim.character_of(1).unwrap();
+    for step in 0..120 {
         sim.step();
         if sim.clients[0].app.world().get::<Magazine>(rifle).unwrap().clip <= clip - 2 {
             client_intent(&mut sim, 0).fire = false;
         }
-        indicated |= sim.clients[0].app.world().resource::<HudMemory>().hit.last.is_some();
+        if indicated.is_none() && sim.clients[0].app.world().resource::<HudMemory>().hit.last.is_some() {
+            indicated = Some(step);
+        }
+        if hurt.is_none() && sim.server.app.world().get::<Health>(target).unwrap().current < 1.0 {
+            hurt = Some(step);
+        }
         felt |= sim.clients[1].app.world().resource::<HudMemory>().damage.is_some();
     }
     let me1 = sim.local_player(1).unwrap();
     let w1 = sim.clients[1].app.world();
     assert!(w1.get::<Health>(me1).unwrap().current < 1.0, "client 1 was hurt");
-    assert!(indicated, "client 0's hit indicator lit from the server's confirmation");
+    let (indicated, hurt) = (indicated.expect("client 0's hit indicator lit"), hurt.expect("the server hurt client 1"));
+    assert!(indicated < hurt, "lit by the client's own shot test ({indicated}) before the server's hit ({hurt})");
     assert!(felt, "client 1's damage feedback from the server's report");
     let points = w1.get::<CaArmor>(me1).unwrap().points;
     assert!(points < 100.0);

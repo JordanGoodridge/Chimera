@@ -123,13 +123,32 @@ impl Default for CaUi {
         add("igm_button_B", (196, 24), [84, 92, 100, 255]);
         add("igm_button_C", (196, 24), [120, 96, 30, 255]);
         add("igm_button_D", (196, 24), [38, 40, 44, 200]);
+        // PLACEHOLDER for a round mode's bar divider marks
+        // (hud_crosshair.md D6: their look isn't given).
+        add(hud::bound::DIVIDER, (1, 1), [20, 20, 20, 220]);
+        let mut fonts = FontList::ours();
+        range_font(&mut fonts, "bold 20");
         Self {
-            fonts: FontList::ours(),
+            fonts,
             strings: Strings::ours(),
             stand_ins,
             install: None,
         }
     }
+}
+
+/// The range readout's font (hud_crosshair.md A9, Corrections 15): the
+/// face of the font list's `from` (the install's `SysFont13`; ours a
+/// stand-in) asked for at 20 px, as `hud::model::RANGE_FONT`.
+fn range_font(fonts: &mut FontList, from: &str) {
+    let Some(f) = fonts.get(from).cloned() else { return };
+    let height = 20;
+    fonts.add(layout::Font {
+        name: hud::model::RANGE_FONT.to_string(),
+        height,
+        average: ((f.average * height) as f32 / f.height.max(1) as f32).round().max(1.0) as i32,
+        face: f.face,
+    });
 }
 
 impl CaUi {
@@ -152,6 +171,9 @@ impl CaUi {
             ui.strings = strings;
         }
         install::apply_font_list(&inst.fonts, &mut ui.fonts);
+        if let Some(f) = inst.fonts.iter().find(|f| f.number == hud::model::RANGE_SYSFONT) {
+            range_font(&mut ui.fonts, &f.name.clone());
+        }
         for l in [&inst.hud, &inst.menu, &inst.indicator, &inst.result, &inst.team_list, &inst.no_team_list, &inst.loading]
             .into_iter()
             .flatten()
