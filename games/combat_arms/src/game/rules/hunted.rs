@@ -5,10 +5,11 @@
 //! once a map load). Firing ends spawn protection.
 //!
 //! Known shortcuts: no scavenging (players start with the usual loadout;
-//! no supply drops on the drop points, S12), no emotes, the death camera's
-//! `DyingTime` hold (3.5 s, a client's) isn't kept and the time hunted
-//! isn't tracked: the scoreboard ranks by mission points (round wins)
-//! then kills.
+//! no supply drops on the drop points, S12), no emotes and no time hunted:
+//! the scoreboard ranks by mission points (round wins) then kills. The
+//! death camera's hold, pull-back and free cameras are the client's
+//! (`game::death_cam`; its hold rides the body's place, not the `Eyes`
+//! socket).
 
 use super::{CaMode, HUNTED, Spawns, last_man};
 

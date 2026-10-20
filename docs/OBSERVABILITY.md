@@ -75,11 +75,14 @@ in the lowest crate whose public API it needs:
   WAREHOUSE; `heavy::model`: a prop model converts and animates as
   LithTech samples it; `heavy::movement_volumes`: the volume census of
   the 105 maps and players in their sea, ladders, gravity volumes, safety
-  nets and jump pads); its front end's (the
+  nets and jump pads); the death camera (`death_killcam.rs`: the
+  pull-back and orbit maths, the phase machine and the respawn countdown
+  headless, and `CaDeathCam` on players in a match); its front end's (the
   HUD's state, `ui::hud::CaHud`, headless; the UI system's layout,
   text and input cases and the in-game menu, `ui_system.rs`; the kill
   feed, score panel, scoreboard and loading screen bound by name,
-  `bound.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
+  `bound.rs`; the death screen bound by role and the dead player's name
+  tags, `death_screen.rs`) in tests/ui/, built with `ui` (`heavy::install_ui`: the
   install's own layouts and string tables through the UI system's
   readers, the game's HUD panels, scoreboard and loading screen bound
   by name and its in-game menu, V1 key);

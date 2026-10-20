@@ -43,7 +43,9 @@
 //! - `effects`: muzzle flashes, tracers, impacts and decals by surface,
 //!   blood, casings, grenade looks, and how every sound is chosen and
 //!   played (effects_sounds.md);
-//! - `volumes`: the maps' volumes (water, kill and damage volumes).
+//! - `volumes`: the maps' volumes (water, kill and damage volumes);
+//! - `death_cam`: the death camera, the kill-cam screen's values and the
+//!   respawn countdown, the client's own (death_killcam.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -52,6 +54,7 @@ pub mod attachments;
 pub mod bots;
 pub mod characters;
 pub mod data;
+pub mod death_cam;
 pub mod effects;
 pub mod grenades;
 pub mod hud;
@@ -179,6 +182,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(effects::CaEffectsPlugin)
             .add(weapons::CaWeaponsPlugin)
             .add(rules::CaRulesPlugin)
+            .add(death_cam::CaDeathCamPlugin)
             .add(bots::CaBotsPlugin)
             .add(characters::CaCharactersPlugin)
             .add(net::CaNetPlugin)
