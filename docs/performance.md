@@ -1262,6 +1262,52 @@ de_nuke's ladders (72-96 s). Next: a converted-map cache or a headless
 load path (architecture-review.md, P4b step 2) would take most of the
 remaining third spent loading.
 
+### The push hook (2026-10-19)
+
+Pushes took 20-60 minutes: the selection fell back to the whole suite
+for a lockfile change or when the compared commit wasn't in the clone,
+and Combat Arms' map tests took the box's memory. At 0a9bd397 a Combat
+Arms map load (`world::load_from`) took ~17 s alone and peaked at ~10
+GB (9.6 GB for WAREHOUSE, sampled from `/proc`), 15 of the 17 s in
+`view_model::add_view_models` (every weapon's view model, for every
+map), and `heavy::world::every_plain_map_converts` loaded the 33 plain
+maps in one test (1,050 s at load ~20) beside up to four other such
+tests. Loading maps on threads in one process didn't help then (5 maps:
+75 s on five threads, 83 s on one, 16 GB). Main's keyed-install work
+then gave the map sweeps `load_world` (no view models: 1.3-2.3 GB, the
+plain maps in 23 s) and split the keyed maps per archive.
+
+What changed here:
+
+- `.config/nextest.toml`: hung tests killed after 5 minutes (12 heavy,
+  30 the soak) instead of 20; Combat Arms' map sweeps (two loads at
+  once on threads) take two heavy slots and start early.
+- `affected`: a Cargo.lock change selects the crates whose resolved
+  dependencies changed (`lock_affected`; e42d8b89's, the V2 cipher
+  crates: 5 crates instead of every one); a compared commit missing from
+  the clone is fetched from the pushed-to remote first instead of
+  failing the selection; a selection of everything says so with every
+  reason.
+- The capacity test reruns itself in a child process under `cargo
+  test` (its instruction budget counts the whole process; counting the
+  server's own thread instead isn't steadier, its share of the parallel
+  work grows with load); the soak's frame-time growth check uses CPU
+  time, not wall time.
+
+Full suite, `cargo nextest run --features dev`, own `target/`, other
+agents building:
+
+| | before (0a9bd397) | after (merged with main) |
+|---|---|---|
+| wall | 2,083 s (load ~20); 2,969 s (load 13-34), the map test killed at 20 minutes | 1,757 s (load 15-25), 2,833 tests |
+| longest test | 1,050 s / 1,202 s (killed): Combat Arms' plain maps | 358 s: the soak |
+| Combat Arms' heavy tests, summed | 1,895 s | 261 s |
+| least memory available | 0 MB, 27 GB of swap used | 10.5 GB |
+
+The heavy tests now sum to ~5,500 s of the suite's ~7,200: with five
+heavy slots the wall time can't go much under ~1,100 s without more
+slots (memory allowed it in the last run) or cheaper map loads.
+
 ### The first crate: `source_formats` (2026-10-14)
 
 The repository became a workspace and the pure-data readers moved into

@@ -4,8 +4,9 @@
 # for the packages the staged changes can affect: `repo_checks`' `affected`
 # maps the staged files to workspace packages and follows cargo's crate
 # graph up to every package whose tests depend on them (checks/src/affected.rs
-# has the rules: the lockfile, workspace manifest, .config/, the hooks or a
-# build.rs select everything; Markdown and docs only the repository checks).
+# has the rules: the workspace manifest, .config/, the hooks or a build.rs
+# select everything; the lockfile the crates whose resolved dependencies
+# changed; Markdown and docs only the repository checks).
 # CHIMERA_COMMIT_TESTS=all runs the whole fast tier; =0 skips it (the old
 # name, MASHUP_COMMIT_TESTS, still works).
 # The affected heavy tests run before a push (.githooks/pre-push).

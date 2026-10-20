@@ -72,6 +72,9 @@ const INS_P50_MAX: f64 = 35.0;
 const INS_MEAN_MAX: f64 = 35.0;
 const INS_P99_MAX: f64 = 75.0;
 
+/// Set in the process the test runs itself in under `cargo test`.
+const CHILD: &str = "CHIMERA_CAPACITY_CHILD";
+
 /// The 1-minute load average per logical CPU under which CPU time is
 /// checked too.
 const QUIET_LOAD_PER_CPU: f64 = 0.5;
@@ -460,6 +463,29 @@ fn a_full_server_keeps_its_tick() {
     if !installed() {
         return;
     }
+    // The budget counts every thread of the process, so the test needs a
+    // process of its own: nextest gives each test one; under `cargo test`
+    // other tests run on threads beside it (and share Bevy's task pools),
+    // so it runs itself again in a child process and passes or fails
+    // with it. (Counting the server's own thread alone isn't steadier:
+    // its share of the parallel work grows when the task pools' threads
+    // wait for a CPU, p50 16.7M at load 1.7 a CPU, 20.5M at 2.3, against
+    // 26.6-29.2M for all threads; 2026-10-19.)
+    if std::env::var_os("NEXTEST").is_none() && std::env::var_os(CHILD).is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "heavy::net_capacity::a_full_server_keeps_its_tick",
+                "--nocapture",
+                "--test-threads",
+                "1",
+            ])
+            .env(CHILD, "1")
+            .status()
+            .expect("the test binary runs again");
+        assert!(status.success(), "the capacity run in its own process failed (its output is above)");
+        return;
+    }
     let players: usize = env("CHIMERA_CAPACITY_PLAYERS").unwrap_or(32);
     let clients: usize = env("CHIMERA_CAPACITY_CLIENTS").unwrap_or(4).min(players);
     let seconds: f64 = env("CHIMERA_CAPACITY_SECONDS").unwrap_or(20.0);
@@ -495,8 +521,7 @@ fn a_full_server_keeps_its_tick() {
         // space, every thread; Linux hardware counters): unlike CPU time
         // they hardly move with the machine's load (mean within 5%
         // between load 1 and 5 per CPU). Counted over the whole process,
-        // so run it alone in its process (nextest does; `cargo test`
-        // counts the heavy tests running beside it too).
+        // which is this test's alone (above).
         if let Some((p50, p99, mean)) = r.ins {
             assert!(
                 p50 < INS_P50_MAX,

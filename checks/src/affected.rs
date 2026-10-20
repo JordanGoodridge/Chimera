@@ -2,10 +2,13 @@
 //! git hooks, .githooks/pre-commit and pre-push, run only those).
 //!
 //! Each changed file is classified (`classify`):
-//! - everything (`Change::All`): the lockfile, the workspace manifest, the
-//!   test runner's and hakari's settings (.config/), the hooks, any
-//!   `build.rs`, the workspace-hack, this crate's selection code, and any
-//!   path no rule below knows (conservative);
+//! - everything (`Change::All`): the workspace manifest, the test
+//!   runner's and hakari's settings (.config/), the hooks, any `build.rs`,
+//!   the workspace-hack, this crate's selection code, and any path no rule
+//!   below knows (conservative); the lockfile too when its two versions
+//!   aren't given (`Selection::with_lock`: with them, the members whose
+//!   resolved dependencies changed, `lock_affected`, as if their code
+//!   had);
 //! - documentation (`Change::Docs`): Markdown anywhere, licences, docs/,
 //!   specs/, scripts/, dist/ and the analysis scripts under tools/: only
 //!   this crate's checks (CLAUDE.md's links, one-line docs entries, the
@@ -323,6 +326,125 @@ fn changes_everything(path: &str) -> Option<&'static str> {
     })
 }
 
+/// The workspace-hack (hakari's, chimera/workspace-hack): every member
+/// depends on it and it on every unified third-party crate, so the
+/// lockfile's graph is walked around it (`lock_affected`); its own
+/// changes select everything (`changes_everything`).
+pub const WORKSPACE_HACK: &str = "workspace-hack";
+
+/// One `[[package]]` of a Cargo.lock: its key (`name version source`),
+/// checksum and dependencies (as the lockfile names them).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LockPackage {
+    name: String,
+    version: String,
+    source: String,
+    checksum: String,
+    deps: Vec<String>,
+}
+
+/// A parsed Cargo.lock: packages by key, and their keys by name.
+struct Lock(BTreeMap<String, LockPackage>, BTreeMap<String, Vec<String>>);
+
+impl Lock {
+    fn parse(text: &str) -> Result<Self, String> {
+        let value: toml::Table = text.parse().map_err(|e| format!("Cargo.lock: {e}"))?;
+        let mut out = BTreeMap::new();
+        for p in value.get("package").and_then(|p| p.as_array()).into_iter().flatten() {
+            let s = |k: &str| p.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let pkg = LockPackage {
+                name: s("name"),
+                version: s("version"),
+                source: s("source"),
+                checksum: s("checksum"),
+                deps: p
+                    .get("dependencies")
+                    .and_then(|d| d.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|d| d.as_str().map(String::from))
+                    .collect(),
+            };
+            out.insert(format!("{} {} {}", pkg.name, pkg.version, pkg.source), pkg);
+        }
+        let mut by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (k, p) in &out {
+            by_name.entry(p.name.clone()).or_default().push(k.clone());
+        }
+        Ok(Self(out, by_name))
+    }
+
+    /// The key a dependency entry names: `name`, `name version` or `name
+    /// version (source)`.
+    fn resolve(&self, dep: &str) -> Option<&str> {
+        let mut parts = dep.splitn(3, ' ');
+        let name = parts.next()?;
+        let version = parts.next();
+        let source = parts.next().map(|s| s.trim_start_matches('(').trim_end_matches(')'));
+        self.1.get(name)?.iter().map(String::as_str).find(|k| {
+            let p = &self.0[*k];
+            version.is_none_or(|v| p.version == v) && source.is_none_or(|s| p.source == s)
+        })
+    }
+
+    /// The dependencies as keys (unresolvable entries left out).
+    fn deps_of(&self, key: &str) -> BTreeSet<String> {
+        self.0[key].deps.iter().filter_map(|d| self.resolve(d)).map(String::from).collect()
+    }
+
+    /// Every key `from` reaches, itself included, not through the
+    /// workspace-hack.
+    fn closure(&self, from: &str) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        let mut todo = vec![from.to_string()];
+        while let Some(k) = todo.pop() {
+            if !out.insert(k.clone()) {
+                continue;
+            }
+            todo.extend(self.deps_of(&k).into_iter().filter(|d| self.0[d].name != WORKSPACE_HACK));
+        }
+        out
+    }
+}
+
+/// What a Cargo.lock change can affect: each workspace member (by name)
+/// whose resolved dependency graph, before or after, holds a package that
+/// was added, removed, or changed checksum or dependencies, with those
+/// packages (`name version`). The graph is the lockfile's, a superset of
+/// any build's (every target, feature and platform), walked around the
+/// workspace-hack (hakari's feature unification: a change to it is its
+/// manifest's, which selects everything). Members only (no `source`).
+pub fn lock_affected(old: &str, new: &str) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
+    let (old, new) = (Lock::parse(old)?, Lock::parse(new)?);
+    let mut changed = BTreeSet::new();
+    for (k, p) in &new.0 {
+        match old.0.get(k) {
+            Some(o) if o.checksum == p.checksum && old.deps_of(k) == new.deps_of(k) => {}
+            _ => {
+                changed.insert(k.clone());
+            }
+        }
+    }
+    changed.extend(old.0.keys().filter(|k| !new.0.contains_key(*k)).cloned());
+    let label = |k: &str| {
+        let mut it = k.split(' ');
+        format!("{} {}", it.next().unwrap_or(k), it.next().unwrap_or_default())
+    };
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for lock in [&old, &new] {
+        for (k, p) in &lock.0 {
+            if !p.source.is_empty() || p.name == WORKSPACE_HACK {
+                continue;
+            }
+            let hit: BTreeSet<String> = lock.closure(k).intersection(&changed).map(|c| label(c)).collect();
+            if !hit.is_empty() {
+                out.entry(p.name.clone()).or_default().extend(hit);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Files no test reads: documentation and scripts for people.
 fn is_docs(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
@@ -443,15 +565,55 @@ pub struct Selection {
 impl Selection {
     /// The tests `changed` (paths relative to `root`) can affect.
     pub fn new(ws: &Workspace, root: &Path, changed: &[String]) -> Self {
+        Self::with_lock(ws, root, changed, None)
+    }
+
+    /// As `new`, with what the lockfile's change affects when known
+    /// (`lock_affected` of its two versions, or why it couldn't be
+    /// compared): only the members whose resolved dependencies changed,
+    /// as if their own code had; without it, everything.
+    pub fn with_lock(
+        ws: &Workspace,
+        root: &Path,
+        changed: &[String],
+        lock: Option<&Result<BTreeMap<String, BTreeSet<String>>, String>>,
+    ) -> Self {
         let mut sel = Selection::default();
         let mut changed_packages: BTreeMap<String, String> = BTreeMap::new();
         let mut tests: Vec<(String, Option<String>, Option<String>, String)> = Vec::new();
         let mut feature_parts: Vec<(String, String, String, String)> = Vec::new();
+        let mut everything = Vec::new();
         for path in changed {
-            let change = classify(ws, path, root.join(path).exists());
+            let change = match (path.as_str(), lock) {
+                ("Cargo.lock", Some(Ok(members))) => {
+                    let mut names = Vec::new();
+                    for (member, crates) in members {
+                        if ws.package(member).is_none() {
+                            continue;
+                        }
+                        names.push(member.as_str());
+                        let list: Vec<&str> = crates.iter().map(String::as_str).take(4).collect();
+                        let more = crates.len().saturating_sub(list.len());
+                        let more = if more > 0 { format!(" and {more} more") } else { String::new() };
+                        let why = format!("Cargo.lock: {}{more} changed in what it builds on", list.join(", "));
+                        changed_packages.entry(member.clone()).or_insert(why);
+                    }
+                    let what = if names.is_empty() {
+                        "the lockfile: no member's resolved dependencies changed".to_string()
+                    } else {
+                        format!("the lockfile: packages whose resolved dependencies changed: {}", names.join(", "))
+                    };
+                    sel.files.push((path.clone(), what));
+                    continue;
+                }
+                ("Cargo.lock", Some(Err(e))) => {
+                    Change::All(format!("Cargo.lock: the lockfile (its versions couldn't be compared: {e})"))
+                }
+                _ => classify(ws, path, root.join(path).exists()),
+            };
             let what = match &change {
                 Change::All(why) => {
-                    sel.all.get_or_insert_with(|| why.clone());
+                    everything.push(why.clone());
                     "everything".to_string()
                 }
                 Change::Docs => "docs: the repository checks".to_string(),
@@ -478,7 +640,8 @@ impl Selection {
             };
             sel.files.push((path.clone(), what));
         }
-        if sel.all.is_some() {
+        if !everything.is_empty() {
+            sel.all = Some(everything.join("; "));
             return sel;
         }
         if ws.package(CHECKS).is_some() {
@@ -648,7 +811,9 @@ impl Selection {
             out.push_str(&format!("  ... and {} more\n", self.files.len() - shown));
         }
         if let Some(why) = &self.all {
-            out.push_str(&format!("selected: every test ({why})\n"));
+            out.push_str(&format!(
+                "selected: EVERY TEST (the full suite; before a push its heavy tests too), because of: {why}\n"
+            ));
             return out;
         }
         out.push_str("selected:\n");
@@ -923,6 +1088,83 @@ mod tests {
         let s = select(&["games/cs_source/tests/ui/main.rs", "games/cs_source/src/lib.rs"]);
         assert!(s.partial.is_empty());
         assert!(s.packages.contains_key("cs_source"));
+    }
+
+    /// A lockfile: (name, version, source, checksum, dependencies).
+    fn lock(packages: &[(&str, &str, &str, &str, &[&str])]) -> String {
+        let mut out = String::from("version = 4\n");
+        for (name, version, source, sum, deps) in packages {
+            out.push_str(&format!("\n[[package]]\nname = \"{name}\"\nversion = \"{version}\"\n"));
+            if !source.is_empty() {
+                out.push_str(&format!("source = \"{source}\"\nchecksum = \"{sum}\"\n"));
+            }
+            let deps: Vec<String> = deps.iter().map(|d| format!("\"{d}\"")).collect();
+            out.push_str(&format!("dependencies = [{}]\n", deps.join(", ")));
+        }
+        out
+    }
+
+    const REG: &str = "registry+https://github.com/rust-lang/crates.io-index";
+
+    #[test]
+    fn a_lockfile_change_selects_the_members_that_build_on_it() {
+        let before = lock(&[
+            ("source_formats", "0.1.0", "", "", &["memchr", "workspace-hack"]),
+            ("chimera_core", "0.1.0", "", "", &["source_formats", "serde", "workspace-hack"]),
+            ("cs_source_tools", "0.1.0", "", "", &["image", "workspace-hack"]),
+            ("workspace-hack", "0.1.0", "", "", &["memchr", "serde", "image"]),
+            ("memchr", "2.7.0", REG, "a", &[]),
+            ("serde", "1.0.0", REG, "b", &[]),
+            ("image", "0.25.0", REG, "c", &["png 0.17.0"]),
+            ("png", "0.17.0", REG, "d", &[]),
+            ("png", "0.18.0", REG, "e", &[]),
+        ]);
+        // png 0.17 -> 0.17.1 under image (two versions: named with one).
+        let after = before
+            .replace("\"png 0.17.0\"", "\"png 0.17.1\"")
+            .replace("version = \"0.17.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d\"",
+                     "version = \"0.17.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f\"");
+        let hit = lock_affected(&before, &after).unwrap();
+        // Not through the workspace-hack: only the tools use image.
+        assert_eq!(hit.keys().collect::<Vec<_>>(), ["cs_source_tools"]);
+        assert_eq!(
+            hit["cs_source_tools"].iter().collect::<Vec<_>>(),
+            ["image 0.25.0", "png 0.17.0", "png 0.17.1"]
+        );
+        // memchr's checksum: what builds on source_formats.
+        let after = before.replace("checksum = \"a\"", "checksum = \"z\"");
+        let hit = lock_affected(&before, &after).unwrap();
+        assert_eq!(hit.keys().collect::<Vec<_>>(), ["chimera_core", "source_formats"]);
+        // Unchanged: nothing.
+        assert!(lock_affected(&before, &before).unwrap().is_empty());
+
+        // In a selection: those members and what depends on them, not
+        // everything.
+        let members = Ok(BTreeMap::from([(
+            "source_formats".to_string(),
+            BTreeSet::from(["memchr 2.7.1".to_string()]),
+        )]));
+        let files = vec!["Cargo.lock".to_string()];
+        let s = Selection::with_lock(&ws(), Path::new("/nonexistent"), &files, Some(&members));
+        assert!(s.all.is_none());
+        assert!(s.packages["source_formats"].contains("memchr 2.7.1"), "{:?}", s.packages);
+        assert!(s.packages.contains_key("cs_source"));
+        // No member affected: the checks only.
+        let none = Ok(BTreeMap::new());
+        let s = Selection::with_lock(&ws(), Path::new("/nonexistent"), &files, Some(&none));
+        assert_eq!(s.packages.keys().collect::<Vec<_>>(), [CHECKS]);
+        // Couldn't compare: everything, saying why.
+        let err = Err("no HEAD".to_string());
+        let s = Selection::with_lock(&ws(), Path::new("/nonexistent"), &files, Some(&err));
+        assert!(s.all.as_ref().unwrap().contains("no HEAD"));
+        assert!(s.summary().contains("EVERY TEST"));
+    }
+
+    #[test]
+    fn everything_says_every_reason() {
+        let s = select(&[".config/nextest.toml", ".githooks/pre-push"]);
+        let why = s.all.unwrap();
+        assert!(why.contains(".config/nextest.toml") && why.contains(".githooks/pre-push"), "{why}");
     }
 
     #[test]
