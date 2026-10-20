@@ -12,8 +12,9 @@ license.workspace = true
 doctest = false
 
 # The app composes two games as libraries (docs/DESIGN.md, "Vision"):
-# CS:S for its maps only (`cs_source::MAP_LOADER`; its simulation's
-# plugins and front end are never added, so no `ui`), Combat Arms for the
+# CS:S for its maps, map logic and guns (`cs_source::MAP_LOADER`,
+# `source_logic`, `CsGunsPlugin`; its other simulation plugins and front
+# end are never added, so no `ui`), Combat Arms for the
 # gameplay and its front end (`ui`), on Chimera's simulation, presentation,
 # network and client shell. Never another app (`cs_source_app`,
 # `combat_arms_app`) or `mashup` (checks/tests/it/architecture.rs).
@@ -25,6 +26,8 @@ chimera_net.workspace = true
 chimera_present.workspace = true
 chimera_client.workspace = true
 cs_source.workspace = true
+# Source's map logic, run on CS:S maps for any game's characters.
+source_logic.workspace = true
 combat_arms = { workspace = true, features = ["ui"] }
 avian3d.workspace = true
 bevy.workspace = true
@@ -54,5 +57,6 @@ dev = [
     "chimera_present/dev",
     "chimera_client/dev",
     "cs_source/dev",
+    "source_logic/dev",
     "combat_arms/dev",
 ]

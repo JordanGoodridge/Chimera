@@ -124,7 +124,14 @@ pub fn attach_hitboxes(
             continue;
         }
         let mut c = commands.entity(e);
-        c.insert((BodyModel(index), crate::core::Hitboxes(m.hitboxes.clone())));
+        c.insert(BodyModel(index));
+        // A body without hitboxes (a game whose hits are its own, as
+        // Combat Arms' spheres) leaves other games' bullets its collider.
+        if m.hitboxes.is_empty() {
+            c.remove::<crate::core::Hitboxes>();
+        } else {
+            c.insert(crate::core::Hitboxes(m.hitboxes.clone()));
+        }
         match &m.animations {
             Some(set) => c.insert(anim::Animator::new(set.clone())),
             None => c.remove::<anim::Animator>(),

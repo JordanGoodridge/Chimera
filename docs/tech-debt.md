@@ -200,6 +200,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/combat_arms view model hands: hand vertices pre-moved into the weapon's bind pose (exact when the binds agree); no colour variants, costumes or clan marks in our table (`games/combat_arms/src/game/view_model/hands.rs`)
 - games/combat_arms classes: Minigun rounds by the trigger's cycle, not its fire keys; no continuous fire, pre- or post-fire, launchers or projectiles; one reload time for the double barrel (`games/combat_arms/src/game/weapons/classes.rs`)
 - apps/combat_arms: Maps by id only (no map files or map offer); shares the CS:S app's config folder (binds, cvars) (`apps/combat_arms/src/lib.rs`)
+- apps/mashup_demo: Maps by id only; CS:S's guns lack impact effects and view animation, held models only where bones match (`apps/mashup_demo/src/lib.rs`)
 - games/combat_arms models: Animations resampled at 30 fps for Chimera's AnimSet (no LithTech tracker: no key strings, transitions or L + 1 done); LOD 0 only; vertex animation, render priority and extra textures ignored; props' render styles not applied (`games/combat_arms/src/game/model.rs`)
 - games/combat_arms render styles: What each render-style file does is our reading of its name (format not in the specs) (`games/combat_arms/src/game/render_style.rs`)
 - games/combat_arms props: Object Scale, MoveToFloor, Rotate and game type ignored; props don't collide; light from the nearest light-grid sample (`games/combat_arms/src/game/props.rs`)

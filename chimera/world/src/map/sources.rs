@@ -21,9 +21,28 @@
 //!   converts its own numbers with its own unit, so nothing is rescaled
 //!   when the two differ.
 //!
+//! - Surfaces: a map of another game keeps its own surface names (its
+//!   game's parts that stay, a gun of its game among them, use them), and
+//!   the app's `SurfaceTable` for the pair (a data file the app owns, not
+//!   either game) gives each its gameplay name (`MapData::surface_names`,
+//!   spawned as `SurfaceNames`): by name, else by the Source game material
+//!   letter the map's surface has (`sound::MapSurface::game_material`),
+//!   else the table's default.
+//! - Kept parts: the held and view models of the map's game whose keys
+//!   start with one of `MapSources::kept` stay (another game's weapons an
+//!   app offers in the gameplay's slots).
+//!
 //! The functions are plain `fn`s and the lists `'static` slices, so an
 //! app's `MapSources` is a `static` and its `client::AppHooks::load_map`
 //! a closure over it.
+
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
+
+use bevy::prelude::*;
+use serde::Deserialize;
 
 use super::MapData;
 use crate::core::Team;
@@ -60,8 +79,99 @@ pub struct SpawnTeams {
     pub to: u8,
 }
 
-/// An app's maps: the loaders it chose, its gameplay's dressing and the
-/// team mapping of other games' spawns.
+/// One game's surface names as another's: a data file an app owns for
+/// the pair (TOML: `[names]` the map's surface property names, lower-case,
+/// to the gameplay's; `[materials]` Source game material letters to the
+/// gameplay's, for names not listed; `default`, for the rest).
+#[derive(Clone, Copy, Debug)]
+pub struct SurfaceTable {
+    /// The maps' game (`cs_source`).
+    pub map: &'static str,
+    /// The gameplay's game (`combat_arms`).
+    pub gameplay: &'static str,
+    /// The table's text (the app's data file, built in).
+    pub text: &'static str,
+}
+
+/// A `SurfaceTable`'s rows.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SurfaceRows {
+    #[serde(default)]
+    pub default: Option<String>,
+    #[serde(default)]
+    pub names: HashMap<String, String>,
+    #[serde(default)]
+    pub materials: HashMap<char, String>,
+}
+
+impl SurfaceTable {
+    /// The table's rows (names lower-cased).
+    pub fn rows(&self) -> Result<SurfaceRows, String> {
+        let mut rows: SurfaceRows =
+            toml::from_str(self.text).map_err(|e| format!("{} to {} surfaces: {e}", self.map, self.gameplay))?;
+        rows.names = rows.names.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
+        rows.materials = rows.materials.into_iter().map(|(k, v)| (k.to_ascii_uppercase(), v)).collect();
+        Ok(rows)
+    }
+}
+
+impl SurfaceRows {
+    /// The gameplay's name for the map's surface `name` (lower-case),
+    /// whose game material letter is `material` (None: the map doesn't
+    /// say).
+    pub fn get(&self, name: &str, material: Option<char>) -> Option<&str> {
+        self.names
+            .get(name)
+            .or_else(|| self.materials.get(&material?.to_ascii_uppercase()))
+            .or(self.default.as_ref())
+            .map(String::as_str)
+    }
+
+    /// Every surface name `map` uses (its sound surfaces, its world's and
+    /// its models' meshes, its models' and brushes' surface properties)
+    /// with its gameplay name.
+    pub fn translate(&self, map: &MapData) -> HashMap<String, String> {
+        let mut names: BTreeSet<String> = map.sounds.surfaces.keys().cloned().collect();
+        let meshes = map.meshes.iter().chain(map.models.iter().flat_map(|m| &m.meshes));
+        names.extend(meshes.flat_map(|m| [&m.surface, &m.surface2]).flatten().cloned());
+        names.extend(map.models.iter().filter_map(|m| m.surfaceprop.clone()));
+        names
+            .into_iter()
+            .map(|n| n.to_lowercase())
+            .filter_map(|n| {
+                let material = map.sounds.surfaces.get(&n).map(|s| s.game_material);
+                let to = self.get(&n, material)?.to_string();
+                Some((n, to))
+            })
+            .collect()
+    }
+}
+
+/// The loaded map's surface names as the gameplay's (`MapData::
+/// surface_names`): empty when they are the gameplay's own.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct SurfaceNames(pub Arc<HashMap<String, String>>);
+
+impl SurfaceNames {
+    /// The gameplay's name of the map's surface `name` (any case); None:
+    /// no translation (the map's own name is the gameplay's, or unknown).
+    pub fn get(&self, name: &str) -> Option<&str> {
+        if self.0.is_empty() {
+            return None;
+        }
+        self.0.get(&name.to_lowercase()).map(String::as_str)
+    }
+
+    /// `name` as the gameplay knows it: its translation, else itself.
+    pub fn resolve<'a>(&'a self, name: &'a str) -> &'a str {
+        self.get(name).unwrap_or(name)
+    }
+}
+
+/// An app's maps: the loaders it chose, its gameplay's dressing, the
+/// team mapping of other games' spawns, the surface tables and the map
+/// game's parts it keeps.
 #[derive(Debug)]
 pub struct MapSources {
     /// The loaders; a bare map name (no `game:`) is the first's.
@@ -70,6 +180,11 @@ pub struct MapSources {
     /// their loaders make them).
     pub gameplay: Option<&'static MapDressing>,
     pub teams: &'static [SpawnTeams],
+    /// Other games' surface names as the gameplay's, one table per pair.
+    pub surfaces: &'static [SurfaceTable],
+    /// Key prefixes of the map game's held and view models that stay on
+    /// its maps (`cs_source:weapon_`: CS:S's guns an app offers).
+    pub kept: &'static [&'static str],
 }
 
 impl MapSources {
@@ -102,7 +217,17 @@ impl MapSources {
         let Some(gameplay) = self.gameplay.filter(|g| !g.game.eq_ignore_ascii_case(game)) else {
             return;
         };
-        map.take_game_parts();
+        map.take_game_parts_but(self.kept);
+        if let Some(table) = self
+            .surfaces
+            .iter()
+            .find(|t| t.map.eq_ignore_ascii_case(game) && t.gameplay.eq_ignore_ascii_case(gameplay.game))
+        {
+            match table.rows() {
+                Ok(rows) => map.surface_names = rows.translate(map),
+                Err(e) => map.warnings.push(e),
+            }
+        }
         for (_, team) in &mut map.spawns {
             *team = team.and_then(|t| {
                 self.teams
@@ -124,9 +249,16 @@ impl MapData {
     /// sounds, the muzzle flash, spent shells and impact decals. The
     /// world, its entities, sounds, particles and gibs stay.
     pub fn take_game_parts(&mut self) {
+        self.take_game_parts_but(&[]);
+    }
+
+    /// `take_game_parts`, but the held and view models whose keys start
+    /// with one of `kept` stay.
+    pub fn take_game_parts_but(&mut self, kept: &[&str]) {
+        let keep = |key: &str| kept.iter().any(|k| key.starts_with(k));
         self.characters.clear();
-        self.held.clear();
-        self.view_models.clear();
+        self.held.retain(|h| keep(&h.key));
+        self.view_models.retain(|v| keep(&v.key));
         self.hud = None;
         self.radio = None;
         self.bot_profiles = None;
@@ -146,11 +278,34 @@ mod tests {
     use super::*;
 
     fn a_map(name: &str, _: u8) -> Result<MapData, String> {
+        let mut sounds = crate::map::sound::MapSounds::default();
+        for (name, letter) in [("sand", 'N'), ("rock", 'C'), ("weird", '?')] {
+            let surface = crate::map::sound::MapSurface {
+                game_material: letter,
+                ..default()
+            };
+            sounds.surfaces.insert(name.into(), surface);
+        }
         let mut map = MapData {
             name: format!("a:{name}"),
             spawns: vec![(Vec3::ZERO, Some(Team(1))), (Vec3::X, Some(Team(2))), (Vec3::Y, Some(Team(7)))],
+            sounds: Arc::new(sounds),
             ..default()
         };
+        map.meshes.push(crate::map::MapMesh {
+            surface: Some("wood_crate".into()),
+            ..default()
+        });
+        for key in ["a:gun", "a:knife"] {
+            map.held.push(crate::map::MapHeldModel {
+                key: key.into(),
+                model: default(),
+                bone: String::new(),
+                muzzle: None,
+                merged: Vec::new(),
+                own: None,
+            });
+        }
         map.nav = Some(Default::default());
         Ok(map)
     }
@@ -176,6 +331,12 @@ mod tests {
         loaders: &[&A, &B],
         gameplay: Some(&B_PARTS),
         teams: &[SpawnTeams { game: "a", from: 1, to: 2 }, SpawnTeams { game: "a", from: 2, to: 1 }],
+        surfaces: &[SurfaceTable {
+            map: "a",
+            gameplay: "b",
+            text: "default = \"Stone\"\n[names]\nWood_Crate = \"Wood\"\n[materials]\nN = \"Sand\"\n",
+        }],
+        kept: &["a:gun"],
     };
 
     #[test]
@@ -186,6 +347,20 @@ mod tests {
         assert_eq!(map.warnings, ["b's parts"]);
         let teams: Vec<_> = map.spawns.iter().map(|(_, t)| t.map(|t| t.0)).collect();
         assert_eq!(teams, [Some(2), Some(1), None], "mapped; unlisted teams spawn anyone");
+        let kept: Vec<&str> = map.held.iter().map(|h| h.key.as_str()).collect();
+        assert_eq!(kept, ["a:gun"], "the kept prefix stays");
+    }
+
+    #[test]
+    fn surfaces_get_the_gameplays_names() {
+        let map = SOURCES.load("a:x", 0).unwrap();
+        let names = SurfaceNames(Arc::new(map.surface_names.clone()));
+        assert_eq!(names.get("WOOD_CRATE"), Some("Wood"), "by name");
+        assert_eq!(names.get("sand"), Some("Sand"), "by game material letter");
+        assert_eq!(names.get("weird"), Some("Stone"), "else the default");
+        assert_eq!(names.resolve("unseen"), "unseen");
+        let own = SOURCES.load("b:y", 0).unwrap();
+        assert!(own.surface_names.is_empty(), "the gameplay's own map keeps its names");
     }
 
     #[test]
