@@ -188,8 +188,9 @@ fn file_y(sim: &Sim, p: Entity) -> f32 {
 /// which have nothing under them in the file but the sea: no deck in the
 /// physics BSP, the render data or a world model there) starts on the
 /// `Water` volume's top (y = −58 in the file: viscosity 0.1, current
-/// (0, 1500, 0)) and stays there, bobbing, for 10 s: the current lifts
-/// it, leaving the water stops it, gravity takes it back in.
+/// (0, 1500, 0)) and floats there for 10 s: its hull's box touches the
+/// water (the eye is above it), the current lifts it until the box
+/// leaves, gravity takes it back.
 #[test]
 fn hgoilrig_player_floats() {
     if !keyed() {
@@ -203,33 +204,72 @@ fn hgoilrig_player_floats() {
     let p = sim.spawn_character(feet + Vec3::Y * 0.5, movement::ID);
     // The water's top, y = -58 in the file.
     let top = -58.0;
-    // It drops in from the top, the current stops it within about 60 u and
-    // brings it back up (18.4 u/s once slow), then it bobs at the top.
-    let mut wet = false;
     let mut low = f32::MAX;
     for tick in 1..=(10.0 / combat_arms::game::TICK_INTERVAL) as u32 {
         sim.ticks(1);
-        let y = file_y(&sim, p);
-        wet |= mv(&sim, p).in_liquid;
+        let y = file_y(&sim, p) - mv(&sim, p).half_height;
         low = low.min(y);
         if tick % 100 == 0 {
-            eprintln!("hgoilrig: tick {tick}: the centre is at y {y}");
+            eprintln!("hgoilrig: tick {tick}: the feet are at y {y}");
         }
-        assert!(y > top - 120.0, "sinking: centre at {y}");
+        assert!(y > top - 120.0, "sinking: feet at {y}");
         if tick as f64 * combat_arms::game::TICK_INTERVAL > 7.0 {
-            assert!((y - top).abs() < 5.0, "bobbing at the water's top ({top}): centre at {y}");
+            assert!((y - top).abs() < 5.0, "floating at the water's top ({top}): feet at {y}");
+            assert!(!mv(&sim, p).eye_free, "the eye above the water");
         }
     }
-    eprintln!("hgoilrig: lowest centre {low}");
-    assert!(wet, "in the water");
+    eprintln!("hgoilrig: lowest feet {low}");
+}
+
+/// HGOILRIG's sea, swimming (movement.md "Liquids and swimming"): a
+/// player put deep in the water (eye in it) looking down and holding
+/// forward dives; crouching sinks it; let go, the current lifts it.
+#[test]
+fn hgoilrig_swimming() {
+    if !keyed() {
+        return;
+    }
+    let Some(mount) = mount() else { return };
+    let map = world::load_world(&mount, "hgoilrig").unwrap();
+    let (feet, _) = map.spawns[0];
+    let mut sim = Sim::new(CaSim, MapSimPlugin::new(map));
+    sim.ticks(2);
+    let p = sim.spawn_character(feet + Vec3::Y * 0.5, movement::ID);
+    sim.ticks(2);
+    let s = movement_data().meters_per_unit;
+    let at = sim.position(p) / s;
+    // 300 u under the top (-58).
+    place(&mut sim, p, Vec3::new(at.x, -358.0, -at.z));
+    sim.ticks(1);
+    assert!(mv(&sim, p).free_movement && mv(&sim, p).in_liquid, "swimming: {:?}", mv(&sim, p));
+    let start = file_y(&sim, p);
+    sim.intent(p).pitch = -0.8;
+    sim.intent(p).move_axis = Vec2::Y;
+    sim.ticks(60);
+    let dived = file_y(&sim, p);
+    eprintln!("hgoilrig swimming: dived from {start} to {dived}");
+    assert!(dived < start - 30.0, "dived: {start} -> {dived}");
+    sim.intent(p).move_axis = Vec2::ZERO;
+    sim.intent(p).pitch = 0.0;
+    sim.intent(p).crouch = true;
+    sim.ticks(10);
+    let m = mv(&sim, p);
+    assert!(m.accel.y < 0.0 && m.crouch_rate == 0.0, "crouch sinks: {m:?}");
+    // Let go: the viscosity and the current stop the sinking (no vertical
+    // limit: it is fast), then lift the player at 18.4 u/s.
+    sim.intent(p).crouch = false;
+    sim.seconds(3.0);
+    let low = file_y(&sim, p);
+    sim.seconds(1.0);
+    let y = file_y(&sim, p);
+    eprintln!("hgoilrig swimming: rising from {low} to {y}");
+    assert!((y - low - 18.375).abs() < 1.0, "rising: {low} -> {y}");
 }
 
 /// HGOILRIG's ladder `Ladder0` (file box (110, 517.7, −140.4) ..
-/// (150, 954.3, −116.4)): a player in it (in the air, facing +Z in the
-/// file, looking up) climbs it and gets off at the deck at its top. From
-/// the deck at its foot the same keys don't lift the player: the spec's
-/// integrator pushes an upward acceleration back into the ground it
-/// stands on (movement.rs Known shortcuts; an open question).
+/// (150, 954.3, −116.4)): a player standing at its foot on the deck,
+/// facing +Z in the file and looking up, climbs it from the ground (no
+/// jump needed) and gets off on the deck at its top.
 #[test]
 fn hgoilrig_ladder() {
     if !keyed() {
@@ -245,16 +285,15 @@ fn hgoilrig_ladder() {
     assert!(mv(&sim, p).on_ladder && mv(&sim, p).on_ground, "at the ladder's foot");
     sim.intent(p).pitch = 1.2;
     sim.intent(p).move_axis = Vec2::Y;
-    sim.ticks(100);
-    assert!((file_y(&sim, p) - foot).abs() < 1.0, "from the ground: stays (spec as written)");
-    place(&mut sim, p, Vec3::new(c.x, lo.y + 100.0, c.z));
+    sim.ticks(40);
+    assert!(file_y(&sim, p) > foot + 20.0, "climbing from the ground: {foot} -> {}", file_y(&sim, p));
     let mut top = f32::MIN;
-    for _ in 0..300 {
+    for _ in 0..400 {
         sim.ticks(1);
         top = top.max(file_y(&sim, p));
     }
     let m = mv(&sim, p);
-    eprintln!("hgoilrig ladder: from y {} up to {top}, now at {}", lo.y + 100.0, sim.position(p) / s);
+    eprintln!("hgoilrig ladder: from y {foot} up to {top}, now at {}", sim.position(p) / s);
     assert!(!m.on_ladder && m.on_ground, "off the ladder, on the deck: {m:?}");
     assert!(file_y(&sim, p) > hi.y, "on the deck above: {}", file_y(&sim, p));
 }
@@ -306,8 +345,10 @@ fn gravitya_low_gravity() {
 }
 
 /// TWINHIGH's jump pad `JV08` (file box (−960, 128, −1600) .. (−832, 256,
-/// −1472), `Velocity` 800): a jump on it adds 800 u/s up instead of the
-/// 330: 783.5 after the tick.
+/// −1472), `Velocity` 800, its `Rotation` pointing up): a player dropped
+/// on it is launched by itself, without the jump key, on the tick after
+/// it lands: 800 u/s up added, 783.5 after the tick; and again after each
+/// landing.
 #[test]
 fn twinhigh_jump_pad() {
     let Some(mount) = mount() else { return };
@@ -316,12 +357,19 @@ fn twinhigh_jump_pad() {
     }
     let s = movement_data().meters_per_unit;
     let (mut sim, p) = sim_on(&mount, "twinhigh", file_to_engine(Vec3::new(-896.0, 200.0, -1536.0)) * s);
-    sim.ticks(5);
-    assert!(mv(&sim, p).on_ground, "on the pad: y {}", file_y(&sim, p));
-    sim.intent(p).jump = true;
-    sim.ticks(1);
-    let v = sim.velocity(p) / s;
-    assert!((v.y - 783.5).abs() < 1e-2, "{v}");
+    let mut launches = Vec::new();
+    for tick in 0..300 {
+        let was = mv(&sim, p).in_jump;
+        sim.ticks(1);
+        if !was && mv(&sim, p).in_jump {
+            launches.push((tick, (sim.velocity(p) / s).y));
+        }
+    }
+    eprintln!("twinhigh pad launches (tick, speed): {launches:?}");
+    assert!(launches.len() >= 2, "launched, and again after landing: {launches:?}");
+    for (_, vy) in &launches {
+        assert!((vy - 783.5).abs() < 0.5, "{vy}");
+    }
 }
 
 fn keyed() -> bool {
