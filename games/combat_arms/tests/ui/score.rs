@@ -91,3 +91,68 @@ fn elimination_pro_shows_its_round_timer() {
     let timer = score_hud(&sim).timer.expect("a timer in the warm-up");
     assert_eq!(timer, "00 : 08", "10 s warm-up, 1 s and a bit gone");
 }
+
+/// game_modes_2.md M11.10, M11.4's warning and M13's lines: Hired Guns'
+/// counters and the pocket, the squad's lines; VIP Escort's roles, the
+/// exit and the swap.
+#[test]
+fn modes_part_two_lines() {
+    use combat_arms::{
+        game::rules::{
+            mercs::MercOrder,
+            objectives::{Bullion, CaCarry, CaObjectives, Exit},
+        },
+        ui::hud::score::{objective_lines, squad_lines},
+    };
+    let mut o = CaObjectives {
+        placed: 80,
+        banked: [7, 3],
+        ..Default::default()
+    };
+    o.bullion = vec![
+        Bullion {
+            id: 1,
+            at: Vec3::ZERO,
+            bars: 1,
+            money: 100,
+            bag: false,
+        },
+        Bullion {
+            id: 2,
+            at: Vec3::ZERO,
+            bars: 12,
+            money: 1200,
+            bag: true,
+        },
+    ];
+    let pocket = |bars: u32| CaCarry {
+        bars,
+        money: bars as i32 * 100,
+        ..Default::default()
+    };
+    let lines = objective_lines(&o, pocket(11), 0.0);
+    assert!(lines.contains(&"Banked 7 - 3, in bags 12, unclaimed 1".to_string()), "{lines:?}");
+    assert!(lines.contains(&"Pocket 11 bars".to_string()));
+    assert!(lines.contains(&"Speed penalty 3 % with 11 bars".to_string()));
+    let lines = objective_lines(&o, pocket(30), 0.0);
+    assert!(lines.contains(&"Speed penalty 45 % with 30 bars".to_string()), "{lines:?}");
+    let squad = squad_lines(Some(800), Some(MercOrder::FollowMe), &[("Squad_1".into(), 0.5)]);
+    assert_eq!(squad, ["Bank 800", "Mercenaries (follow me):", "  Squad_1 50 %"]);
+    let esc = CaObjectives {
+        escort: 2,
+        exit: Some(Exit { opens: 30.0, open: false }),
+        rounds_to_swap: 2,
+        ..Default::default()
+    };
+    let lines = objective_lines(&esc, CaCarry::default(), 10.0);
+    assert_eq!(lines, ["Bravo escorts the VIP", "The exit opens in 20 s", "Rounds until the swap: 2"]);
+}
+
+/// The mode's name and goal on the panel for Hired Guns.
+#[test]
+fn hired_guns_panel() {
+    let (sim, _me, _them) = sim("SQM");
+    let hud = score_hud(&sim);
+    let panel = hud.panel.expect("a panel");
+    assert_eq!((panel.mode_name.as_str(), panel.goal.as_str()), ("Hired Guns", "7 rounds"));
+}

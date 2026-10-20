@@ -1081,7 +1081,7 @@ fn swing_knives(
 
 /// Where a ray from `origin` along `dir` enters the box `lo..hi`, if it
 /// does (0 when it starts inside).
-fn ray_box(origin: Vec3, dir: Vec3, lo: Vec3, hi: Vec3) -> Option<f32> {
+pub fn ray_box(origin: Vec3, dir: Vec3, lo: Vec3, hi: Vec3) -> Option<f32> {
     let inv = dir.recip();
     let a = (lo - origin) * inv;
     let b = (hi - origin) * inv;
@@ -1139,8 +1139,16 @@ fn pickups(
     }
 }
 
+/// A character that can't take weapons from the ground (VIP Escort's VIP,
+/// game_modes_2.md M13.4).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoPickups;
+
 /// `owner` takes the dropped `item` (11). Returns whether it did.
 pub fn pick_up(world: &mut World, owner: Entity, item: Entity) -> bool {
+    if world.get::<NoPickups>(owner).is_some() {
+        return false;
+    }
     let Some(d) = world.get::<Dropped>(item).copied() else { return false };
     if world.get::<Health>(owner).is_none_or(|h| h.current <= 0.0) {
         return false;
@@ -1345,7 +1353,9 @@ fn death_drop(world: &mut World, owner: Entity, allow: bool) {
     {
         *st = WeaponState::default();
     }
-    if !allow {
+    // A character that isn't a player (a Hired Guns mercenary) drops
+    // nothing (bots_objectives.md 2.7).
+    if !allow || world.get::<core::Npc>(owner).is_some() {
         return;
     }
     let carried = world.get::<Inventory>(owner).map(|i| i.weapons.clone()).unwrap_or_default();

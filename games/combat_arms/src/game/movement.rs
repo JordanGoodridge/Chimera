@@ -85,8 +85,11 @@
 //! stepping off a ledge into it (a question for the spec); water has no
 //! swimming of its own (no swim speed, sinking or surfacing keys,
 //! drowning: none in the specs), only the current, viscosity and
-//! gravity. Not modelled: movement disallowed (freeze), VIP accounts,
-//! kill-streak and stamina perks, the ammo's own stun, the "falling"
+//! gravity. The custom term P_custom is `CustomMovePenalty` (Hired Guns'
+//! carry penalty) and a VIP account `VipMovement` (VIP Escort's VIP: its
+//! model's penalty alone, the figure's stamina; Known shortcut: its sprint
+//! keeps the figure's dash speed). Not modelled: movement disallowed
+//! (freeze), kill-streak and stamina perks, the ammo's own stun, the "falling"
 //! sound status, stamina kits, jump stamina, maps' not-a-step surface
 //! flag (characters and moving bodies are not steps). The shape cast reports where it touched, not
 //! which cap: a stair-step drop or a standing probe that touches an edge
@@ -285,6 +288,21 @@ pub struct StunPenalty {
     pub until: f64,
 }
 
+/// The custom move penalty (P_custom, spec "Penalty"): Hired Guns' carry
+/// penalty (game_modes_2.md M11.4), set by the rules; predicted with the
+/// player's movement.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CustomMovePenalty(pub f32);
+
+/// A VIP (spec "Penalty": a VIP account; game_modes_2.md M13.4): the
+/// penalty is this alone (the VIP model's `MovePenalty`), whatever the
+/// weapon, gear or custom term, and the stamina the figure's with no gear
+/// bonuses. Set by VIP Escort's rules; predicted with the movement.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct VipMovement {
+    pub penalty: f32,
+}
+
 /// An infected character of the infection mode: hits from the other
 /// team knock it back (spec "Other modifiers", `HitKnockback`). The
 /// infection modes' rules set it (`rules::quarantine`).
@@ -417,7 +435,9 @@ impl Plugin for CaMovementPlugin {
             .insert_resource(Loadout { movement: ID })
             .register_movement::<CaMovement>(ID)
             .add_systems(Predict::Movement, (step, sync_collider).chain())
-            .predicted_net::<CaMovement>();
+            .predicted_net::<CaMovement>()
+            .predicted_net::<CustomMovePenalty>()
+            .predicted_net::<VipMovement>();
     }
 }
 
@@ -869,7 +889,7 @@ fn step(
         &mut Velocity,
         &mut MovementState,
         Option<&CaCharacter>,
-        (Option<&HeldMovePenalty>, Option<&StunPenalty>),
+        (Option<&HeldMovePenalty>, Option<&StunPenalty>, Option<&CustomMovePenalty>, Option<&VipMovement>),
         Option<&mut HitKnockback>,
         Has<Zoomed>,
         Has<Dead>,
@@ -895,9 +915,20 @@ fn step(
         let body = collider_of.get(e).map_or(e, |c| c.body);
         characters.contains(e) || characters.contains(body) || bodies.get(body).is_ok_and(|b| !b.is_static())
     };
-    for (entity, intent, mut me, mut transform, mut vel, mut state, character, (held, stun), mut knock, zoomed, dead) in &mut q {
+    for (entity, intent, mut me, mut transform, mut vel, mut state, character, (held, stun, custom, vip), mut knock, zoomed, dead) in
+        &mut q
+    {
         let me = &mut *me;
         let character = character.unwrap_or(&d.character);
+        // A VIP: the figure without its gear's bonuses.
+        let vip_character;
+        let character = match vip {
+            Some(_) => {
+                vip_character = character.without_gear();
+                &vip_character
+            }
+            None => character,
+        };
         let space = Space {
             mover: &move_and_slide,
             filter: SpatialQueryFilter::from_excluded_entities([entity]).with_mask(CHARACTER_FILTER),
@@ -1164,12 +1195,17 @@ fn step(
         let v1 = if on_ladder { d.ladder } else { v0 + (d.crouch - v0) * r };
         let held = held.copied().unwrap_or_default();
         let stun = stun.filter(|s| now < s.until).map_or(0.0, |s| s.penalty);
-        let penalty = (held.penalty * (1.0 + held.mod_factor)
-            + character.gear_sum(|g| g.move_penalty)
-            + fig.variable_weight
-            - fig.variable_speed
-            + stun)
-            .clamp(-1.0, 1.0);
+        let custom = custom.map_or(0.0, |c| c.0);
+        let penalty = match vip {
+            Some(v) => v.penalty.clamp(-1.0, 1.0),
+            None => (held.penalty * (1.0 + held.mod_factor)
+                + character.gear_sum(|g| g.move_penalty)
+                + fig.variable_weight
+                - fig.variable_speed
+                + custom
+                + stun)
+                .clamp(-1.0, 1.0),
+        };
         let limit = v1 * (1.0 - penalty) * container_speed;
         me.speed_limit = limit;
         let h = Vec2::new(v.x, v.z);

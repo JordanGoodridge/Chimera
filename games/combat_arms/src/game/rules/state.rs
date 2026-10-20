@@ -111,6 +111,15 @@ pub struct CaMatch {
     pub results: Vec<RoundResult>,
     /// The warm-up's next revive (S9).
     pub next_revive: f64,
+    /// Live: the round's result is decided and the round over waits until
+    /// then (VIP Escort's message hold, game_modes_2.md M13.6); the timer
+    /// no longer ends it.
+    pub hold_until: Option<f64>,
+    /// Living players take no damage (VIP Escort's decided round).
+    pub immune: bool,
+    /// The next mission start plays a warm-up round (VIP Escort's side
+    /// swap, the clan modes' half time: game_modes_2.md M13.7, M18.1).
+    pub warmup_next: bool,
 }
 
 impl CaMatch {
@@ -124,6 +133,20 @@ impl CaMatch {
     pub fn win(&mut self, winner: u8) {
         self.winner = Some(winner);
         self.end_requested = true;
+    }
+
+    /// Decide the round for `winner` now and end it after `hold` s from
+    /// `now` (the round stays live meanwhile: kills count, the winner
+    /// stays).
+    pub fn win_after(&mut self, winner: u8, now: f64, hold: f64) {
+        self.winner = Some(winner);
+        self.hold_until = Some(now + hold);
+    }
+
+    /// The round's result is decided (a winner set, an end asked for or
+    /// held).
+    pub fn decided(&self) -> bool {
+        self.winner.is_some() || self.end_requested || self.hold_until.is_some()
     }
 
     /// Ask for the round's end with no winner.
@@ -156,6 +179,12 @@ pub struct CaStats {
     pub defuses: u32,
     pub mission_points: i32,
     pub round_wins: u32,
+    /// VIP Escort (game_modes_2.md M13.2): escapes as the VIP, kills of
+    /// the VIP.
+    pub vip_escapes: u32,
+    pub vip_kills: u32,
+    /// Hired Guns (M11.5): bars banked.
+    pub bars_banked: u32,
 }
 
 /// How a death came about (S7's rows).

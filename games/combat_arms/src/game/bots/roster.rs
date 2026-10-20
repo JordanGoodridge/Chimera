@@ -43,7 +43,12 @@ fn static_id(world: &World, id: &str) -> Option<&'static str> {
 pub fn auto_team(world: &mut World) -> u8 {
     let mut humans: Vec<(u64, u8)> = Vec::new();
     let mut counts = [0usize; 2];
-    let mut q = world.query_filtered::<(Entity, &Team, Has<CaBot>), (With<Intent>, With<Health>, Without<Spectating>)>();
+    let mut q = world.query_filtered::<(Entity, &Team, Has<CaBot>), (
+        With<Intent>,
+        With<Health>,
+        Without<Spectating>,
+        Without<crate::core::Npc>,
+    )>();
     for (e, t, bot) in q.iter(world) {
         if t.0 != ALPHA && t.0 != BRAVO {
             continue;
@@ -198,7 +203,7 @@ pub(super) fn keep_quota(world: &mut World) {
     }
     let want = settings.quota as usize;
     let mut bots: Vec<(u64, Entity)> = world
-        .query_filtered::<Entity, With<CaBot>>()
+        .query_filtered::<Entity, (With<CaBot>, Without<crate::core::Npc>)>()
         .iter(world)
         .map(|e| (e.to_bits(), e))
         .collect();

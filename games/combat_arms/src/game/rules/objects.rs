@@ -16,7 +16,14 @@
 //!   when absent), at `Pos` (home);
 //! - flag zones (`FlagZoneTrigger`): `Team`, `LinkedFlag`, a box;
 //! - use triggers (`ActivateTrigger`, Seize and Secure's
-//!   `ActivateTrigger_A` and `_B` by `Name`): a box.
+//!   `ActivateTrigger_A` and `_B` by `Name`): a box;
+//! - Hired Guns' banks (`BullionSaveTrigger`, game_modes_2.md M11.2):
+//!   `Team` (empty: every team), a box; its mercenaries' spawn objects by
+//!   name (`UNITSPAWN_ALPHA`, `UNITSPAWN_BRAVO`, of any class: the stock
+//!   map's are `BaseClass`), their position;
+//! - VIP Escort's exit (`EscapeZoneTrigger`, M13.5): `Name`, `GameType`, a
+//!   box; its teleport points (`TeleportPoint`, M13.3) by `Name`, their
+//!   feet on the floor and their yaw.
 //!
 //! Boxes are axis-aligned in the map's axes (so in ours), engine metres.
 //! A test (or a tool) may put its own `CaMapObjects` in after a map loaded;
@@ -42,11 +49,20 @@ pub const MODE_CLASSES: &[&str] = &[
     "FlagZoneTrigger",
     "ActivateTrigger",
     "TDMGameControl",
+    "BullionSaveTrigger",
+    "EscapeZoneTrigger",
+    "TeleportPoint",
 ];
 
-/// Whether `game::world` passes objects of `class` through for the modes.
-pub fn is_mode_object(class: &str) -> bool {
+/// Objects of any class the modes find by their name's start (Hired
+/// Guns' mercenary spawns).
+pub const NAMED_OBJECTS: &[&str] = &["UNITSPAWN_"];
+
+/// Whether `game::world` passes an object of `class` named `name` through
+/// for the modes.
+pub fn is_mode_object(class: &str, name: Option<&str>) -> bool {
     MODE_CLASSES.contains(&class)
+        || name.is_some_and(|n| NAMED_OBJECTS.iter().any(|p| n.to_ascii_uppercase().starts_with(p)))
 }
 
 /// A flag's box half-extents when its object has none (M4), world units.
@@ -144,6 +160,33 @@ pub struct UseTrigger {
     pub area: ObjBox,
 }
 
+/// A Hired Guns bank (M11.2): where a team banks its bullion.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BankTrigger {
+    pub name: String,
+    /// The team that may bank here; None: every team.
+    pub team: Option<u8>,
+    pub area: ObjBox,
+}
+
+/// VIP Escort's exit (M13.5).
+#[derive(Clone, Debug, PartialEq)]
+pub struct EscapeZone {
+    pub name: String,
+    pub family: String,
+    pub area: ObjBox,
+}
+
+/// An object the modes find by name (a teleport point, a mercenary
+/// spawn): its class, name and place (feet and yaw where the map gives
+/// them, else its position).
+#[derive(Clone, Debug, PartialEq)]
+pub struct NamedPoint {
+    pub class: String,
+    pub name: String,
+    pub at: Transform,
+}
+
 /// The mode objects of the map loaded.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct CaMapObjects {
@@ -153,6 +196,16 @@ pub struct CaMapObjects {
     pub flags: Vec<FlagObject>,
     pub flag_zones: Vec<FlagZone>,
     pub triggers: Vec<UseTrigger>,
+    pub banks: Vec<BankTrigger>,
+    pub escape_zones: Vec<EscapeZone>,
+    pub points: Vec<NamedPoint>,
+}
+
+impl CaMapObjects {
+    /// The objects named `name` (any case).
+    pub fn named(&self, name: &str) -> impl Iterator<Item = &NamedPoint> {
+        self.points.iter().filter(move |p| p.name.eq_ignore_ascii_case(name))
+    }
 }
 
 /// A team name (`JSF`, `Creed`, their ids or `Alpha`/`Bravo`) as a team id.
@@ -245,7 +298,32 @@ pub fn read(entities: &[MapEntity], scale: f32) -> CaMapObjects {
                 name: e.get("targetname").unwrap_or("").to_string(),
                 area: area(e, scale, Vec3::ZERO),
             }),
-            _ => {}
+            "BullionSaveTrigger" => out.banks.push(BankTrigger {
+                name: e.get("targetname").unwrap_or("").to_string(),
+                team: e.get("Team").or(e.get("Teams")).and_then(team_named),
+                area: area(e, scale, Vec3::ZERO),
+            }),
+            "EscapeZoneTrigger" => out.escape_zones.push(EscapeZone {
+                name: e.get("targetname").unwrap_or("").to_string(),
+                family,
+                area: area(e, scale, Vec3::ZERO),
+            }),
+            class => {
+                let name = e.get("targetname").unwrap_or("");
+                if class == "TeleportPoint" || is_mode_object("", Some(name)) {
+                    let at = if e.get(super::super::world::FEET_KEY).is_some() {
+                        entity_to_engine(e.vector(super::super::world::FEET_KEY), scale)
+                    } else {
+                        entity_to_engine(e.origin(), scale)
+                    };
+                    let yaw = number(e, super::super::world::YAW_KEY).unwrap_or(0.0);
+                    out.points.push(NamedPoint {
+                        class: class.to_string(),
+                        name: name.to_string(),
+                        at: Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)),
+                    });
+                }
+            }
         }
     }
     out
@@ -310,5 +388,42 @@ mod tests {
         assert!((z.area.half - Vec3::new(1.30, 0.64, 1.25)).length() < 1e-5);
         assert!((o.flags[0].area.half - Vec3::new(0.10, 0.25, 0.10)).length() < 1e-5);
         assert_eq!(o.flags[0].name, "FlagA");
+    }
+
+    #[test]
+    fn hired_guns_and_escort_objects_read() {
+        assert!(is_mode_object("BaseClass", Some("UNITSPAWN_ALPHA")));
+        assert!(!is_mode_object("BaseClass", Some("Something")));
+        let list = vec![
+            ent(&[
+                ("classname", "BullionSaveTrigger"),
+                ("targetname", "SaveZone_A"),
+                ("origin", "1920 -384 96"),
+                ("Dims", "128 128 160"),
+                ("Team", "JSF"),
+            ]),
+            ent(&[("classname", "BaseClass"), ("targetname", "UNITSPAWN_BRAVO"), ("origin", "-1942 -772 98")]),
+            ent(&[
+                ("classname", "TeleportPoint"),
+                ("targetname", "VipTeleportPoint"),
+                ("origin", "-320 -1408 120"),
+                ("chimera_feet", "-320 -1408 100"),
+                ("chimera_yaw", "0.5"),
+            ]),
+            ent(&[
+                ("classname", "EscapeZoneTrigger"),
+                ("targetname", "EscapeZoneTrigger"),
+                ("origin", "0 0 0"),
+                ("Dims", "128 128 80"),
+                ("GameType", "VIPEscort"),
+            ]),
+        ];
+        let o = read(&list, 0.01);
+        assert_eq!(o.banks[0].team, Some(ALPHA));
+        assert!((o.banks[0].area.half - Vec3::new(1.28, 1.60, 1.28)).length() < 1e-5);
+        assert_eq!(o.named("unitspawn_bravo").count(), 1);
+        let vip = o.named("VipTeleportPoint").next().unwrap();
+        assert!((vip.at.translation.y - 1.0).abs() < 1e-5);
+        assert_eq!(o.escape_zones[0].family, "VIPEscort");
     }
 }
