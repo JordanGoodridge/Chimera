@@ -70,6 +70,7 @@ mod ragdoll;
 mod ragdoll_spec;
 mod rope_spec;
 mod rounds;
+mod schedules;
 mod source_movement;
 mod source_movement_css;
 mod source_movement_ladder_water;

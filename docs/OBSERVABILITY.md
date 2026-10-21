@@ -11,7 +11,11 @@ ticks, `Intent` driven directly. A `Sim` runs the simulation plugins it
 is given as its base, the first argument: the engine's alone
 (`chimera_sim::SimBasePlugins`) in Chimera's crates, CS:S's
 (`cs_source::harness::CsSim`: `cs_source::SimPlugins`, map logic's
-random picks seeded) in `cs_source`'s.
+random picks seeded) in `cs_source`'s. Its schedules run on the
+single-threaded executors the game and the dedicated server run
+(`Sim::multi_threaded` or `CHIMERA_EXECUTOR=multi` for Bevy's), with the
+task pools capped at 4 threads, so a test passes with the order players
+get.
 
 ```rust
 let mut sim = Sim::new(SimBasePlugins, GreyboxMapPlugin);
@@ -246,6 +250,10 @@ pairs (systems with conflicting access and no order; Bevy exempts its
 own shared render resources): one today, ours (`frame_metrics`'
 `render_start` and `apply_extract_commands`). The simulation's own order on real
 maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`CHIMERA_SPAWN_DUMP`).
+Each game's `tests/it/schedules.rs` ratchets the simulation's order: per
+fixed and `Predict` schedule, its dedicated server's and its game's
+ambiguous pairs, and the conflicting pairs the two run in opposite orders
+(prediction's at zero); a count that rises fails with the pairs to order.
 
 To photograph a live run step by step (e.g. before and after a round
 restart, where frame counts are too uncertain), run the game without
