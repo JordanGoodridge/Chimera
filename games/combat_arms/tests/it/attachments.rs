@@ -1134,6 +1134,42 @@ fn t37_link_by_position() {
     assert_eq!(got, [("Silencer_A_AR".to_string(), 0), ("DotSight_A_AR".to_string(), 2)]);
 }
 
+/// 28 (the install's data). A machine gun the install fits a sight (its
+/// record's `DefaultScopeAttach`, the sight on its accepted list) zooms,
+/// though our M60 document has no zoom table (every sight zooms,
+/// "Sights"); and a record without the field leaves the weapon unsighted
+/// (the install's record decides the fitted sight).
+#[test]
+fn t28_install_sight_on_a_machine_gun_zooms() {
+    use combat_arms::{
+        game::{data::{CaData, InstallAttributes}, weapons::zoom::CaZoom},
+        harness::CaSimWith,
+    };
+    let mods = r#"
+        [Mod0] Name="DotSight_A_AR" Kinds=1 Type=1 Integrated=1 ZoomLevel=1 ZoomFov0=50.0
+        [Weapon0] Name="M60" ModName0="DotSight_A_AR"
+    "#;
+    for (record, want) in [
+        (r#"[Weapon0] Name="M60" AmmoName0="a" Guntype=5 DefaultScopeAttach="DotSight_A_AR""#, Some(vec![50.0])),
+        (r#"[Weapon0] Name="M60" AmmoName0="a" Guntype=5"#, None),
+    ] {
+        let text = format!("[Ammo0] Name=\"a\" {record}");
+        let attributes = InstallAttributes {
+            weapons: Some(WeaponsFile::read(&Document::parse(text.as_bytes()).unwrap()).unwrap()),
+            mods: Some(ModFile::read(&Document::parse(mods.as_bytes()).unwrap())),
+            ..default()
+        };
+        let mut sim = Sim::with(CaSimWith(CaData::with_attributes(attributes)), |app| {
+            app.add_plugins(GreyboxMapPlugin);
+        });
+        sim.set_tick_interval(TICK_INTERVAL);
+        let p = player(&mut sim, Vec3::new(30.0, 1.0, 30.0), 0.0, 1.0, M60, &[]);
+        let w = arm(&mut sim, p, M60);
+        let scope = sim.app.world().get::<CaZoom>(w).expect("a zoom").scope.clone();
+        assert_eq!(scope.map(|s| s.fov), want, "{record}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Network
 
