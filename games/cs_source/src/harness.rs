@@ -70,6 +70,8 @@ pub const TEST_MAP_TICK: Duration = Duration::from_nanos(15_625_000);
 /// `net::maps::MapFiles` reads the install folder, and the server's map
 /// requests (`NetEvent::LoadMap`) load at once (`load_level`).
 pub fn serve_maps(app: &mut App, maps: TestMaps) {
+    // The map offer finds the map's file by its game (`GameInfo::map_file`).
+    crate::register_game(app);
     let read = {
         let maps = maps.clone();
         Arc::new(move |id: &str| std::fs::read(maps.file(id)).ok())

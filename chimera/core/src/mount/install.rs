@@ -12,9 +12,9 @@
 //!    `steamapps/common/<installdir>` holding the files the game needs.
 //!
 //! The Steam build id comes with it (from the manifest) for the mount
-//! doctor. Only games with an entry in `STEAM_GAMES` are looked for on
-//! Steam; the table is data (app id, required files), so this layer
-//! stays below the game modules.
+//! doctor. Only a game that names its Steam app (`GameInfo::steam`, a
+//! `SteamGame`: app id, required files) is looked for on Steam; this layer
+//! takes that as an argument and stays below the game modules.
 
 use std::{
     collections::BTreeMap,
@@ -30,25 +30,14 @@ use super::{
     keyvalues::{self, Escapes, Kv},
 };
 
-/// A game Steam installs: our game id, its Steam app, the files (relative
-/// to the install folder) that show it is that game.
+/// A game Steam installs: its Steam app and the files (relative to the
+/// install folder) that show it is that game. A game says it in
+/// `GameInfo::steam`.
 #[derive(Clone, Copy, Debug)]
 pub struct SteamGame {
-    pub game: &'static str,
     pub app_id: u32,
     pub name: &'static str,
     pub required: &'static [&'static str],
-}
-
-pub const STEAM_GAMES: &[SteamGame] = &[SteamGame {
-    game: "cs_source",
-    app_id: 240,
-    name: "Counter-Strike: Source",
-    required: &["cstrike/cstrike_pak_dir.vpk", "hl2/hl2_misc_dir.vpk"],
-}];
-
-pub fn steam_game(game: &str) -> Option<&'static SteamGame> {
-    STEAM_GAMES.iter().find(|g| g.game == game)
 }
 
 /// Replaces the usual Steam roots (paths joined as `PATH` is; empty: no
@@ -434,8 +423,13 @@ pub fn save_install(settings: &Path, game: &str, path: Option<&Path>) -> Result<
 
 /// Find `game`'s install: config, then the settings file, then Steam
 /// (`steam`: the roots to search, or None to skip Steam).
-pub fn resolve_with(config: &LocalConfig, settings: Option<&Path>, steam: Option<&[PathBuf]>, game: &str) -> Resolved {
-    let sg = steam_game(game);
+pub fn resolve_with(
+    config: &LocalConfig,
+    settings: Option<&Path>,
+    steam: Option<&[PathBuf]>,
+    game: &str,
+    sg: Option<&SteamGame>,
+) -> Resolved {
     let with_build =
         |path: PathBuf, found: Found| Install { build_id: sg.and_then(|g| build_id_near(&path, g)), path, found };
     let mut notes = Vec::new();
@@ -478,10 +472,10 @@ static STEAM_FOUND: Mutex<BTreeMap<String, Resolved>> = Mutex::new(BTreeMap::new
 /// `resolve_with` from the environment: the settings file
 /// (`settings_path`), the Steam roots (`steam_roots`, searched once per
 /// run).
-pub fn resolve(config: &LocalConfig, game: &str) -> Resolved {
+pub fn resolve(config: &LocalConfig, game: &str, sg: Option<&SteamGame>) -> Resolved {
     let settings = settings_path();
-    let mut r = resolve_with(config, settings.as_deref(), None, game);
-    let Some(sg) = steam_game(game).filter(|_| r.install.is_none()) else {
+    let mut r = resolve_with(config, settings.as_deref(), None, game, sg);
+    let Some(sg) = sg.filter(|_| r.install.is_none()) else {
         return r;
     };
     let steam = STEAM_FOUND
@@ -505,6 +499,12 @@ pub fn forget_steam() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static CSS: SteamGame = SteamGame {
+        app_id: 240,
+        name: "Counter-Strike: Source",
+        required: &["cstrike/cstrike_pak_dir.vpk", "hl2/hl2_misc_dir.vpk"],
+    };
 
     /// A scratch folder, removed when dropped.
     struct Scratch(PathBuf);
@@ -530,7 +530,7 @@ mod tests {
     }
 
     fn css() -> &'static SteamGame {
-        steam_game("cs_source").unwrap()
+        &CSS
     }
 
     /// A CS:S install in `library` (its files as empty stand-ins) with
@@ -663,12 +663,12 @@ mod tests {
 
         // Nothing configured or saved: Steam.
         let none = LocalConfig::default();
-        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source");
+        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source", Some(css()));
         assert_eq!(r.install.as_ref().unwrap().path, steam_dir);
 
         // Saved beats Steam.
         save_install(&settings, "cs_source", Some(&saved_dir)).unwrap();
-        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source");
+        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source", Some(css()));
         let i = r.install.unwrap();
         assert_eq!(i.path, saved_dir);
         assert_eq!(i.found, Found::Saved(settings.clone()));
@@ -676,13 +676,13 @@ mod tests {
 
         // The config beats both, even a path that doesn't check out.
         let config: LocalConfig = toml::from_str("[games.cs_source]\npath = \"/nowhere/css\"").unwrap();
-        let r = resolve_with(&config, Some(&settings), Some(&roots), "cs_source");
+        let r = resolve_with(&config, Some(&settings), Some(&roots), "cs_source", Some(css()));
         assert_eq!(r.install.unwrap().path, PathBuf::from("/nowhere/css"));
         assert!(r.notes.iter().any(|n| n.contains("config path")));
 
         // A saved path that no longer checks out falls through to Steam.
         save_install(&settings, "cs_source", Some(&s.0.join("gone"))).unwrap();
-        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source");
+        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source", Some(css()));
         assert_eq!(r.install.unwrap().path, steam_dir);
         assert!(r.notes.iter().any(|n| n.contains("saved path")));
 
@@ -693,7 +693,7 @@ mod tests {
         assert!(kept.games.contains_key("other") && !kept.games.contains_key("cs_source"));
 
         // A game Steam doesn't have here: config only.
-        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source_server");
+        let r = resolve_with(&none, Some(&settings), Some(&roots), "cs_source_server", None);
         assert!(r.install.is_none());
     }
 }

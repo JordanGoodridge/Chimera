@@ -13,7 +13,7 @@
 //! `$CHIMERA_STEAM_ROOT` replaces them), each `libraryfolders.vdf` library
 //! (old and new formats), the app's `appmanifest_<id>.acf` (fully
 //! installed; its build id for the mount doctor) and the files the game
-//! needs; `STEAM_GAMES` lists the games it looks for;
+//! needs; `GameInfo::steam` names the games it looks for;
 //! `LocalConfig::game_path` goes through it).
 
 pub mod config;

@@ -1059,5 +1059,5 @@ fn the_game_lists_its_maps_for_the_console() {
         "worlds2/readme.txt",
     ]));
     assert_eq!((combat_arms::game::INFO.map_names)(&mount), ["junk_flea", "warehouse"]);
-    assert_eq!((combat_arms::game::INFO.map_file)("warehouse"), "worlds/warehouse.dat");
+    assert_eq!((combat_arms::game::INFO.map_file)("warehouse"), None, "by id and hash only: no file clients download");
 }

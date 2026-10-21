@@ -73,9 +73,8 @@ pub(super) fn start_loading_ui(mut ui: ResMut<MenuUi>) {
     let slot = Arc::new(Mutex::new(None));
     ui.loading = Some(slot.clone());
     std::thread::spawn(move || {
-        let loaded = crate::mount::config::LocalConfig::load()
-            .ok()
-            .and_then(|c| c.game_path(crate::game::GAME))
+        let loaded = crate::game::INFO
+            .install()
             .and_then(|p| crate::game::mount::open(&p).ok())
             .and_then(|m| crate::game::gameui::load(&m));
         if let Ok(mut s) = slot.lock() {

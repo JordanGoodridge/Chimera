@@ -1827,7 +1827,7 @@ fn follow_map_cycle(
 /// Where a map of `game`'s comes from: the game's own content, its
 /// download folder, or Chimera's cache.
 fn map_source(game: &GameInfo, name: &str) -> &'static str {
-    let file = (game.map_file)(name);
+    let Some(file) = (game.map_file)(name) else { return "game" };
     let in_dir = |dir: Option<std::path::PathBuf>| dir.is_some_and(|d| d.join(&file).is_file());
     if in_dir(game.content_cache()) {
         "imported"
@@ -2474,7 +2474,8 @@ mod tests {
             open: |_| Err(std::io::ErrorKind::NotFound.into()),
             map_cycle: |_| Vec::new(),
             map_names: |_| Vec::new(),
-            map_file: |n| format!("maps/{n}.bsp"),
+            map_file: |n| Some(format!("maps/{n}.bsp")),
+        steam: None,
             import_map: |_| Err("no".into()),
             default_binds_cfg: "cfg/config_default.cfg",
             default_binds: &[],

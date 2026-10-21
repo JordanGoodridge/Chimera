@@ -82,5 +82,5 @@ fn lists_maps_from_the_bsp_layout() {
     let mut mount = chimera_core::mount::Mount::default();
     mount.push(Fake);
     assert_eq!((cs_source::INFO.map_names)(&mount), ["cs_office", "de_dust2"]);
-    assert_eq!((cs_source::INFO.map_file)("de_dust2"), "maps/de_dust2.bsp");
+    assert_eq!((cs_source::INFO.map_file)("de_dust2").as_deref(), Some("maps/de_dust2.bsp"));
 }
