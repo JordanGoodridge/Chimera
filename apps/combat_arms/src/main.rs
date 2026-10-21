@@ -16,7 +16,6 @@ use bevy::prelude::*;
 use chimera_client::client::Args;
 use chimera_present::{MapPlugin, render};
 use chimera_world::greybox;
-use combat_arms::game::CombatArmsPlugins;
 use combat_arms_app::ClientPlugin;
 
 fn main() {
@@ -88,8 +87,9 @@ fn main() {
                 .with_collision_hooks::<chimera_world::map::MapCollisionHooks>()
                 .build()
                 .disable::<PhysicsInterpolationPlugin>(),
-            combat_arms::SimPlugins,
-            CombatArmsPlugins,
+            // The simulation at Combat Arms' tick (the app's tests run it
+            // headless).
+            combat_arms_app::SimPlugin,
         ))
         // What the map's drawing needs (as the CS:S app adds them).
         .add_plugins((
@@ -106,7 +106,6 @@ fn main() {
             render::sky_occluder::SkyOccluderPlugin,
             render::detail::DetailMaterialPlugin,
         ))
-        .insert_resource(Time::<Fixed>::from_seconds(combat_arms::game::TICK_INTERVAL))
         // This build's version (`version`, bug reports; build.rs).
         .insert_resource(chimera_core::core::BuildVersion(combat_arms_app::VERSION))
         // Network play: a listen server, or a client (`connect`).

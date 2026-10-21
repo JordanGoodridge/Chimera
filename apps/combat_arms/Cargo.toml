@@ -32,6 +32,10 @@ name = "combat_arms"
 path = "src/main.rs"
 test = false
 
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
 [features]
 # Faster iteration: link Bevy as a dynamic library, serve the remote
 # protocol. `cargo run --features dev --bin combat_arms`. Never for

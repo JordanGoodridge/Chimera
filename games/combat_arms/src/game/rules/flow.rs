@@ -40,7 +40,9 @@
 //! - Leaving (S10): the mode's rule (`CaMode::leaving`) runs while the
 //!   leaver still counts (`rules`' observer on the player's removal).
 //! - A fresh match (`new_game`: a map loaded, `ca_restart`): back to
-//!   waiting, the cursors at 0, everyone's statistics cleared.
+//!   waiting, the cursors at 0, everyone's statistics cleared. A map
+//!   started without one (the app's `--map`) finds its mission at the
+//!   first mission start (`missions::ensure_resolved`).
 //!
 //! Known shortcuts: a round's end and the match's result are kept as data
 //! (`CaMatch::results`, `result`) and replicated (`game::net`); the reward
@@ -241,6 +243,9 @@ fn step(world: &mut World, now: f64) {
 /// then the round's setup.
 fn mission_start(world: &mut World, now: f64, first: bool) {
     let Some(mode) = current_mode(world) else { return };
+    if first {
+        missions::ensure_resolved(world);
+    }
     let has_warmup = missions::warmup(world).is_some();
     {
         let mut m = world.resource_mut::<CaMatch>();
