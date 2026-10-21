@@ -796,3 +796,97 @@ fn junk_flea2_delivery_sequence() {
     assert!(!hidden(&t, "Sub_Box_Kill01"), "under the box from 7 s");
     assert!(t.w.objects[t.id("Collision_MDL01") as usize].solid, "the model's collision from 20 s");
 }
+
+/// SHORTFUSE's sliding doors (`Door_OUT_*01`, `Door_IN_*01`) are drawn as
+/// doors: the `Filter` volumes beside them store `Visible` as the real 0,
+/// which was read as "no property" and drew each volume's box with its
+/// empty texture name as one flat slab (and its faces over the doors).
+/// Nothing in the converted map is drawn flat, each door's node carries
+/// its door-texture mesh, and the OUT leaves slide apart 72 u on a
+/// trigger.
+#[test]
+fn shortfuse_doors_are_drawn_and_open() {
+    let Some(mount) = mount() else { return };
+    let Some(data) = map(&mount, "shortfuse") else { return };
+    let flat: Vec<_> = data.meshes.iter().filter(|m| m.material.is_empty()).collect();
+    assert!(flat.is_empty(), "{} flat meshes drawn (volumes' boxes)", flat.len());
+    let mut t = T::of(&data);
+    for n in ["Door_OUT_L01", "Door_OUT_R01", "Door_IN_L01", "Door_IN_R01"] {
+        let id = t.id(n) as usize;
+        let meshes: Vec<_> = data.meshes.iter().filter(|m| m.entity == Some(id)).collect();
+        assert!(
+            !meshes.is_empty() && meshes.iter().all(|m| m.material.to_lowercase().contains("autodoor") && m.texture.is_some()),
+            "{n}: drawn with the door texture"
+        );
+    }
+    let (l, r) = (t.pos("Door_OUT_L01"), t.pos("Door_OUT_R01"));
+    t.frame();
+    t.send("Door_OUT_L01", "TRIGGER", Who::Nobody);
+    t.send("Door_OUT_R01", "TRIGGER", Who::Nobody);
+    t.frames(30);
+    assert_eq!(t.state("Door_OUT_L01"), State::On);
+    let (l2, r2) = (t.pos("Door_OUT_L01"), t.pos("Door_OUT_R01"));
+    close3(l2 - l, Vec3::new(0.0, 0.0, -72.0), 0.05, "left leaf");
+    close3(r2 - r, Vec3::new(0.0, 0.0, 72.0), 0.05, "right leaf");
+}
+
+/// SHORTFUSE's dumpster lids (`RotatingDoor00`, `02`, ...) are not
+/// activatable themselves (world_objects.md 7: only an object with
+/// `PlayerActivate` takes the use key); each is opened through the
+/// small panel beside it (`RotatingDoor01`, `03`, ...: `PlayerActivate`,
+/// `OpenCommand` "msg RotatingDoor00 on"). The use ray from the eye hits
+/// the panel's front faces and opens its lid; aimed at the lid it does
+/// nothing, and a second press closes it. The panel is a thin frustum
+/// without caps (its bevels and sides are what a ray meets).
+#[test]
+fn shortfuse_lid_opens_through_its_panel() {
+    let Some(mount) = mount() else { return };
+    let Some(data) = map(&mount, "shortfuse") else { return };
+    let s = movement_data().meters_per_unit;
+    let mut sim = Sim::new(CaSim, MapSimPlugin::new(data));
+    sim.ticks(3);
+    with_mode(sim.app.world_mut(), "QRT");
+    sim.seconds(2.0);
+    let (panel, lid) = {
+        let o = sim.app.world().resource::<CaObjects>();
+        let a = |n: &str| o.world.objects[o.named(n).unwrap() as usize].awm().unwrap().activatable();
+        assert!(a("RotatingDoor01") && !a("RotatingDoor00"), "the panel takes the use key, the lid doesn't");
+        (o.named("RotatingDoor01").unwrap(), o.named("RotatingDoor00").unwrap())
+    };
+    let state = |sim: &Sim, id: u32| {
+        let o = sim.app.world().resource::<CaObjects>();
+        o.world.objects[id as usize].awm().unwrap().state
+    };
+    // Stand east of the panel, the use ray at the middle of its bevel
+    // (file frame (458.04, -4056.98, 587.0)).
+    let press = |sim: &mut Sim, at: Vec3| {
+        let me = sim.spawn_character(to_engine(Vec3::new(494.0, -4037.5, 587.0), s), movement::ID);
+        sim.seconds(0.3);
+        let w = sim.app.world();
+        let eye = w.get::<Transform>(me).unwrap().translation + w.get::<chimera_core::core::MovementState>(me).unwrap().eye_offset;
+        let d = (to_engine(at, s) - eye).normalize();
+        {
+            let mut i = sim.intent(me);
+            i.yaw = (-d.x).atan2(-d.z);
+            i.pitch = d.y.asin();
+        }
+        sim.seconds(0.2);
+        sim.intent(me).use_key = true;
+        sim.seconds(0.3);
+        sim.intent(me).use_key = false;
+        sim.seconds(0.3);
+        sim.app.world_mut().despawn(me);
+    };
+    // The middle of the lid: nothing.
+    let lid_at = sim.app.world().resource::<CaObjects>().world.objects[lid as usize].pose.pos;
+    press(&mut sim, lid_at);
+    assert_eq!((state(&sim, panel), state(&sim, lid)), (State::Off, State::Off), "the lid itself isn't used");
+    press(&mut sim, Vec3::new(458.04, -4056.98, 587.0));
+    assert_eq!(state(&sim, panel), State::On, "the panel took the use key");
+    assert_ne!(state(&sim, lid), State::Off, "its lid opens");
+    sim.seconds(1.5);
+    assert_eq!(state(&sim, lid), State::On);
+    press(&mut sim, Vec3::new(458.04, -4056.98, 587.0));
+    sim.seconds(1.5);
+    assert_eq!((state(&sim, panel), state(&sim, lid)), (State::Off, State::Off), "a second press closes it");
+}

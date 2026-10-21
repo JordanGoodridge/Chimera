@@ -1360,7 +1360,14 @@ when it moved):
   `RotatingDoor01`): `--map combat_arms:shortfuse +ca_mode QRT` (in TDM
   the lids are removed), `setpos 322 300 -2903; setang 0 90 0`, then
   `ca_object_msg RotatingDoor01 trigger`: the lid swings up 90° in 1 s.
-  Rounds restart every few minutes with one player and respawn it.
+  Rounds restart every few minutes with one player and respawn it. In
+  play the lid itself takes no use key (`PlayerActivate` false): its
+  handle bar on the east end (`RotatingDoor01`, a thin 2 u frustum) does;
+  `setpos 350 416 -2860`, `setang 50 180 0` puts the crosshair on it, then
+  `+use`. Short Fuse's sliding doors (`Door_OUT_L01`/`R01`, `Door_IN_*`;
+  QRT opens them from the JSF switch): `setpos 200 620 -2690; setang 0 0
+  0` faces them from 80 u (the room behind is `EndlessFall60`, which kills
+  after 4 s until `Qrt_TimeSet` fires at 120 s; god mode doesn't stop it).
 - NEMEXISHQ, a double door (`UserDoorA00`/`A01`, used by players):
   `--map combat_arms:nemexishq`, `setpos -2030 153 1; setang 5 180 0`,
   then `+use`, `-use` 0.3 s later: both leaves swing 90° in 0.5 s. Its
