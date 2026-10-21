@@ -62,8 +62,7 @@ use crate::{
     core::{Dead, Npc},
     slots::{Loadout, MovementSlot, set_movement},
     weapon::{
-        Armor, Inventory,
-        economy::{DefuseKit, Money, NightVision},
+        Inventory,
     },
 };
 
@@ -916,6 +915,7 @@ fn capture_own_states(world: &mut World) {
         .query_filtered::<Entity, With<OwnStateOut>>()
         .iter(world)
         .collect();
+    let own_parts = world.remove_resource::<super::parts::OwnParts>();
     world.resource_scope(|world, registry: Mut<PredictedComponents>| {
         for e in characters {
             let state = registry.encode(world, e);
@@ -923,10 +923,7 @@ fn capture_own_states(world: &mut World) {
             let seed = world.get::<Seed>(e).map_or(0, |s| s.0);
             let held = world.get::<Dead>(e).is_some();
             let alive = !held && world.get::<Health>(e).is_none_or(|h| h.current > 0.0);
-            let money = world.get::<Money>(e).map(|m| m.0);
-            let armor = world.get::<Armor>(e).map(|a| (a.amount, a.helmet));
-            let kit = world.get::<DefuseKit>(e).is_some();
-            let nightvision = world.get::<NightVision>(e).is_some();
+            let parts = own_parts.as_ref().map_or_else(Vec::new, |p| p.encode(world, e));
             let view = world
                 .get::<crate::core::MapView>(e)
                 .map(|v| (v.origin.to_array(), v.rotation.to_array()));
@@ -947,15 +944,15 @@ fn capture_own_states(world: &mut World) {
                 alive,
                 ground,
                 frozen_until,
-                money,
-                armor,
-                kit,
-                nightvision,
+                parts,
                 view,
                 ..default()
             });
         }
     });
+    if let Some(p) = own_parts {
+        world.insert_resource(p);
+    }
 }
 
 /// The newest state of each remote player to its client, with how its

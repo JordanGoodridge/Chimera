@@ -1158,7 +1158,12 @@ pub fn predict(world: &mut World) {
 /// the weapons it carries): restore the server's state, then replay the
 /// commands since.
 #[derive(Resource, Default)]
-pub struct PredictedComponents(Vec<PredictedComponent>);
+pub struct PredictedComponents {
+    all: Vec<PredictedComponent>,
+    /// The networked ones by name, kept sorted as they are registered (a
+    /// blob's order), so encoding and comparing don't sort.
+    net: Vec<(&'static str, NetCodec)>,
+}
 
 type SavedComponent = Option<Box<dyn std::any::Any + Send + Sync>>;
 
@@ -1190,16 +1195,22 @@ const ABSENT: u16 = u16::MAX;
 pub struct PredictedSnapshot(Vec<(Entity, Vec<SavedComponent>)>);
 
 impl PredictedComponents {
+    /// Rebuild the sorted networked list after a registration.
+    fn reindex(&mut self) {
+        self.net = self.all.iter().filter_map(|c| Some((c.name, c.net?))).collect();
+        self.net.sort_by_key(|(name, _)| *name);
+    }
+
     /// The registered components' type names, in order.
     pub fn names(&self) -> Vec<&'static str> {
-        self.0.iter().map(|c| c.name).collect()
+        self.all.iter().map(|c| c.name).collect()
     }
 
     pub fn save(&self, world: &World, entities: &[Entity]) -> PredictedSnapshot {
         PredictedSnapshot(
             entities
                 .iter()
-                .map(|e| (*e, self.0.iter().map(|c| (c.save)(world, *e)).collect()))
+                .map(|e| (*e, self.all.iter().map(|c| (c.save)(world, *e)).collect()))
                 .collect(),
         )
     }
@@ -1210,7 +1221,7 @@ impl PredictedComponents {
     /// blobs are equal states, bit for bit.
     pub fn encode(&self, world: &World, entity: Entity) -> Vec<u8> {
         let mut out = Vec::new();
-        for (_, net) in self.net_order() {
+        for (_, net) in self.net.iter() {
             match (net.encode)(world, entity) {
                 Some(bytes) if bytes.len() < ABSENT as usize => {
                     out.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
@@ -1227,7 +1238,7 @@ impl PredictedComponents {
     /// and changes nothing.
     pub fn decode(&self, world: &mut World, entity: Entity, blob: &[u8]) -> Result<(), String> {
         let parts = self.split(blob)?;
-        for ((_, net), part) in self.net_order().into_iter().zip(parts) {
+        for ((_, net), part) in self.net.iter().zip(parts) {
             (net.decode)(world, entity, part);
         }
         Ok(())
@@ -1239,31 +1250,24 @@ impl PredictedComponents {
         let (Ok(pa), Ok(pb)) = (self.split(a), self.split(b)) else {
             return vec!["(layout)"];
         };
-        self.net_order()
-            .into_iter()
+        self.net
+            .iter()
             .zip(pa.into_iter().zip(pb))
             .filter(|(_, (x, y))| x != y)
-            .map(|((name, _), _)| name)
+            .map(|((name, _), _)| *name)
             .collect()
     }
 
     /// A blob's parts by component name (None: absent), in its order:
     /// for tools that look inside a prediction error.
     pub fn parts<'a>(&self, blob: &'a [u8]) -> Result<Vec<(&'static str, Option<&'a [u8]>)>, String> {
-        Ok(self.net_order().into_iter().map(|(n, _)| n).zip(self.split(blob)?).collect())
-    }
-
-    /// The networked components by name.
-    fn net_order(&self) -> Vec<(&'static str, NetCodec)> {
-        let mut v: Vec<(&'static str, NetCodec)> = self.0.iter().filter_map(|c| Some((c.name, c.net?))).collect();
-        v.sort_by_key(|(name, _)| *name);
-        v
+        Ok(self.net.iter().map(|(n, _)| *n).zip(self.split(blob)?).collect())
     }
 
     fn split<'a>(&self, mut blob: &'a [u8]) -> Result<Vec<Option<&'a [u8]>>, String> {
         let short = || "predicted state blob too short".to_string();
         let mut parts = Vec::new();
-        for _ in 0..self.net_order().len() {
+        for _ in 0..self.net.len() {
             let (len, rest) = blob.split_first_chunk::<2>().ok_or_else(short)?;
             blob = rest;
             let len = u16::from_le_bytes(*len);
@@ -1288,7 +1292,7 @@ impl PredictedComponents {
             if world.get_entity(*e).is_err() {
                 continue;
             }
-            for (c, value) in self.0.iter().zip(saved) {
+            for (c, value) in self.all.iter().zip(saved) {
                 (c.restore)(world, *e, value);
             }
         }
@@ -1355,16 +1359,17 @@ impl PredictedAppExt for App {
     ) -> &mut Self {
         let net = Some(NetCodec { encode, decode });
         let mut registry = self.world_mut().get_resource_or_init::<PredictedComponents>();
-        if let Some(c) = registry.0.iter_mut().find(|c| c.name == name) {
+        if let Some(c) = registry.all.iter_mut().find(|c| c.name == name) {
             c.net = net;
         } else {
-            registry.0.push(PredictedComponent {
+            registry.all.push(PredictedComponent {
                 name,
                 net,
                 save: |_, _| None,
                 restore: |_, _, _| {},
             });
         }
+        registry.reindex();
         self
     }
 }
@@ -1387,18 +1392,19 @@ fn register_predicted<C: Component<Mutability = bevy::ecs::component::Mutable> +
             w.entity_mut(e).remove::<C>();
         }
     };
-    if let Some(c) = registry.0.iter_mut().find(|c| c.name == name) {
+    if let Some(c) = registry.all.iter_mut().find(|c| c.name == name) {
         c.net = c.net.or(net);
         c.save = save;
         c.restore = restore;
     } else {
-        registry.0.push(PredictedComponent {
+        registry.all.push(PredictedComponent {
             name,
             net,
             save,
             restore,
         });
     }
+    registry.reindex();
 }
 
 /// Round restarts so far (the rules count one up when a new round
