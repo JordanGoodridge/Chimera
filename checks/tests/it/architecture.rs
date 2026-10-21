@@ -23,6 +23,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // plugins and admins happened.
     ("game_log", &["core", "console"]),
     ("mount", &["env"]),
+    // A player profile file (sections, `Key = value`): std only.
+    ("profile", &[]),
     // What a game tells the shell about itself (its install, map cycle,
     // tick, binds, movement cvars): data the game registers.
     ("game_registry", &["mount"]),
@@ -137,6 +139,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "rules",
             "bot",
             "mount",
+            "profile",
             "game_registry",
             "games",
             "logic",
@@ -159,6 +162,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "character",
             "movement",
             "mount",
+            "profile",
             "game_registry",
             "map",
             "music",

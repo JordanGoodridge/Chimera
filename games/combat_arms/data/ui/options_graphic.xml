@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Combat Arms' options screen, ours, in the game's layout format
+     (specs/combat_arms/ui_system.md L1-L4), written by a generator from the
+     control names of specs/combat_arms/options.md L. Places and texture
+     names are ours (flat stand-ins drawn by ui::draw); the screen is
+     drawn 1:1 on the 1024 x 768 menu. The install's own layouts replace
+     these when it is there. -->
+<CBALAYOUT>
+<Control Type="Window"><Property Name="GraphicWnd" Position="172,170" Size="680,340" Texture="blank"/>
+<Control Type="Text"><Property Name="check_full_row" Position="10,8" Font="bold 12" Element="Display" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_full" Position="150,9" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_full_label" Position="168,8" Font="bold 11" Element="Full screen" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_window" Position="270,9" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_window_label" Position="288,8" Font="bold 11" Element="Window" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_resolution" Position="10,36" Font="bold 12" Element="Resolution" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Button"><Property Name="drop_resolution" Position="150,32" Size="150,20" ButtonTexture="opt_drop_" Cmd_id="0" /></Control>
+<Control Type="Text"><Property Name="droptext_resolution" Position="158,35" Font="bold 11" Element="1024 x 768" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_16bit_row" Position="10,62" Font="bold 12" Element="Colour depth" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_16bit" Position="150,63" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_16bit_label" Position="168,62" Font="bold 11" Element="16 bit" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_32bit" Position="270,63" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_32bit_label" Position="288,62" Font="bold 11" Element="32 bit" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_gamma" Position="10,90" Font="bold 12" Element="Brightness" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="SliderBar"><Property Name="sliderbar_gamma" Position="150,92" Size="111,14"/></Control>
+<Control Type="Text"><Property Name="sliderbar_value_gamma" Position="272,91" Font="bold 11" Element="0" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_antialias" Position="10,116" Font="bold 12" Element="Anti-aliasing" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Button"><Property Name="drop_antialias" Position="150,112" Size="100,20" ButtonTexture="opt_drop_" Cmd_id="0" /></Control>
+<Control Type="Text"><Property Name="droptext_antialiasing" Position="158,115" Font="bold 11" Element="OFF" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_blood_off_row" Position="10,140" Font="bold 12" Element="Blood" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_blood_off" Position="150,141" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_blood_off_label" Position="168,140" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_blood_on" Position="270,141" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_blood_on_label" Position="288,140" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_low_row" Position="10,166" Font="bold 12" Element="Quality" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_low" Position="150,167" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_low_label" Position="168,166" Font="bold 11" Element="Low" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_mid" Position="240,167" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_mid_label" Position="258,166" Font="bold 11" Element="Mid" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_high" Position="330,167" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_high_label" Position="348,166" Font="bold 11" Element="High" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_custom" Position="420,167" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_custom_label" Position="438,166" Font="bold 11" Element="Custom" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Window"><Property Name="detail" Position="0,196" Size="680,140" Texture="blank" Show="FALSE"/>
+<Control Type="Text"><Property Name="check_emptycartridges_off_row" Position="10,6" Font="bold 12" Element="Shell casings" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_emptycartridges_off" Position="130,7" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_emptycartridges_off_label" Position="148,6" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_emptycartridges_on" Position="200,7" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_emptycartridges_on_label" Position="218,6" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_viewflare_off_row" Position="10,32" Font="bold 12" Element="Tracers" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_viewflare_off" Position="130,33" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_viewflare_off_label" Position="148,32" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_viewflare_on" Position="200,33" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_viewflare_on_label" Position="218,32" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_shadow_off_row" Position="10,58" Font="bold 12" Element="Shadows" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_shadow_off" Position="130,59" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_shadow_off_label" Position="148,58" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_shadow_low" Position="180,59" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_shadow_low_label" Position="198,58" Font="bold 11" Element="Low" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_shadow_high" Position="230,59" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_shadow_high_label" Position="248,58" Font="bold 11" Element="High" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_anisotropic_off_row" Position="10,84" Font="bold 12" Element="Anisotropic" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_anisotropic_off" Position="130,85" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_anisotropic_off_label" Position="148,84" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_anisotropic_on" Position="200,85" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_anisotropic_on_label" Position="218,84" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_trilinear_off_row" Position="10,110" Font="bold 12" Element="Trilinear" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_trilinear_off" Position="130,111" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_trilinear_off_label" Position="148,110" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_trilinear_on" Position="200,111" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_trilinear_on_label" Position="218,110" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_envmap_off_row" Position="340,6" Font="bold 12" Element="Environment" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_envmap_off" Position="440,7" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_envmap_off_label" Position="458,6" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_envmap_low" Position="490,7" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_envmap_low_label" Position="508,6" Font="bold 11" Element="Low" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_envmap_high" Position="540,7" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_envmap_high_label" Position="558,6" Font="bold 11" Element="High" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_chardetail_low_row" Position="340,32" Font="bold 12" Element="Character" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_chardetail_low" Position="440,33" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_chardetail_low_label" Position="458,32" Font="bold 11" Element="Low" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_chardetail_mid" Position="490,33" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_chardetail_mid_label" Position="508,32" Font="bold 11" Element="Mid" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_chardetail_high" Position="540,33" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_chardetail_high_label" Position="558,32" Font="bold 11" Element="High" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_shader_off_row" Position="340,58" Font="bold 12" Element="Shader" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_shader_off" Position="440,59" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_shader_off_label" Position="458,58" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_shader_on" Position="490,59" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_shader_on_label" Position="508,58" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_bloom_off_row" Position="340,84" Font="bold 12" Element="Bloom" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_bloom_off" Position="440,85" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_bloom_off_label" Position="458,84" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_bloom_on" Position="490,85" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_bloom_on_label" Position="508,84" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="check_fxlevel_low_row" Position="340,110" Font="bold 12" Element="Effects" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_fxlevel_low" Position="440,111" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_fxlevel_low_label" Position="458,110" Font="bold 11" Element="Low" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_fxlevel_mid" Position="490,111" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_fxlevel_mid_label" Position="508,110" Font="bold 11" Element="Mid" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="check_fxlevel_high" Position="540,111" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="check_fxlevel_high_label" Position="558,110" Font="bold 11" Element="High" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+</Control>
+</Control>
+</CBALAYOUT>

@@ -38,6 +38,7 @@ mod music_ambience;
 mod net;
 mod net_modes;
 mod net_modes_2;
+mod options;
 mod radio_chat;
 mod radio_chat_net;
 mod other_modes;
@@ -69,6 +70,7 @@ mod heavy {
     mod model;
     mod movement_volumes;
     mod mount;
+    mod options;
     mod props;
     mod radio;
     mod radar;

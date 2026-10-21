@@ -24,7 +24,9 @@
 //! from the keys held this frame (`pressed`, `just_pressed`,
 //! `wheel_notches`), with that system's own rules (only while playing, not
 //! while typing ...); `console::run_binds` leaves them alone. Every other
-//! bind runs its line through the console. Source key names, rebind and
+//! bind runs its line through the console. A key may hold several commands
+//! (`a; b`, a game's two actions on one key): `keys_for` finds it for each,
+//! and only the parts that are not polled run (`runnable`). Source key names, rebind and
 //! clear lines for the options.
 //!
 //! Known shortcuts: `POLLED` lists CS:S's polled commands (`buymenu`,
@@ -344,12 +346,39 @@ pub fn is_polled(line: &str) -> bool {
     POLLED.contains(&l.as_str())
 }
 
+/// A bind's commands: its line split at `;` outside quotes (one key may
+/// hold several: a game puts two actions on one key), trimmed.
+pub fn parts(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let (mut quoted, mut start) = (false, 0);
+    for (i, c) in line.char_indices() {
+        match c {
+            '"' => quoted = !quoted,
+            ';' if !quoted => {
+                out.push(line[start..i].trim().to_string());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(line[start..].trim().to_string());
+    out
+}
+
+/// The part of a bind's line that is run when its key goes down: the
+/// commands that are not `POLLED` (those are read by the systems that own
+/// them), joined with `; `. None when nothing is left to run.
+pub fn runnable(line: &str) -> Option<String> {
+    let rest: Vec<String> = parts(line).into_iter().filter(|p| !p.is_empty() && !is_polled(p)).collect();
+    (!rest.is_empty()).then(|| rest.join("; "))
+}
+
 /// The keys bound to exactly `command`, in key order.
 pub fn keys_for<'a>(binds: &'a BTreeMap<String, String>, command: &str) -> Vec<&'a str> {
     let c = norm(command);
     binds
         .iter()
-        .filter(|(_, v)| norm(v) == c)
+        .filter(|(_, v)| norm(v) == c || (v.contains(';') && parts(v).iter().any(|p| norm(p) == c)))
         .map(|(k, _)| k.as_str())
         .collect()
 }
@@ -543,6 +572,20 @@ mod tests {
 
     fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn a_key_can_hold_several_commands() {
+        let b = binds(&[("q", "+reload; lastinv"), ("w", "+forward"), ("e", "say \"a; b\"; +use")]);
+        assert_eq!(keys_for(&b, "lastinv"), ["q"]);
+        assert_eq!(keys_for(&b, "+reload"), ["q"]);
+        assert_eq!(keys_for(&b, "+forward"), ["w"]);
+        assert_eq!(keys_for(&b, "+use"), ["e"]);
+        // Polled parts are read by their systems; the rest runs.
+        assert_eq!(runnable("+reload; lastinv"), None);
+        assert_eq!(runnable("+reload; choose_1"), Some("choose_1".into()));
+        assert_eq!(runnable("say \"a; b\"; +use"), Some("say \"a; b\"".into()));
+        assert_eq!(runnable("+forward"), None);
     }
 
     /// A game's default binds file as it might read (CS:S's

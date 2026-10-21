@@ -114,6 +114,8 @@ fn main() {
         // The client shell with Combat Arms' HUD, then its other looks.
         .add_plugins(ClientPlugin { args })
         .add_plugins(combat_arms::ui::CaUiPlugin);
+    // The player's profile (options): loaded at start, saved at exit.
+    combat_arms::game::options::use_user_profile(&mut app, None);
     // The executors, `CHIMERA_SYSTEM_DUMP`, then the game, as every app
     // (`client::app::run`).
     chimera_client::client::app::run(app);

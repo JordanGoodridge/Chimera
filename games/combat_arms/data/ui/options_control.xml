@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Combat Arms' options screen, ours, in the game's layout format
+     (specs/combat_arms/ui_system.md L1-L4), written by a generator from the
+     control names of specs/combat_arms/options.md L. Places and texture
+     names are ours (flat stand-ins drawn by ui::draw); the screen is
+     drawn 1:1 on the 1024 x 768 menu. The install's own layouts replace
+     these when it is there. -->
+<CBALAYOUT>
+<Control Type="Window"><Property Name="ControlWnd" Position="172,170" Size="680,400" Texture="blank" Show="FALSE"/>
+<Control Type="Text"><Property Name="label_mousesens" Position="10,8" Font="bold 12" Element="Mouse sensitivity" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="SliderBar"><Property Name="SliderBar_Mousesens" Position="150,10" Size="111,14"/></Control>
+<Control Type="Text"><Property Name="SliderBar_value" Position="272,9" Font="bold 11" Element="0" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="InvertMouse_On_row" Position="10,34" Font="bold 12" Element="Invert mouse" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="InvertMouse_On" Position="150,35" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="InvertMouse_On_label" Position="168,34" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="InvertMouse_Off" Position="240,35" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="InvertMouse_Off_label" Position="258,34" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="mapRotaion_On_row" Position="340,34" Font="bold 12" Element="Radar rotation" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="mapRotaion_On" Position="460,35" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="mapRotaion_On_label" Position="478,34" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="mapRotaion_Off" Position="540,35" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="mapRotaion_Off_label" Position="558,34" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Window"><Property Name="list_control" Position="0,64" Size="680,310" Texture="blank"/>
+<Control Type="Button"><Property Name="IncreaseSens" Position="0,0" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Sensitivity up" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="DecreaseSens" Position="0,16" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Sensitivity down" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Forward" Position="0,32" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Move forward" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Back" Position="0,48" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Move back" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Left" Position="0,64" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Strafe left" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Right" Position="0,80" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Strafe right" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Action" Position="0,96" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Use / pick up" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Jump" Position="0,112" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Jump" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Walk" Position="0,128" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Walk" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Crouch" Position="0,144" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Crouch" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Sprint" Position="0,160" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Sprint" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Fire" Position="0,176" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Fire" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Reload" Position="0,192" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Reload" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="FiringMode" Position="0,208" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Fire mode" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Zoomin" Position="0,224" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Zoom" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Map" Position="0,240" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Large map" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="PreviousWeapon" Position="0,256" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Previous weapon" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="PrimaryWeapon" Position="0,272" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Primary weapon" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="SecondaryWeapon" Position="0,288" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Secondary weapon" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="MeleeWeapon" Position="340,0" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Melee weapon" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="SupportItem" Position="340,16" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Support item" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="SpecialItem" Position="340,32" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Special item" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="MissionItem" Position="340,48" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Mission item" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Chatting" Position="340,64" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Chat" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="SocialMsg" Position="340,80" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Radio: request" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="TalkInGamePlay" Position="340,96" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Voice chat" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="TacticalMsg" Position="340,112" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Radio: answer" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="ReportMsg" Position="340,128" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Radio: report" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="HUDOnOff" Position="340,144" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="HUD on/off" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="VideoCapture" Position="340,160" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Record video" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Help" Position="340,176" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Help" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="radarmap_reduct" Position="340,192" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Radar zoom out" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="radarmap_enlarge" Position="340,208" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Radar zoom in" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="SuperSoldier" Position="340,224" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Super soldier" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="NPC_Shop" Position="340,240" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Mercenary shop" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="NPC_Order" Position="340,256" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Mercenary orders" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="Use_Perk" Position="340,272" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Use ability" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+<Control Type="Button"><Property Name="QuestState" Position="340,288" Size="330,15" ButtonTexture="opt_row_" Cmd_id="0"/>
+<Control Type="Text"><Property Name="Label" Position="6,1" Font="bold 11" Element="Mission status" Normalcolor="222,222,222"/></Control>
+<Control Type="Text"><Property Name="ValueText" Position="170,1" Font="bold 11" Element="N/A" Normalcolor="255,198,0"/></Control>
+</Control>
+</Control>
+</Control>
+</CBALAYOUT>

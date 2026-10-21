@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Combat Arms' options screen, ours, in the game's layout format
+     (specs/combat_arms/ui_system.md L1-L4), written by a generator from the
+     control names of specs/combat_arms/options.md L. Places and texture
+     names are ours (flat stand-ins drawn by ui::draw); the screen is
+     drawn 1:1 on the 1024 x 768 menu. The install's own layouts replace
+     these when it is there. -->
+<CBALAYOUT>
+<Control Type="Window"><Property Name="OtherWnd" Position="172,170" Size="680,340" Texture="blank" Show="FALSE"/>
+<Control Type="Text"><Property Name="blockwhisper_on_row" Position="10,8" Font="bold 12" Element="Block whispers" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="blockwhisper_on" Position="170,9" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="blockwhisper_on_label" Position="188,8" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="blockwhisper_off" Position="260,9" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="blockwhisper_off_label" Position="278,8" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="blockinvite_on_row" Position="10,36" Font="bold 12" Element="Block invitations" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="blockinvite_on" Position="170,37" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="blockinvite_on_label" Position="188,36" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="blockinvite_off" Position="260,37" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="blockinvite_off_label" Position="278,36" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="cursefilter_on_row" Position="10,64" Font="bold 12" Element="Chat filter" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="cursefilter_on" Position="170,65" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="cursefilter_on_label" Position="188,64" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="cursefilter_off" Position="260,65" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="cursefilter_off_label" Position="278,64" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="recivenote_on_row" Position="10,92" Font="bold 12" Element="Receive notes" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="recivenote_on" Position="170,93" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="recivenote_on_label" Position="188,92" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="recivenote_off" Position="260,93" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="recivenote_off_label" Position="278,92" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="jobautopopup_on_row" Position="10,120" Font="bold 12" Element="Daily job popup" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="jobautopopup_on" Position="170,121" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="jobautopopup_on_label" Position="188,120" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="jobautopopup_off" Position="260,121" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="jobautopopup_off_label" Position="278,120" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Window"><Property Name="spectatormode_wnd" Position="0,148" Size="680,26" Texture="blank" Show="FALSE"/>
+<Control Type="Text"><Property Name="spectatormode_on_row" Position="10,0" Font="bold 12" Element="Spectator mode" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="spectatormode_on" Position="170,1" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="spectatormode_on_label" Position="188,0" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="spectatormode_off" Position="260,1" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="spectatormode_off_label" Position="278,0" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+</Control>
+<Control Type="Text"><Property Name="label_blacklist" Position="10,190" Font="bold 12" Element="Block list" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Button"><Property Name="button_regist" Position="150,186" Size="90,22" ButtonTexture="opt_btn_" Cmd_id="21" /><Control Type="ButtonTypeText"><Property Name="button_regist_text" Font="bold 12" Element="Register" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="button_clear" Position="246,186" Size="90,22" ButtonTexture="opt_btn_" Cmd_id="22" /><Control Type="ButtonTypeText"><Property Name="button_clear_text" Font="bold 12" Element="Clear" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="sort_name" Position="342,186" Size="90,22" ButtonTexture="opt_btn_" Cmd_id="23" /><Control Type="ButtonTypeText"><Property Name="sort_name_text" Font="bold 12" Element="Sort" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="check_all" Position="438,186" Size="90,22" ButtonTexture="opt_btn_" Cmd_id="24" /><Control Type="ButtonTypeText"><Property Name="check_all_text" Font="bold 12" Element="Check all" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Window"><Property Name="list_blackUser" Position="10,214" Size="660,100" Texture="opt_list"/>
+<Control Type="Text"><Property Name="item_name" Position="6,4" Font="bold 11" Element="" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+</Control>
+</Control>
+</CBALAYOUT>

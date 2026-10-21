@@ -61,6 +61,9 @@
 //!   (radio_chat.md).
 //! - `music`: the menu playlist, the cues of a match, map music triggers,
 //!   ambient map sounds and the two volume channels (music_ambience.md).
+//! - `options`: the options' settings, the player profile, key binding,
+//!   the mouse, sliders, gamma and quality presets, sound levels and the
+//!   Other tab's social options (options.md).
 //!
 //! `CombatArmsPlugins` adds them all (after `crate::SimPlugins`); the
 //! HUD is the front end's (`ui::hud`).
@@ -84,6 +87,7 @@ pub mod movement;
 pub mod net;
 pub mod perks;
 pub mod objects;
+pub mod options;
 pub mod props;
 pub mod radar;
 pub mod render_style;
@@ -221,6 +225,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(special::CaSpecialPlugin)
             // Its scanner hook must be there when the weapons' data loads.
             .add(radar::CaRadarPlugin)
+            .add(options::CaOptionsPlugin)
             .add(attachments::CaAttachmentsPlugin)
             .add(view_model::CaViewModelPlugin)
             .add(effects::CaEffectsPlugin)

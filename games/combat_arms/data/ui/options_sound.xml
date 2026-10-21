@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Combat Arms' options screen, ours, in the game's layout format
+     (specs/combat_arms/ui_system.md L1-L4), written by a generator from the
+     control names of specs/combat_arms/options.md L. Places and texture
+     names are ours (flat stand-ins drawn by ui::draw); the screen is
+     drawn 1:1 on the 1024 x 768 menu. The install's own layouts replace
+     these when it is there. -->
+<CBALAYOUT>
+<Control Type="Window"><Property Name="SoundWnd" Position="172,170" Size="680,340" Texture="blank"/>
+<Control Type="Button"><Property Name="button_general" Position="10,0" Size="110,22" ButtonTexture="opt_tab_" Cmd_id="11" /><Control Type="ButtonTypeText"><Property Name="button_general_text" Font="bold 12" Element="General" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Button"><Property Name="button_voice" Position="124,0" Size="110,22" ButtonTexture="opt_tab_" Cmd_id="12" /><Control Type="ButtonTypeText"><Property Name="button_voice_text" Font="bold 12" Element="Voice" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Window"><Property Name="general_window" Position="0,30" Size="680,300" Texture="blank"/>
+<Control Type="Text"><Property Name="bgm_on_row" Position="10,10" Font="bold 12" Element="Music" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="bgm_on" Position="150,11" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="bgm_on_label" Position="168,10" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="bgm_off" Position="240,11" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="bgm_off_label" Position="258,10" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_bgm_volume" Position="10,40" Font="bold 12" Element="Music volume" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="SliderBar"><Property Name="bgm_volume_sliderbar" Position="150,42" Size="111,14"/></Control>
+<Control Type="Text"><Property Name="bgm_volume_value" Position="272,41" Font="bold 11" Element="0" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="bgm_rotation_row" Position="10,70" Font="bold 12" Element="Music order" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="bgm_rotation" Position="150,71" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="bgm_rotation_label" Position="168,70" Font="bold 11" Element="In order" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="bgm_random" Position="240,71" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="bgm_random_label" Position="258,70" Font="bold 11" Element="Random" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="sound_on_row" Position="10,100" Font="bold 12" Element="Effects" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="sound_on" Position="150,101" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="sound_on_label" Position="168,100" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="sound_off" Position="240,101" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="sound_off_label" Position="258,100" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_sound_volume" Position="10,130" Font="bold 12" Element="Effects volume" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="SliderBar"><Property Name="sound_volume_sliderbar" Position="150,132" Size="111,14"/></Control>
+<Control Type="Text"><Property Name="sound_volume_value" Position="272,131" Font="bold 11" Element="0" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+</Control>
+<Control Type="Window"><Property Name="voice_window" Position="0,30" Size="680,300" Texture="blank" Show="FALSE"/>
+<Control Type="Text"><Property Name="voicechat_on_row" Position="10,10" Font="bold 12" Element="Voice chat" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="voicechat_on" Position="150,11" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="voicechat_on_label" Position="168,10" Font="bold 11" Element="On" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="voicechat_off" Position="240,11" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="voicechat_off_label" Position="258,10" Font="bold 11" Element="Off" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="gamesoundforvoice_on_row" Position="10,40" Font="bold 12" Element="Game sound during voice" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="gamesoundforvoice_on" Position="190,41" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="gamesoundforvoice_on_label" Position="208,40" Font="bold 11" Element="Lowered" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="CheckButton"><Property Name="gamesoundforvoice_off" Position="280,41" Size="14,14" ButtonTexture="opt_chk_" CheckButtonType="RADIO"/></Control>
+<Control Type="Text"><Property Name="gamesoundforvoice_off_label" Position="298,40" Font="bold 11" Element="Normal" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Button"><Property Name="btn_testmic" Position="10,70" Size="140,22" ButtonTexture="opt_btn_" Cmd_id="13" /><Control Type="ButtonTypeText"><Property Name="btn_testmic_text" Font="bold 12" Element="Test microphone" HorizontalAlign="HCENTER" VerticalAlign="VCENTER" Normalcolor="210,210,210" Overcolor="255,255,255" Clickcolor="255,198,0" Disablecolor="110,110,110"/></Control></Control>
+<Control Type="Text"><Property Name="label_mic_volume" Position="10,104" Font="bold 12" Element="Microphone volume" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="SliderBar"><Property Name="mic_volume_sliderbar" Position="150,106" Size="111,14"/></Control>
+<Control Type="Text"><Property Name="mic_volume_value" Position="272,105" Font="bold 11" Element="0" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_mic_device" Position="10,134" Font="bold 12" Element="Microphone" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Button"><Property Name="mic_device_combo" Position="150,130" Size="220,20" ButtonTexture="opt_drop_" Cmd_id="0" /></Control>
+<Control Type="Text"><Property Name="droptext_microphone" Position="158,133" Font="bold 11" Element="finding" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_speaker_volume" Position="10,164" Font="bold 12" Element="Speaker volume" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="SliderBar"><Property Name="speaker_volume_sliderbar" Position="150,166" Size="111,14"/></Control>
+<Control Type="Text"><Property Name="speaker_volume_value" Position="272,165" Font="bold 11" Element="0" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Text"><Property Name="label_speaker_device" Position="10,194" Font="bold 12" Element="Speakers" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+<Control Type="Button"><Property Name="speaker_device_combo" Position="150,190" Size="220,20" ButtonTexture="opt_drop_" Cmd_id="0" /></Control>
+<Control Type="Text"><Property Name="droptext_speaker" Position="158,193" Font="bold 11" Element="finding" HorizontalAlign="DEFAULT" Normalcolor="222,222,222" MouseEvent="FALSE"/></Control>
+</Control>
+</Control>
+</CBALAYOUT>

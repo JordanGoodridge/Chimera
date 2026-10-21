@@ -214,6 +214,7 @@ pub struct PopupInput;
 /// the input of the last frame it was closed.
 fn popup_input(
     menu: Res<InGameMenu>,
+    options: Option<Res<crate::game::options::CaOptions>>,
     chat: Option<Res<crate::client::chat::ChatInput>>,
     talk: Option<Res<crate::game::chat::CaChat>>,
     mut player: Query<&mut crate::core::Intent, With<crate::core::LocalPlayer>>,
@@ -221,7 +222,10 @@ fn popup_input(
     mut held: Local<Option<(bool, f32, f32)>>,
 ) {
     let Ok(mut intent) = player.single_mut() else { return };
-    let open = menu.open || chat.is_some_and(|c| c.open.is_some()) || talk.is_some_and(|c| c.is_open());
+    let open = menu.open
+        || options.is_some_and(|o| o.open)
+        || chat.is_some_and(|c| c.open.is_some())
+        || talk.is_some_and(|c| c.is_open());
     if !open {
         *held = None;
         *last = Some((intent.crouch, intent.yaw, intent.pitch));
@@ -288,10 +292,11 @@ impl Plugin for CaMenuStatePlugin {
     }
 }
 
-fn sync_status(menu: Res<InGameMenu>, mut status: ResMut<MenuStatus>) {
-    if menu.is_changed() {
+fn sync_status(menu: Res<InGameMenu>, options: Option<Res<crate::game::options::CaOptions>>, mut status: ResMut<MenuStatus>) {
+    let options_open = options.as_ref().is_some_and(|o| o.open);
+    if menu.is_changed() || options.is_some_and(|o| o.is_changed()) {
         status.set_if_neq(MenuStatus {
-            open: menu.open,
+            open: menu.open || options_open,
             in_game: true,
             ..default()
         });
@@ -303,11 +308,13 @@ fn keys(
     keys: Res<ButtonInput<KeyCode>>,
     console: Option<Res<crate::client::console::ConsoleUi>>,
     chat: Option<Res<crate::client::chat::ChatInput>>,
+    options: Option<Res<crate::game::options::CaOptions>>,
     talk: Option<Res<crate::game::chat::CaChat>>,
     mut menu: ResMut<InGameMenu>,
 ) {
     let busy = console.is_some_and(|c| c.open)
         || chat.is_some_and(|c| c.open.is_some())
+        || options.is_some_and(|o| o.open)
         || talk.is_some_and(|c| c.is_open());
     if keys.just_pressed(KeyCode::Escape) && !busy {
         let open = !menu.open;
@@ -405,13 +412,14 @@ fn window_pointer(
 /// (once the button is up, unless the console is open).
 fn cursor(
     menu: Res<InGameMenu>,
+    options: Option<Res<crate::game::options::CaOptions>>,
     mouse: Res<ButtonInput<MouseButton>>,
     ui: Option<Res<crate::client::console::ConsoleUi>>,
     cursor: Option<Single<&mut bevy::window::CursorOptions>>,
     mut regrab: Local<bool>,
 ) {
     let Some(mut cursor) = cursor else { return };
-    if menu.open {
+    if menu.open || options.is_some_and(|o| o.open) {
         if crate::client::input::cursor_grabbed(&cursor) {
             crate::client::input::release_cursor(&mut cursor);
         }

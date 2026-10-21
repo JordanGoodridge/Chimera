@@ -1,0 +1,183 @@
+# Combat Arms' quality presets (specs/combat_arms/options.md G4): what
+# choosing Low, Mid or High writes on OK. `name` is the stored
+# `[Settings]` key, `cvar` the console variable; the columns are the
+# spec's. A custom apply writes the custom block (the rows with
+# `custom = true`, from the screen's switches) instead and keeps the rest
+# as they are.
+
+[[row]]
+name = "ShellCasings"
+cvar = "ShellCasings"
+low = 0
+mid = 1
+high = 1
+custom = true
+
+[[row]]
+name = "Tracers"
+cvar = "Tracers"
+low = 0
+mid = 1
+high = 1
+custom = true
+
+[[row]]
+name = "DynamicLight"
+cvar = "dynamiclightworld"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "ShadowDetail"
+cvar = "ShadowDetail"
+low = 0
+mid = 1
+high = 2
+custom = true
+
+[[row]]
+name = "DetailTextures"
+cvar = "detailtextures"
+low = 0
+mid = 0
+high = 1
+
+[[row]]
+name = "AnisotropicFiltering"
+cvar = "anisotropic"
+low = 0
+mid = 1
+high = 1
+custom = true
+
+[[row]]
+name = "TrilinearFiltering"
+cvar = "trilinear"
+low = 0
+mid = 1
+high = 1
+custom = true
+
+[[row]]
+name = "EnvironmentalDetail"
+cvar = "EnvironmentalDetail"
+low = 0
+mid = 1
+high = 2
+custom = true
+
+[[row]]
+name = "TripleBuffering"
+cvar = "triplebuffer"
+low = 0
+mid = 1
+high = 1
+
+[[row]]
+name = "PolyGridFresnel"
+cvar = "fresnelpolygrids"
+low = 0
+mid = 1
+high = 1
+
+[[row]]
+name = "PolyGridBumpmap"
+cvar = "bumpmappolygrids"
+low = 0
+mid = 1
+high = 1
+
+[[row]]
+name = "FXDetail"
+cvar = "FXDetail"
+low = 0
+mid = 1
+high = 2
+custom = true
+
+[[row]]
+name = "ModelLODOffset"
+cvar = "ModelLODOffset"
+low = 0
+mid = 1
+high = 2
+
+[[row]]
+name = "Shader"
+cvar = "Shader"
+low = 0
+mid = 0
+high = 1
+custom = true
+
+[[row]]
+name = "EnableBloom"
+cvar = "EnableBloom"
+low = 0
+mid = 0
+high = 0
+custom = true
+
+[[row]]
+name = "EnvironmentMapping"
+cvar = "envmapenable"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "EnvironmentBumpMapping"
+cvar = "envbumpmapenable"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "DetailLevel"
+cvar = "DetailLevel"
+low = 2
+mid = 2
+high = 2
+
+[[row]]
+name = "MusicQuality"
+cvar = "MusicQuality"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "SoundQuality"
+cvar = "sound16bit"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "MusicActive"
+cvar = "MusicActive"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "PreCacheAssets"
+cvar = "PreCacheAssets"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "Polygrid"
+cvar = "Polygrid"
+low = 1
+mid = 1
+high = 1
+
+[[row]]
+name = "LightModels"
+cvar = "LightModels"
+low = 1
+mid = 1
+high = 1

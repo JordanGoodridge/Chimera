@@ -17,6 +17,7 @@ mod death_screen;
 mod hud;
 mod music;
 mod net_hud;
+mod options;
 mod radio_chat;
 mod radar;
 mod score;
@@ -26,4 +27,5 @@ mod ui_system;
 mod heavy {
     mod death_screen;
     mod install_ui;
+    mod options;
 }
