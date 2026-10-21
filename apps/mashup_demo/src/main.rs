@@ -5,10 +5,9 @@
 //! cs_source:<name>` or `combat_arms:<name>` picks the map,
 //! `+MaxPlayer <n>` the bots.
 
-use avian3d::prelude::*;
 use bevy::prelude::*;
 use chimera_client::client::Args;
-use chimera_present::{MapPlugin, render};
+use chimera_present::{MapPlugin, PresentationPlugins};
 use mashup_demo::{ClientPlugin, MashupPlugins};
 
 fn main() {
@@ -65,29 +64,13 @@ fn main() {
                 custom_layer: chimera_client::client::console::log_layer,
                 ..default()
             }),
-        // Rendering eases between ticks with `map::interp`, not avian's
-        // transform interpolation.
-        PhysicsPlugins::default()
-            .with_collision_hooks::<chimera_world::map::MapCollisionHooks>()
-            .build()
-            .disable::<PhysicsInterpolationPlugin>(),
+        // Avian as Chimera runs it (rendering eases between ticks with
+        // `map::interp`).
+        chimera_world::physics_plugins(),
         MashupPlugins,
     ))
-    // What the map's drawing needs (as the other apps add them).
-    .add_plugins((
-        render::world_material::WorldMaterialPlugin,
-        render::rope_material::RopeMaterialPlugin,
-        render::sprite_material::SpriteMaterialPlugin,
-        render::prop_material::PropMaterialPlugin,
-        render::shadows::ShadowMaterialPlugin,
-        render::decal::DecalMaterialPlugin,
-        render::spray::SprayMaterialPlugin,
-        render::water::WaterMaterialPlugin,
-        render::particles::ParticleMaterialPlugin,
-        render::beams::BeamMaterialPlugin,
-        render::sky_occluder::SkyOccluderPlugin,
-        render::detail::DetailMaterialPlugin,
-    ))
+    // What the map's drawing needs.
+    .add_plugins(PresentationPlugins)
     // Combat Arms' tick: its gameplay runs on every map.
     .insert_resource(Time::<Fixed>::from_seconds(combat_arms::game::TICK_INTERVAL))
     .insert_resource(chimera_core::core::BuildVersion(mashup_demo::VERSION))

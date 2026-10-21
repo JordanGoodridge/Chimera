@@ -20,7 +20,6 @@
 
 use std::time::Duration;
 
-use avian3d::prelude::*;
 use bevy::{prelude::*, time::TimeUpdateStrategy};
 use chimera_core::{
     character::character_bundle,
@@ -47,12 +46,9 @@ pub fn add_headless_with(app: &mut App, minimal: bevy::app::PluginGroupBuilder) 
         // avian watches mesh assets even when no collider uses them.
         AssetPlugin::default(),
         bevy::mesh::MeshPlugin,
-        // Interpolation eases rendering between ticks; headless, it
-        // would make `Transform` show the previous tick.
-        PhysicsPlugins::default()
-            .with_collision_hooks::<crate::map::MapCollisionHooks>()
-            .build()
-            .disable::<PhysicsInterpolationPlugin>(),
+        // Avian as every app runs it (no interpolation: headless, it
+        // would make `Transform` show the previous tick).
+        crate::physics_plugins(),
     ));
 }
 

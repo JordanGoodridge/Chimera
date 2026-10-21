@@ -3,7 +3,6 @@
 //! render world, on single-threaded executors, `CHIMERA_EXECUTOR=multi`:
 //! Bevy's default, docs/performance.md; `CHIMERA_SYSTEM_DUMP`).
 
-use avian3d::prelude::*;
 use bevy::prelude::*;
 use cs_source_app::{
     SimPlugins, client, games, greybox,
@@ -94,28 +93,12 @@ fn main() {
                 custom_layer: client::console::log_layer,
                 ..default()
             }),
-        // Rendering eases between ticks with `map::interp` (characters'
-        // eyes and looks too), not avian's transform interpolation.
-        PhysicsPlugins::default()
-            .with_collision_hooks::<cs_source_app::map::MapCollisionHooks>()
-            .build()
-            .disable::<PhysicsInterpolationPlugin>(),
+        // Avian as Chimera runs it: rendering eases between ticks with
+        // `map::interp` (characters' eyes and looks too).
+        chimera_world::physics_plugins(),
         SimPlugins,
         cs_source_app::games::cs_source::CsSourcePlugins,
-        cs_source_app::render::world_material::WorldMaterialPlugin,
-        cs_source_app::render::rope_material::RopeMaterialPlugin,
-        cs_source_app::render::sprite_material::SpriteMaterialPlugin,
-        cs_source_app::render::prop_material::PropMaterialPlugin,
-        cs_source_app::render::shadows::ShadowMaterialPlugin,
-        cs_source_app::render::decal::DecalMaterialPlugin,
-        cs_source_app::render::spray::SprayMaterialPlugin,
-        cs_source_app::render::water::WaterMaterialPlugin,
-        cs_source_app::render::particles::ParticleMaterialPlugin,
-    ))
-    .add_plugins((
-        cs_source_app::render::beams::BeamMaterialPlugin,
-        cs_source_app::render::sky_occluder::SkyOccluderPlugin,
-        cs_source_app::render::detail::DetailMaterialPlugin,
+        chimera_present::PresentationPlugins,
     ))
     // A game's maps run at that game's server tick.
     .insert_resource(match args.game_map() {

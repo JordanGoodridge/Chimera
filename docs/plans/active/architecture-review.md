@@ -73,7 +73,7 @@ migration of each; section 11 orders them for parallel agents):
 | P3 | Sort `map` and `client` into modules | **done** (became crates) | `chimera_present` (render, audio), `chimera_client`, `chimera_world`; `simulation_builds_no_drawn_parts` checks it |
 | P4 | Test support module | **partial** | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
 | P4b | Heavy tier: measure, split, more slots, cache | **steps 1, 3, 4 done; 2 open** | full suite 1,812 s to 1,009 s (10-14), then 1,757 s with Combat Arms (10-19); no lean load path or cache yet: F1 |
-| P5 | Game composition as plugin groups | **partial** | `CsSourcePlugins`, `CombatArmsPlugins`, `CsSim`, `CaSim` exist; the 12 material plugins and the physics setup are listed by hand in all three game apps (`apps/*/src/main.rs`); A4 |
+| P5 | Game composition as plugin groups | **partial** | `CsSourcePlugins`, `CombatArmsPlugins`, `CsSim`, `CaSim` exist; the materials (`chimera_present::PresentationPlugins`) and the physics (`chimera_world::physics_plugins`) are one group each since N7; the tick and log layer still per app; A4 |
 | P6 | One VGUI dialog layer | **open, lower** | 7 copies of the UI scale clamp, no shared `Hit<T>`; Combat Arms built its own canvas (`client::canvas`), so this is CS:S-internal now |
 | P7 | One KeyValues tokenizer, one binary reader | **tokenizer done; reader open, grown** | six private cursor types now (`nav`, `pcf`, `vpk`, `net::query`, LithTech `ltb` and `world`) |
 | P8 | Split the giant systems | **open, grown** | `bot::think` 696 lines (was 667), Combat Arms' `movement::step` 634 (new), `apply_effects` 439; E3 |
@@ -1104,7 +1104,7 @@ or rebases last.
 | N4 | Map lifetime: map-scoped resource registry, unload test; textures dropped after spawning (A2 1-2, F2) | `chimera/world/src/map/{mod,registration,spawn}.rs`, `chimera/present/src/render/{spawn,images}.rs` | S-M | spawn dump on five maps; `drawn_parts.rs`; new unload test; RSS after load |
 | N5 | CI on Linux and Windows without installs (T3) | `.github/workflows/` | S | the workflow itself |
 | N6 | Generated debt and module indexes; Combat Arms' finished briefs archived; survey scripts kept (T5) | `checks/src/bin/`, `docs/tech-debt.md`, `docs/ARCHITECTURE.md`, `docs/plans/`, `tools/arch_survey/` | S | `repo_checks` |
-| N7 | App builder: `PresentationPlugins`, the physics setup shared with the harness (A4) | `chimera/present/src/lib.rs`, `chimera/world/src/lib.rs`, `apps/*/src/main.rs` | S | system dumps; dust2 and WAREHOUSE screenshots |
+| N7 **done** | App builder: `PresentationPlugins`, the physics setup shared with the harness (A4); `physics_plugins()` is a function returning the group (smallest change), the tick waits for A1; the five apps' system dumps identical | `chimera/present/src/lib.rs`, `chimera/world/src/lib.rs`, `apps/*/src/main.rs` | S | system dumps; dust2 and WAREHOUSE screenshots |
 
 N2 landed as `cs_source::CsSourceParts` (rules, objectives, bots, net part,
 Source's logic; `SimPlugins` = base + parts + tick metrics), `combat_arms::

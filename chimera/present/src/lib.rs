@@ -20,6 +20,31 @@ pub mod render;
 
 pub use map_plugin::MapPlugin;
 
+/// What drawing the map needs and no map plugin adds: the render
+/// materials, particles, shadows and the rest of `render`'s plugins, in
+/// one group for every app (the three games' apps listed the same twelve
+/// by hand; a missing one draws nothing and fails no test). The app adds
+/// it after its game's plugins, where it listed them.
+pub struct PresentationPlugins;
+
+impl bevy::app::PluginGroup for PresentationPlugins {
+    fn build(self) -> bevy::app::PluginGroupBuilder {
+        bevy::app::PluginGroupBuilder::start::<Self>()
+            .add(render::world_material::WorldMaterialPlugin)
+            .add(render::rope_material::RopeMaterialPlugin)
+            .add(render::sprite_material::SpriteMaterialPlugin)
+            .add(render::prop_material::PropMaterialPlugin)
+            .add(render::shadows::ShadowMaterialPlugin)
+            .add(render::decal::DecalMaterialPlugin)
+            .add(render::spray::SprayMaterialPlugin)
+            .add(render::water::WaterMaterialPlugin)
+            .add(render::particles::ParticleMaterialPlugin)
+            .add(render::beams::BeamMaterialPlugin)
+            .add(render::sky_occluder::SkyOccluderPlugin)
+            .add(render::detail::DetailMaterialPlugin)
+    }
+}
+
 // `crate::core` and `crate::map` inside, as in the game crate.
 use chimera_core::core;
 use chimera_world::map;
