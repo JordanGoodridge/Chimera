@@ -1756,7 +1756,13 @@ fn install_with(records: &[(&str, i32)]) -> combat_arms::game::data::CaData {
     use combat_arms::game::data::{CaData, InstallAttributes, attributes::WeaponsFile};
     let mut text = String::from("[Ammo0] Name=\"5.56mm\"\n");
     for (i, (name, ty)) in records.iter().enumerate() {
-        text += &format!("[Weapon{i}] Name=\"{name}\" AmmoName0=\"5.56mm\" Guntype={ty}\n");
+        // The weapons file's record names the sight the weapon is fitted
+        // with (`DefaultScopeAttach`, attachments.md "Defaults in the
+        // weapons file"): a record without it has none, so the L96A1's
+        // carries the "Sniper Scope" as the install's does (the sight's own
+        // record is ours).
+        let scope = if name.eq_ignore_ascii_case("L96A1") { " DefaultScopeAttach=\"Sniper Scope\"" } else { "" };
+        text += &format!("[Weapon{i}] Name=\"{name}\" AmmoName0=\"5.56mm\" Guntype={ty}{scope}\n");
     }
     let doc = lithtech_formats::attributes::Document::parse(text.as_bytes()).unwrap();
     let weapons = WeaponsFile::read(&doc).unwrap();
@@ -1799,9 +1805,9 @@ fn class_sim(data: combat_arms::game::data::CaData, item: i32, weapon: &'static 
 fn steady_on(data: combat_arms::game::data::CaData, weapon: &'static str) -> bool {
     let (mut sim, p, _) = class_sim(data, 16005, weapon);
     let w = sim.app.world().get::<Inventory>(p).unwrap().active.expect("a weapon in hand");
-    // The install's class decides what scope fits, not this test's subject.
-    let scope = ca::zoom::Scope { name: "test scope".into(), fov: vec![20.0] };
-    sim.app.world_mut().get_mut::<ca::zoom::CaZoom>(w).unwrap().scope = Some(scope);
+    // The scope comes from the record's default sight, not set by hand.
+    let scope = sim.app.world().get::<ca::zoom::CaZoom>(w).and_then(|z| z.scope.clone());
+    assert_eq!(scope.map(|s| s.fov), Some(vec![20.0]), "the L96A1's Sniper Scope");
     sim.intent(p).secondary = true;
     sim.ticks(1);
     sim.intent(p).secondary = false;

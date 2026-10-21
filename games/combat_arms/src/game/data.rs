@@ -65,7 +65,11 @@
 //!   changes their numbers), and `trigger.per_press` only where the key
 //!   is already there. The zoom fields (`ZoomTime`, `CameraSway*`,
 //!   `ReloadAfterFire`, `ZoomedMovePenalty`: weapon_classes.md) go in the
-//!   `combat_arms:zoom` table, `AccumPreFire` in `combat_arms:spin`'s;
+//!   `combat_arms:zoom` table (made empty first in a document that fits
+//!   parts, `combat_arms:attachments`, so the machine guns and shotguns
+//!   the install gives a sight zoom; the special weapons, with no
+//!   attachments table, get none: their own scope designators, `LGB_scope`
+//!   and the like, aren't specified), `AccumPreFire` in `combat_arms:spin`'s;
 //!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps our shell
 //!   timings: they are the view model's animations). Not mapped (no field
 //!   in our data yet): the trigger's `latency` (the pre-fire's updates:
@@ -679,6 +683,17 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
     };
     // In f32, as both scales are read: equal scales give exactly 1.
     let length_scale = (meters_per_unit as f32 / doc_length as f32) as f64;
+    // A weapon that fits parts can fit a sight, and every sight zooms
+    // (attachments.md "Sights"), whatever its class: a document of ours
+    // without the zoom table (the M60, the Remington 870, the rockets)
+    // gets an empty one for the install's values (`apply` writes only into
+    // tables there), or the machine guns and shotguns the install gives a
+    // sight could never zoom.
+    if let Some(Value::Table(hooks)) = doc.get_mut("hooks")
+        && hooks.contains_key(super::attachments::ATTACHMENTS)
+    {
+        hooks.entry("combat_arms:zoom").or_insert_with(|| Value::Table(Table::new()));
+    }
     for s in weapon_values(w, ammo, length_scale) {
         apply(doc, &s);
     }
