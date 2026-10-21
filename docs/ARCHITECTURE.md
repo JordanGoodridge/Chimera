@@ -366,7 +366,7 @@ that the paths exist).
 
 ### Map (crate `chimera_world`, `chimera/world/`: neutral map data, spawning, effects as data)
 
-- `chimera/world/src/lib.rs`, `chimera/world/src/map/mod.rs`: `unload_map`/`change_map`, `MapHooks`, resources (map)
+- `chimera/world/src/lib.rs`, `chimera/world/src/map/mod.rs`: `unload_map`/`change_map`, `MapHooks`, map-scoped resources (map)
 - `chimera/world/src/map/registration.rs`: map's registration (`build`) with its presentation's places (`MapLayers`); `MapSimPlugin`, the `()` drawer (map)
 - `chimera/world/src/map/data.rs`: `MapData` and everything it holds; plain data (map)
 - `chimera/world/src/map/state.rs`: what the logic and replication write and the map and its presentation apply (map)

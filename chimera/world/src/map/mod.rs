@@ -14,8 +14,10 @@
 //!
 //! Map's registration (`registration`: `build`, `MapSimPlugin`),
 //! `unload_map`/`change_map` (`MapHooks` for the layers above: what they
-//! reset at unload, the spawner `change_map` runs), the loaded map's
-//! resources; re-exports the files below and `core`'s collision types.
+//! reset at unload, the spawner `change_map` runs; the map-scoped
+//! resources, `MapScopedApp::map_scoped`, which `unload_map` removes), the
+//! loaded map's resources; re-exports the files below and `core`'s
+//! collision types.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -244,23 +246,19 @@ pub fn unload_map(world: &mut World) {
     for c in cams {
         world.entity_mut(c).remove::<bevy::light::Skybox>();
     }
-    world.remove_resource::<PendingMap>();
-    world.remove_resource::<MapFile>();
-    world.remove_resource::<PlayableArea>();
-    world.remove_resource::<vis::ActiveVisibility>();
-    world.remove_resource::<sound::SoundBank>();
-    world.remove_resource::<CharacterModels>();
-    world.remove_resource::<hud::ActiveHud>();
-    world.remove_resource::<hud::ActiveOverview>();
-    world.remove_resource::<surface_color::SurfaceColors>();
-    world.remove_resource::<particles::ParticleMaterials>();
-    world.remove_resource::<ScreenOverlayImages>();
+    // The map-scoped resources (`MapScopedApp::map_scoped`).
+    let scoped: Vec<fn(&mut World)> = world
+        .get_resource::<MapHooks>()
+        .map(|h| h.scoped.iter().map(|r| r.remove).collect())
+        .unwrap_or_default();
+    for remove in scoped {
+        remove(world);
+    }
     world.insert_resource(MonitorCamera::default());
     if let Some(mut p) = world.get_resource_mut::<particles::Particles>() {
         p.groups.clear();
     }
     breakables::unload(world);
-    world.remove_resource::<breakables::PropBreaks>();
     let animated: Vec<Entity> = world
         .query_filtered::<Entity, With<anim::Animator>>()
         .iter(world)
@@ -272,20 +270,6 @@ pub fn unload_map(world: &mut World) {
     for e in modelled {
         world.entity_mut(e).remove::<(BodyModel, crate::core::Hitboxes)>();
     }
-    world.remove_resource::<nav::NavMesh>();
-    world.remove_resource::<sound::SurfaceGrid>();
-    world.remove_resource::<sources::SurfaceNames>();
-    world.remove_resource::<MapBrushes>();
-    world.remove_resource::<MapBrushTree>();
-    world.remove_resource::<KillHeight>();
-    world.remove_resource::<MapWater>();
-    world.remove_resource::<water::WaterMovers>();
-    world.remove_resource::<RoundSounds>();
-    world.remove_resource::<radio::RadioCommands>();
-    world.remove_resource::<bot_profiles::BotProfiles>();
-    world.remove_resource::<MapEntities>();
-    world.remove_resource::<water::WaterView>();
-    world.remove_resource::<MapTerrain>();
     world.insert_resource(Gravity::default());
     let hooks = world.get_resource::<MapHooks>().map(|h| h.unload.clone()).unwrap_or_default();
     for hook in hooks {
@@ -303,10 +287,49 @@ pub struct MapHooks {
     /// Spawns the pending map (`spawn_map` with the drawer
     /// `build` picks: `MapLayers::Drawer`), for `change_map`.
     pub spawn: Option<fn(&mut World)>,
+    /// The resources that belong to the loaded map (`MapScopedApp::
+    /// map_scoped`): `unload_map` removes each.
+    pub scoped: Vec<MapScopedResource>,
     /// What they do to a node copied at run time (`copies::copy_node`),
     /// once it is made, in the order they were added (`render`
     /// draws it by its own meshes, never merged).
     pub copied: Vec<fn(&mut World, Entity)>,
+}
+
+/// A resource that belongs to the loaded map: inserted when it spawns,
+/// removed by `unload_map`.
+#[derive(Clone, Copy)]
+pub struct MapScopedResource {
+    pub id: std::any::TypeId,
+    pub name: &'static str,
+    pub remove: fn(&mut World),
+}
+
+/// Registers the resources that belong to the loaded map, once, where the
+/// plugin that owns them is built: `unload_map` removes every registered
+/// one, so a resource a spawn phase inserts can't outlive its map. One
+/// the next map doesn't replace and nothing registers is a leak: the
+/// unload test (`chimera_present`'s `map_unload`) fails on any.
+pub trait MapScopedApp {
+    fn map_scoped<T: Resource>(&mut self) -> &mut Self;
+}
+
+impl MapScopedApp for App {
+    fn map_scoped<T: Resource>(&mut self) -> &mut Self {
+        self.init_resource::<MapHooks>();
+        let id = std::any::TypeId::of::<T>();
+        let mut hooks = self.world_mut().resource_mut::<MapHooks>();
+        if !hooks.scoped.iter().any(|r| r.id == id) {
+            hooks.scoped.push(MapScopedResource {
+                id,
+                name: std::any::type_name::<T>(),
+                remove: |world| {
+                    world.remove_resource::<T>();
+                },
+            });
+        }
+        self
+    }
 }
 
 /// Replace the loaded map with `data` (spawned now, as at startup).

@@ -290,6 +290,43 @@ pub fn build<L: MapLayers>(app: &mut App, data: Option<&Arc<MapData>>, view: Map
     app.add_systems(Startup, spawn_map::<L::Drawer>.run_if(resource_exists::<PendingMap>));
     app.init_resource::<MapHooks>();
     app.world_mut().resource_mut::<MapHooks>().spawn = Some(spawn_pending_map::<L::Drawer>);
+    scoped_resources(app);
+}
+
+/// The resources `spawn_map` inserts for the loaded map, which
+/// `unload_map` removes (`MapScopedApp::map_scoped`). A resource added to
+/// the spawn phases goes here; the layers above register theirs where they
+/// are built (`MapPlugin`).
+fn scoped_resources(app: &mut App) {
+    app.map_scoped::<PendingMap>()
+        .map_scoped::<MapFile>()
+        .map_scoped::<PlayableArea>()
+        .map_scoped::<vis::ActiveVisibility>()
+        .map_scoped::<sound::SoundBank>()
+        .map_scoped::<CharacterModels>()
+        .map_scoped::<hud::ActiveHud>()
+        .map_scoped::<hud::ActiveOverview>()
+        .map_scoped::<surface_color::SurfaceColors>()
+        .map_scoped::<particles::ParticleMaterials>()
+        .map_scoped::<ScreenOverlayImages>()
+        .map_scoped::<breakables::PropBreaks>()
+        .map_scoped::<breakables::GibAssets>()
+        .map_scoped::<nav::NavMesh>()
+        .map_scoped::<sound::SurfaceGrid>()
+        .map_scoped::<sources::SurfaceNames>()
+        .map_scoped::<MapBrushes>()
+        .map_scoped::<MapBrushTree>()
+        .map_scoped::<KillHeight>()
+        .map_scoped::<MapWater>()
+        .map_scoped::<water::WaterMovers>()
+        .map_scoped::<RoundSounds>()
+        .map_scoped::<radio::RadioCommands>()
+        .map_scoped::<bot_profiles::BotProfiles>()
+        .map_scoped::<MapEntities>()
+        .map_scoped::<water::WaterView>()
+        .map_scoped::<MapTerrain>()
+        .map_scoped::<MapTraceSkip>()
+        .map_scoped::<MapPropBrushStart>();
 }
 
 /// `change_map`'s spawner: the pending map, drawn by `D`.

@@ -124,7 +124,7 @@ fn run(a: &Args) -> Result<(), String> {
             CsSim,
             (
                 MapPlugin {
-                    data: Some(map.clone()),
+                    data: Some(map.clone()).into(),
                     view: MapDebugView::Normal,
                 },
                 SourceMovementPlugin,
