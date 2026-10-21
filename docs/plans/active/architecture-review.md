@@ -1209,7 +1209,7 @@ by the same method but not those of the first two passes.
 | X2 **done** | Determinism checks: std hash maps and new mutable statics refused in simulation crates (E1 4, E2's check) (done 10-21: `checks/tests/it/determinism.rs`, per-crate ratchets; counts in its `//!`) | N1 | `checks/` | S | `repo_checks` |
 | X3 **done** | Process-wide state into resources: Combat Arms' data, effects and model caches, then weapon sets (E2) (done 10-21, partly: `CaData` resource for the install-derived data, `WeaponCatalog` for weapon lookups, the global `weapon::data::lookup`/`publish` and `BUILTIN_ONLY` gone; the loader-filled caches below remain) | X2 | `games/combat_arms/src/game/{data,effects,characters,view_model}`, `chimera/sim/src/weapon/data.rs` | M | Combat Arms' suite; a two-`Sim`s isolation test |
 | X4 **done** | (done 10-21, note below) `OwnState` parts; CS:S's money, kit and night vision and Combat Arms' armour as parts; `net_order` sorted once (A3, E6) | none | `chimera/net/src/net/{mod,server,client,predict}.rs`, `games/*/src/game/net.rs`, `chimera/core/src/core.rs` (predicted registry only) | S-M | both games' network suites; `NET_VERSION` bump |
-| X5 | Named `Intent` actions; binds by action; `POLLED` from the game (A3) | none | `chimera/core/src/core.rs` (`Intent`), `chimera/client/src/client/{binds,input}.rs`, `chimera/net` command encoding | M | both suites; bind migration tests; `NET_VERSION` bump |
+| X5 **done** | (done 10-21, note below) Named `Intent` actions; binds by action; `POLLED` from the game (A3) | none | `chimera/core/src/core.rs` (`Intent`), `chimera/client/src/client/{binds,input}.rs`, `chimera/net` command encoding | M | both suites; bind migration tests; `NET_VERSION` bump |
 | X6 | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
 | X7 | `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
 | X8 | Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
@@ -1227,6 +1227,23 @@ them is the shop item in A3). Combat Arms needed none: its armour
 `PredictedComponents` keeps its networked list sorted at registration
 (`net_order` gone). `movement` stays a `String` (smallest change).
 `NET_VERSION` is net28.
+
+X5, done (10-21): `core::ActionRegistry` (`ActionAppExt::intent_action`;
+sorted names, at most 32) and `Intent::actions: u32` beside the fixed
+fields, which stay as Chimera's aliases; `NetCmd::actions` carries them
+(`NET_VERSION` net29). Binds by action: a bind line is unchanged
+(`bind mouse4 +throw`, so saved configs and Combat Arms' profile
+migrate by doing nothing); `chimera_client::binds::BindsAppExt::
+bound_action("throw")` registers the action and polls `+throw`, and
+`write_local_intent` sets the bit while a key bound to it is held.
+`POLLED` is Chimera's own list plus the `PolledBinds` resource
+(`polled_bind`): CS:S's `buymenu`, `chooseteam` and `radio1..3` register
+from its UI plugins (Combat Arms' stock binds use none of them; tests pin
+both). `console::run_binds` and the options page take the set from the
+resource. Smallest-change choices: console-typed holds (`HeldActions`)
+and the wheel stay Chimera's own only; the bots and game rules read
+`Intent::actions` by name through the registry when a game needs it (no
+game registers an action yet).
 
 Lanes in Next: X4 and X5 both touch `chimera_net`'s protocol; run them
 one after the other or agree on the file split (X4 owns own-state

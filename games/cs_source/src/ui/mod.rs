@@ -177,4 +177,40 @@ bind "PAUSE" "pause"
         assert!(added.contains(&("f11".into(), "chimera_inspector".into())), "{added:?}");
         assert!(!added.iter().any(|(k, _)| k == "w" || k == "alt"), "{added:?}");
     }
+
+    /// Bind migration (architecture review X5): the commands polled before
+    /// `POLLED` came from the games are still polled for CS:S, so a saved
+    /// config.cfg (`bind b buymenu`, `bind z radio1`) and the default table
+    /// run exactly what they ran.
+    #[test]
+    fn saved_binds_keep_their_polled_commands() {
+        use bevy::prelude::App;
+        use crate::client::binds::PolledBinds;
+        const POLLED_BEFORE: &[&str] = &[
+            "+forward", "+back", "+moveleft", "+moveright", "+jump", "+duck", "+speed", "+walk", "+sprint", "+use",
+            "+reload", "+attack", "+attack2", "+freelook", "+showscores", "slot1", "slot2", "slot3", "slot4", "slot5",
+            "lastinv", "drop", "buymenu", "chooseteam", "radio1", "radio2", "radio3", "messagemode", "messagemode2",
+            "bug", "bugreport",
+        ];
+        let mut app = App::new();
+        app.add_plugins((
+            super::buy_menu::BuyMenuPlugin,
+            super::team_menu::TeamMenuPlugin,
+            super::radio::RadioPlugin,
+        ));
+        let polled = app.world().resource::<PolledBinds>();
+        for c in POLLED_BEFORE {
+            assert!(polled.is_polled(c), "{c} is no longer polled");
+        }
+        assert_eq!(polled.all().count(), POLLED_BEFORE.len(), "a command was added to the polled set");
+        // An old config's lines, as saved: the polled ones run nothing.
+        let saved = cfg_binds("bind b buymenu\nbind z radio1\nbind q \"+reload; lastinv\"\nbind m \"chooseteam; say hi\"\n");
+        let run: Vec<_> = saved.iter().map(|(_, l)| polled.runnable(l)).collect();
+        assert_eq!(run, [None, None, None, Some("say hi".into())]);
+        // And every default is polled exactly as before.
+        for (_, line) in DEFAULT_BINDS {
+            let was = binds::parts(line).iter().all(|p| p.is_empty() || POLLED_BEFORE.contains(&p.to_lowercase().as_str()));
+            assert_eq!(polled.runnable(line).is_none(), was, "{line}");
+        }
+    }
 }

@@ -100,6 +100,10 @@ pub struct RadioPlugin;
 
 impl Plugin for RadioPlugin {
     fn build(&self, app: &mut App) {
+        use crate::client::binds::BindsAppExt;
+        for i in 1..=3 {
+            app.polled_bind(&format!("radio{i}"));
+        }
         app.add_plugins(RadioHearPlugin)
             .init_resource::<RadioMenu>()
             .add_systems(Update, ((keys, draw).chain(), draw_icons.after(hear)));

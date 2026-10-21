@@ -1690,3 +1690,11 @@ new protocol number.
 `OwnState::parts` replaces the money, armour, kit and night vision fields
 (architecture review X4): the games' own-state parts (`net::parts::OwnParts`)
 in one blob, sorted by name.
+
+
+### net29 (2026-10-21)
+
+`NetCmd::actions` (a `u32`) carries the game's named actions
+(`core::ActionRegistry`, `Intent::actions`; architecture review X5). The
+bits follow the names' sorted order, so a server and its clients agree as
+long as they register the same actions.

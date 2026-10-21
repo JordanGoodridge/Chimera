@@ -1694,8 +1694,10 @@ fn run_binds(
     mut wheel: MessageReader<MouseWheel>,
     mut console: ResMut<Console>,
     vote: Option<Res<crate::net::vote::VoteView>>,
+    polled: Option<Res<super::binds::PolledBinds>>,
 ) {
     let voting = vote.is_some_and(|v| v.awaiting());
+    let polled = polled.as_deref().cloned().unwrap_or_default();
     if console.binds.is_empty() {
         wheel.clear();
         return;
@@ -1738,7 +1740,7 @@ fn run_binds(
         };
         // Read from the held keys by the systems that own them; a line
         // of several commands runs the rest.
-        let Some(cmd) = super::binds::runnable(&cmd) else {
+        let Some(cmd) = polled.runnable(&cmd) else {
             continue;
         };
         if pressed {

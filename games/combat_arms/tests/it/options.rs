@@ -1035,3 +1035,17 @@ fn saving_at_exit_leaves_the_exit_message_for_the_runner() {
     assert!(kept, "the exit message was drained");
     assert!(saved, "the profile is saved at exit");
 }
+
+/// Bind migration (architecture review X5): CS:S's polled commands moved
+/// out of Chimera's `POLLED` into CS:S's UI. Combat Arms' stock binds use
+/// none of them, so its binds are read exactly as before.
+#[test]
+fn the_stock_binds_use_none_of_the_commands_that_moved_to_cs_source() {
+    let all = combat_arms::game::DEFAULT_BINDS.iter().chain(combat_arms::game::OLD_DEFAULT_BINDS);
+    for (k, line) in all {
+        for part in line.split(';').map(|p| p.trim().to_lowercase()) {
+            let moved = ["buymenu", "chooseteam", "radio1", "radio2", "radio3"];
+            assert!(!moved.contains(&part.as_str()), "{k} {line}");
+        }
+    }
+}

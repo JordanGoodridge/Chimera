@@ -94,6 +94,7 @@ pub struct LocalInputPlugin;
 impl Plugin for LocalInputPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MouseSettings>()
+            .init_resource::<super::binds::PolledBinds>()
             .init_resource::<WheelJump>()
             .init_resource::<FreeLook>()
             .register_type::<MouseSettings>()
@@ -317,6 +318,7 @@ pub fn write_local_intent(
     zoomed: Query<&crate::weapon::Zoomed, With<LocalPlayer>>,
     spectator: Option<Res<super::spectate::Spectator>>,
     weapon_menu: Option<Res<super::weapon_menu::WeaponMenu>>,
+    actions: Option<Res<crate::core::ActionRegistry>>,
     mut last_motion: Local<Vec2>,
 ) {
     // The motion mouse look turns by (`m_filter`, `m_customaccel`).
@@ -409,6 +411,15 @@ pub fn write_local_intent(
     intent.reload = bound("+reload");
     intent.last_weapon = bound("lastinv");
     intent.use_key = bound("+use");
+    // The game's named actions: `+name` held.
+    intent.actions = 0;
+    if let Some(registry) = actions {
+        for name in registry.names() {
+            if bound(&format!("+{name}")) {
+                intent.actions |= registry.bit(name);
+            }
+        }
+    }
     // Number keys pick from the buy, team or radio menu while one is open;
     // with the weapon selection (`hud_fastswitch 0`) they work through it.
     intent.select = if let Some(m) = weapon_menu.as_ref().filter(|m| m.takes_slots || m.select.is_some()) {
@@ -592,5 +603,51 @@ mod tests {
             let cursor = app.world().get::<CursorOptions>(window).unwrap();
             assert!(!cursor_grabbed(cursor), "menu {menu_open}, chat {chat_open}");
         }
+    }
+
+    /// A game's named action: `bind x +throw` while `x` is held sets its
+    /// bit in the local intent, and the bit survives the network command.
+    #[test]
+    fn a_named_action_is_held_with_its_key() {
+        use super::super::binds::BindsAppExt;
+        let mut app = App::new();
+        app.add_plugins(crate::console::ConsolePlugin)
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<AccumulatedMouseMotion>()
+            .init_resource::<AccumulatedMouseScroll>()
+            .init_resource::<Time>()
+            .init_resource::<MouseSettings>()
+            .init_resource::<WheelJump>()
+            .init_resource::<FreeLook>()
+            .init_resource::<super::super::view::FreeCam>()
+            .add_systems(Update, write_local_intent);
+        app.bound_action("throw").bound_action("ability");
+        app.world_mut().spawn((Intent::default(), LocalPlayer));
+        app.world_mut().spawn(CursorOptions {
+            grab_mode: CursorGrabMode::Locked,
+            ..default()
+        });
+        app.world_mut()
+            .resource_mut::<crate::console::Console>()
+            .submit("bind g +throw; bind h +jump");
+        app.update();
+        let intent = |app: &mut App| app.world_mut().query::<&Intent>().single(app.world()).unwrap().clone();
+        assert_eq!(intent(&mut app).actions, 0);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyG);
+        app.update();
+        let i = intent(&mut app);
+        let registry = app.world().resource::<crate::core::ActionRegistry>();
+        // Sorted by name: ability is bit 0, throw bit 1.
+        assert_eq!(i.actions, 0b10);
+        assert!(i.action(registry, "throw") && !i.action(registry, "ability"));
+        let mut over_the_wire = Intent::default();
+        crate::net::NetCmd::of(1, &i).apply(&mut over_the_wire);
+        assert!(over_the_wire.action(registry, "throw"));
+        // Chimera's own binds are untouched.
+        assert!(!i.jump);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::KeyG);
+        app.update();
+        assert_eq!(intent(&mut app).actions, 0);
     }
 }

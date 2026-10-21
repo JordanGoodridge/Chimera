@@ -29,6 +29,8 @@ pub struct TeamMenuPlugin;
 
 impl Plugin for TeamMenuPlugin {
     fn build(&self, app: &mut App) {
+        use crate::client::binds::BindsAppExt;
+        app.polled_bind("chooseteam");
         app.init_resource::<TeamMenu>()
             .add_systems(Update, (keys, pointer, draw, draw_vgui).chain());
         crate::client::front_end::sync_panel::<TeamMenu, _>(app, "team", true, |m| m.0, draw_vgui);
