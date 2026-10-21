@@ -107,7 +107,10 @@ fn dump_spawned_maps() {
         return;
     };
     std::fs::create_dir_all(&dir).unwrap();
-    for name in MAPS {
+    // `CHIMERA_SPAWN_DUMP_ONLY=<map>`: just that one (its own process, so
+    // the RSS line below is that map's).
+    let only = chimera_core::env::var_os("CHIMERA_SPAWN_DUMP_ONLY").map(|v| v.to_string_lossy().into_owned());
+    for name in MAPS.iter().filter(|n| only.as_deref().is_none_or(|o| o == **n)) {
         let map = match games::load_map(&format!("cs_source:{name}")) {
             Ok(m) => m,
             Err(e) => {
@@ -117,6 +120,7 @@ fn dump_spawned_maps() {
         };
         let mut sim = Sim::new(CsSim, (render_assets, MapPlugin::new(map)));
         sim.app.update();
+        eprintln!("{name}: resident {} MB after load", rss_mb());
         let text = dump(sim.app.world_mut());
         let path = dir.join(format!("{name}.txt"));
         std::fs::write(&path, &text).unwrap();
@@ -126,4 +130,16 @@ fn dump_spawned_maps() {
         let order = crate::stack::harness::system_order(sim.app.world_mut());
         std::fs::write(dir.join(format!("{name}.systems.txt")), order).unwrap();
     }
+}
+
+/// This process's resident memory in MB (Linux; 0 elsewhere).
+fn rss_mb() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("VmRSS:"))
+                .and_then(|l| l.split_whitespace().next()?.parse::<u64>().ok())
+        })
+        .map_or(0, |kb| kb / 1024)
 }

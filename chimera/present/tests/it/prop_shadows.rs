@@ -48,7 +48,7 @@ fn box_mesh(lo: Vec3, hi: Vec3) -> MapMesh {
 
 /// A 20 m floor (world mesh and collision) with a 0.6 m physics crate
 /// standing on it, casting a shadow straight down and a little sideways.
-fn map() -> MapData {
+pub(crate) fn map() -> MapData {
     let mut data = MapData {
         name: "test:prop_shadows".into(),
         entity_scale: 0.0254,
@@ -267,6 +267,6 @@ fn shadow_detail_switches_between_silhouettes_and_blobs_at_once() {
 
 /// The engine's base the props need (`core`'s sets and the console's
 /// cvars); nothing of a game.
-fn base() -> (chimera_core::core::CorePlugin, chimera_core::console::ConsolePlugin) {
+pub(crate) fn base() -> (chimera_core::core::CorePlugin, chimera_core::console::ConsolePlugin) {
     (chimera_core::core::CorePlugin, chimera_core::console::ConsolePlugin)
 }
