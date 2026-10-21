@@ -26,7 +26,9 @@
 //! - The modes' clocks (Timers per mode): `round_length`,
 //!   `warmup_length`, `setup_forced`.
 //! - `CaMission`: the playing (map, mode)'s data the rules read, resolved
-//!   when a match starts (`resolve`): the install's mission where it has
+//!   when a match starts (`resolve`; at the first mission start too when
+//!   it was found for another map or mode, `ensure_resolved`: a map the
+//!   app started on with `--map` had no fresh match): the install's mission where it has
 //!   one, else our data (data/modes.toml's `TimeLimit` and
 //!   `TrainingTimeLimit` per mode, the objectives' numbers) as the
 //!   fallback, field by field.
@@ -1056,13 +1058,24 @@ pub fn read_install(read: &dyn Fn(&str) -> Option<Vec<u8>>) -> InstallMissions {
 #[derive(Resource, Clone, Debug, Default)]
 pub struct CaMission(pub Option<Arc<Mission>>);
 
-/// Find the playing (map, mode)'s mission (`flow::restart`).
-pub fn resolve(world: &mut World) {
+/// The (map, mode) `resolve` last looked the mission up for.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct CaMissionFor(pub Option<(String, String)>);
+
+/// The playing (map, mode): the loaded map's world name and the room key.
+fn playing(world: &World) -> (String, String) {
     let key = world.get_resource::<CaRuleSettings>().map(|s| s.mode.clone()).unwrap_or_default();
     let map = world
         .get_resource::<crate::map::MapFile>()
         .map(|m| super::world::map_name(&m.name))
         .unwrap_or_default();
+    (map, key)
+}
+
+/// Find the playing (map, mode)'s mission (`flow::restart`).
+pub fn resolve(world: &mut World) {
+    let (map, key) = playing(world);
+    world.insert_resource(CaMissionFor(Some((map.clone(), key.clone()))));
     let found = install().and_then(|i| i.index.find(&map, &key));
     if let Some(m) = &found {
         if m.mission.mode != key {
@@ -1071,6 +1084,17 @@ pub fn resolve(world: &mut World) {
         info!("mission data: {} for {map} {key}", m.path);
     }
     world.insert_resource(CaMission(found));
+}
+
+/// Find the mission unless it was found for the playing (map, mode)
+/// already (`flow`'s mission start): a map that started without a fresh
+/// game (`core::NewGame`), as the app's `--map` does, still plays its
+/// mission and sends its map messages.
+pub fn ensure_resolved(world: &mut World) {
+    let now = Some(playing(world));
+    if world.get_resource::<CaMissionFor>().is_none_or(|f| f.0 != now) {
+        resolve(world);
+    }
 }
 
 fn installed(world: &World) -> Option<Arc<Mission>> {

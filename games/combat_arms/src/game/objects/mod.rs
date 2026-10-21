@@ -41,7 +41,8 @@
 //!
 //! Debugging (docs/OBSERVABILITY.md): `ca_objects [filter]` lists objects
 //! and their state, `ca_object_msg <name> <message...>` sends a message
-//! now, `ca_object_cmd <command string>` runs a command string,
+//! now, `ca_object_props <name>` prints an object's stored properties and
+//! a `setpos` line at it, `ca_object_cmd <command string>` runs a command string,
 //! `ca_object_vars` lists the variables and pending commands.
 //!
 //! Known shortcuts: sounds play once where they start (attached ones
@@ -256,6 +257,16 @@ impl Plugin for CaObjectsPlugin {
                 },
             )
             .console_command(
+                "ca_object_props",
+                "ca_object_props <name>: the objects of that name: their state, then every property as the map \
+                 stores it (commands, triggers' targets, doors' times), and where to stand: a `setpos` line at \
+                 the object's centre (the feet, inches, as `getpos` prints).",
+                |w, a| {
+                    let name = a.first().ok_or("usage: ca_object_props <name>")?;
+                    Ok(Some(props(w, name)))
+                },
+            )
+            .console_command(
                 "ca_object_cmd",
                 "ca_object_cmd <command string>: run a command string now (no sender), e.g. `ca_object_cmd msg \
                  (A B) (visible 0); delay 2 (msg C on)`.",
@@ -319,6 +330,27 @@ pub fn list(world: &mut World, filter: Option<&str>) -> String {
         .map(|(i, _)| o.world.describe(i as ObjId))
         .collect();
     if lines.is_empty() { "no objects".into() } else { lines.join("\n") }
+}
+
+/// `ca_object_props`' listing: each object named `name`, its state, its
+/// centre as a `setpos` line (CS:S inches: engine metres / 0.0254, z up)
+/// and its stored properties.
+pub fn props(world: &World, name: &str) -> String {
+    let o = world.resource::<CaObjects>();
+    let ids = o.world.named_all(name);
+    if ids.is_empty() {
+        return format!("no object named {name}");
+    }
+    let mut lines = Vec::new();
+    for id in ids {
+        lines.push(o.world.describe(id));
+        let e = to_engine(o.world.objects[id as usize].pose.pos, o.scale) / 0.0254;
+        lines.push(format!("  centre: setpos {:.0} {:.0} {:.0}", e.x, -e.z, e.y));
+        for (k, v) in &o.world.objects[id as usize].props.0 {
+            lines.push(format!("  {k} = {v}"));
+        }
+    }
+    lines.join("\n")
 }
 
 /// The characters as the objects see them (file frame, u).

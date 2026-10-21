@@ -2,6 +2,9 @@
 //! what composes Chimera and Combat Arms (games/combat_arms) into the game
 //! binary (`combat_arms`, main.rs). Wave 0: the skeleton, on the greybox.
 //!
+//! `SimPlugin`: the simulation as the binary runs it (its tests run it on
+//! the headless harness, tests/it/).
+//!
 //! `ClientPlugin`: the client shell (`chimera_client`) with this app's
 //! hooks (`client_hooks`) and Combat Arms' HUD in its place
 //! (`combat_arms::ui::with_hud`).
@@ -54,6 +57,21 @@ pub fn load_map(id: &str, _hdr_level: u8) -> Result<MapData, String> {
             Err(format!("{id}: not a Combat Arms map (combat_arms:<name>)"))
         }
         _ => combat_arms::game::world::load(id),
+    }
+}
+
+/// The simulation as this app runs it (main.rs, and its tests on the
+/// headless harness): Chimera's and Combat Arms' simulation plugins
+/// (`combat_arms::SimPlugins`, `CombatArmsPlugins`) at Combat Arms' tick,
+/// with the install's data and the room's default mode (where the game's
+/// own scenario tests' `combat_arms::harness::CaSim` plays the built-in
+/// data and no mode).
+pub struct SimPlugin;
+
+impl Plugin for SimPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((combat_arms::SimPlugins, combat_arms::game::CombatArmsPlugins))
+            .insert_resource(Time::<Fixed>::from_seconds(combat_arms::game::TICK_INTERVAL));
     }
 }
 

@@ -106,6 +106,11 @@ in the lowest crate whose public API it needs:
   command line) with headless clients over UDP on loopback (`dedicated`:
   two clients play a TDM kill on the greybox; `MaxPlayer` fills it with
   bots);
+- `combat_arms_app` (apps/combat_arms/tests/it/): the simulation as the
+  game binary composes it (`combat_arms_app::SimPlugin`: the install's
+  data and the room's default mode, unlike `CaSim`) on the headless
+  harness, maps loaded as `--map` loads them (`heavy::map_start`: a map
+  started on plays its mission, V1 key);
 - `cs_source_app` (apps/cs_source/tests/it/): only what the app alone
   has (its build's version, its hooks, map loading by id);
 - `repo_checks` (checks/tests/it/architecture.rs): the repository's
@@ -1301,14 +1306,60 @@ timer, a trigger's fires and pending time, a counter's value, a
 keyframer's clock and next key, hit points. `ca_object_msg <name>
 <message...>` delivers a message now as a map's `msg` would (`ca_object_msg
 VIP_Door trigger`, `ca_object_msg SlidingWater on`, `ca_object_msg
-Level04StartTrigger trigger`) and prints the target's state;
+Level04StartTrigger trigger`) and prints the target's state (a console
+message has no player behind it, so a door's `DoorLink` isn't told:
+message both leaves); `ca_object_props <name>` prints an object's state,
+a `setpos` line at its centre and every property as the map stores it
+(its commands: what opens it, which mode or trigger gates it);
 `ca_object_cmd <command string>` runs a whole command string (`delay`,
 `rand`, variables); `ca_object_vars` lists the command manager's variables
 and pending delayed commands. A map's objects and their properties as
 stored: `cargo run --bin dump -- combat_arms --objects <map> [--filter
 text]` (keyed maps need the V2 key). The spec's cases: `--test it
 world_objects::` (synthetic) and `heavy::world_objects` (FREEZER,
-SNOWSTORM, HGOILRIG, BLOODMONEY, CITYOFWINGS, the census).
+SNOWSTORM, HGOILRIG, BLOODMONEY, CITYOFWINGS, the census); a map started
+with `--map` playing its mission as the app composes the simulation:
+`cargo test -p combat_arms_app --features dev --test it heavy::` (V1 key).
+
+Most stock objects are gated by the mode: the mission's start triggers
+(`Level01StartTrigger` in TDM, ...) show, hide or remove them (SHORTFUSE's
+dumpster lids are Quarantine's and TDM removes them; its sliding doors
+open from a JSF switch in Quarantine), so check `ca_objects` after the
+match started and `ca_object_props` for what opens a door. Recipes that
+film each kind live (dev build, `noclip` and `god` first, the remote
+console's `screenshot <file>` between steps; `ca_objects <name>` says
+when it moved):
+
+- FREEZER, the chicken's beak and wings (sliding doors `Chk_mouth`,
+  `Chk_wing`): `--map combat_arms:freezer`, `setpos 89 1100 60; setang 0
+  90 0`, then `ca_object_msg Chk_mouth TRIGGER; ca_object_msg Chk_wing
+  TRIGGER` (open in 0.2 s; again closes). In play a player walking into
+  the `Chk_ctl` trigger at its feet (`noclip` off, `setpos 85 1352 5`)
+  toggles both. The radio knob (`CMD_A_Radio`, a rotating door) turns 1°
+  on `+use` from `setpos 390 261 -17; setang 0 180 0` (its lit model
+  swaps in); nothing else on FREEZER moves.
+- HGOILRIG, the rising sea (`SlidingWater` and its `Water` and
+  `PoisonGas00` volumes): `--map combat_arms:hgoilrig`, `setpos 397 -2480
+  432; setang 15 90 0` (outside the rig, the legs in the water), then
+  `ca_object_msg SlidingWater on`: 500 u up over 120 s, slow at first
+  (about 150 u at 60 s, 370 u at 100 s); film at 0, 60, 100 and 120 s
+  (`setpos` again before each: the run may move the player).
+  `ca_object_msg SlidingWater init` puts it back. In play only
+  `Level04StartTrigger` starts it (90 s later), and no room or mode of
+  the install's mission data plays HGOILRIG, so it never rises on its
+  own.
+- SHORTFUSE, a dumpster lid (`RotatingDoor00`, used through
+  `RotatingDoor01`): `--map combat_arms:shortfuse +ca_mode QRT` (in TDM
+  the lids are removed), `setpos 322 300 -2903; setang 0 90 0`, then
+  `ca_object_msg RotatingDoor01 trigger`: the lid swings up 90° in 1 s.
+  Rounds restart every few minutes with one player and respawn it.
+- NEMEXISHQ, a double door (`UserDoorA00`/`A01`, used by players):
+  `--map combat_arms:nemexishq`, `setpos -2030 153 1; setang 5 180 0`,
+  then `+use`, `-use` 0.3 s later: both leaves swing 90° in 0.5 s. Its
+  elevators are only doors (no car moves; no stock keyframer moves a
+  world model, world_objects.md section 9):
+  `setpos -880 368 1; setang 0 180 0`, `ca_object_msg ElevatorDoor00
+  trigger; ca_object_msg ElevatorDoor01 trigger` (slide 46 u in 0.5 s).
 
 Combat Arms' music and ambience (`game::music`, the client's): `ca_music`
 shows the screen the music thinks it is on, the player's streams with
