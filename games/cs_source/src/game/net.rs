@@ -67,7 +67,10 @@ use crate::{
         hints::AutoHint,
         rounds::{FunFact, Mvp, Phase, RoundEndReason, RoundEnded, RoundState, RoundSummary},
     },
-    weapon::economy::BuyWindow,
+    weapon::{
+        Armor,
+        economy::{BuyWindow, DefuseKit, Money, NightVision},
+    },
 };
 
 /// CS:S's part of the network (`register`), named `cs_source`.
@@ -119,6 +122,54 @@ pub fn voice_team(world: &World, e: Entity) -> Option<u8> {
     }
 }
 
+/// What the HUD shows of a client's own player, beside its predicted
+/// state (`net::parts::OwnParts`): money, armour (amount, helmet), the
+/// defusal kit and night vision goggles. Money is shown only to its owner,
+/// as in CS:S.
+fn own_parts(app: &mut App) {
+    fn flag(has: bool) -> Option<Vec<u8>> {
+        has.then(Vec::new)
+    }
+    fn set<C: Bundle>(world: &mut World, e: Entity, on: bool, value: C) {
+        if let Ok(mut e) = world.get_entity_mut(e) {
+            if on {
+                e.insert(value);
+            } else {
+                e.remove::<C>();
+            }
+        }
+    }
+    app.own_part(
+        "cs_source.money",
+        |w, e| w.get::<Money>(e).map(|m| m.0.to_le_bytes().to_vec()),
+        |w, e, b| match b.and_then(|b| Some(u32::from_le_bytes(b.try_into().ok()?))) {
+            Some(m) => set(w, e, true, Money(m)),
+            None => set(w, e, false, Money(0)),
+        },
+    )
+    .own_part(
+        "cs_source.armor",
+        |w, e| w.get::<Armor>(e).map(|a| [a.amount.to_le_bytes().as_slice(), &[a.helmet as u8]].concat()),
+        |w, e, b| match b.and_then(|b| {
+            let (amount, helmet) = b.split_first_chunk::<4>().and_then(|(a, h)| Some((a, *h.first()?)))?;
+            Some((f32::from_le_bytes(*amount), helmet != 0))
+        }) {
+            Some((amount, helmet)) => set(w, e, true, Armor { amount, helmet }),
+            None => set(w, e, false, Armor::default()),
+        },
+    )
+    .own_part(
+        "cs_source.kit",
+        |w, e| flag(w.get::<DefuseKit>(e).is_some()),
+        |w, e, b| set(w, e, b.is_some(), DefuseKit),
+    )
+    .own_part(
+        "cs_source.nightvision",
+        |w, e| flag(w.get::<NightVision>(e).is_some()),
+        |w, e, b| set(w, e, b.is_some(), NightVision),
+    );
+}
+
 /// `net::voice::VoiceRules::can_hear`: `hears_voice` on the server's
 /// characters.
 fn can_hear(world: &World, listener: Entity, talker: Entity) -> bool {
@@ -129,6 +180,7 @@ fn can_hear(world: &World, listener: Entity, talker: Entity) -> bool {
 
 /// The protocol (in this order on every side), the systems and the hooks.
 fn register(app: &mut App) {
+    own_parts(app);
     app.replicate::<NetRound>()
         .ordered::<NetRound>()
         .replicate::<NetBomb>()

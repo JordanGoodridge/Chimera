@@ -1684,3 +1684,9 @@ token; its client reads the text from its own install) in CS:S's part,
 and `cl_autohelp` goes to the server as userinfo; a new message, so a
 new protocol number.
 
+
+### net28 (2026-10-21)
+
+`OwnState::parts` replaces the money, armour, kit and night vision fields
+(architecture review X4): the games' own-state parts (`net::parts::OwnParts`)
+in one blob, sorted by name.

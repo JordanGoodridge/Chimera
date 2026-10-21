@@ -6,7 +6,7 @@
 //! - **Scores** (`NetScore` on every character): kills, deaths, ping, a
 //!   bot, what it carries that marks it (`core::ScoreMark`: CS:S's bomb)
 //!   and a defusal kit, for the scoreboard. A client's own money, armour
-//!   and kit come in its `OwnState`: money is shown only to its owner, as
+//!   and kit come in its `OwnState` parts (`parts::OwnParts`): money is shown only to its owner, as
 //!   in CS:S.
 //! - **Buying** (`BuyRequest`) is the server's to check (buy zone, buy
 //!   time, money, team-only items: `weapon::economy::buy`); a refusal
@@ -24,19 +24,20 @@
 //! components (`Score`, `DefuseKit`, its own `Money`, `Armor`, `NightVision`)
 //! with times moved onto its clock (`ServerTime`).
 
-use bevy::prelude::*;
+use bevy::{ecs::message::MessageCursor, prelude::*};
 use bevy_replicon::prelude::*;
 
 use super::{
-    BuyRequest, NetCharacter, NetScore, Notice, OwnState, ServerSound, interp::InterpClock, predict::CommandClock,
+    BuyRequest, NetCharacter, NetScore, Notice, OwnState, ServerSound, interp::InterpClock, parts::OwnParts,
+    predict::CommandClock,
     score_flags, server::Player,
 };
 use crate::{
     core::{LocalPlayer, NetRole, Npc, Score, ScoreMark, SimClock},
     map::{GameSound, PlaySound, PredictedSound},
     weapon::{
-        Armor, Inventory,
-        economy::{BuyRequested, DefuseKit, Money, NightVision},
+        Inventory,
+        economy::{BuyRequested, DefuseKit},
     },
 };
 
@@ -250,44 +251,19 @@ fn apply_scores(q: Query<(Entity, Ref<NetScore>, Option<&Score>, Has<DefuseKit>)
     }
 }
 
-/// Our money, armour and night vision from the server's newest state
-/// (arming and defusing are predicted: `objectives::bomb::arm`).
-fn apply_own(
-    mut states: MessageReader<OwnState>,
-    player: Option<Single<(Entity, Option<&Money>, Option<&Armor>, Has<NightVision>), With<LocalPlayer>>>,
-    mut commands: Commands,
-) {
-    let Some(s) = states.read().max_by_key(|s| s.tick).cloned() else {
+/// Our own-state parts (money, armour and the like: `parts::OwnParts`)
+/// from the server's newest state (arming and defusing are predicted:
+/// `objectives::bomb::arm`).
+fn apply_own(world: &mut World, mut cursor: Local<MessageCursor<OwnState>>) {
+    let newest = cursor
+        .read(world.resource::<Messages<OwnState>>())
+        .max_by_key(|s| s.tick)
+        .map(|s| s.parts.clone());
+    let Some(blob) = newest else { return };
+    let Some(player) = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next() else {
         return;
     };
-    let Some((e, money, armor, nightvision)) = player.map(|p| *p) else {
-        return;
-    };
-    if s.nightvision != nightvision {
-        if s.nightvision {
-            commands.entity(e).insert(NightVision);
-        } else {
-            commands.entity(e).remove::<NightVision>();
-        }
-    }
-    match s.money {
-        Some(m) if money.map(|x| x.0) != Some(m) => {
-            commands.entity(e).insert(Money(m));
-        }
-        None if money.is_some() => {
-            commands.entity(e).remove::<Money>();
-        }
-        _ => {}
-    }
-    match s.armor {
-        Some((amount, helmet)) if armor.is_none_or(|a| a.amount != amount || a.helmet != helmet) => {
-            commands.entity(e).insert(Armor { amount, helmet });
-        }
-        None if armor.is_some() => {
-            commands.entity(e).remove::<Armor>();
-        }
-        _ => {}
-    }
+    world.resource_scope(|world, parts: Mut<OwnParts>| parts.apply(world, player, &blob));
 }
 
 /// The rules' sounds the server played.

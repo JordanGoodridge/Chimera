@@ -39,7 +39,10 @@ use crate::stack::{
     },
     rules::{Score, rounds::RoundState},
     slots::Loadout,
-    weapon::economy::Money,
+    weapon::{
+        Armor,
+        economy::{DefuseKit, Money, NightVision},
+    },
 };
 
 const SCALE: f32 = 0.0254;
@@ -366,8 +369,34 @@ fn a_late_joiner_gets_the_whole_state() {
     let i = add_client(&mut sim, &install, None);
     sim.until_joined(600);
     let c = sim.character_of(i).unwrap();
-    sim.server.app.world_mut().entity_mut(c).insert(Money(4321));
+    sim.server.app.world_mut().entity_mut(c).insert((
+        Money(4321),
+        Armor { amount: 55.0, helmet: true },
+        DefuseKit,
+        NightVision,
+    ));
     sim.ticks(40);
+    // Its own-state parts (money, armour, kit, night vision) are on its player.
+    {
+        let w = sim.clients[i].app.world_mut();
+        let (a, k, n) = w
+            .query_filtered::<(Option<&Armor>, Has<DefuseKit>, Has<NightVision>), With<crate::stack::core::LocalPlayer>>()
+            .single(w)
+            .map(|(a, k, n)| (a.copied(), k, n))
+            .unwrap();
+        assert_eq!(a, Some(Armor { amount: 55.0, helmet: true }), "its armour");
+        assert!(k && n, "its kit and night vision");
+    }
+    sim.server.app.world_mut().entity_mut(c).remove::<(Armor, DefuseKit, NightVision)>();
+    sim.ticks(40);
+    {
+        let w = sim.clients[i].app.world_mut();
+        let (a, k, n) = w
+            .query_filtered::<(Has<Armor>, Has<DefuseKit>, Has<NightVision>), With<crate::stack::core::LocalPlayer>>()
+            .single(w)
+            .unwrap();
+        assert!(!a && !k && !n, "taken off when the server's player lost them");
+    }
     let w = sim.clients[i].app.world_mut();
     let wins = w.resource::<RoundState>().wins;
     let money = w.query_filtered::<&Money, With<crate::stack::core::LocalPlayer>>().single(w).unwrap().0;

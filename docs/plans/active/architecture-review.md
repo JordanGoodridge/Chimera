@@ -1208,13 +1208,25 @@ by the same method but not those of the first two passes.
 | X1 | **Done 2026-10-21** (note below). `Gameplay` slots and `gameplay_is`; each game's match-wide plugins gated; tick, binds and HUD from the gameplay; the mashup runs Source's logic and offers CS:S's guns (A1 2-4) | N2, N7 | `chimera/core` (new module), each game's rules, bots, HUD and net-part registration | M | system dumps modulo set names; both suites; the mashup's heavy test on cs_office (doors, a CS:S gun) |
 | X2 **done** | Determinism checks: std hash maps and new mutable statics refused in simulation crates (E1 4, E2's check) (done 10-21: `checks/tests/it/determinism.rs`, per-crate ratchets; counts in its `//!`) | N1 | `checks/` | S | `repo_checks` |
 | X3 **done** | Process-wide state into resources: Combat Arms' data, effects and model caches, then weapon sets (E2) (done 10-21, partly: `CaData` resource for the install-derived data, `WeaponCatalog` for weapon lookups, the global `weapon::data::lookup`/`publish` and `BUILTIN_ONLY` gone; the loader-filled caches below remain) | X2 | `games/combat_arms/src/game/{data,effects,characters,view_model}`, `chimera/sim/src/weapon/data.rs` | M | Combat Arms' suite; a two-`Sim`s isolation test |
-| X4 | `OwnState` parts; CS:S's money, kit and night vision and Combat Arms' armour as parts; `net_order` sorted once (A3, E6) | none | `chimera/net/src/net/{mod,server,client,predict}.rs`, `games/*/src/game/net.rs`, `chimera/core/src/core.rs` (predicted registry only) | S-M | both games' network suites; `NET_VERSION` bump |
+| X4 **done** | (done 10-21, note below) `OwnState` parts; CS:S's money, kit and night vision and Combat Arms' armour as parts; `net_order` sorted once (A3, E6) | none | `chimera/net/src/net/{mod,server,client,predict}.rs`, `games/*/src/game/net.rs`, `chimera/core/src/core.rs` (predicted registry only) | S-M | both games' network suites; `NET_VERSION` bump |
 | X5 | Named `Intent` actions; binds by action; `POLLED` from the game (A3) | none | `chimera/core/src/core.rs` (`Intent`), `chimera/client/src/client/{binds,input}.rs`, `chimera/net` command encoding | M | both suites; bind migration tests; `NET_VERSION` bump |
 | X6 **done** | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) (done 10-21: `GameInfo::steam`, `map_file -> Option`, `net::maps::offer_file`) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
 | X7 | `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
 | X8 | Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
 | X9 | BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
 | X10 | A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |
+
+X4, done (10-21): `net::parts::OwnParts` (`NetAppExt::own_part(name,
+encode, decode)`, sorted by name as registered); `OwnState::parts` is one
+blob (u16 length per part, `u16::MAX` absent) replacing `money`, `armor`,
+`kit` and `nightvision`; the client applies only parts that differ from
+its player's own encoding. CS:S registers `cs_source.{money,armor,kit,
+nightvision}` in its net part (the types stay in `weapon::economy`: moving
+them is the shop item in A3). Combat Arms needed none: its armour
+(`CaArmor`) already replicates through replicon, not `OwnState`.
+`PredictedComponents` keeps its networked list sorted at registration
+(`net_order` gone). `movement` stays a `String` (smallest change).
+`NET_VERSION` is net28.
 
 Lanes in Next: X4 and X5 both touch `chimera_net`'s protocol; run them
 one after the other or agree on the file split (X4 owns own-state
