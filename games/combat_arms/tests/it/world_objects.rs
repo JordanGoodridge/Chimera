@@ -107,7 +107,7 @@ impl T {
 
     fn on(&self, name: &str) -> bool {
         match &self.w.objects[self.id(name) as usize].kind {
-            Kind::Switchable { on } => *on,
+            Kind::Switchable { on, .. } => *on,
             _ => panic!("{name} isn't switchable"),
         }
     }
