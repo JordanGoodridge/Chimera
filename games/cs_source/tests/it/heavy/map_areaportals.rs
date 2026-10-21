@@ -26,7 +26,7 @@ fn load(name: &str) -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(games::load_map(&format!("cs_source:{name}")).expect("load map"))
+    Some(games::load_map_lean(&format!("cs_source:{name}")).expect("load map"))
 }
 
 const DOORS: &[&str] = &["func_door", "func_door_rotating", "prop_door_rotating"];

@@ -23,7 +23,7 @@ mod common;
 #[path = "../common/stack.rs"]
 mod stack;
 #[allow(unused_imports)]
-use common::{load_map, load_map_level};
+use common::{load_map, load_map_lean, load_map_level, load_map_level_lean};
 
 mod animation;
 mod auto_switch;

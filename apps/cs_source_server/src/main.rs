@@ -124,7 +124,8 @@ fn main() {
         } else {
             format!("{}:{map_id}", cs_source::GAME)
         };
-        match games::load_map_level(&id, 0) {
+        // A server draws nothing: no textures.
+        match games::load_map_with(&id, &cs_source_app::map::MapLoadOptions::lean()) {
             Ok(data) => {
                 eprintln!(
                     "loaded {id}: {} spawns, {} warnings",
@@ -261,7 +262,7 @@ fn change_level(world: &mut World, name: &str) -> Result<Option<String>, String>
     world.insert_resource(LoadedMapName(id.clone()));
     let task = bevy::tasks::AsyncComputeTaskPool::get().spawn({
         let id = id.clone();
-        async move { games::load_map_level(&id, 0) }
+        async move { games::load_map_with(&id, &cs_source_app::map::MapLoadOptions::lean()) }
     });
     world.insert_resource(LevelLoad { id: id.clone(), task });
     Ok(Some(format!("changing level to {id}...")))

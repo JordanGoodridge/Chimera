@@ -139,6 +139,12 @@ pub struct MaterialLoader<'a> {
     frames_by_path: HashMap<(String, bool, Option<u32>), Vec<usize>>,
     /// The monitor screen texture (`_rt_camera`), once a material uses it.
     pub camera_texture: Option<usize>,
+    /// Textures stay placeholders of the right size (`MapLoadOptions::
+    /// textures` off): `finish_textures` decodes nothing.
+    pub lean: bool,
+    /// Textures read but not decoded yet (their slot in `textures` has the
+    /// size only): `finish_textures` decodes them together, on threads.
+    pending: Vec<(usize, Vec<u8>)>,
 }
 
 impl<'a> MaterialLoader<'a> {
@@ -160,6 +166,37 @@ impl<'a> MaterialLoader<'a> {
             texture_anims: Vec::new(),
             frames_by_path: HashMap::new(),
             camera_texture: None,
+            lean: false,
+            pending: Vec::new(),
+        }
+    }
+
+    /// Placeholders instead of decoded textures (`lean`).
+    pub fn lean(mut self, lean: bool) -> Self {
+        self.lean = lean;
+        self
+    }
+
+    /// Decode the textures `texture` has read since the last call, on
+    /// threads (`map::parallel::par_map`); until then their `rgba8` and
+    /// `mips` are empty (their size is right). A texture that doesn't
+    /// decode becomes a 1x1 magenta one and a `missing` entry. Call it
+    /// before reading texels and before taking `textures`.
+    pub fn finish_textures(&mut self) {
+        let pending = std::mem::take(&mut self.pending);
+        let decoded = crate::map::parallel::par_map(pending, |(i, bytes)| (i, decode_bytes(&bytes)));
+        for (i, result) in decoded {
+            let slot = &mut self.textures[i];
+            match result {
+                Ok(t) => {
+                    (slot.rgba8, slot.mips) = (t.rgba8, t.mips);
+                }
+                Err(e) => {
+                    self.missing.push(format!("{}: {e}", slot.name));
+                    (slot.width, slot.height, slot.mips) = (1, 1, Vec::new());
+                    slot.rgba8 = vec![255, 0, 255, 255];
+                }
+            }
         }
     }
 
@@ -1086,11 +1123,15 @@ impl<'a> MaterialLoader<'a> {
         if let Some(cached) = self.by_path.get(&key) {
             return *cached;
         }
-        let loaded = self.decode(&path).map(|t| MapTexture { srgb, ..t });
+        let loaded = self.read_header(&path).map(|(t, bytes)| (MapTexture { srgb, ..t }, bytes));
         let index = match loaded {
-            Ok(t) => {
+            Ok((t, bytes)) => {
                 self.textures.push(t);
-                Some(self.textures.len() - 1)
+                let index = self.textures.len() - 1;
+                if !self.lean {
+                    self.pending.push((index, bytes));
+                }
+                Some(index)
             }
             Err(e) => {
                 self.missing.push(format!("{path}: {e}"));
@@ -1105,11 +1146,22 @@ impl<'a> MaterialLoader<'a> {
     /// its own mip levels.
     pub fn texture_frames(&mut self, name: &str, srgb: bool) -> Vec<usize> {
         let path = format!("materials/{}.vtf", normalize(name).trim_end_matches(".vtf"));
+        let lean = self.lean;
         let decoded = (|| -> Result<Vec<MapTexture>, String> {
             let bytes = self.read(&path).ok_or("not found")?;
             let vtf = vtf::from_bytes(&bytes).map_err(|e| e.to_string())?;
             (0..vtf.header.frames.max(1) as u32)
                 .map(|f| {
+                    if lean {
+                        return Ok(MapTexture {
+                            name: format!("{path}#{f}"),
+                            srgb,
+                            mips: Vec::new(),
+                            width: vtf.header.width as u32,
+                            height: vtf.header.height as u32,
+                            rgba8: Vec::new(),
+                        });
+                    }
                     let image = decode_full(&bytes, &vtf, f)?;
                     Ok(MapTexture {
                         name: format!("{path}#{f}"),
@@ -1137,20 +1189,36 @@ impl<'a> MaterialLoader<'a> {
         }
     }
 
-    fn decode(&self, path: &str) -> Result<MapTexture, String> {
+    /// The file at `path` and a texture of its size without texels
+    /// (`finish_textures` decodes them from the bytes).
+    fn read_header(&self, path: &str) -> Result<(MapTexture, Vec<u8>), String> {
         let bytes = self.read(path).ok_or("not found")?;
         let vtf = vtf::from_bytes(&bytes).map_err(|e| e.to_string())?;
-        let image = decode_full(&bytes, &vtf, 0)?;
-        let mips = mip_levels(&bytes, &vtf.header).unwrap_or_default();
-        Ok(MapTexture {
+        let texture = MapTexture {
             name: path.to_string(),
             srgb: true,
-            mips,
-            width: image.width(),
-            height: image.height(),
-            rgba8: image.into_raw(),
-        })
+            mips: Vec::new(),
+            width: vtf.header.width as u32,
+            height: vtf.header.height as u32,
+            rgba8: Vec::new(),
+        };
+        Ok((texture, bytes))
     }
+}
+
+/// A VTF file's full-size image and its own mip levels as RGBA8.
+fn decode_bytes(bytes: &[u8]) -> Result<MapTexture, String> {
+    let vtf = vtf::from_bytes(bytes).map_err(|e| e.to_string())?;
+    let image = decode_full(bytes, &vtf, 0)?;
+    let mips = mip_levels(bytes, &vtf.header).unwrap_or_default();
+    Ok(MapTexture {
+        name: String::new(),
+        srgb: true,
+        mips,
+        width: image.width(),
+        height: image.height(),
+        rgba8: image.into_raw(),
+    })
 }
 
 /// One frame of a VTF image as RGBA8: the `vtf` crate's decoders, plus the

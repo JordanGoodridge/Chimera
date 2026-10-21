@@ -42,7 +42,7 @@ fn installed() -> bool {
 }
 
 fn sim(map: &str) -> Sim {
-    let map = games::load_map(&format!("cs_source:{map}")).expect("load map");
+    let map = games::load_map_lean(&format!("cs_source:{map}")).expect("load map");
     let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
     sim.set_tick_interval(TICK_INTERVAL);
     sim.app
@@ -377,7 +377,7 @@ fn nav_near() {
             }
         }
     }
-    let data = games::load_map(&format!("cs_source:{map}")).expect("load map");
+    let data = games::load_map_lean(&format!("cs_source:{map}")).expect("load map");
     for b in data.collision_brushes.iter().filter(|b| b.ladder) {
         let c = (b.min + b.max) / 2.0;
         if (c - at).xz().length() < 4.0 {
@@ -469,7 +469,7 @@ fn bots_stand_aside_without_a_nav_mesh() {
     if !installed() {
         return;
     }
-    let Ok(map) = games::load_map("cs_source:bhop_flatzone") else {
+    let Ok(map) = games::load_map_lean("cs_source:bhop_flatzone") else {
         eprintln!("skipping: bhop_flatzone not in the content cache");
         return;
     };

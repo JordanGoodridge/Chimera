@@ -49,7 +49,7 @@ fn demo_file(name: &str) -> Option<CsDemo> {
 }
 
 fn sim_for(demo: &CsDemo) -> Sim {
-    let map = games::load_map(&format!("cs_source:{}", demo.map())).expect("load the demo's map");
+    let map = games::load_map_lean(&format!("cs_source:{}", demo.map())).expect("load the demo's map");
     let mut sim = Sim::new(CsSim, (MapPlugin::new(map), CsWeaponsPlugin, demo::DemoPlugin));
     sim.set_tick_interval(TICK_INTERVAL);
     sim
