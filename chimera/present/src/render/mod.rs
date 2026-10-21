@@ -61,27 +61,10 @@ pub mod water;
 pub mod world_material;
 pub use spawn::{Drawn, MapAssets};
 
-/// What `map::unload_map` removes of render's: its resources and the
-/// entities it made (a `map::MapHooks::unload` hook, added by
+/// What `map::unload_map` removes of render's besides its map-scoped
+/// resources (`scoped_resources`): the entities it made (a `map::MapHooks::unload` hook, added by
 /// `map_plugin`).
 pub fn unload_map(world: &mut World) {
-    world.remove_resource::<light_styles::StyledLightmaps>();
-    world.remove_resource::<decal::DecalSurfaces>();
-    world.remove_resource::<decal::DecalAssets>();
-    world.remove_resource::<decal::ImpactDecals>();
-    world.remove_resource::<psys::ParticleSystemDefs>();
-    world.remove_resource::<monitor::MonitorScreen>();
-    world.remove_resource::<water::MapWaterRender>();
-    world.remove_resource::<sky::MapSkybox>();
-    world.remove_resource::<sky::SkyCameraInfo>();
-    world.remove_resource::<sky::ActiveMapHas3dSky>();
-    world.remove_resource::<sky::SkyVis>();
-    world.remove_resource::<shadows::ShadowState>();
-    world.remove_resource::<shadows::ShadowSource>();
-    world.remove_resource::<particles::ParticleAssets>();
-    world.remove_resource::<fog::SceneFog>();
-    world.remove_resource::<bodies::PlayModels>();
-    world.remove_resource::<bodies::HeldAssets>();
     let drawn: Vec<Entity> = world
         .query_filtered::<Entity, With<bodies::CharacterBody>>()
         .iter(world)
@@ -91,4 +74,30 @@ pub fn unload_map(world: &mut World) {
     }
     view_model::unload(world);
     shells::unload(world);
+}
+
+/// Render's resources that belong to the loaded map: `map::unload_map`
+/// removes them (`map::MapScopedApp::map_scoped`, registered by
+/// `map_plugin`).
+pub fn scoped_resources(app: &mut App) {
+    use crate::map::MapScopedApp;
+    app.map_scoped::<light_styles::StyledLightmaps>()
+        .map_scoped::<decal::DecalSurfaces>()
+        .map_scoped::<decal::DecalAssets>()
+        .map_scoped::<decal::ImpactDecals>()
+        .map_scoped::<psys::ParticleSystemDefs>()
+        .map_scoped::<monitor::MonitorScreen>()
+        .map_scoped::<water::MapWaterRender>()
+        .map_scoped::<sky::MapSkybox>()
+        .map_scoped::<sky::SkyCameraInfo>()
+        .map_scoped::<sky::ActiveMapHas3dSky>()
+        .map_scoped::<sky::SkyVis>()
+        .map_scoped::<shadows::ShadowState>()
+        .map_scoped::<shadows::ShadowSource>()
+        .map_scoped::<particles::ParticleAssets>()
+        .map_scoped::<fog::SceneFog>()
+        .map_scoped::<bodies::PlayModels>()
+        .map_scoped::<bodies::HeldAssets>()
+        .map_scoped::<texture_anim::TextureAnims>()
+        .map_scoped::<probe_lit::ProbeLightScale>();
 }

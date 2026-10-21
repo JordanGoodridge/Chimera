@@ -1101,7 +1101,7 @@ or rebases last.
 | N1 | `Sim` on the production executors with capped task pools; ambiguity ratchet and server/client order tests per game (E1 1-3) | `chimera/world/src/harness.rs`; new `games/*/tests/it/schedules.rs` | S-M | full suite twice; failures fixed with explicit edges |
 | N2 | **Done 2026-10-21.** Game parts without the base: `CsSourceParts`, `CombatArmsParts`, a weapons-only plugin each; both games' parts in one app builds (A1 step 1) | `games/*/src/lib.rs`, `games/*/src/harness.rs`, `apps/mashup_demo/src/lib.rs` | S | the five apps' system dumps identical; new two-games test |
 | N3 | Lean map loads: `MapLoadOptions`; servers and collision-only heavy tests without textures; CS:S texture decode on threads (F1) | `chimera/world/src/map/sources.rs`, `games/cs_source/src/game/{bsp,material}.rs`, `games/combat_arms/src/game/world.rs`, test support | S-M | spawn dump identical with textures on; heavy tier sum and server RSS before and after |
-| N4 | Map lifetime: map-scoped resource registry, unload test; textures dropped after spawning (A2 1-2, F2) | `chimera/world/src/map/{mod,registration,spawn}.rs`, `chimera/present/src/render/{spawn,images}.rs` | S-M | spawn dump on five maps; `drawn_parts.rs`; new unload test; RSS after load |
+| N4 | **Done 2026-10-21.** Map lifetime: map-scoped resource registry, unload test; textures dropped after spawning (A2 1-2, F2) | `chimera/world/src/map/{mod,registration,spawn}.rs`, `chimera/present/src/render/{spawn,images}.rs` | S-M | spawn dump on five maps; `drawn_parts.rs`; new unload test; RSS after load |
 | N5 | CI on Linux and Windows without installs (T3) | `.github/workflows/` | S | the workflow itself |
 | N6 | Generated debt and module indexes; Combat Arms' finished briefs archived; survey scripts kept (T5) | `checks/src/bin/`, `docs/tech-debt.md`, `docs/ARCHITECTURE.md`, `docs/plans/`, `tools/arch_survey/` | S | `repo_checks` |
 | N7 | App builder: `PresentationPlugins`, the physics setup shared with the harness (A4) | `chimera/present/src/lib.rs`, `chimera/world/src/lib.rs`, `apps/*/src/main.rs` | S | system dumps; dust2 and WAREHOUSE screenshots |
@@ -1114,6 +1114,25 @@ a group: data and the hook-registering plugins, with the radar's scanner hook
 alone). Test: `apps/mashup_demo/tests/it/two_games.rs`. The five apps' system
 dumps are identical before and after. Not done: `harness.rs` files (the
 bases are unchanged), the mashup app keeps its own plugin list.
+
+N4 landed as `MapScopedApp::map_scoped::<T>()` (`MapHooks::scoped`;
+`unload_map` removes every registered resource; the spawn phases' are listed
+in `registration::scoped_resources`, render's in `render::scoped_resources`)
+and `MapDrawer::retire`: `spawn_map` takes `PendingMap` out once spawned and
+the drawer drops what it needn't keep (render's shadows keep the data for the
+map's life and shed the texels of every texture they don't sample,
+`shadows::shed_unread_textures`). `MapPlugin::data` is now a
+`Mutex<Option<Arc<MapData>>>` the plugin empties in `build` (a plugin keeps
+its fields for the app's life, so its `Arc` would hold the textures). The
+unload test (`chimera/present/tests/it/map_unload.rs`) found four resources
+nothing removed (`TextureAnims`, `ProbeLightScale`, `MapTraceSkip`,
+`MapPropBrushStart`). Spawn dumps on the five maps differ only by the absent
+`PendingMap`; system dumps identical. RSS after load (headless, one map per
+process, whose `Assets<Image>` keep their own copy; a drawn app drops that
+after upload): dust2 1887 to 1817 MB, nuke 3040 to 3027, surf_demise 5821 to
+5644. Not done: dropping the meshes' vertex data (the shadows' `ShadowSource`
+still holds `MapData` whole; X7 splits it), and the code-built Combat Arms
+and greybox unload cases.
 
 N3 and N4 both reach `MapData`'s consumers but not the same files; if
 N3 changes the `MapLoader` signature, N4 rebases on it (one line).

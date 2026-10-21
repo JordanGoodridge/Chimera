@@ -49,7 +49,7 @@ fn run(rec: &Recording) -> resim::Report {
     let map = Arc::new(games::load_map("cs_source:de_dust2").expect("de_dust2"));
     let make = || {
         let map = MapPlugin {
-            data: Some(map.clone()),
+            data: Some(map.clone()).into(),
             view: MapDebugView::Normal,
         };
         Sim::new(CsSim, (map, SourceMovementPlugin, CsWeaponsPlugin))

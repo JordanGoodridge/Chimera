@@ -245,7 +245,7 @@ run unordered systems in whatever order the graph sorts to).
 pairs (systems with conflicting access and no order; Bevy exempts its
 own shared render resources): one today, ours (`frame_metrics`'
 `render_start` and `apply_extract_commands`). The simulation's own order on real
-maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`CHIMERA_SPAWN_DUMP`).
+maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`CHIMERA_SPAWN_DUMP`; `CHIMERA_SPAWN_DUMP_ONLY=<map>` dumps one map, and the run prints the process's resident MB after the load, the memory check for map-lifetime changes). What `unload_map` must leave of a map is `chimera/present/tests/it/map_unload.rs`: a resource a spawn phase inserts needs `map_scoped` or it fails there.
 
 To photograph a live run step by step (e.g. before and after a round
 restart, where frame counts are too uncertain), run the game without

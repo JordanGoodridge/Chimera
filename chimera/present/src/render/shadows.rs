@@ -506,6 +506,33 @@ pub fn casters(data: &MapData) -> impl Iterator<Item = (usize, &MapProp)> {
     data.props.iter().enumerate().filter(|(_, p)| p.casts_shadow && !p.skybox)
 }
 
+/// Drops the texels of every texture the shadows never read: a caster's
+/// silhouette samples the alpha of its alpha-tested and translucent
+/// meshes' textures (`silhouette`), nothing else of `data.textures` is
+/// read after the map is spawned (the images were made from it). The
+/// shadows keep `data` for the map's life (`ShadowSource`), so this is
+/// what keeps the decoded textures from being resident twice.
+pub fn shed_unread_textures(data: &mut MapData) {
+    let mut read = vec![false; data.textures.len()];
+    for (_, prop) in casters(data) {
+        for m in &data.models[prop.model].meshes {
+            if m.alpha != MapAlpha::Opaque
+                && m.alpha != MapAlpha::Add
+                && let Some(t) = m.texture
+                && let Some(r) = read.get_mut(t)
+            {
+                *r = true;
+            }
+        }
+    }
+    for (t, read) in data.textures.iter_mut().zip(read) {
+        t.mips = Vec::new();
+        if !read {
+            t.rgba8 = Vec::new();
+        }
+    }
+}
+
 /// `build` with each caster where `pose` says it is now (translation,
 /// rotation; physics props move) onto `receivers`.
 #[allow(clippy::type_complexity)]

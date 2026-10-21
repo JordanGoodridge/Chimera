@@ -45,6 +45,13 @@ pub trait MapDrawer: SystemParam + 'static {
     /// A drawn resource, inserted among the map's own resources at its
     /// place (their order decides their ids).
     fn insert_drawn(drawn: &Self::Drawn, commands: &mut Commands, s: &MapSpawn, which: DrawnResource);
+    /// After everything is spawned and `PendingMap` is taken out of the
+    /// world: `data` is the map's data, which nothing needs but what the
+    /// drawer's resources kept a share of. Dropping it frees the bulk
+    /// (the textures' decoded texels, copied into images by now); a
+    /// drawer whose resources keep a share (`render`'s shadows) drops the
+    /// bulk they don't read instead.
+    fn retire(_world: &mut World, _data: Arc<MapData>) {}
 }
 
 /// The drawn resources `spawn_map` has a `MapDrawer` insert
@@ -156,6 +163,17 @@ pub fn spawn_map<D: MapDrawer>(mut commands: Commands, pending: Res<PendingMap>,
     let brushes = spawn_props::<D>(&mut commands, &s, assets, &mut drawn);
     insert_resources::<D>(&mut commands, &s, &drawn, brushes);
     spawn_sun_and_spawn_points(&mut commands, data);
+    // Last: the pending data goes (nothing reads it after the spawn), and
+    // with it the textures' texels, unless something kept a share.
+    commands.queue(retire_pending::<D>);
+}
+
+/// Takes `PendingMap` out of the world once the map is spawned
+/// (`MapDrawer::retire`).
+fn retire_pending<D: MapDrawer>(world: &mut World) {
+    if let Some(pending) = world.remove_resource::<PendingMap>() {
+        D::retire(world, pending.0);
+    }
 }
 
 /// The map's file, and its two roots: the map's, and one for drawn parts

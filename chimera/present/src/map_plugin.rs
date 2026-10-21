@@ -11,7 +11,7 @@
 //! `mashup::map::MapPlugin`, what the game and tests add; the dedicated
 //! server adds `map::MapSimPlugin` instead (nothing drawn or played).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
 
@@ -24,14 +24,18 @@ use crate::{audio, map, render};
 pub struct MapPlugin {
     /// The map to spawn at startup; None starts without one (another map
     /// can be loaded later with `change_map`).
-    pub data: Option<Arc<MapData>>,
+    ///
+    /// Taken when the plugin is built, so the pending map is the data's
+    /// only owner and `spawn_map` can free its bulk once spawned (a plugin
+    /// keeps its own fields for the app's life).
+    pub data: Mutex<Option<Arc<MapData>>>,
     pub view: MapDebugView,
 }
 
 impl MapPlugin {
     pub fn new(data: MapData) -> Self {
         Self {
-            data: Some(Arc::new(data)),
+            data: Mutex::new(Some(Arc::new(data))),
             view: MapDebugView::Normal,
         }
     }
@@ -39,7 +43,7 @@ impl MapPlugin {
     /// The map systems and materials without a map loaded yet.
     pub fn empty() -> Self {
         Self {
-            data: None,
+            data: Mutex::new(None),
             view: MapDebugView::Normal,
         }
     }
@@ -47,7 +51,9 @@ impl MapPlugin {
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        map::build(app, self.data.as_ref(), self.view, &Present);
+        let data = self.data.lock().ok().and_then(|mut d| d.take());
+        map::build(app, data.as_ref(), self.view, &Present);
+        render::scoped_resources(app);
         let mut hooks = app.world_mut().resource_mut::<MapHooks>();
         hooks.unload.push(render::unload_map);
         hooks.copied.push(render::merge::show_copied_pieces);

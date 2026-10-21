@@ -61,6 +61,17 @@ impl MapDrawer for MapAssets<'static> {
         spawn_drawn(commands, s, a)
     }
 
+    fn retire(world: &mut World, data: Arc<MapData>) {
+        // The shadows keep a share of the data for the map's life: they
+        // take this one (theirs goes) and drop the texels they never read.
+        if let Some(mut source) = world.get_resource_mut::<shadows::ShadowSource>() {
+            drop(std::mem::replace(&mut source.data, data));
+            if let Some(data) = Arc::get_mut(&mut source.data) {
+                shadows::shed_unread_textures(data);
+            }
+        }
+    }
+
     fn spawn_prop(a: &mut MapAssets, commands: &mut Commands, s: &MapSpawn, drawn: &mut Drawn, prop: PropSpawn) {
         let mut shared = std::mem::take(&mut drawn.shared);
         spawn_prop(commands, s, a, drawn, &mut shared, prop);
