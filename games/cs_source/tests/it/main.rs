@@ -23,7 +23,7 @@ mod common;
 #[path = "../common/stack.rs"]
 mod stack;
 #[allow(unused_imports)]
-use common::{load_map, load_map_level};
+use common::{load_map, load_map_lean, load_map_level, load_map_level_lean};
 
 mod animation;
 mod auto_switch;
@@ -70,6 +70,7 @@ mod ragdoll;
 mod ragdoll_spec;
 mod rope_spec;
 mod rounds;
+mod schedules;
 mod source_movement;
 mod source_movement_css;
 mod source_movement_ladder_water;

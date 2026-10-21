@@ -102,7 +102,7 @@ impl MapCache {
     fn get(&self, id: &str) -> MapData {
         let mut maps = self.0.lock().unwrap();
         maps.entry(id.to_string())
-            .or_insert_with(|| games::load_map(id).unwrap_or_else(|e| panic!("{id}: {e}")))
+            .or_insert_with(|| games::load_map_lean(id).unwrap_or_else(|e| panic!("{id}: {e}")))
             .clone()
     }
 }

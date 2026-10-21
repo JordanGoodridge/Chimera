@@ -48,7 +48,7 @@ fn installed() -> bool {
 
 /// A map with `t` terrorist and `ct` counter-terrorist bots.
 fn sim(map: &str, t: usize, ct: usize) -> (Sim, Vec<Entity>) {
-    let map = games::load_map(&format!("cs_source:{map}")).expect("load map");
+    let map = games::load_map_lean(&format!("cs_source:{map}")).expect("load map");
     let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
     sim.set_tick_interval(TICK_INTERVAL);
     sim.app

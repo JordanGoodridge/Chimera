@@ -27,7 +27,7 @@ fn load(name: &str) -> Option<MapData> {
         eprintln!("skipping {name}: not installed");
         return None;
     }
-    Some(games::load_map(&format!("cs_source:{name}")).unwrap_or_else(|e| panic!("{name}: {e}")))
+    Some(games::load_map_lean(&format!("cs_source:{name}")).unwrap_or_else(|e| panic!("{name}: {e}")))
 }
 
 /// Walk from `feet` (Source units) toward Source direction `dir` for

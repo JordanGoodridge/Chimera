@@ -33,7 +33,7 @@ fn load(name: &str) -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(games::load_map(&format!("cs_source:{name}")).expect("load map"))
+    Some(games::load_map_lean(&format!("cs_source:{name}")).expect("load map"))
 }
 
 /// World bounds (Source units) of a brush entity.

@@ -27,7 +27,7 @@ fn nuke() -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(games::load_map("cs_source:de_nuke").expect("load de_nuke"))
+    Some(games::load_map_lean("cs_source:de_nuke").expect("load de_nuke"))
 }
 
 /// The door's world bounds (Source units) where it spawns.

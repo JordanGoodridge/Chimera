@@ -26,7 +26,7 @@ fn cached(name: &str) -> Option<MapData> {
         eprintln!("skipping: {name} not in the content cache");
         return None;
     }
-    Some(games::load_map(&format!("cs_source:{name}")).expect(name))
+    Some(games::load_map_lean(&format!("cs_source:{name}")).expect(name))
 }
 
 /// The player's box half size, Source units.
@@ -385,7 +385,7 @@ fn surf_sedona_is_fullbright() {
         .count();
     assert_eq!(dark, 0, "{dark} of {} static props not at full light", statics.len());
     // At mat_hdr_level 2 it has its HDR lighting, through its HDR faces.
-    let hdr = games::load_map_level("cs_source:surf_sedona", 2).unwrap();
+    let hdr = games::load_map_level_lean("cs_source:surf_sedona", 2).unwrap();
     let lm = hdr.lightmap.as_ref().expect("HDR lightmap");
     let lit = lm
         .rgb

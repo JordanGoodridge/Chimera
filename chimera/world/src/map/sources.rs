@@ -47,14 +47,46 @@ use serde::Deserialize;
 use super::MapData;
 use crate::core::Team;
 
+/// What a map load brings in (docs/plans/active/architecture-review.md,
+/// F1): everything by default, less for a dedicated server or a test that
+/// never draws the map.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MapLoadOptions {
+    /// Source's `mat_hdr_level` (0 LDR; games without HDR data ignore it).
+    pub hdr_level: u8,
+    /// Decode the textures. Off: each texture is a placeholder of the
+    /// right size (`MapTexture::width`, `height`; no texels, no mip
+    /// levels), so materials and decals still find them and the map's
+    /// logic, collision and sounds are the same; a map loaded so can't be
+    /// drawn. A game whose loader doesn't decode textures at load ignores it.
+    pub textures: bool,
+}
+
+impl Default for MapLoadOptions {
+    fn default() -> Self {
+        Self { hdr_level: 0, textures: true }
+    }
+}
+
+impl MapLoadOptions {
+    /// Everything, at `mat_hdr_level` `hdr_level`.
+    pub fn hdr(hdr_level: u8) -> Self {
+        Self { hdr_level, ..Self::default() }
+    }
+
+    /// No textures (a dedicated server, a test that never draws).
+    pub fn lean() -> Self {
+        Self { textures: false, ..Self::default() }
+    }
+}
+
 /// One game's maps (`game:name`) from its install.
 #[derive(Debug)]
 pub struct MapLoader {
     /// The game's id, the prefix of its map ids (`cs_source`).
     pub game: &'static str,
-    /// Map `name` (without the prefix) at a Source `mat_hdr_level` (0
-    /// LDR; games without HDR data ignore it).
-    pub load: fn(&str, u8) -> Result<MapData, String>,
+    /// Map `name` (without the prefix) with `options`.
+    pub load: fn(&str, &MapLoadOptions) -> Result<MapData, String>,
 }
 
 /// What one game's gameplay brings to any map: its view models,
@@ -196,6 +228,11 @@ impl MapSources {
     /// Map `id` (`game:name`, or a bare name of the first loader's game)
     /// for this app's gameplay.
     pub fn load(&self, id: &str, hdr_level: u8) -> Result<MapData, String> {
+        self.load_with(id, &MapLoadOptions::hdr(hdr_level))
+    }
+
+    /// `load` with `options` (a server's: `MapLoadOptions::lean`).
+    pub fn load_with(&self, id: &str, options: &MapLoadOptions) -> Result<MapData, String> {
         let (loader, name) = match id.split_once(':') {
             Some((game, name)) => (
                 self.loader(game)
@@ -204,7 +241,7 @@ impl MapSources {
             ),
             None => (*self.loaders.first().ok_or("this app loads no maps")?, id),
         };
-        let mut map = (loader.load)(name, hdr_level)?;
+        let mut map = (loader.load)(name, options)?;
         self.dress(loader.game, &mut map);
         Ok(map)
     }
@@ -277,7 +314,7 @@ mod tests {
 
     use super::*;
 
-    fn a_map(name: &str, _: u8) -> Result<MapData, String> {
+    fn a_map(name: &str, _: &MapLoadOptions) -> Result<MapData, String> {
         let mut sounds = crate::map::sound::MapSounds::default();
         for (name, letter) in [("sand", 'N'), ("rock", 'C'), ("weird", '?')] {
             let surface = crate::map::sound::MapSurface {
@@ -310,7 +347,7 @@ mod tests {
         Ok(map)
     }
 
-    fn b_map(name: &str, _: u8) -> Result<MapData, String> {
+    fn b_map(name: &str, _: &MapLoadOptions) -> Result<MapData, String> {
         let mut map = MapData {
             name: format!("b:{name}"),
             ..default()
@@ -349,6 +386,18 @@ mod tests {
         assert_eq!(teams, [Some(2), Some(1), None], "mapped; unlisted teams spawn anyone");
         let kept: Vec<&str> = map.held.iter().map(|h| h.key.as_str()).collect();
         assert_eq!(kept, ["a:gun"], "the kept prefix stays");
+    }
+
+    #[test]
+    fn options_reach_the_loader() {
+        fn lean_only(name: &str, o: &MapLoadOptions) -> Result<MapData, String> {
+            assert!(!o.textures && o.hdr_level == 0, "{o:?}");
+            Ok(MapData { name: name.into(), ..default() })
+        }
+        static L: MapLoader = MapLoader { game: "l", load: lean_only };
+        static S: MapSources = MapSources { loaders: &[&L], gameplay: None, teams: &[], surfaces: &[], kept: &[] };
+        S.load_with("l:x", &MapLoadOptions::lean()).unwrap();
+        assert!(MapLoadOptions::default().textures, "everything by default");
     }
 
     #[test]

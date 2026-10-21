@@ -1214,6 +1214,62 @@ the spawn; the process's peak memory), main / this change:
 the spawn and the navigation tick too; peak 2.5 and 3.5 GB): room for a
 busy box, a regression check rather than a target.
 
+## Lean map loads (2026-10-21)
+
+N3 of the architecture review (F1): `MapLoadOptions { hdr_level, textures }`
+on every `MapLoader`; the dedicated servers and 27 CS:S heavy files that
+never draw or read texels load with `textures` off (each texture a
+placeholder of the right size: no texels, no mip levels), and CS:S's
+textures decode together on up to 8 threads (`MaterialLoader::
+finish_textures` on `map::parallel::par_map`) instead of one at a time.
+Measured on this box with other agents building (load 8-22), the dev
+profile, in `target/` of the worktree.
+
+The dedicated server (`cs_source_server -port 27141 +map <map>`, peak RSS
+three seconds after `loaded`, two runs each):
+
+| | de_dust2 | de_nuke | surf_sedona |
+|---|---|---|---|
+| before | 1,123 / 1,132 MB | 1,587 / 1,592 MB | 2,681 / 2,662 MB |
+| after (lean) | 496 / 496 MB | 573 / 571 MB | 1,171 / 1,203 MB |
+
+One load, the same process, lean and whole alternating
+(`MapData::load_times`): de_dust2 1.7-1.8 s lean, 1.8-2.2 s whole (the
+decode, on threads now, is the `cubemaps` lap's 0.36-0.39 s); de_nuke
+2.2-2.5 s against 3.0-3.1 s; surf_sedona about 10 s either way (the
+lumps' inflating, 2.5-3.4 s, and the packed files, 2.9-4.6 s, dominate; the
+texture decode of ~1 s is what lean saves). So the time a lean load saves
+is 0.4-1.3 s; the memory is the larger win. `heavy::map_spawn_dump`
+(five maps, every entity, component and asset count, and the systems'
+order) is identical before and after, and went from 45 s to 29 s as the
+decode moved onto threads.
+
+The 149 CS:S heavy tests that load lean (`net_soak` and `net_capacity`
+excluded: minutes each, one process per test, five at a time, the binary
+before and after, by `rusage`):
+
+| | before | after |
+|---|---|---|
+| peak RSS, median over the tests | 1,297 / 1,875 / 1,540 MB (three thirds) | 605 / 599 / 649 MB |
+| peak RSS, largest | 6,765 MB | 2,441 MB |
+| CPU time, summed | 2,440 s | 2,506 s |
+| wall time, summed | 2,112 s | 3,950 s |
+
+The last two rows are not a result: the box's load average went from 8-12
+to 18-23 between the runs, and a test is mostly its simulation, not its
+load. What is measured is the memory (2x on the median, 2.8x at the top),
+which is what lets more heavy tests share a box.
+
+Combat Arms (`heavy::map_load::a_lean_load_keeps_the_textures_sizes_and_
+drops_their_texels`, WAREHOUSE as a session's first load): peak 1,378 MB
+lean against 1,475 MB whole; its textures are small (DTX at the shipped
+detail level), the time is the lightmap and the weapon data. Both dedicated
+servers load lean.
+
+Next on the loads (not done): the lumps' inflating and the packed files'
+LZMA on sedona-like maps (6-8 s of a 10 s load), the navigation mesh, and
+the heavy tier's own simulation time.
+
 ## Test cycle
 
 How long `cargo test` takes to build and run, and why the tests are laid

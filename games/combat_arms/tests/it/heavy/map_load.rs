@@ -108,6 +108,38 @@ fn warehouse_loads_within_budget() {
     loads_within("warehouse", "junk_flea", Duration::from_secs(20), 2500);
 }
 
+/// A lean load (`MapLoadOptions::lean`, the dedicated server's): the same
+/// world textures by name and size, no texels or mip levels; the whole
+/// load has both. The lean one first, so its peak memory shows alone.
+#[test]
+fn a_lean_load_keeps_the_textures_sizes_and_drops_their_texels() {
+    use chimera_world::map::MapLoadOptions;
+    let Some(mount) = mount() else { return };
+    let started = Instant::now();
+    let lean = world::load_from_with(&mount, "warehouse", &MapLoadOptions::lean()).unwrap();
+    let lean_took = started.elapsed();
+    let lean_peak = peak_mb();
+    let started = Instant::now();
+    let full = world::load_from(&mount, "warehouse").unwrap();
+    eprintln!(
+        "warehouse: lean {:.2} s, peak {lean_peak} MB; whole {:.2} s, peak {} MB",
+        lean_took.as_secs_f32(),
+        started.elapsed().as_secs_f32(),
+        peak_mb()
+    );
+    assert_eq!(lean.textures.len(), full.textures.len());
+    let world_textures = lean.textures.iter().zip(&full.textures).filter(|(l, _)| l.rgba8.is_empty()).count();
+    assert!(world_textures > 10, "{world_textures} placeholders");
+    for (l, f) in lean.textures.iter().zip(&full.textures) {
+        assert_eq!((&l.name, l.width, l.height), (&f.name, f.width, f.height));
+        if l.rgba8.is_empty() {
+            assert!(l.mips.is_empty() && f.rgba8.len() == (f.width * f.height * 4) as usize, "{}", l.name);
+        }
+    }
+    let texture_of = |m: &MapData| m.meshes.iter().map(|m| (m.texture, m.alpha)).collect::<Vec<_>>();
+    assert_eq!(texture_of(&lean), texture_of(&full), "the meshes find the same textures, alpha tests included");
+}
+
 /// TERRORDOME: the biggest lightmaps (4096 x 19428, laid out at half
 /// resolution).
 #[test]

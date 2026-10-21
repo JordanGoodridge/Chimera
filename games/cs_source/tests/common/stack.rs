@@ -55,7 +55,9 @@ pub mod harness {
 /// Maps by id from the install, and CS:S's parts (`cs_source::game`)
 /// with its front end (`ui`, with the feature).
 pub mod games {
-    pub use crate::common::{load_map, load_map_file, load_map_level, map_file_bytes};
+    pub use crate::common::{
+        load_map, load_map_file, load_map_lean, load_map_level, load_map_level_lean, load_map_with, map_file_bytes,
+    };
 
     pub mod cs_source {
         pub use ::cs_source::game::*;

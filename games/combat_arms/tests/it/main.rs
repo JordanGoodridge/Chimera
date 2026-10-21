@@ -46,6 +46,7 @@ mod radio_chat;
 mod radio_chat_net;
 mod other_modes;
 mod radar;
+mod schedules;
 mod search_destroy;
 mod skeleton;
 mod special_devices;

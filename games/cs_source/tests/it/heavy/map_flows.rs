@@ -41,7 +41,7 @@ pub(super) fn load(name: &str) -> Option<MapData> {
         eprintln!("skipping: {name} not in the content cache (or no install)");
         return None;
     }
-    Some(games::load_map(&format!("cs_source:{name}")).unwrap_or_else(|e| panic!("{name}: {e}")))
+    Some(games::load_map_lean(&format!("cs_source:{name}")).unwrap_or_else(|e| panic!("{name}: {e}")))
 }
 
 /// A map played by scripted characters, and the steps checked so far.

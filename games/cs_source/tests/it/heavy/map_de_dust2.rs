@@ -2988,3 +2988,27 @@ fn models_keep_their_levels_of_detail() {
         eprintln!("a prop with levels at setpos {:.0} {:.0} {:.0}", s.x, s.y, s.z);
     }
 }
+
+/// A lean load (`MapLoadOptions::lean`, the dedicated server's) is the
+/// same map with placeholders for its textures: the same textures by
+/// name and size, the same meshes pointing at them, no texels; the
+/// whole load has texels and mip levels for each.
+#[test]
+fn a_lean_load_keeps_the_textures_sizes_and_drops_their_texels() {
+    let Some(full) = dust2() else { return };
+    let lean = games::load_map_lean("cs_source:de_dust2").expect("lean de_dust2");
+    assert!(!full.textures.is_empty());
+    assert_eq!(lean.textures.len(), full.textures.len());
+    for (l, f) in lean.textures.iter().zip(&full.textures) {
+        assert_eq!((&l.name, l.srgb, l.width, l.height), (&f.name, f.srgb, f.width, f.height));
+        // (The map's own 1x1 stand-ins, `solid:`, are the same in both.)
+        if l.name.ends_with(".vtf") {
+            assert!(l.rgba8.is_empty() && l.mips.is_empty(), "{}: placeholder", l.name);
+        }
+        assert!(f.rgba8.len() == (f.width * f.height * 4) as usize, "{}: {} bytes", f.name, f.rgba8.len());
+    }
+    let texture_of = |m: &MapData| m.meshes.iter().map(|m| (m.texture, m.normal_map, m.detail.map(|d| d.texture))).collect::<Vec<_>>();
+    assert_eq!(texture_of(&lean), texture_of(&full), "the meshes find the same textures");
+    assert_eq!(lean.spawns, full.spawns);
+    assert_eq!(lean.warnings, full.warnings);
+}

@@ -180,18 +180,21 @@ fn edge_mask_atlas(materials: &mut MaterialLoader) -> Option<(usize, u8)> {
         .iter()
         .filter_map(|name| materials.resolve(name).texture)
         .collect();
+    // Texels are read below.
+    materials.finish_textures();
+    let lean = materials.lean;
     let first = materials.textures.get(*tiles.first()?)?;
     let size = first.width;
     let srgb = first.srgb;
     let tiles: Vec<&crate::map::MapTexture> = tiles
         .iter()
         .map(|&i| &materials.textures[i])
-        .filter(|t| t.width == size && t.height == size && t.rgba8.len() == (size * size * 4) as usize)
+        .filter(|t| t.width == size && t.height == size && (lean || t.rgba8.len() == (size * size * 4) as usize))
         .collect();
     let n = tiles.len();
     let row = size as usize * 4;
-    let mut rgba8 = vec![0u8; row * n * size as usize];
-    for (k, t) in tiles.iter().enumerate() {
+    let mut rgba8 = if lean { Vec::new() } else { vec![0u8; row * n * size as usize] };
+    for (k, t) in tiles.iter().enumerate().filter(|_| !lean) {
         for y in 0..size as usize {
             let to = y * row * n + k * row;
             rgba8[to..to + row].copy_from_slice(&t.rgba8[y * row..(y + 1) * row]);
