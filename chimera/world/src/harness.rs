@@ -16,7 +16,14 @@
 //! changed after their data was taken: Bevy's "already been extracted"
 //! error); `system_order` lists every schedule's systems;
 //! `single_threaded_schedules` puts the main world's schedules on one
-//! thread (the game, the dedicated server, `perfgate`).
+//! thread (the game, the dedicated server, `perfgate`, and every `Sim`:
+//! tests run the executors that ship; `Sim::multi_threaded` or
+//! `CHIMERA_EXECUTOR=multi` puts them back on Bevy's multi-threaded one);
+//! `Sim`'s task pools are capped (`SIM_TASK_THREADS`) so parallel test
+//! processes don't each start a thread per core; `schedule_systems` and
+//! `ambiguities` list a schedule's systems in run order and its
+//! unordered conflicting pairs (the games' tests/it/schedules.rs: the
+//! ambiguity ratchet and the server/client order comparison).
 
 use std::time::Duration;
 
@@ -32,10 +39,23 @@ pub struct Sim {
     pub app: App,
 }
 
+/// Threads of the task pools every `Sim` (`add_headless`) process starts (Bevy's
+/// `TaskPoolOptions::with_num_threads`: one I/O, one async compute, two
+/// compute): nextest runs tests as parallel processes, each would
+/// otherwise start a full set. The pools are process-wide; the first app
+/// built in a process sets them.
+pub const SIM_TASK_THREADS: usize = 4;
+
 /// The engine with no window or rendering: what `Sim` runs (stepped by
-/// hand) under its base plugins.
+/// hand) under its base plugins, its task pools capped
+/// (`SIM_TASK_THREADS`).
 pub fn add_headless(app: &mut App) {
-    add_headless_with(app, MinimalPlugins.build());
+    add_headless_with(
+        app,
+        MinimalPlugins.build().set(bevy::app::TaskPoolPlugin {
+            task_pool_options: bevy::app::TaskPoolOptions::with_num_threads(SIM_TASK_THREADS),
+        }),
+    );
 }
 
 /// The same with `minimal` (`MinimalPlugins`, e.g. with a run loop that
@@ -86,6 +106,11 @@ impl Sim {
     }
 
     fn start(mut app: App) -> Self {
+        // The executors the game and the dedicated server run
+        // (`CHIMERA_EXECUTOR=multi`: Bevy's, as there).
+        if chimera_core::env::var("CHIMERA_EXECUTOR").as_deref() != Ok("multi") {
+            single_threaded_schedules(&mut app);
+        }
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
             1.0 / DEFAULT_TICK_HZ,
         )));
@@ -97,6 +122,19 @@ impl Sim {
         sim.pad(pad_from_env());
         sim.ticks(1);
         sim
+    }
+
+    /// Run the main world's schedules (`single_threaded_schedules`' set)
+    /// on Bevy's multi-threaded executor from now on: every `Sim` starts
+    /// on the single-threaded one the game and the dedicated server run;
+    /// a test of the other opts out here (`CHIMERA_EXECUTOR=multi` does it
+    /// for every `Sim`).
+    pub fn multi_threaded(&mut self) {
+        for label in main_schedules() {
+            self.app.edit_schedule(label, |s| {
+                s.set_executor(bevy::ecs::schedule::MultiThreadedExecutor::new());
+            });
+        }
     }
 
     /// Spawn `n` empty entities and a resource: every entity spawned
@@ -284,11 +322,19 @@ pub fn system_order(world: &mut World) -> String {
 /// "Capacity"). Systems that iterate many entities still spread over the
 /// task pool themselves.
 pub fn single_threaded_schedules(app: &mut App) {
-    use bevy::ecs::{
-        intern::Interned,
-        schedule::{ScheduleLabel, SingleThreadedExecutor},
-    };
-    let labels: [Interned<dyn ScheduleLabel>; 10] = [
+    use bevy::ecs::schedule::SingleThreadedExecutor;
+    for label in main_schedules() {
+        app.edit_schedule(label, |s| {
+            s.set_executor(SingleThreadedExecutor::new());
+        });
+    }
+}
+
+/// The main world's per-frame and fixed schedules: what
+/// `single_threaded_schedules` puts on one thread.
+fn main_schedules() -> [bevy::ecs::schedule::InternedScheduleLabel; 10] {
+    use bevy::ecs::schedule::ScheduleLabel;
+    [
         First.intern(),
         PreUpdate.intern(),
         Update.intern(),
@@ -299,10 +345,154 @@ pub fn single_threaded_schedules(app: &mut App) {
         FixedUpdate.intern(),
         FixedPostUpdate.intern(),
         FixedLast.intern(),
-    ];
-    for label in labels {
-        app.edit_schedule(label, |s| {
-            s.set_executor(SingleThreadedExecutor::new());
-        });
+    ]
+}
+
+/// `label`'s systems by name in the order the single-threaded executor
+/// runs them (the schedule built now if it hasn't run); empty if the app
+/// has no such schedule.
+pub fn schedule_systems(world: &mut World, label: impl bevy::ecs::schedule::ScheduleLabel) -> Vec<String> {
+    let mut out = Vec::new();
+    let _ = world.try_schedule_scope(label, |world, schedule| {
+        schedule.initialize(world).expect("schedule builds");
+        for (_, system) in schedule.systems().expect("initialized") {
+            out.push(system.name().to_string());
+        }
+    });
+    out
+}
+
+/// The schedules the simulation's order matters in, by name: the fixed
+/// tick's and prediction's (`Predict`, which a client replays): the
+/// ambiguity ratchet's and the server/client order comparison's.
+pub fn simulation_schedules() -> [(&'static str, bevy::ecs::schedule::InternedScheduleLabel); 6] {
+    use bevy::ecs::schedule::ScheduleLabel;
+    use chimera_core::core::Predict;
+    [
+        ("FixedUpdate", FixedUpdate.intern()),
+        ("FixedPostUpdate", FixedPostUpdate.intern()),
+        ("FixedLast", FixedLast.intern()),
+        ("Predict::Select", Predict::Select.intern()),
+        ("Predict::Movement", Predict::Movement.intern()),
+        ("Predict::Weapons", Predict::Weapons.intern()),
+    ]
+}
+
+/// Of `pairs` (systems with conflicting access and no order between
+/// them: `ambiguities`), those `a` and `b` (two compositions'
+/// `schedule_systems`, e.g. a server's and its client's) run in opposite
+/// orders: where the two would compute something differently. Pairs
+/// either composition lacks are left out; a name that occurs twice
+/// counts at its first place. Systems that don't conflict may run in any
+/// order without changing a result, and ordered ones keep their order.
+pub fn ordered_differently(a: &[String], b: &[String], pairs: &[(String, String)]) -> Vec<(String, String)> {
+    let place = |list: &[String]| {
+        let mut at = std::collections::BTreeMap::new();
+        for (i, name) in list.iter().enumerate() {
+            at.entry(name.clone()).or_insert(i);
+        }
+        at
+    };
+    let (pa, pb) = (place(a), place(b));
+    let mut out: Vec<(String, String)> = pairs
+        .iter()
+        .filter(|(x, y)| match (pa.get(x), pa.get(y), pb.get(x), pb.get(y)) {
+            (Some(ax), Some(ay), Some(bx), Some(by)) => (ax < ay) != (bx < by),
+            _ => false,
+        })
+        .cloned()
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// One `simulation_schedules` entry of a game's schedule ratchet: the
+/// counts its tests/it/schedules.rs stores, which may fall (lower them
+/// there), never rise.
+pub struct ScheduleRatchet {
+    pub schedule: &'static str,
+    /// `ambiguities` in the dedicated server's composition.
+    pub server: usize,
+    /// `ambiguities` in the game's (client's) composition.
+    pub client: usize,
+    /// Of those pairs, the ones the two run in opposite orders
+    /// (`ordered_differently`): what a client would compute otherwise
+    /// than its server.
+    pub opposite: usize,
+}
+
+/// The ambiguity ratchet and the server/client order comparison
+/// (docs/plans/active/architecture-review.md, E1 2-3) for a game's two
+/// compositions (apps built as its dedicated server and its game add
+/// their plugins, finished): each count against `stored`. Err lists
+/// what rose, with the pairs to order; counts that fell are printed.
+pub fn check_schedule_ratchet(server: &mut App, client: &mut App, stored: &[ScheduleRatchet]) -> Result<(), String> {
+    let mut report = String::new();
+    for (name, label) in simulation_schedules() {
+        let stored = stored
+            .iter()
+            .find(|r| r.schedule == name)
+            .unwrap_or_else(|| panic!("{name} not in the stored ratchet"));
+        let s_order = schedule_systems(server.world_mut(), label);
+        let c_order = schedule_systems(client.world_mut(), label);
+        assert!(!s_order.is_empty() || name.starts_with("Predict"), "{name}: no systems on the server");
+        let s = ambiguities(server.world_mut(), label);
+        let c = ambiguities(client.world_mut(), label);
+        let both: Vec<_> = s.iter().chain(&c).cloned().collect();
+        let opposite = ordered_differently(&s_order, &c_order, &both);
+        eprintln!(
+            "{name}: ambiguous pairs server {} client {}, in opposite orders {} (stored {} {} {})",
+            s.len(),
+            c.len(),
+            opposite.len(),
+            stored.server,
+            stored.client,
+            stored.opposite
+        );
+        for (what, pairs, max) in [
+            ("ambiguous pairs on the server", &s, stored.server),
+            ("ambiguous pairs on the client", &c, stored.client),
+            ("conflicting pairs the server and the client run in opposite orders", &opposite, stored.opposite),
+        ] {
+            if pairs.len() > max {
+                report += &format!("{name}: {} {what}, {max} stored:\n", pairs.len());
+                for (a, b) in pairs.iter() {
+                    report += &format!("  {a}\n    {b}\n");
+                }
+            } else if pairs.len() < max {
+                eprintln!("  {name}: {what} fell to {}: lower the stored number", pairs.len());
+            }
+        }
     }
+    if report.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "order the new pairs (`before`/`after`, a set; `ambiguous_with` where either order is right):\n{report}"
+        ))
+    }
+}
+
+/// `label`'s ambiguous pairs: systems whose access conflicts with no
+/// order between them (ignored ambiguities left out), by name, each pair
+/// and the list sorted; the single-threaded executor runs such a pair in
+/// whatever order the graph sorts to, which another system's
+/// constraints can change.
+pub fn ambiguities(world: &mut World, label: impl bevy::ecs::schedule::ScheduleLabel) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let _ = world.try_schedule_scope(label, |world, schedule| {
+        schedule.initialize(world).expect("schedule builds");
+        let names: std::collections::BTreeMap<_, _> = schedule
+            .systems()
+            .expect("initialized")
+            .map(|(key, system)| (key, system.name().to_string()))
+            .collect();
+        for (a, b, _) in schedule.graph().conflicting_systems().iter() {
+            let (a, b) = (names[a].clone(), names[b].clone());
+            out.push(if a <= b { (a, b) } else { (b, a) });
+        }
+    });
+    out.sort();
+    out
 }
