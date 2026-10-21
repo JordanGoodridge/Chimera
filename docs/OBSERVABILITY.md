@@ -98,7 +98,9 @@ in the lowest crate whose public API it needs:
   sizes and formats, the radar art and icons, the mission files' corners
   on four maps, the large-map attribute file, V1 key; `heavy::options`
   (tests/it/: the key-name file; tests/ui/: the install's five options
-  layouts and the controls the screen binds in them, V1 key));
+  layouts and the controls the screen binds in them, V1 key);
+  `heavy::view_model`: the M4A1's and knife's view models loaded on
+  demand and drawn, visible, on the greybox, V2 key);
 - `combat_arms_server` (apps/combat_arms_server/tests/it/): Combat
   Arms' dedicated server as its binary composes it (`ServerPlugin`, its
   command line) with headless clients over UDP on loopback (`dedicated`:
