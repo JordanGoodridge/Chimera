@@ -177,31 +177,41 @@ fn register(app: &mut App) {
     app.world_mut().resource_mut::<crate::net::voice::VoiceRules>().can_hear = can_hear;
     let server = || resource_equals(NetRole::Server);
     let client = || resource_equals(NetRole::Client);
-    app.add_systems(FixedLast, (write_round, write_bombs, write_hostages).run_if(server()))
-        .add_systems(
-            PreUpdate,
-            (receive_teams, receive_classes)
-                .after(ServerSystems::Receive)
-                .run_if(in_state(ServerState::Running)),
-        )
-        .add_systems(
-            PostUpdate,
-            (replicate_hostages, send_round_over, send_objectives, send_hints)
-                .before(ServerSystems::Send)
-                .run_if(server()),
-        )
-        .add_systems(
-            PreUpdate,
-            (apply_round, apply_bombs, apply_hostages, receive_round_over, receive_objectives, receive_hints)
-                .chain()
-                .after(ClientSystems::Receive)
-                .after(crate::net::predict::rebuild_own_states)
-                .run_if(client()),
-        )
-        .add_systems(
-            PostUpdate,
-            (send_teams, send_classes).before(ClientSystems::Send).run_if(client()),
-        );
+    // The match's state: while CS:S is the gameplay (`objectives::plays`).
+    app.add_systems(
+        FixedLast,
+        (write_round, write_bombs, write_hostages).run_if(server()).run_if(crate::objectives::plays),
+    )
+    .add_systems(
+        PreUpdate,
+        (receive_teams, receive_classes)
+            .after(ServerSystems::Receive)
+            .run_if(in_state(ServerState::Running))
+            .run_if(crate::objectives::plays),
+    )
+    .add_systems(
+        PostUpdate,
+        (replicate_hostages, send_round_over, send_objectives, send_hints)
+            .before(ServerSystems::Send)
+            .run_if(server())
+            .run_if(crate::objectives::plays),
+    )
+    .add_systems(
+        PreUpdate,
+        (apply_round, apply_bombs, apply_hostages, receive_round_over, receive_objectives, receive_hints)
+            .chain()
+            .after(ClientSystems::Receive)
+            .after(crate::net::predict::rebuild_own_states)
+            .run_if(client())
+            .run_if(crate::objectives::plays),
+    )
+    .add_systems(
+        PostUpdate,
+        (send_teams, send_classes)
+            .before(ClientSystems::Send)
+            .run_if(client())
+            .run_if(crate::objectives::plays),
+    );
 }
 
 /// A remote player's character has just spawned (`net::JoinRules::joined`):

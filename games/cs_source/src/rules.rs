@@ -87,7 +87,9 @@ impl Plugin for DeathmatchPlugin {
                 (count_deaths, rounds::kill_rewards, rounds::objective_money, apply_score_changes).after(SimSet::Weapons),
             )
                 // The rules are the server's.
-                .run_if(crate::core::authoritative),
+                .run_if(crate::core::authoritative)
+                // While CS:S is the gameplay.
+                .run_if(crate::objectives::plays),
         );
         rounds::plugin(app);
         game_end::plugin(app);

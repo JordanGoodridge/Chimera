@@ -376,7 +376,8 @@ pub(super) fn plugin(app: &mut App) {
                 .in_set(BombHold)
                 .after(SimSet::Rules)
                 .after(crate::weapon::SelectWeapons)
-                .before(SimSet::Movement),
+                .before(SimSet::Movement)
+                .run_if(super::plays),
         )
         .add_systems(
             FixedUpdate,
@@ -395,7 +396,8 @@ pub(super) fn plugin(app: &mut App) {
                 on_death.after(SimSet::Weapons),
             )
                 // Objectives are the server's.
-                .run_if(crate::core::authoritative),
+                .run_if(crate::core::authoritative)
+                .run_if(super::plays),
         );
     resource_cvar::<BombRules, f32>(
         app,

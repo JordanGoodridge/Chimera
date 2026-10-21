@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 use chimera_client::client::Args;
+use chimera_core::gameplay::{Gameplay, GameplayAppExt};
 use chimera_present::{MapPlugin, PresentationPlugins};
 use mashup_demo::{ClientPlugin, MashupPlugins};
 
@@ -71,8 +72,9 @@ fn main() {
     ))
     // What the map's drawing needs.
     .add_plugins(PresentationPlugins)
-    // Combat Arms' tick: its gameplay runs on every map.
-    .insert_resource(Time::<Fixed>::from_seconds(combat_arms::game::TICK_INTERVAL))
+    // Combat Arms is the gameplay on every map: its rules, HUD, binds and
+    // tick (CS:S's parts in the app are its maps, logic and guns only).
+    .set_gameplay(Gameplay::of(&combat_arms::game::INFO))
     .insert_resource(chimera_core::core::BuildVersion(mashup_demo::VERSION))
     // Network play: a listen server, or a client (`connect`).
     .add_plugins(chimera_net::net::NetPlugin)

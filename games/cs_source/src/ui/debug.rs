@@ -36,7 +36,7 @@ impl Plugin for BotDebugPlugin {
                 round_status: Some(round_status),
             })
             .add_systems(Startup, spawn_bot_list)
-            .add_systems(Update, (draw_bots, order_labels, bot_list));
+            .add_systems(Update, (draw_bots, order_labels, bot_list).distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)));
         resource_cvar::<BotViews, u8>(
             app,
             "chimera_drawbots",

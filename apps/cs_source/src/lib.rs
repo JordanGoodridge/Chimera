@@ -38,7 +38,7 @@ pub use cs_source::swap_map;
 
 // The engine's stable base (chimera/core), at its old paths; `core` is
 // a module of its own here (it adds the build's `VERSION`).
-pub use chimera_core::{character, console, env, game_log, game_registry, metrics, mount, slots};
+pub use chimera_core::{character, console, env, game_log, game_registry, gameplay, metrics, mount, slots};
 
 /// The engine's map (chimera/world, crate `chimera_world`) at its old path,
 /// with `MapPlugin` (chimera/present's `map_plugin`: map's registration

@@ -38,7 +38,8 @@ impl Plugin for RadarPlugin {
                 build.run_if(resource_exists_and_changed::<ActiveOverview>),
                 teardown.run_if(resource_removed::<ActiveOverview>),
                 update.run_if(resource_exists::<ActiveOverview>),
-            ),
+            )
+                .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
         );
     }
 }

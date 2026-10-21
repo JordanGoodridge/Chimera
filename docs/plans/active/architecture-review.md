@@ -1186,7 +1186,7 @@ by the same method but not those of the first two passes.
 
 | # | Item | Depends on | Files (lane) | Size | Guard |
 |---|---|---|---|---|---|
-| X1 | `Gameplay` slots and `gameplay_is`; each game's match-wide plugins gated; tick, binds and HUD from the gameplay; the mashup runs Source's logic and offers CS:S's guns (A1 2-4) | N2, N7 | `chimera/core` (new module), each game's rules, bots, HUD and net-part registration | M | system dumps modulo set names; both suites; the mashup's heavy test on cs_office (doors, a CS:S gun) |
+| X1 | **Done 2026-10-21** (note below). `Gameplay` slots and `gameplay_is`; each game's match-wide plugins gated; tick, binds and HUD from the gameplay; the mashup runs Source's logic and offers CS:S's guns (A1 2-4) | N2, N7 | `chimera/core` (new module), each game's rules, bots, HUD and net-part registration | M | system dumps modulo set names; both suites; the mashup's heavy test on cs_office (doors, a CS:S gun) |
 | X2 **done** | Determinism checks: std hash maps and new mutable statics refused in simulation crates (E1 4, E2's check) (done 10-21: `checks/tests/it/determinism.rs`, per-crate ratchets; counts in its `//!`) | N1 | `checks/` | S | `repo_checks` |
 | X3 | Process-wide state into resources: Combat Arms' data, effects and model caches, then weapon sets (E2) | X2 | `games/combat_arms/src/game/{data,effects,characters,view_model}`, `chimera/sim/src/weapon/data.rs` | M | Combat Arms' suite; a two-`Sim`s isolation test |
 | X4 | `OwnState` parts; CS:S's money, kit and night vision and Combat Arms' armour as parts; `net_order` sorted once (A3, E6) | none | `chimera/net/src/net/{mod,server,client,predict}.rs`, `games/*/src/game/net.rs`, `chimera/core/src/core.rs` (predicted registry only) | S-M | both games' network suites; `NET_VERSION` bump |
@@ -1200,6 +1200,42 @@ by the same method but not those of the first two passes.
 Lanes in Next: X4 and X5 both touch `chimera_net`'s protocol; run them
 one after the other or agree on the file split (X4 owns own-state
 encoding, X5 the command encoding). X7 waits for N3 and N4.
+
+X1, done (10-21): `chimera_core::gameplay`. `Gameplay` names the rules,
+HUD and binds by game id and the tick (`Gameplay::of(&INFO)`: all one
+game's); the apps and `CaSim` set it (`set_gameplay`, which also sets
+`Time<Fixed>`, replacing the hand-written tick in the apps; the CS:S app
+and server keep the engine's 64 Hz for the greybox), and each game's gated
+parts make themselves the gameplay when none is set (`default_gameplay`:
+the first game's parts added play). `switch_gameplay` changes it at run
+time with the tick. Gating is by run conditions, `gameplay_is(id)` and
+`hud_is(id)`, on each match-wide system: CS:S's rules, objectives (not the
+C4's predicted arming), bots and the match state of its net part (through
+`objectives::plays`, since `rules` and `bot` can't reach `game::GAME`;
+the id now lives there), Combat Arms' rules, bots and net part, and each
+game's HUD (CS:S's `with_hud` plugins, Combat Arms' `CaHudPlugin` with its
+`HudUpdate` and `RadarUpdate` sets). Not a set per game, as A1 proposed:
+Bevy removes every system set from the dependency graph with a
+swap-remove when it flattens it, so a new set node reordered hundreds of
+unordered systems in all five apps; a condition adds no node (a tuple
+with a collective `run_if` takes a second one on its existing anonymous
+set, one without takes `distributive_run_if`, and the HUD sets'
+conditions are configured after the sets exist). Without a `Gameplay`
+the conditions are true, so a plugin added alone in a test runs as
+before. The shell takes the binds and movement cvars from the gameplay's
+`binds` game, the camera's unit from its `rules` game and a loaded map's
+tick from the gameplay (each falling back to the default game). The
+mashup already ran Source's logic and offered CS:S's guns
+(`MashupPartsPlugin`); it now sets Combat Arms as the gameplay. Tests:
+`gameplay`'s unit tests; `two_games.rs`: with both games' parts only the
+gameplay's rules run and a switch moves them and the tick; the mashup's
+heavy `cs_maps.rs` on cs_office (its func_door opened by +use, a
+func_breakable_surf window broken by CS:S's AK-47). The five apps' system
+dumps are identical (both servers through a temporary dump patch,
+reverted). Not done: a gameplay switch doesn't re-read the binds or swap
+single-slot hooks (`core::NewGame`, the network's join, bot and hold
+hooks) or console commands; a HUD switched off keeps the nodes it spawned
+at start; the character kit and weapon sets aren't slots yet (L1, L2).
 
 ### Later
 

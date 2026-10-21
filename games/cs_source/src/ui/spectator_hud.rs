@@ -24,7 +24,8 @@ impl Plugin for SpectatorHudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SpectatorBarsUp>().add_systems(
             Update,
-            (spectator_panel.after(place_camera).after(crate::client::front_end::FrontEndSync),),
+            (spectator_panel.after(place_camera).after(crate::client::front_end::FrontEndSync),)
+                .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
         );
     }
 }

@@ -180,19 +180,26 @@ fn register(app: &mut App) {
             freeze_ends: flow::freeze_ends,
             frozen: flow::frozen_intent,
         })
-        .add_systems(FixedLast, (write_pickups, write_match, replicate_mercs).run_if(server()))
+        // The match's state: while Combat Arms is the gameplay
+        // (`gameplay::gameplay_is`).
+        .add_systems(
+            FixedLast,
+            (write_pickups, write_match, replicate_mercs).run_if(server()).run_if(crate::gameplay::gameplay_is(super::GAME)),
+        )
         .add_systems(
             PreUpdate,
             (receive_respawns, receive_squad_requests)
                 .after(ServerSystems::Receive)
-                .run_if(in_state(ServerState::Running)),
+                .run_if(in_state(ServerState::Running))
+                .run_if(crate::gameplay::gameplay_is(super::GAME)),
         )
         .add_systems(
             PreUpdate,
             apply_match
                 .after(ClientSystems::Receive)
                 .after(crate::net::predict::rebuild_own_states)
-                .run_if(client()),
+                .run_if(client())
+                .run_if(crate::gameplay::gameplay_is(super::GAME)),
         )
         ;
     app.world_mut()
