@@ -485,6 +485,60 @@ fn case_5_lightmaps() {
     assert!(lo >= 0.00195 - 1e-5 && hi <= 3.022 + 1e-3, "{lo}..{hi}");
 }
 
+/// Every texture-pass triangle (shaders 4 and 9) of every plaintext map
+/// has a lightmap-pass triangle (shader 2) in its block with the same
+/// corners in the same winding (perhaps starting at another corner): the
+/// pair the engine's equal-depth multiply puts together, and what Combat
+/// Arms' map conversion matches them by. Their polygon indices often
+/// differ (1,040,084 of 1,113,880: the reason it doesn't match by
+/// polygon); three triangles of WARHEAD have no twin.
+#[test]
+fn texture_pass_triangles_have_lightmap_twins() {
+    let Some(maps) = plain_maps() else { return };
+    let key = |b: &world::RenderBlock, t: &world::Triangle| {
+        let p = t.indices.map(|i| b.vertices[i as usize].pos.map(f32::to_bits));
+        let r = (0..3).min_by_key(|&k| p[k]).unwrap();
+        [p[r], p[(r + 1) % 3], p[(r + 2) % 3]]
+    };
+    let (mut textured, mut other_polygon, mut missing) = (0usize, 0usize, Vec::new());
+    for (_, path, bytes) in &maps {
+        let w = World::parse(bytes).unwrap();
+        for b in w.render.all_blocks() {
+            let mut lit: BTreeMap<_, Vec<u32>> = BTreeMap::new();
+            for (s, tris) in b.section_triangles() {
+                if s.shader == shader::LIGHTMAP {
+                    for t in tris {
+                        lit.entry(key(b, t)).or_default().push(t.polygon);
+                    }
+                }
+            }
+            for (s, tris) in b.section_triangles() {
+                if !matches!(s.shader, shader::LIGHTMAP_TEXTURE | shader::LIGHTMAP_DUAL_TEXTURE) {
+                    continue;
+                }
+                for t in tris {
+                    textured += 1;
+                    let Some(twins) = lit.get(&key(b, t)) else {
+                        missing.push(format!("{path} polygon {}", t.polygon));
+                        continue;
+                    };
+                    if !twins.contains(&t.polygon) {
+                        other_polygon += 1;
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "{textured} texture-pass triangles, {other_polygon} with a twin of another polygon index; without: {missing:?}"
+    );
+    assert!(other_polygon > textured / 2, "{other_polygon} of {textured}");
+    // Three in WARHEAD have none (no shader-2 triangle of their polygon in
+    // the block either): they draw unlit by the lightmap (white).
+    assert_eq!(missing.len(), 3, "{missing:?}");
+    assert!(missing.iter().all(|m| m.starts_with("worlds2/warhead.dat")), "{missing:?}");
+}
+
 /// Test case 6: BSP polygon winding against the plane, every plaintext map.
 #[test]
 fn case_6_polygon_winding() {

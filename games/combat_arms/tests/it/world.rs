@@ -389,6 +389,96 @@ fn t08_lightmap_clamps_per_pixel() {
     assert!(edge.len() >= 3 && edge.iter().all(|u| (u - edge[0]).abs() < 1e-6), "{edge:?}");
 }
 
+/// "Lightmaps", How it is drawn: a texture-pass triangle takes the light of
+/// the lightmap-pass triangle at the same place, whatever polygon index
+/// either carries and whichever corner it starts at. Two triangles A and B
+/// share an edge; the passes' polygon indices are crossed (as most of
+/// JUNK_FLEA2's are) and A's lightmap triangle starts at another corner.
+/// A's lightmap is 2 x 1 (left 200, right 100), B's one texel of 50. Before
+/// the fix the shared corners took B's lightmap (by polygon and position):
+/// hard-edged wedges of another surface's light.
+#[test]
+fn lightmap_pass_matched_by_place_not_polygon() {
+    let p = [[0.0, 0.0, 0.0], [100.0, 0.0, 0.0], [0.0, 0.0, 100.0], [100.0, 0.0, 100.0]];
+    // Section-own vertices (the packer never shares them between sections).
+    let mut vertices = Vec::new();
+    let mut tri = |corners: [(usize, [f32; 2]); 3], polygon: u32| {
+        let at = vertices.len() as u32;
+        for (i, uv0) in corners {
+            vertices.push(RenderVertex {
+                pos: p[i],
+                uv0,
+                color: 0xFFFF_FFFF,
+                normal: [0.0, 1.0, 0.0],
+                ..default()
+            });
+        }
+        Triangle {
+            indices: [at, at + 1, at + 2],
+            polygon,
+        }
+    };
+    // A = p0 p1 p2, B = p1 p3 p2 (same winding). Lightmap passes: A from p1
+    // (u 0.75 at p1: the right texel; 0.25 at p0 and p2: the left).
+    let triangles = vec![
+        tri([(1, [0.75, 0.5]), (2, [0.25, 0.5]), (0, [0.25, 0.5])], 2),
+        tri([(1, [0.5, 0.5]), (3, [0.5, 0.5]), (2, [0.5, 0.5])], 1),
+        tri([(0, [0.0, 0.0]), (1, [0.0, 0.0]), (2, [0.0, 0.0])], 1),
+        tri([(1, [0.0, 0.0]), (3, [0.0, 0.0]), (2, [0.0, 0.0])], 2),
+    ];
+    let lm_section = |lightmap: Vec<u8>, w: u32| Section {
+        shader: shader::LIGHTMAP,
+        triangle_count: 1,
+        lightmap_width: w,
+        lightmap_height: 1,
+        lightmap,
+        ..default()
+    };
+    let mut w = small_world();
+    w.render.blocks = vec![RenderBlock {
+        sections: vec![
+            lm_section(vec![200, 200, 200, 100, 100, 100], 2),
+            lm_section(vec![50; 3], 1),
+            Section {
+                textures: ["textures\\lit.dtx".into(), String::new()],
+                shader: shader::LIGHTMAP_TEXTURE,
+                triangle_count: 2,
+                ..default()
+            },
+        ],
+        vertices,
+        triangles,
+        ..default()
+    }];
+    let map = world::convert(&w, "small", 1.0, &|_| None);
+    let lm = map.lightmap.as_ref().unwrap();
+    let m = map.meshes.iter().find(|m| m.material == "textures\\lit.dtx").expect("the lit mesh");
+    // The light a vertex reads (nearest texel) and where it is (file axes).
+    let read = |v: u32| {
+        let [u, t] = m.lightmap_uvs[v as usize];
+        let (x, y) = ((u * lm.width as f32) as u32, (t * lm.height as f32) as u32);
+        lm.rgb[(y * lm.width + x) as usize][0]
+    };
+    let at = |v: u32| {
+        let q = m.positions[v as usize];
+        p.iter().position(|c| (c[0] - q[0]).abs() < 1e-3 && (c[2] + q[2]).abs() < 1e-3).unwrap()
+    };
+    let light = |b: u8| world::light_value(b, 1.0);
+    assert_eq!(m.indices.len(), 6);
+    for t in m.indices.chunks(3) {
+        let corners: Vec<usize> = t.iter().map(|&v| at(v)).collect();
+        let a = corners.contains(&0);
+        for &v in t {
+            let want = match (a, at(v)) {
+                (true, 1) => light(100),
+                (true, _) => light(200),
+                (false, _) => light(50),
+            };
+            assert!((read(v) - want).abs() < 1e-4, "triangle {corners:?}, corner {}: {} not {want}", at(v), read(v));
+        }
+    }
+}
+
 /// world_dat.md case 11 (Q12): a light group adds ⌊colour × x⌋ to each
 /// channel, at most 255; case 15 (Q7): the drawn light is twice the
 /// lightmap (`Saturate`) times the lightmap factor on both passes.

@@ -18,8 +18,12 @@
 //!   `EndlessFall` are invisible, light rays are additive, windows
 //!   translucent.
 //! - Lighting ("Lightmaps", Q7, Q9, Q10, Q12): lightmapped surfaces
-//!   (shaders 4 and 9) take their lightmap from the shader-2 pass of the
-//!   same polygon (matched by polygon and position), packed into one atlas
+//!   (shaders 4 and 9) take their lightmap from the shader-2 pass at the
+//!   same place: each triangle from the shader-2 triangle with the same
+//!   corners and winding (`lightmap_for`; the engine's equal-depth
+//!   multiply), not by polygon index, which differs between the passes
+//!   for most triangles (`heavy::world_install::
+//!   texture_pass_triangles_have_lightmap_twins`), packed into one atlas
 //!   (`MapLightmap`) with a one-texel border copied from their edges; a
 //!   triangle whose lightmap coordinates leave 0..1 is cut where they
 //!   cross 0 and 1 and the parts outside take the edge (so it clamps per
@@ -592,6 +596,23 @@ impl Lighting<'_> {
 /// and a coordinate in it (0..1).
 type LightmapRef = (u32, [f32; 2]);
 
+/// A triangle's corner positions (as bits), rotated to start at the
+/// smallest: the same key for the same triangle whatever corner it starts
+/// at, a different one for the reverse winding (the back face).
+type TriangleKey = [[u32; 3]; 3];
+
+/// `t`'s key and the rotation that made it (key corner k is `t`'s corner
+/// (k + rotation) mod 3).
+fn triangle_key(block: &lt::RenderBlock, t: &lt::Triangle) -> (TriangleKey, usize) {
+    let p = t.indices.map(|i| block.vertices[i as usize].pos.map(f32::to_bits));
+    let r = (0..3).min_by_key(|&k| p[k]).unwrap_or(0);
+    ([p[r], p[(r + 1) % 3], p[(r + 2) % 3]], r)
+}
+
+/// A lightmap-pass triangle: its rectangle, its corners' lightmap
+/// coordinates in key order, its polygon.
+type LightmapTriangle = (u32, [[f32; 2]; 3], u32);
+
 /// A corner of a drawn triangle (file axes).
 #[derive(Clone, Copy, Debug)]
 struct Corner {
@@ -666,6 +687,30 @@ fn clamp_cut(tri: [Corner; 3]) -> Vec<Vec<Corner>> {
     parts
 }
 
+/// Texture-pass triangle `t`'s lightmap rectangle and coordinate per
+/// corner: the lightmap-pass triangle with the same corners (the one of
+/// the same polygon when there are several, else the next in turn); None
+/// for every corner when there is none.
+fn lightmap_for(
+    lightmap_at: &HashMap<TriangleKey, Vec<LightmapTriangle>>,
+    taken: &mut HashMap<TriangleKey, usize>,
+    block: &lt::RenderBlock,
+    t: &lt::Triangle,
+) -> [Option<LightmapRef>; 3] {
+    let (key, r) = triangle_key(block, t);
+    let Some(candidates) = lightmap_at.get(&key) else { return [None; 3] };
+    let (rect, uvs, _) = match candidates.iter().find(|c| c.2 == t.polygon) {
+        Some(c) => *c,
+        None => {
+            let n = taken.entry(key).or_default();
+            *n += 1;
+            candidates[(*n - 1) % candidates.len()]
+        }
+    };
+    // Key corner k is t's corner (k + r) mod 3.
+    std::array::from_fn(|k| Some((rect, uvs[(k + 3 - r) % 3])))
+}
+
 /// One render block's drawn sections into the meshes (by texture; each
 /// with its vertices' lightmap rectangles, whose coordinates the mesh's
 /// `lightmap_uvs` hold until the atlas is laid out).
@@ -696,8 +741,13 @@ fn add_block(
             c
         })
         .collect();
-    // The lightmap pass's coordinates, by polygon and position.
-    let mut lightmap_at: HashMap<(u32, [u32; 3]), LightmapRef> = HashMap::new();
+    // The lightmap pass's triangles, by their corners: the engine draws
+    // the pass over the texture pass with an equal-depth test, so a
+    // texture triangle takes the light of the lightmap triangle at the
+    // same place. Not by polygon: the two passes' triangles of one surface
+    // often carry different polygon indices (JUNK_FLEA2: 9 in 10), and
+    // another polygon at a shared corner then lent its lightmap.
+    let mut lightmap_at: HashMap<TriangleKey, Vec<LightmapTriangle>> = HashMap::new();
     for (si, (s, tris)) in block.section_triangles().enumerate() {
         if s.shader != shader::LIGHTMAP || s.lightmap.is_empty() {
             continue;
@@ -724,12 +774,14 @@ fn add_block(
         let texels = Texels::Bytes(rgb.as_chunks::<3>().0.to_vec());
         let rect = atlas.add_texels(s.lightmap_width, s.lightmap_height, texels);
         for t in tris {
-            for &i in &t.indices {
-                let v = &block.vertices[i as usize];
-                lightmap_at.insert((t.polygon, v.pos.map(f32::to_bits)), (rect, v.uv0));
-            }
+            let (key, r) = triangle_key(block, t);
+            let uvs = std::array::from_fn(|k| block.vertices[t.indices[(k + r) % 3] as usize].uv0);
+            lightmap_at.entry(key).or_default().push((rect, uvs, t.polygon));
         }
     }
+    // Texture triangles matched so far per key: coincident surfaces (the
+    // same triangle twice) take the lightmap triangles in turn.
+    let mut taken: HashMap<TriangleKey, usize> = HashMap::new();
     for (s, tris) in block.section_triangles() {
         let lightmapped = match s.shader {
             shader::LIGHTMAP_TEXTURE | shader::LIGHTMAP_DUAL_TEXTURE => true,
@@ -807,10 +859,7 @@ fn add_block(
                 mesh.indices.extend([tri[0], tri[2], tri[1]]);
                 continue;
             }
-            let found = t.indices.map(|i| {
-                let v = &block.vertices[i as usize];
-                lightmap_at.get(&(t.polygon, v.pos.map(f32::to_bits))).copied()
-            });
+            let found = lightmap_for(&lightmap_at, &mut taken, block, t);
             let rect = match found {
                 [Some(a), Some(b), Some(c)] if a.0 == b.0 && b.0 == c.0 => Some(a.0),
                 _ => None,
