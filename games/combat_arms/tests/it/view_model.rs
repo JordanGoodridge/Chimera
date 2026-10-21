@@ -1548,3 +1548,71 @@ fn t44_attached_effects() {
     r.frames(30, NONE);
     assert!(r.m.pieces.fx_shown[1], "shown by the key");
 }
+
+/// Emptying the magazine and reloading plays the reload animation once
+/// (the weapon's auto-reload; the view model must not ask again before
+/// the clip is filled), fire released or held: one reload start in the
+/// weapon, one `reload` in the view model, a full clip, idle.
+fn empty_then_reload_once(held: bool, lag: f32) {
+    let mut sim = sim();
+    let p = player(&mut sim);
+    let w = drawn(&mut sim, p, M92FS);
+    let full = sim.app.world().get::<Magazine>(w).unwrap().clip;
+    {
+        let mut m = sim.app.world_mut().get_mut::<Magazine>(w).unwrap();
+        m.clip = 1;
+        m.reserve = 60;
+        // The weapon's clip fills later than the animation ends (a tick's
+        // rounding, or a rate the animation does not follow).
+        m.reload_time += lag;
+    }
+    sim.intent(p).fire = true;
+    let (mut plays, mut starts) = (0, 0);
+    let (mut last, mut last_end): (Option<bool>, Option<f64>) = (None, None);
+    for n in 0..600 {
+        if n == 3 && !held {
+            sim.intent(p).fire = false;
+        }
+        sim.ticks(1);
+        // The reload stage entered (the animation `reload` can still be the
+        // one playing on the update that asks for the second).
+        let now = vm(&sim, p).machine.as_ref().map(|m| matches!(m.stage, Stage::Reloading(_)));
+        if now == Some(true) && last != Some(true) {
+            plays += 1;
+        }
+        last = now;
+        let end = sim.app.world().get::<weapon::WeaponState>(w).unwrap().reload_end;
+        if end.is_some() && last_end.is_none() {
+            starts += 1;
+        }
+        last_end = end;
+        if held && n == 300 {
+            sim.intent(p).fire = false;
+        }
+    }
+    assert_eq!((plays, starts), (1, 1), "held {held}: view reload plays, weapon reload starts");
+    let m = sim.app.world().get::<Magazine>(w).unwrap();
+    assert!(m.clip > 0, "refilled");
+    let _ = full;
+    assert!(playing(&sim, p).is_some_and(|n| n.starts_with("idle_")), "back to idle: {:?}", playing(&sim, p));
+}
+
+#[test]
+fn an_emptied_magazine_reloads_once_fire_released() {
+    empty_then_reload_once(false, 0.0);
+}
+
+#[test]
+fn an_emptied_magazine_reloads_once_fire_held() {
+    empty_then_reload_once(true, 0.0);
+}
+
+/// The clip fills after the animation ends (the weapon's reload is longer
+/// than the animation): no second reload animation for the stale empty clip.
+#[test]
+fn an_emptied_magazine_reloads_once_when_the_clip_fills_late() {
+    for lag in [0.05, 0.3] {
+        empty_then_reload_once(false, lag);
+        empty_then_reload_once(true, lag);
+    }
+}
