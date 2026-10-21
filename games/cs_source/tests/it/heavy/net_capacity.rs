@@ -82,7 +82,7 @@ const QUIET_LOAD_PER_CPU: f64 = 0.5;
 fn installed() -> bool {
     let ok = LocalConfig::load()
         .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
+        .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !ok {
         eprintln!("skipping: no CS:S install configured");

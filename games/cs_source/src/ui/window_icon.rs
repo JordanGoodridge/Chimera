@@ -100,9 +100,7 @@ fn decode_dib(d: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
 
 /// The game's icon, from the install `chimera.local.toml` names.
 fn load() -> Option<winit::window::Icon> {
-    let install = crate::mount::config::LocalConfig::load()
-        .ok()?
-        .game_path(crate::game::GAME)?;
+    let install = crate::game::INFO.install()?;
     let path = icon_file(&install)?;
     let loaded = decode(&path).and_then(|(rgba, w, h)| {
         winit::window::Icon::from_rgba(rgba, w, h).map_err(|e| format!("{}: {e}", path.display()))
@@ -188,7 +186,7 @@ mod tests {
     fn the_installs_icon_decodes_when_there_is_one() {
         let Some(install) = crate::mount::config::LocalConfig::load()
             .ok()
-            .and_then(|c| c.game_path(crate::game::GAME))
+            .and_then(|c| c.game_path_in(crate::game::GAME, crate::game::INFO.steam.as_ref()))
         else {
             return;
         };

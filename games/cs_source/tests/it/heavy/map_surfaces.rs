@@ -198,7 +198,7 @@ fn displacement_textures_follow_the_grid() {
     use crate::stack::mount::config::LocalConfig;
     use bevy::math::Vec2;
 
-    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(cs_source::GAME)) else {
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())) else {
         eprintln!("skipping: no CS:S install configured");
         return;
     };

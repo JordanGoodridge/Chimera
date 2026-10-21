@@ -7,7 +7,7 @@ use std::{path::PathBuf, process::Command};
 use mashup::{games::cs_source, mount::config::LocalConfig};
 
 fn install() -> Option<PathBuf> {
-    let path = LocalConfig::load().ok()?.game_path(cs_source::GAME)?;
+    let path = LocalConfig::load().ok()?.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())?;
     if path.join("cstrike").is_dir() {
         Some(path)
     } else {

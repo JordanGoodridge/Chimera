@@ -225,7 +225,7 @@ impl FirstRun {
 /// under it (its `cstrike/` or `hl2/` folder pasted, or the Steam
 /// library's `common/` folder).
 pub fn install_folder(path: &Path) -> Result<PathBuf, String> {
-    let game = install::steam_game(GAME).ok_or("no Steam game entry")?;
+    let game = &crate::game::INFO.steam.ok_or("no Steam game entry")?;
     let first = install::check(path, game);
     if first.is_ok() {
         return Ok(path.to_path_buf());
@@ -243,7 +243,7 @@ pub fn install_folder(path: &Path) -> Result<PathBuf, String> {
 
 fn resolve_now() -> Resolved {
     let config = LocalConfig::load().unwrap_or_default();
-    install::resolve(&config, GAME)
+    install::resolve(&config, GAME, crate::game::INFO.steam.as_ref())
 }
 
 /// Check, remember and use `folder`; what is used now.
@@ -580,7 +580,7 @@ mod tests {
     fn a_pasted_subfolder_finds_its_install() {
         let dir = std::env::temp_dir().join(format!("chimera-first-run-{}", std::process::id()));
         let css = dir.join("steamapps/common/Counter-Strike Source");
-        for f in install::steam_game(GAME).unwrap().required {
+        for f in crate::game::INFO.steam.unwrap().required {
             let p = css.join(f);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
             std::fs::write(p, "").unwrap();

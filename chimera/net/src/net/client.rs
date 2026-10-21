@@ -646,7 +646,10 @@ fn check_map(world: &mut World) {
             set_stage(world, JoinStage::Joined);
             world.write_message(NetEvent::Joined { map });
         }
-        Some(false) => fail(world, JoinFailure::MapDiffers, &super::maps::differs(&map)),
+        Some(false) => {
+            let why = super::maps::differs(world, &map);
+            fail(world, JoinFailure::MapDiffers, &why)
+        }
         None => {}
     }
 }

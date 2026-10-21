@@ -239,7 +239,12 @@ pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo
     open: mount::open,
     map_cycle,
     map_names,
-    map_file: |name| format!("maps/{name}.bsp"),
+    steam: Some(crate::mount::install::SteamGame {
+        app_id: 240,
+        name: "Counter-Strike: Source",
+        required: &["cstrike/cstrike_pak_dir.vpk", "hl2/hl2_misc_dir.vpk"],
+    }),
+    map_file: |name| Some(format!("maps/{name}.bsp")),
     import_map: mount::import_map,
     default_binds_cfg: "cfg/config_default.cfg",
     default_binds: DEFAULT_BINDS,

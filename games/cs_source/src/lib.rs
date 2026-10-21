@@ -111,6 +111,12 @@ impl Plugin for CsSourceParts {
 /// (`game::weapons::CsGunsPlugin`).
 pub use game::weapons::CsGunsPlugin as CsSourceGuns;
 
+/// Register CS:S's `GameInfo` in an app that doesn't play it as a whole
+/// (the harness): the network's map offer finds a map's file through it.
+pub fn register_game(app: &mut App) {
+    game_registry::GameAppExt::register_game(app, &game::INFO);
+}
+
 /// Put a map in place of the one playing, as the game's `map` does
 /// without the view (the dedicated server's `changelevel`, tests): `data`
 /// for map `id`, or the greybox (None); the tick its game runs at;
