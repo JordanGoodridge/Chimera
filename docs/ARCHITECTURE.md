@@ -630,7 +630,7 @@ that the paths exist).
 - `chimera/world/src/harness.rs`: `Sim`: a headless app on a given base stepped by exact ticks, for tests and tools (harness)
 - `chimera/net/src/harness.rs`: `NetSim`: a server and clients, each a `Sim`, over the in-memory link (harness)
 - `games/cs_source/src/harness.rs`: `CsSim` (CS:S's simulation as a `Sim`'s base) and maps for network tests (harness)
-- `games/cs_source/src/lib.rs`: `SimPlugins` (CS:S's simulation), `swap_map` (crate `cs_source`'s root)
+- `games/cs_source/src/lib.rs`: `SimPlugins` (CS:S's simulation: base + `CsSourceParts` + metrics), `CsSourceGuns`, `swap_map` (crate `cs_source`'s root)
 - `chimera/sim/src/lib.rs`: `SimBasePlugins`: the engine's simulation without a game (crate `chimera_sim`'s root)
 - `checks/src/affected.rs`: which packages' tests a change can affect, through cargo's crate graph (repo_checks)
 - `checks/src/bin/affected.rs`: dev tool: print the affected tests' `cargo nextest` arguments (the git hooks)

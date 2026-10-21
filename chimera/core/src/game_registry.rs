@@ -42,6 +42,13 @@ pub struct GameInfo {
     pub open: fn(&Path) -> io::Result<Mount>,
     /// The map cycle a server plays in turn, from the mounted install.
     pub map_cycle: fn(&Mount) -> Vec<String>,
+    /// The maps the mounted install holds, by name (sorted): each game's
+    /// own layout (Source's `maps/<name>.bsp`, Combat Arms'
+    /// `worlds*/<name>.dat`).
+    pub map_names: fn(&Mount) -> Vec<String>,
+    /// A map's file relative to a content folder (the install's download
+    /// folder, Chimera's cache): `maps/<name>.bsp`.
+    pub map_file: fn(&str) -> String,
     /// Copy a map file into Chimera's content cache; returns its name.
     pub import_map: fn(&Path) -> Result<String, String>,
     /// The default binds' config file, relative to `content_dir`
@@ -179,6 +186,8 @@ mod tests {
         tick_interval: 0.015,
         open: no_mount,
         map_cycle: |_| Vec::new(),
+        map_names: |_| Vec::new(),
+        map_file: |n| format!("maps/{n}.bsp"),
         import_map: |_| Err("no".into()),
         default_binds_cfg: "cfg/default.cfg",
         default_binds: &[("w", "+forward")],

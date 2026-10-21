@@ -1029,3 +1029,35 @@ fn map_spawn_family() {
     let none = [(tdm, true, false, true), ("HungerGame", false, true, false)];
     assert_eq!(map_family(none.iter().copied()), None);
 }
+
+/// A mount of loose paths, for the map lister.
+struct Fake(Vec<&'static str>);
+
+impl chimera_core::mount::FileSource for Fake {
+    fn name(&self) -> String {
+        "fake".into()
+    }
+    fn entries(&self) -> Vec<chimera_core::mount::Entry> {
+        self.0
+            .iter()
+            .map(|p| chimera_core::mount::Entry { path: p.to_string(), size: 1 })
+            .collect()
+    }
+    fn read(&self, _: &str) -> Option<std::io::Result<Vec<u8>>> {
+        None
+    }
+}
+
+#[test]
+fn the_game_lists_its_maps_for_the_console() {
+    let mut mount = chimera_core::mount::Mount::default();
+    mount.push(Fake(vec![
+        "worlds2/warehouse.dat",
+        "worlds/junk_flea.dat",
+        "worlds/sub/deep.dat",
+        "maps/de_dust2.bsp",
+        "worlds2/readme.txt",
+    ]));
+    assert_eq!((combat_arms::game::INFO.map_names)(&mount), ["junk_flea", "warehouse"]);
+    assert_eq!((combat_arms::game::INFO.map_file)("warehouse"), "worlds/warehouse.dat");
+}

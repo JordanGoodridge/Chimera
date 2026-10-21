@@ -1099,12 +1099,21 @@ or rebases last.
 | # | Item | Files (lane) | Size | Guard |
 |---|---|---|---|---|
 | N1 | **Done** (10-21): `Sim` on the production executors with capped task pools; ambiguity ratchet and server/client order tests per game (E1 1-3). No test depended on the old executor (affected crates' full suites twice, 3616 tests each). Step 3 landed as a ratchet: prediction's schedules run every conflicting pair in the same order on server and client, the fixed tick's don't yet (CS:S 56/30/17, Combat Arms 253/5/32 pairs in `FixedUpdate`/`FixedPostUpdate`/`FixedLast`; mostly from the game adding the map plugin first and `NetPlugin` after the parts, and from the presentation's `FixedPostUpdate` systems); ordering them is follow-up work | `chimera/world/src/harness.rs`; new `games/*/tests/it/schedules.rs` | S-M | full suite twice; failures fixed with explicit edges |
-| N2 | Game parts without the base: `CsSourceParts`, `CombatArmsParts`, a weapons-only plugin each; both games' parts in one app builds (A1 step 1) | `games/*/src/lib.rs`, `games/*/src/harness.rs`, `apps/mashup_demo/src/lib.rs` | S | the five apps' system dumps identical; new two-games test |
+| N2 | **Done 2026-10-21.** Game parts without the base: `CsSourceParts`, `CombatArmsParts`, a weapons-only plugin each; both games' parts in one app builds (A1 step 1) | `games/*/src/lib.rs`, `games/*/src/harness.rs`, `apps/mashup_demo/src/lib.rs` | S | the five apps' system dumps identical; new two-games test |
 | N3 | Lean map loads: `MapLoadOptions`; servers and collision-only heavy tests without textures; CS:S texture decode on threads (F1) | `chimera/world/src/map/sources.rs`, `games/cs_source/src/game/{bsp,material}.rs`, `games/combat_arms/src/game/world.rs`, test support | S-M | spawn dump identical with textures on; heavy tier sum and server RSS before and after |
 | N4 | Map lifetime: map-scoped resource registry, unload test; textures dropped after spawning (A2 1-2, F2) | `chimera/world/src/map/{mod,registration,spawn}.rs`, `chimera/present/src/render/{spawn,images}.rs` | S-M | spawn dump on five maps; `drawn_parts.rs`; new unload test; RSS after load |
 | N5 | CI on Linux and Windows without installs (T3) | `.github/workflows/` | S | the workflow itself |
 | N6 | Generated debt and module indexes; Combat Arms' finished briefs archived; survey scripts kept (T5) | `checks/src/bin/`, `docs/tech-debt.md`, `docs/ARCHITECTURE.md`, `docs/plans/`, `tools/arch_survey/` | S | `repo_checks` |
 | N7 | App builder: `PresentationPlugins`, the physics setup shared with the harness (A4) | `chimera/present/src/lib.rs`, `chimera/world/src/lib.rs`, `apps/*/src/main.rs` | S | system dumps; dust2 and WAREHOUSE screenshots |
+
+N2 landed as `cs_source::CsSourceParts` (rules, objectives, bots, net part,
+Source's logic; `SimPlugins` = base + parts + tick metrics), `combat_arms::
+CombatArmsParts` (= `game::CombatArmsPlugins`), and a weapons-only plugin
+each (`cs_source::CsSourceGuns` = `CsGunsPlugin`; `combat_arms::CombatArmsGuns`,
+a group: data and the hook-registering plugins, with the radar's scanner hook
+alone). Test: `apps/mashup_demo/tests/it/two_games.rs`. The five apps' system
+dumps are identical before and after. Not done: `harness.rs` files (the
+bases are unchanged), the mashup app keeps its own plugin list.
 
 N3 and N4 both reach `MapData`'s consumers but not the same files; if
 N3 changes the `MapLoader` signature, N4 rebases on it (one line).

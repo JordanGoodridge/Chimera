@@ -72,17 +72,37 @@ pub struct SimPlugins;
 impl Plugin for SimPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(chimera_sim::SimBasePlugins)
-            .add_plugins((
-                objectives::ObjectivesPlugin,
-                rules::DeathmatchPlugin,
-                bot::BotPlugin,
-                // CS:S's part of the network (its round, bomb and hostages,
-                // its join flow and bots' hooks); nothing without `NetPlugin`.
-                game::net::CsSourceNetPlugin,
-            ))
-            .add_plugins((logic::LogicPlugin, chimera_core::metrics::TickMetricsPlugin));
+            .add_plugins(CsSourceParts)
+            .add_plugins(chimera_core::metrics::TickMetricsPlugin);
     }
 }
+
+/// CS:S's simulation parts without the engine's base: its objectives,
+/// rules, bots and part of the network (nothing without `NetPlugin`) and
+/// Source's map logic. `SimPlugins` is the base, these, and the tick
+/// metrics; an app with several games' parts adds the base once and each
+/// game's parts. The guns alone (data and hooks, no rules) are
+/// `CsSourceGuns`.
+pub struct CsSourceParts;
+
+impl Plugin for CsSourceParts {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((
+            objectives::ObjectivesPlugin,
+            rules::DeathmatchPlugin,
+            bot::BotPlugin,
+            // CS:S's part of the network (its round, bomb and hostages,
+            // its join flow and bots' hooks); nothing without `NetPlugin`.
+            game::net::CsSourceNetPlugin,
+        ))
+        .add_plugins(logic::LogicPlugin);
+    }
+}
+
+/// CS:S's weapons alone: their data, hooks, accuracy and recoil, for an
+/// app that offers its guns under another game's rules
+/// (`game::weapons::CsGunsPlugin`).
+pub use game::weapons::CsGunsPlugin as CsSourceGuns;
 
 /// Put a map in place of the one playing, as the game's `map` does
 /// without the view (the dedicated server's `changelevel`, tests): `data`

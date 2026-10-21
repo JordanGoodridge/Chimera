@@ -59,20 +59,7 @@ use crate::{
 /// The layout's root control.
 pub const ROOT: &str = "KillCam";
 
-/// A format's `%d` and `%s` filled in order with `with` (the extra
-/// ones stay).
-pub fn fill_all(format: &str, with: &[&str]) -> String {
-    let mut out = String::new();
-    let mut rest = format;
-    for w in with {
-        let Some(at) = [rest.find("%d"), rest.find("%s")].into_iter().flatten().min() else { break };
-        out.push_str(&rest[..at]);
-        out.push_str(w);
-        rest = &rest[at + 2..];
-    }
-    out.push_str(rest);
-    out
-}
+pub use super::model::fill_all;
 
 /// The kill-cam layout, with the controls by role.
 #[derive(Clone, Debug, PartialEq)]
