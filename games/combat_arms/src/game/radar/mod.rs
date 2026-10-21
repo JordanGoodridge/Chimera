@@ -147,6 +147,18 @@ pub fn spec_yaw(intent_yaw: f32) -> f64 {
 /// The room keys of the modes that send no spawn markers (F5).
 const NO_MARKERS: &[&str] = &["FFA", "VWRM"];
 
+/// The scanner weapons' hook alone (`scan::SCANNER`), for an app that
+/// offers Combat Arms' weapons without its radar (`CaRadarPlugin` adds it).
+pub struct CaScannerHook;
+
+impl Plugin for CaScannerHook {
+    fn build(&self, app: &mut App) {
+        app.register_weapon_hook::<scan::ScannerParams>(scan::SCANNER, |e, _, p| {
+            e.insert(scan::CaScannerData(*p));
+        });
+    }
+}
+
 pub struct CaRadarPlugin;
 
 impl Plugin for CaRadarPlugin {
@@ -157,9 +169,7 @@ impl Plugin for CaRadarPlugin {
             .init_resource::<RadarImageSource>()
             .init_resource::<CaScans>()
             .init_resource::<scan::CaDetectors>()
-            .register_weapon_hook::<scan::ScannerParams>(scan::SCANNER, |e, _, p| {
-                e.insert(scan::CaScannerData(*p));
-            })
+            .add_plugins(CaScannerHook)
             .add_systems(
                 FixedUpdate,
                 (scan::scanners, scan::share, scan::mark)

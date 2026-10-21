@@ -61,3 +61,14 @@ impl Plugin for SimPlugins {
             .add_plugins(chimera_core::metrics::TickMetricsPlugin);
     }
 }
+
+/// Combat Arms' parts: everything of its simulation but the engine's base
+/// (`game::CombatArmsPlugins`: the game registered, then each subsystem).
+/// `SimPlugins` is the base and the tick metrics; an app with several
+/// games' parts adds the base once and each game's parts. Its weapons
+/// alone, for a game that offers them under other rules, are
+/// `CombatArmsGuns`.
+pub use game::CombatArmsPlugins as CombatArmsParts;
+
+/// Combat Arms' weapons alone (`game::CombatArmsGunsPlugins`).
+pub use game::CombatArmsGunsPlugins as CombatArmsGuns;

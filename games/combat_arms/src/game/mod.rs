@@ -246,3 +246,27 @@ impl PluginGroup for CombatArmsPlugins {
             .add(props::CaPropsPlugin)
     }
 }
+
+/// Combat Arms' weapons alone, after the engine's base and with no game
+/// registered, rules, bots or network part: the data and every plugin
+/// whose weapon hooks the data names (in `CombatArmsPlugins`' order),
+/// then `weapons` (the radar's scanner hook without its radar). For an
+/// app that offers its guns under another game's rules; never beside
+/// `CombatArmsPlugins`, which includes all of these.
+pub struct CombatArmsGunsPlugins;
+
+impl PluginGroup for CombatArmsGunsPlugins {
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add(data::CaDataPlugin)
+            .add(hud::CaHudDataPlugin)
+            .add(inventory::CaInventoryPlugin)
+            .add(grenades::CaGrenadesPlugin)
+            .add(special::CaSpecialPlugin)
+            .add(radar::CaScannerHook)
+            .add(attachments::CaAttachmentsPlugin)
+            .add(view_model::CaViewModelPlugin)
+            .add(effects::CaEffectsPlugin)
+            .add(weapons::CaWeaponsPlugin)
+    }
+}
