@@ -64,7 +64,7 @@ const RIGHT: usize = 1;
 /// The ammo icon for a weapon: its ammo type's (weapon data,
 /// `hud_icon`).
 pub fn ammo_icon(weapon: &str) -> Option<&'static str> {
-    crate::weapon::data::lookup(weapon)?.ammo.as_ref()?.hud_icon.as_deref()
+    crate::game::weapons::data(weapon)?.ammo.as_ref()?.hud_icon.as_deref()
 }
 
 // The sprite sheets' additive pixels as alpha: the shell's (its HUD uses it

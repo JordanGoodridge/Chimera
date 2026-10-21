@@ -570,9 +570,8 @@ impl Loadout {
                     let _ = out.equip(catalog, owned, kind, slot, item);
                 }
             }
-            let gear = crate::game::gear::gear_data();
             for a in &from.abilities {
-                let _ = out.equip_ability(gear, kind, *a);
+                let _ = out.equip_ability(&catalog.gear, kind, *a);
             }
             out.set_mut(kind).attachments = from.attachments;
         }

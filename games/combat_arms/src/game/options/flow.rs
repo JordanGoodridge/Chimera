@@ -65,7 +65,8 @@ pub fn control_value(world: &mut World, cvar: &str) -> Option<String> {
 /// `CaOptions::path`, else the template.
 pub fn load_at_start(world: &mut World) {
     let found = world.resource::<CaOptions>().path.as_deref().and_then(profile::read);
-    world.resource_mut::<CaOptions>().key_names = super::keys::read_installed();
+    let key_names = super::keys::read_installed(&world.get_resource_or_insert_with(super::super::data::CaData::default));
+    world.resource_mut::<CaOptions>().key_names = key_names;
     load(world, found);
     // The shell's startup lines (`binddefaults`, `config.cfg`) run from the
     // console's queue after this: the player's binds go in once more

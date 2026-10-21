@@ -254,12 +254,13 @@ pub struct CaChatPlugin;
 
 impl Plugin for CaChatPlugin {
     fn build(&self, app: &mut App) {
+        let radio = RadioData::load(&super::data::CaData::of(app));
         app.init_resource::<CaChat>()
             .init_resource::<ChatUiState>()
             .init_resource::<ServerLimits>()
             .init_resource::<ChatRng>()
             .init_resource::<ChatRegion>()
-            .insert_resource(CaRadio(RadioData::load()))
+            .insert_resource(CaRadio(radio))
             .add_message::<CaSayRequest>()
             .add_message::<CaRadioRequest>()
             .add_message::<CaSayIn>()

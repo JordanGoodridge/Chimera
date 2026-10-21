@@ -551,16 +551,17 @@ impl InstallUi {
     }
 }
 
-/// The install's UI data for this process: None without an install, with
-/// `game::data::use_builtin_data_only`, or when its layouts are locked.
-pub fn installed() -> Option<Arc<InstallUi>> {
+/// The install's UI data (read once per process, a memo of the install's
+/// files): None without an install, with `CaData::builtin`, or when its
+/// layouts are locked.
+pub fn installed(data: &crate::game::data::CaDataInner) -> Option<Arc<InstallUi>> {
     static UI: std::sync::OnceLock<Option<Arc<InstallUi>>> = std::sync::OnceLock::new();
+    if data.builtin_only() {
+        return None;
+    }
     UI.get_or_init(|| {
-        if crate::game::data::builtin_only() {
-            return None;
-        }
         let mount = crate::game::INFO.mount()?;
-        let icons: Vec<String> = crate::game::data::builtin_weapon_ids().iter().map(|id| kill_icon(id)).collect();
+        let icons: Vec<String> = data.builtin_weapon_ids().iter().map(|id| kill_icon(id)).collect();
         load(&mount, &icons).map(Arc::new)
     })
     .clone()

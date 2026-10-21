@@ -1246,6 +1246,7 @@ pub struct CaAttachmentsPlugin;
 impl Plugin for CaAttachmentsPlugin {
     fn build(&self, app: &mut App) {
         let loadout = std::env::var("CHIMERA_CA_MODS").map(|s| CaLoadout::parse(&s)).unwrap_or_default();
+        let table = super::data::CaData::of(app).attachments().clone();
         app.register_weapon_hook::<AttachParams>(ATTACHMENTS, |e, d, p| {
             let mag = e.get::<Magazine>();
             let stock = Stock {
@@ -1264,7 +1265,7 @@ impl Plugin for CaAttachmentsPlugin {
                 CaMods::default(),
             ));
         })
-        .insert_resource(super::data::attachment_table().clone())
+        .insert_resource(table)
         .insert_resource(CaDefaultLoadout(loadout))
         .init_resource::<RecoilLastWins>()
         .init_resource::<CaSpecialRoll>()

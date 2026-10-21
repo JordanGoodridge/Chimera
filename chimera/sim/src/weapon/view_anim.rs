@@ -35,6 +35,7 @@
 use bevy::prelude::*;
 
 use super::{
+    data::{WeaponCatalog, WeaponData},
     AltModes, Burst, Inventory, Magazine, ShellReload, Weapon, WeaponEvent, WeaponEventKind, WeaponState, Zoomed,
     grenade::Throwable,
 };
@@ -169,6 +170,8 @@ pub fn play_pick(view: &mut ViewAnimator, dice: &mut ViewModelPlay, pick: &Pick,
 /// What the rules see of a character's weapon in hand.
 pub struct ViewState<'a> {
     pub weapon: &'static str,
+    /// Its data (None: the app's catalog lacks it).
+    pub data: Option<&'static WeaponData>,
     /// Its `AltModes` mode (0 without).
     pub mode: u8,
     /// Its burst in the current mode.
@@ -228,19 +231,14 @@ pub struct ViewAnimRules {
 }
 
 /// The data's sequences for `action` (None: the data has no table).
-fn data_pick(weapon: &str, action: &str) -> Option<Pick> {
-    let d = super::data::lookup(weapon)?;
-    d.anim.sequences.get(action).map(|n| Pick::Names(n.clone()))
-}
-
-fn has_sequences(weapon: &str) -> bool {
-    super::data::lookup(weapon).is_some_and(|d| !d.anim.sequences.is_empty())
+fn data_pick(data: Option<&WeaponData>, action: &str) -> Option<Pick> {
+    data?.anim.sequences.get(action).map(|n| Pick::Names(n.clone()))
 }
 
 /// A data-driven weapon's reaction to an event (module doc).
 pub fn data_event(frame: &mut ViewFrame, kind: &WeaponEventKind) {
-    let w = frame.state.weapon;
-    let pick = |a: &str| data_pick(w, a);
+    let data = frame.state.data;
+    let pick = |a: &str| data_pick(data, a);
     match kind {
         WeaponEventKind::Fired { .. } if !frame.fired => {
             let last = frame.state.clip == Some(0);
@@ -282,6 +280,7 @@ pub fn drive(
     time: Res<Time>,
     models: Option<Res<ViewModels>>,
     rules: Option<Res<ViewAnimRules>>,
+    catalog: Option<Res<WeaponCatalog>>,
     mut characters: Query<
         (
             Entity,
@@ -325,6 +324,7 @@ pub fn drive(
             let mode = alt.map_or(0, |m| m.current);
             ViewState {
                 weapon: w.id,
+                data: catalog.as_ref().and_then(|c| c.get(w.id)),
                 mode,
                 burst: burst.filter(|b| b.mode == mode),
                 clip: magazine.map(|m| m.clip),
@@ -334,17 +334,17 @@ pub fn drive(
                 zoomed,
             }
         });
-        let by_data = weapon.is_some_and(has_sequences);
+        let by_data = state.as_ref().is_some_and(|s| s.data.is_some_and(|d| !d.anim.sequences.is_empty()));
         let draw = |s: &ViewState| {
             if by_data {
-                data_pick(s.weapon, "draw").or_else(|| data_pick(s.weapon, "idle"))
+                data_pick(s.data, "draw").or_else(|| data_pick(s.data, "idle"))
             } else {
                 rules.map(|r| (r.draw)(s))
             }
         };
         let idle = |s: &ViewState| {
             if by_data {
-                data_pick(s.weapon, "idle")
+                data_pick(s.data, "idle")
             } else {
                 rules.map(|r| (r.idle)(s))
             }
@@ -392,7 +392,7 @@ pub fn drive(
         // Zooming in and out (data actions).
         let is_zoomed = frame.state.zoomed.is_some();
         if by_data && is_zoomed != frame.dice.zoomed {
-            if let Some(p) = data_pick(frame.state.weapon, if is_zoomed { "zoom_in" } else { "zoom_out" }) {
+            if let Some(p) = data_pick(frame.state.data, if is_zoomed { "zoom_in" } else { "zoom_out" }) {
                 frame.attack(&p);
             }
         }
@@ -417,7 +417,7 @@ pub fn drive(
         // has passed; a non-looping idle starts over after its interval,
         // holding its last frame meanwhile.
         let Some(idle) = idle(&state) else { continue };
-        let (delay, interval, after_draw) = super::data::lookup(state.weapon).map_or((0.0, 0.0, false), |d| {
+        let (delay, interval, after_draw) = state.data.map_or((0.0, 0.0, false), |d| {
             (d.anim.idle_after, d.anim.idle_interval, d.anim.idle_after_draw)
         });
         let since = if after_draw {

@@ -140,8 +140,14 @@ pub struct CaLobbyPlugin;
 
 impl Plugin for CaLobbyPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CaLobbyHost>()
-            .init_resource::<CaLobbyName>()
+        if !app.world().contains_resource::<CaLobbyHost>() {
+            let catalog = super::items::Catalog::over(super::super::data::CaData::of(app).gear());
+            app.insert_resource(CaLobbyHost {
+                lobby: Lobby::new(LobbyData::built_in(), catalog, LobbyConfig::default()),
+                ..default()
+            });
+        }
+        app.init_resource::<CaLobbyName>()
             .insert_resource(CaLobbyClient(ClientLobby::new(LobbyData::built_in(), 0, "Player")))
             .add_message::<CaLobbyRequest>()
             .add_message::<CaLobbyNotice>()

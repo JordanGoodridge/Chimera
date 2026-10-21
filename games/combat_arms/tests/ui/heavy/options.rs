@@ -69,5 +69,5 @@ fn the_five_layouts_read_and_have_the_spec_named_controls() {
     // The control tab's rows: all 38 (K1).
     let rows = bindings::ACTIONS.iter().filter_map(|a| a.row).filter(|n| l[3].find(n).is_some()).count();
     assert!(rows >= 30, "the Control layout has most of K1's rows: {rows}");
-    assert!(install::installed().is_none_or(|i| i.options.is_some()));
+    assert!(install::installed(&combat_arms::game::data::CaData::install()).is_none_or(|i| i.options.is_some()));
 }

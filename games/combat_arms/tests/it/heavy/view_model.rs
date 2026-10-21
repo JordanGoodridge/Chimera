@@ -48,10 +48,9 @@ fn mount() -> Option<chimera_core::mount::Mount> {
 /// The data's view models, loaded as a map would.
 fn loaded() -> Option<(chimera_core::mount::Mount, MapData)> {
     let mount = mount()?;
-    combat_arms::game::data::use_builtin_data_only();
     let file = |p: &str| mount.read(p).ok();
     let mut map = MapData::default();
-    view_model::add_view_models(&mut map, &file);
+    view_model::add_view_models(&mut map, &combat_arms::game::data::CaData::builtin(), &file);
     Some((mount, map))
 }
 
@@ -92,7 +91,7 @@ fn data_view_models_load_skinned() {
         for s in ["flash", "breach"] {
             assert!(v.attachments.iter().any(|a| a.name.eq_ignore_ascii_case(s)), "{}: {s}", v.key);
         }
-        let d = combat_arms::game::data::weapon_set().get(&v.key).unwrap();
+        let d = combat_arms::game::data::CaData::builtin().weapon_set().get(&v.key).unwrap();
         let skins = d.models.view_skins.iter().filter(|s| !s.is_empty());
         let readable = skins.into_iter().all(|s| mount.read(s).is_ok());
         let textured = v.model.meshes.iter().all(|m| m.texture.is_some());
@@ -115,18 +114,19 @@ fn keyed_view_models_with_hands() {
         eprintln!("skipping: needs the V1 and V2 keys");
         return;
     }
-    if combat_arms::game::data::install_attributes().is_none() {
-        eprintln!("skipping: the process runs on the built-in data");
+    let ca = combat_arms::game::data::CaData::install();
+    if ca.attributes().is_none() {
+        eprintln!("skipping: the install's attribute data doesn't read");
         return;
     }
     let file = |p: &str| mount.read(p).ok();
     let mut map = MapData::default();
-    view_model::add_view_models(&mut map, &file);
+    view_model::add_view_models(&mut map, &ca, &file);
     for w in &map.warnings {
         eprintln!("warning: {w}");
     }
     assert!(map.warnings.is_empty(), "{:?}", map.warnings);
-    let set = combat_arms::game::data::weapon_set();
+    let set = ca.weapon_set();
     for id in [
         "m4a1",
         "mp5a4",

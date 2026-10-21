@@ -33,21 +33,20 @@
 //! hook can't read are load errors.
 //!
 //! Loaded sets are leaked (`&'static`: weapon IDs are `&'static str`
-//! everywhere) and published process-wide (`lookup`) for code without a
-//! world (map loading, HUD helpers); the app's registry, prices and
-//! catalog are per app.
+//! everywhere); each app's registry, prices and `WeaponCatalog` list the
+//! sets it loaded, so two apps in one process can hold different data for
+//! the same IDs (code with a world reads `WeaponCatalog::get`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Weapon data: loaded sets are leaked
 //! (one allocation per load; IDs are `&'static str` throughout the weapon
-//! code) and published process-wide (`lookup`) for code without a world;
-//! a game's map loader loads held and view models for its own set only, so
+//! code); a game's map loader loads held and view models for its own set only, so
 //! a weapon added by an app draws no model unless the game loads it. Why
 //! it's OK for now: Loads happen at start;
 //! weapons from data play (buy, fire, network) without models.
 
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use bevy::prelude::*;
@@ -663,38 +662,6 @@ fn deep_merge(base: &mut toml::Table, over: &toml::Table) {
     }
 }
 
-/// Every set loaded in this process, for `lookup`.
-static LOADED: RwLock<Vec<&'static WeaponSet>> = RwLock::new(Vec::new());
-
-/// Make `set` findable by `lookup` (once).
-pub fn publish(set: &'static WeaponSet) {
-    let mut sets = LOADED.write().unwrap_or_else(|e| e.into_inner());
-    if !sets.iter().any(|s| std::ptr::eq(*s, set)) {
-        sets.push(set);
-    }
-}
-
-/// A loaded weapon's data by full ID (the latest set defining it), for
-/// code without a world (map loading, HUD helpers).
-pub fn lookup(id: &str) -> Option<&'static WeaponData> {
-    let sets = LOADED.read().unwrap_or_else(|e| e.into_inner());
-    sets.iter().rev().find_map(|s| s.get(id))
-}
-
-/// As `lookup`, also by the part after the namespace with or without
-/// `weapon_` (`weapon_usp`, `usp`).
-pub fn lookup_name(name: &str) -> Option<&'static WeaponData> {
-    lookup(name).or_else(|| {
-        let sets = LOADED.read().unwrap_or_else(|e| e.into_inner());
-        sets.iter().rev().find_map(|s| {
-            s.weapons.iter().find(|w| {
-                let short = w.id.rsplit(':').next().unwrap_or(&w.id);
-                short == name || short.strip_prefix("weapon_") == Some(name)
-            })
-        })
-    })
-}
-
 // ---------------------------------------------------------------------------
 // The app
 
@@ -716,7 +683,7 @@ impl WeaponHooks {
 }
 
 /// The weapon sets this app loaded, in order.
-#[derive(Resource, Default)]
+#[derive(Resource, Clone, Default)]
 pub struct WeaponCatalog {
     pub sets: Vec<&'static WeaponSet>,
 }
@@ -724,6 +691,19 @@ pub struct WeaponCatalog {
 impl WeaponCatalog {
     pub fn get(&self, id: &str) -> Option<&'static WeaponData> {
         self.sets.iter().rev().find_map(|s| s.get(id))
+    }
+
+    /// As `get`, also by the part after the namespace with or without
+    /// `weapon_` (`weapon_usp`, `usp`).
+    pub fn get_name(&self, name: &str) -> Option<&'static WeaponData> {
+        self.get(name).or_else(|| {
+            self.sets.iter().rev().find_map(|s| {
+                s.weapons.iter().find(|w| {
+                    let short = w.id.rsplit(':').next().unwrap_or(&w.id);
+                    short == name || short.strip_prefix("weapon_") == Some(name)
+                })
+            })
+        })
     }
 }
 
@@ -808,7 +788,6 @@ impl WeaponDataAppExt for App {
         if !catalog.sets.iter().any(|s| std::ptr::eq(*s, set)) {
             catalog.sets.push(set);
         }
-        publish(set);
         Ok(())
     }
 

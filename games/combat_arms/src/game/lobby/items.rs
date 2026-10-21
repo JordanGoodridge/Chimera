@@ -141,9 +141,11 @@ struct File {
 }
 
 /// The whole list.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Catalog {
     pub items: BTreeMap<i32, Item>,
+    /// The gear data the list stands on (abilities, perks).
+    pub gear: Arc<GearData>,
     /// The base head and backpack (the new player's).
     pub base_head: i32,
     pub base_backpack: i32,
@@ -212,14 +214,21 @@ impl Catalog {
         }
         Ok(Self {
             items,
+            gear: Arc::new(gear.clone()),
             base_head: file.base.head,
             base_backpack: file.base.backpack,
         })
     }
 
-    /// The built-in list over the gear data in use.
+    /// The built-in list over our own gear data (tests, defaults).
     pub fn built_in() -> Arc<Self> {
-        Arc::new(Self::build(DATA, crate::game::gear::gear_data()).expect("data/lobby_items.toml parses"))
+        Self::over(crate::game::gear::gear_data())
+    }
+
+    /// The built-in list over `gear`: the app's (`CaData::gear`, the
+    /// install's records over ours).
+    pub fn over(gear: &GearData) -> Arc<Self> {
+        Arc::new(Self::build(DATA, gear).expect("data/lobby_items.toml parses"))
     }
 
     pub fn get(&self, no: i32) -> Option<&Item> {

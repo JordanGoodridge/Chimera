@@ -19,7 +19,7 @@ use combat_arms::{
     game::{
         TICK_INTERVAL,
         attachments::{CaMods, CaModTable, Part},
-        data::weapon_set,
+        data::CaData,
         effects::{
             self, CaFxRequest, CaFxSettings, CaShell, CaTracers, FxKind,
             data::{AmmoKind, CaFxTables, CaWeaponFx, EFFECTS},
@@ -42,6 +42,11 @@ fn close(a: f32, b: f32, tol: f32, what: &str) {
 
 fn t() -> &'static CaFxTables {
     CaFxTables::built_in()
+}
+
+/// Combat Arms' built-in weapons, as the scenario tests play them.
+fn weapon_set() -> &'static chimera_sim::weapon::data::WeaponSet {
+    CaData::builtin_static().weapon_set()
 }
 
 /// A weapon's effects hook.

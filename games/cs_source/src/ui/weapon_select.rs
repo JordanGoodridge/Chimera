@@ -195,13 +195,13 @@ fn short(id: &str) -> &str {
 /// The localised name's token of a weapon by short name: its data's
 /// `hud.name` (CS:S's `Cstrike_WPNHUD_*`).
 fn name_token(short: &str) -> Option<&'static str> {
-    crate::weapon::data::lookup_name(short)?.hud.name.as_deref()
+    crate::game::weapons::data_named(short)?.hud.name.as_deref()
 }
 
 /// A weapon's letter in the weapon fonts: its kill icon's (its data's
 /// `hud.icon`; `d_<weapon>` without data).
 fn letter(hud: &GameHud, short: &str) -> Option<char> {
-    match crate::weapon::data::lookup_name(short).and_then(|d| d.hud.icon.as_deref()) {
+    match crate::game::weapons::data_named(short).and_then(|d| d.hud.icon.as_deref()) {
         Some(icon) => hud.icons.get(icon),
         None => hud.icons.get(&format!("d_{short}")),
     }

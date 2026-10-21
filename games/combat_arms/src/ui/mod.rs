@@ -212,8 +212,8 @@ impl CaUi {
     /// its string table (ours for the ids it lacks), the fonts its
     /// layouts name, its art's sizes (drawn white: the images are
     /// `draw::CaArt`'s). Ours alone without it.
-    pub fn installed() -> Self {
-        install::installed().map_or_else(Self::default, Self::with_install)
+    pub fn installed(data: &crate::game::data::CaDataInner) -> Self {
+        install::installed(data).map_or_else(Self::default, Self::with_install)
     }
 
     /// Ours with `inst` over it (`installed`).

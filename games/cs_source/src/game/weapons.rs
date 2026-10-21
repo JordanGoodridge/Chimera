@@ -123,15 +123,24 @@ const DATA: &[(&str, &str)] = &[
     data_file!("c4.toml"),
 ];
 
-/// CS:S's weapons as data, parsed once per process (and findable by
-/// `weapon::data::lookup`).
+/// CS:S's weapons as data, parsed once per process (a read-only table; an
+/// app's `WeaponCatalog` lists it once its plugin adds it).
 pub fn cs_weapons() -> &'static WeaponSet {
     static SET: OnceLock<&'static WeaponSet> = OnceLock::new();
     SET.get_or_init(|| {
         let set = WeaponSet::parse(DATA, &[]).unwrap_or_else(|e| panic!("CS:S weapon data: {e}"));
-        let set: &'static WeaponSet = Box::leak(Box::new(set));
-        crate::weapon::data::publish(set);
-        set
+        Box::leak(Box::new(set))
+    })
+}
+
+/// A CS:S weapon's data by short name (`usp`, `weapon_usp`) or full ID.
+pub fn data_named(name: &str) -> Option<&'static WeaponData> {
+    let set = cs_weapons();
+    set.get(name).or_else(|| {
+        set.weapons.iter().find(|w| {
+            let short = w.id.rsplit(':').next().unwrap_or(&w.id);
+            short == name || short.strip_prefix("weapon_") == Some(name)
+        })
     })
 }
 
@@ -208,7 +217,7 @@ pub struct AlternateHands;
 
 /// Whether the weapon `id` fires hand by hand (`AlternateHands`).
 pub fn alternate_hands(id: &str) -> bool {
-    crate::weapon::data::lookup(id).is_some_and(|d| d.has_hook(ALTERNATE_HANDS))
+    data(id).is_some_and(|d| d.has_hook(ALTERNATE_HANDS))
 }
 
 /// Register the behaviour CS:S's weapon data names.

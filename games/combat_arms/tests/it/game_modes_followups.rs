@@ -464,7 +464,7 @@ fn case_81_spectating() {
 #[test]
 fn case_84_hunted_start() {
     let mut sim = game("HG", 12);
-    assert_eq!(hunted::start_weapon(), KNIFE, "without the install");
+    assert_eq!(hunted::start_weapon(&combat_arms::game::data::CaData::builtin()), KNIFE, "without the install");
     let p = join(&mut sim, JSF);
     join(&mut sim, JSF);
     until_live(&mut sim);

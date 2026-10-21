@@ -425,7 +425,8 @@ pub struct CaScoreboardPlugin;
 
 impl Plugin for CaScoreboardPlugin {
     fn build(&self, app: &mut App) {
-        let ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_else(CaUi::installed);
+        let data = crate::game::data::CaData::of(app);
+        let ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_else(|| CaUi::installed(&data));
         app.insert_resource(BoundBoard::of(&ui));
         app.add_plugins(CaScoreboardStatePlugin)
             .init_resource::<CaUi>()

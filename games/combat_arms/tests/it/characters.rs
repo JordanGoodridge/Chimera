@@ -42,8 +42,7 @@ const TICK: u32 = 15;
 /// The character data as the scenario tests see it: ours only (the
 /// install's records never merged in, whichever test reads it first).
 fn builtin() -> &'static records::CharacterData {
-    combat_arms::game::data::use_builtin_data_only();
-    records::data()
+    combat_arms::game::data::CaData::builtin_static().characters()
 }
 
 fn close(a: Vec3, b: Vec3, tol: f32) -> bool {
@@ -163,9 +162,9 @@ fn body_group_numbers() {
         ..default()
     };
     let head = if d.head_file(2, 0).is_some() { 2 } else { -1 };
-    assert_eq!(models::drawn(&look), Some((models::body_name(0), g.number(1, 2, head))));
+    assert_eq!(models::drawn(&combat_arms::game::data::CaData::builtin(), &look), Some((models::body_name(0), g.number(1, 2, head))));
     // A female face: the female group, absent here.
-    assert_eq!(models::drawn(&Selection { face: 5, ..default() }), None);
+    assert_eq!(models::drawn(&combat_arms::game::data::CaData::builtin(), &Selection { face: 5, ..default() }), None);
 }
 
 #[test]
@@ -1520,9 +1519,12 @@ fn t55_corpses_dont_stop_shots() {
 #[test]
 fn t56_death_types() {
     use combat_arms::game::volumes::ENDLESS_FALL;
-    assert_eq!(death::kind_of(DamageKind::Generic, Some(ENDLESS_FALL)), DeathKind::EndlessFall);
-    assert_eq!(death::kind_of(DamageKind::Generic, Some("combat_arms:g7a")), DeathKind::Poison, "a gas grenade's lasting damage");
-    assert_eq!(death::kind_of(DamageKind::Bullet, Some(RIFLE)), DeathKind::Other);
+    let catalog = chimera_sim::weapon::data::WeaponCatalog {
+        sets: vec![combat_arms::game::data::CaData::builtin().weapon_set()],
+    };
+    assert_eq!(death::kind_of(&catalog, DamageKind::Generic, Some(ENDLESS_FALL)), DeathKind::EndlessFall);
+    assert_eq!(death::kind_of(&catalog, DamageKind::Generic, Some("combat_arms:g7a")), DeathKind::Poison, "a gas grenade's lasting damage");
+    assert_eq!(death::kind_of(&catalog, DamageKind::Bullet, Some(RIFLE)), DeathKind::Other);
     let pick = |kind| {
         death::choose(
             &DeathInputs {

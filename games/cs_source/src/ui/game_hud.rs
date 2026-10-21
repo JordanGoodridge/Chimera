@@ -329,7 +329,7 @@ fn death_notices(
             })
             .and_then(|id| {
                 // The weapon's data's kill icon (`d_<weapon>` without).
-                match crate::weapon::data::lookup(id).and_then(|d| d.hud.icon.as_deref()) {
+                match crate::game::weapons::data(id).and_then(|d| d.hud.icon.as_deref()) {
                     Some(icon) => hud.0.icons.get(icon).cloned(),
                     None => {
                         let short = id.rsplit([':', '_']).next().unwrap_or(id);

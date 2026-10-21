@@ -76,7 +76,8 @@ use serde::{Deserialize, Serialize};
 use self::records::{GearData, GearMod, ModSlot, SetDef, SetEffect};
 use super::{
     characters::records::Selection,
-    movement::{CaCharacter, Figure, Gear as WornGear, movement_data},
+    data::CaData,
+    movement::{CaCharacter, Figure, Gear as WornGear, MovementData},
     rules::CaMatchView,
     weapons::{CaArmor, Gear, Protection},
 };
@@ -105,28 +106,15 @@ pub const PERK_SLOTS: u8 = 3;
 /// The server's sanity cap on a client's fast-respawn counts.
 pub const FAST_CAP: u32 = 999;
 
-/// The gear data, once per process: our defaults with the install's
-/// records over them when it can be read.
+/// Our own gear data (a read-only table): the lobby's defaults and the
+/// tests'. An app's is `CaGearData`, from its `CaData`.
 pub fn gear_data() -> &'static GearData {
-    static DATA: std::sync::OnceLock<GearData> = std::sync::OnceLock::new();
-    DATA.get_or_init(|| {
-        let data = GearData::built_in();
-        match super::data::install_attributes().and_then(|a| a.gear.as_ref()) {
-            Some(install) => data.with_install(install),
-            None => data,
-        }
-    })
+    CaData::builtin_static().gear()
 }
 
 /// The gear data the systems use (replaceable: tests give it sets).
 #[derive(Resource, Clone)]
 pub struct CaGearData(pub Arc<GearData>);
-
-impl Default for CaGearData {
-    fn default() -> Self {
-        Self(Arc::new(gear_data().clone()))
-    }
-}
 
 /// Quirk 1: the vest, face and goggle piece ids go to the client as one
 /// byte each (off by default; section 18's faithful mode).
@@ -486,6 +474,7 @@ fn quirk_id(data: &GearData, quirks: CaGearQuirks, id: i32) -> i32 {
 /// A player's gear from its look and loadout.
 pub fn resolve(
     data: &GearData,
+    figure: &Figure,
     quirks: CaGearQuirks,
     look: &Selection,
     loadout: &CaLoadout,
@@ -567,7 +556,7 @@ pub fn resolve(
             jump: 0.0,
         });
     }
-    let figure: Figure = movement_data().character.figure.clone();
+    let figure: Figure = figure.clone();
     let max_hp = match vest {
         Some(v) if v.max_hp > 0.1 => v.max_hp,
         _ => figure_hp(),
@@ -633,8 +622,11 @@ pub struct CaGearPlugin;
 
 impl Plugin for CaGearPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CaGearData>()
-            .init_resource::<CaGearQuirks>()
+        if !app.world().contains_resource::<CaGearData>() {
+            let data = CaData::of(app).gear().clone();
+            app.insert_resource(CaGearData(Arc::new(data)));
+        }
+        app.init_resource::<CaGearQuirks>()
             .init_resource::<CaOwnGear>()
             .net_part("combat_arms_gear", register)
             .add_systems(
@@ -764,6 +756,7 @@ fn mode_key(view: &CaMatchView) -> &str {
 #[allow(clippy::type_complexity)]
 fn derive(
     data: Res<CaGearData>,
+    movement: Res<MovementData>,
     quirks: Res<CaGearQuirks>,
     view: Res<CaMatchView>,
     characters: Query<
@@ -804,7 +797,7 @@ fn derive(
         // A character that already had its own figure and gear when it
         // was first seen keeps it (the tests', the rules').
         if key.is_some() || !has_character {
-            let resolved = resolve(&data.0, *quirks, look, loadout, &want, infected);
+            let resolved = resolve(&data.0, &movement.character.figure, *quirks, look, loadout, &want, infected);
             entity.insert(resolved.character);
         }
         entity.insert(now);
@@ -821,6 +814,7 @@ pub struct CaGearBuilt(pub CaGearKey);
 #[allow(clippy::type_complexity)]
 fn armour(
     data: Res<CaGearData>,
+    movement: Res<MovementData>,
     quirks: Res<CaGearQuirks>,
     mut characters: Query<(
         Entity,
@@ -838,7 +832,7 @@ fn armour(
             continue;
         }
         commands.entity(e).insert(CaGearBuilt(key.clone()));
-        let resolved = resolve(&data.0, *quirks, look, &key.loadout, effects, key.infected);
+        let resolved = resolve(&data.0, &movement.character.figure, *quirks, look, &key.loadout, effects, key.infected);
         match built {
             // First seen: an untouched default armour becomes the gear's.
             None => {
@@ -920,7 +914,11 @@ pub fn spawn_gear(world: &mut World, e: Entity) {
         world.entity_mut(e).insert(CaArmor::default());
         return;
     };
-    let resolved = resolve(&data, quirks, &look, &loadout, &effects, infected);
+    let Some(movement) = world.get_resource::<MovementData>() else {
+        world.entity_mut(e).insert(CaArmor::default());
+        return;
+    };
+    let resolved = resolve(&data, &movement.character.figure, quirks, &look, &loadout, &effects, infected);
     let mut ent = world.entity_mut(e);
     ent.insert(spawn_armour(&resolved));
     if let Some(mut h) = ent.get_mut::<Health>()

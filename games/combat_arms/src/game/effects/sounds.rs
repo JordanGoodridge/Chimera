@@ -112,6 +112,7 @@ pub fn play(
     mut sounds: MessageReader<CaSound>,
     bank: Option<ResMut<SoundBank>>,
     mut files: ResMut<CaSoundFiles>,
+    data: Res<crate::game::data::CaData>,
     mut lengths: ResMut<super::CaSoundLengths>,
     volumes: Option<Res<crate::game::music::mix::CaVolumes>>,
     mut out: MessageWriter<PlaySound>,
@@ -121,7 +122,7 @@ pub fn play(
         sounds.clear();
         return;
     };
-    let mount = library::install_mount();
+    let mount = data.mount();
     if bank.is_added() {
         files.0.clear();
         // Server sounds arrive by entry name: every client has them ready

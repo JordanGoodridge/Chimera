@@ -186,7 +186,7 @@ pub struct LobbyScreen {
 }
 
 impl LobbyScreen {
-    pub fn new(ui: &CaUi) -> Self {
+    pub fn new(ui: &CaUi, catalog: Arc<Catalog>) -> Self {
         let mut desk = Desk::default();
         let texts = [
             layouts::lobby(),
@@ -202,7 +202,6 @@ impl LobbyScreen {
             l.check_fonts(&ui.fonts).expect("the lobby screens' fonts");
             sheets[i] = desk.add(NAMES[i], l, true);
         }
-        let catalog = Catalog::built_in();
         let mut s = Self {
             desk,
             sheets,
@@ -665,7 +664,9 @@ fn sync_create(screen: &mut LobbyScreen) {
 /// order, with their names.
 pub fn eligible(screen: &LobbyScreen) -> Vec<(i32, String)> {
     if let Slot::Ability(_) = screen.inv_slot {
-        return crate::game::gear::gear_data()
+        return screen
+            .catalog
+            .gear
             .perks
             .iter()
             .filter_map(|p| p.items.first().map(|i| (*i, p.name.clone())))
@@ -688,7 +689,7 @@ fn slot_label(screen: &LobbyScreen, slot: Slot) -> String {
         Slot::Ability(i) => set
             .abilities
             .get(i as usize)
-            .and_then(|n| crate::game::gear::gear_data().perks.iter().find(|p| p.items.contains(n)))
+            .and_then(|n| screen.catalog.gear.perks.iter().find(|p| p.items.contains(n)))
             .map_or("-".into(), |p| p.name.clone()),
         Slot::Backpack(i) if (i as usize) >= set.usable_bag_slots(&screen.catalog) => "(no slot)".into(),
         s => set.get(s).map_or("-".into(), name),
@@ -1101,7 +1102,7 @@ fn equip_pick(world: &mut World, screen: &mut LobbyScreen) {
     let catalog = screen.catalog.clone();
     let owned = screen.owned.clone();
     let r = match slot {
-        Slot::Ability(_) => screen.loadout.equip_ability(crate::game::gear::gear_data(), set, item),
+        Slot::Ability(_) => screen.loadout.equip_ability(&catalog.gear, set, item),
         _ => screen.loadout.equip(&catalog, &owned, set, slot, item),
     };
     screen.inv_note = r.err().map(str::to_string).unwrap_or_default();
@@ -1307,7 +1308,8 @@ impl Plugin for CaLobbyStatePlugin {
     fn build(&self, app: &mut App) {
         let mut ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_default();
         add_stand_ins(&mut ui);
-        app.insert_resource(LobbyScreen::new(&ui))
+        let catalog = Catalog::over(crate::game::data::CaData::of(app).gear());
+        app.insert_resource(LobbyScreen::new(&ui, catalog))
             .insert_resource(ui)
             .init_resource::<MenuPointer>()
             .init_resource::<ButtonInput<KeyCode>>()

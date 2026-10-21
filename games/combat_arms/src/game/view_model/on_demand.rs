@@ -66,7 +66,8 @@ pub fn cached(id: &str) -> Option<Loaded> {
 /// the default character's hands when they read), with its own textures;
 /// Err when its data names none or it doesn't read.
 pub fn load_weapon(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<LoadedViewModel, String> {
-    let w = super::super::data::weapon_set()
+    let w = super::super::data::CaData::install()
+        .weapon_set()
         .weapons
         .iter()
         .find(|w| w.id == id)

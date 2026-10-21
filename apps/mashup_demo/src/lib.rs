@@ -167,6 +167,7 @@ impl Plugin for MashupPartsPlugin {
              weapon (either game's: cs_source:weapon_ak47, combat_arms:...), yours at once, everyone's \
              from their next spawn; no arguments: the loadout.",
             |w, a| {
+                let catalog = w.get_resource::<data::WeaponCatalog>().cloned().unwrap_or_default();
                 let Some(mut kit) = w.get_resource_mut::<StartingWeapons>() else {
                     return Err("no loadout".into());
                 };
@@ -174,7 +175,7 @@ impl Plugin for MashupPartsPlugin {
                     (None, _) => Ok(Some(kit.all.join(" "))),
                     (Some(slot), Some(id)) => {
                         let slot = slot_number(slot).ok_or_else(|| format!("no slot `{slot}`"))?;
-                        set_slot(&mut kit, slot, id)?;
+                        set_slot(&mut kit, &catalog, slot, id)?;
                         let line = kit.all.join(" ");
                         // The local player takes the loadout now.
                         let local: Vec<Entity> = w
@@ -207,12 +208,12 @@ pub fn slot_number(name: &str) -> Option<u8> {
 
 /// Put weapon `id` (any registered game's) in the loadout's `slot`: in
 /// place of the weapon there, else in slot order.
-pub fn set_slot(kit: &mut StartingWeapons, slot: u8, id: &str) -> Result<(), String> {
-    let weapon = data::lookup(id).ok_or_else(|| format!("no weapon `{id}`"))?;
+pub fn set_slot(kit: &mut StartingWeapons, catalog: &data::WeaponCatalog, slot: u8, id: &str) -> Result<(), String> {
+    let weapon = catalog.get(id).ok_or_else(|| format!("no weapon `{id}`"))?;
     if weapon.slot != slot {
         return Err(format!("{id} is a slot {} weapon, not slot {slot}", weapon.slot));
     }
-    let slot_of = |w: &str| data::lookup(w).map_or(u8::MAX, |d| d.slot);
+    let slot_of = |w: &str| catalog.get(w).map_or(u8::MAX, |d| d.slot);
     kit.all.retain(|w| slot_of(w) != slot);
     let at = kit.all.iter().position(|w| slot_of(w) > slot).unwrap_or(kit.all.len());
     kit.all.insert(at, weapon.id.as_str());
@@ -269,19 +270,23 @@ mod tests {
 
     #[test]
     fn a_slot_takes_either_games_weapon() {
-        let _ = cs_source::game::weapons::cs_weapons();
-        let _ = combat_arms::game::data::weapon_set();
+        let catalog = chimera_sim::weapon::data::WeaponCatalog {
+            sets: vec![
+                combat_arms::game::data::CaData::builtin().weapon_set(),
+                cs_source::game::weapons::cs_weapons(),
+            ],
+        };
         let mut kit = chimera_sim::weapon::StartingWeapons {
             team: Vec::new(),
             all: combat_arms::game::inventory::STARTING_WEAPONS.to_vec(),
         };
         let primary = super::slot_number("primary").unwrap();
-        super::set_slot(&mut kit, primary, cs_source::game::weapons::AK47).unwrap();
+        super::set_slot(&mut kit, &catalog, primary, cs_source::game::weapons::AK47).unwrap();
         assert_eq!(kit.all[0], cs_source::game::weapons::AK47, "{:?}", kit.all);
         assert_eq!(kit.all.len(), combat_arms::game::inventory::STARTING_WEAPONS.len());
-        assert!(super::set_slot(&mut kit, primary, cs_source::game::weapons::USP).is_err(), "a pistol isn't primary");
-        assert!(super::set_slot(&mut kit, 1, "nothing").is_err());
-        super::set_slot(&mut kit, 1, cs_source::game::weapons::USP).unwrap();
+        assert!(super::set_slot(&mut kit, &catalog, primary, cs_source::game::weapons::USP).is_err(), "a pistol isn't primary");
+        assert!(super::set_slot(&mut kit, &catalog, 1, "nothing").is_err());
+        super::set_slot(&mut kit, &catalog, 1, cs_source::game::weapons::USP).unwrap();
         assert_eq!(kit.all[1], cs_source::game::weapons::USP, "in slot order: {:?}", kit.all);
     }
 

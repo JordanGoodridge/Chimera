@@ -52,7 +52,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, OnceLock},
+    sync::Arc,
 };
 
 use bevy::prelude::*;
@@ -1020,19 +1020,6 @@ pub struct InstallMissions {
     pub server: Option<ServerFile>,
 }
 
-/// The install's missions (the mounted archives, `world::mount`).
-pub fn install() -> Option<&'static InstallMissions> {
-    static DATA: OnceLock<Option<InstallMissions>> = OnceLock::new();
-    DATA.get_or_init(|| {
-        if super::data::builtin_only() {
-            return None;
-        }
-        let mount = super::world::mount()?;
-        Some(read_install(&|p| mount.read(p).ok()))
-    })
-    .as_ref()
-}
-
 /// Read the install's missions through `read`.
 pub fn read_install(read: &dyn Fn(&str) -> Option<Vec<u8>>) -> InstallMissions {
     let index = MissionIndex::build(read);
@@ -1076,7 +1063,8 @@ fn playing(world: &World) -> (String, String) {
 pub fn resolve(world: &mut World) {
     let (map, key) = playing(world);
     world.insert_resource(CaMissionFor(Some((map.clone(), key.clone()))));
-    let found = install().and_then(|i| i.index.find(&map, &key));
+    let data = world.get_resource_or_insert_with(super::data::CaData::default).clone();
+    let found = data.missions().and_then(|i| i.index.find(&map, &key));
     if let Some(m) = &found {
         if m.mission.mode != key {
             warn!("{}: the mission file names mode {} (the room's is {key}): playing {key}", m.path, m.mission.mode);
@@ -1171,7 +1159,7 @@ pub fn objective_weapons(world: &World, team: u8) -> Vec<&'static str> {
     names
         .iter()
         .filter_map(|n| {
-            let w = super::data::weapon_for_name(n);
+            let w = world.resource::<super::data::CaData>().weapon_for_name(n);
             if w.is_none() {
                 warn!("mission data: no weapon named {n}");
             }
@@ -1182,8 +1170,8 @@ pub fn objective_weapons(world: &World, team: u8) -> Vec<&'static str> {
 
 /// A loadout of install weapon ids as our documents (the unknown ones
 /// skipped).
-pub fn weapons_of(ids: &[i32]) -> Vec<&'static str> {
-    ids.iter().filter_map(|i| super::data::weapon_for_index(*i)).collect()
+pub fn weapons_of(data: &super::data::CaDataInner, ids: &[i32]) -> Vec<&'static str> {
+    ids.iter().filter_map(|i| data.weapon_for_index(*i)).collect()
 }
 
 /// Quarantine's numbers (F4.1): the mission's, else our data's.
@@ -1225,6 +1213,7 @@ pub fn quarantine(world: &World) -> QuarantineNumbers {
         infected_weapons: Vec::new(),
         host_weapons: Vec::new(),
     };
+    let data = world.resource::<super::data::CaData>();
     if let Some(q) = installed(world).and_then(|m| m.quarantine.clone()) {
         n.min_hosts = q.min_hosts.max(0) as u32;
         n.selection_rate = q.selection_rate as f32;
@@ -1239,8 +1228,8 @@ pub fn quarantine(world: &World) -> QuarantineNumbers {
             n.human_win_point = p[5];
             n.infect_win_point = p[6];
         }
-        n.infected_weapons = q.infected.as_ref().map(|c| weapons_of(&c.weapons)).unwrap_or_default();
-        n.host_weapons = q.host.as_ref().map(|c| weapons_of(&c.weapons)).unwrap_or_default();
+        n.infected_weapons = q.infected.as_ref().map(|c| weapons_of(data, &c.weapons)).unwrap_or_default();
+        n.host_weapons = q.host.as_ref().map(|c| weapons_of(data, &c.weapons)).unwrap_or_default();
     }
     n
 }
@@ -1288,9 +1277,10 @@ pub fn ladders(world: &World) -> Vec<StepTable> {
 /// A ladder's weapon id as our document: the install's record (V1),
 /// else our stand-in for that stock id (data/modes.toml).
 pub fn ladder_weapon(world: &World, id: i32) -> Option<&'static str> {
-    super::data::weapon_for_index(id).or_else(|| {
+    let data = world.resource::<super::data::CaData>();
+    data.weapon_for_index(id).or_else(|| {
         let ours = world.resource::<CaRuleSettings>().objectives.stand_in(id)?;
-        super::data::weapon_set().get(&ours).map(|w| w.id.as_str())
+        data.weapon_set().get(&ours).map(|w| w.id.as_str())
     })
 }
 
@@ -1298,7 +1288,7 @@ pub fn ladder_weapon(world: &World, id: i32) -> Option<&'static str> {
 /// playing map's mission is the install's, else our data's stock one.
 pub fn vip(world: &World) -> VipData {
     if installed(world).is_some()
-        && let Some(v) = install().and_then(|i| i.vip.clone())
+        && let Some(v) = world.resource::<super::data::CaData>().missions().and_then(|i| i.vip.clone())
     {
         return v;
     }

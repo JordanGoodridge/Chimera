@@ -82,7 +82,7 @@ fn step(world: &mut World, e: Entity, kills: i32, exact: bool) {
     }
     match pick {
         Some(id) => {
-            let slot = crate::weapon::data::lookup(id).map(|d| d.slot);
+            let slot = world.resource::<crate::weapon::data::WeaponCatalog>().get(id).map(|d| d.slot);
             let own: Vec<&'static str> = world
                 .get::<Inventory>(e)
                 .map(|i| {

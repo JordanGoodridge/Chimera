@@ -20,7 +20,7 @@ use chimera_world::{
 use combat_arms::{
     game::{
         GAME, INFO,
-        data::weapon_set,
+        data::CaData,
         effects::{
             data::{CaFxTables, CaWeaponFx, EFFECTS},
             library::{self, FX_FILE},
@@ -81,7 +81,7 @@ fn sound_and_effect_archives_read_without_keys() {
 
 /// The weapons' effect hooks.
 fn weapons() -> Vec<CaWeaponFx> {
-    weapon_set().weapons.iter().filter_map(|w| w.hook(EFFECTS)).collect()
+    CaData::install().weapon_set().weapons.iter().filter_map(|w| w.hook(EFFECTS)).collect()
 }
 
 /// Every sound the tables and the weapons name reads and decodes.
@@ -114,7 +114,7 @@ fn effect_file_groups_and_textures() {
     let fx = fx_file(&mount);
     assert_eq!(fx.groups.len(), 530);
     let t = CaFxTables::built_in();
-    let muzzles: Vec<String> = weapon_set()
+    let muzzles: Vec<String> = CaData::install().weapon_set()
         .weapons
         .iter()
         .filter_map(|w| w.hook::<CaViewParams>(VIEW))
