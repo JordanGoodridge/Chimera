@@ -17,6 +17,7 @@ This file is a map. Follow the links for detail; keep it short.
 | What the project is, installing and playing | [README.md](README.md) |
 | Design decisions and why (slots, mounts, weapon model, legal rules) | [docs/DESIGN.md](docs/DESIGN.md) |
 | Code layout, layers, data flow | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Every source file, one line (generated) | [docs/modules.md](docs/modules.md) |
 | How to check your work (tests, screenshots, live ECS queries) | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) |
 | Current plan and progress | [docs/plans/active/](docs/plans/active/engine-split.md) |
 | What to build next (to-do list) | [docs/backlog.md](docs/backlog.md) |
@@ -68,6 +69,8 @@ cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 cargo run --features dev --bin combat_arms   # Combat Arms' skeleton (greybox)
 cargo run --features dev --bin mashup_demo   # mashup: de_dust2 played as Combat Arms
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
+cargo run -q -p repo_checks --bin docs_index   # regenerate docs/modules.md and the
+                                   # debt list after editing a `//!` doc
 ```
 
 Each crate's integration tests are one binary, `<crate>/tests/it/` (slow
@@ -95,7 +98,9 @@ still work.
 - When something was hard because a tool, doc or check was missing, add it.
 - Keep docs true: when code changes a fact in a doc, change the doc in the
   same commit. A file's detail lives in its `//!` doc (shortcuts under
-  "Known shortcuts"); ARCHITECTURE.md and tech-debt.md keep one line each.
+  "Known shortcuts"); docs/modules.md and the code part of tech-debt.md are
+  generated from those docs: after changing one, run
+  `cargo run -q -p repo_checks --bin docs_index` (a test fails when stale).
 
 ## Commit identity
 
