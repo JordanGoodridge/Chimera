@@ -1339,11 +1339,18 @@ when it moved):
   on `+use` from `setpos 390 261 -17; setang 0 180 0` (its lit model
   swaps in); nothing else on FREEZER moves.
 - HGOILRIG, the rising sea (`SlidingWater` and its `Water` and
-  `PoisonGas00` volumes): `--map combat_arms:hgoilrig`, `setpos 397 -2480
-  432; setang 15 90 0` (outside the rig, the legs in the water), then
+  `PoisonGas00` volumes): `--map combat_arms:hgoilrig`, `noclip; god`,
+  `setpos 397 -3300 361; setang 30 270 0` (south of the rig, the eye
+  about 100 u above the risen sea, looking down at it), then
   `ca_object_msg SlidingWater on`: 500 u up over 120 s, slow at first
-  (about 150 u at 60 s, 370 u at 100 s); film at 0, 60, 100 and 120 s
-  (`setpos` again before each: the run may move the player).
+  (about 150 u at 60 s, 370 u at 100 s; `host_timescale 6`: 20 s).
+  Before, the sea's texture is small and far off with floating crates
+  near the horizon; after, it fills the view a few times larger and the
+  crates are under it. The textured sea near the rig is `SlidingWater`
+  (a plane 376 × 315 m); the darker sea beyond its edge and the horizon
+  are the world's and stay put, so a view of the distant open sea looks
+  the same before and after. `ca_object_msg SlidingWater visible 0`
+  hides it, to see which surface is which.
   `ca_object_msg SlidingWater init` puts it back. In play only
   `Level04StartTrigger` starts it (90 s later), and no room or mode of
   the install's mission data plays HGOILRIG, so it never rises on its
