@@ -37,6 +37,27 @@ pub fn load_map_level(id: &str, hdr_level: u8) -> Result<MapData, String> {
     cs_source::game::bsp::load_level(&mount, name, hdr_level)
 }
 
+/// `load_map_level` with `options`.
+pub fn load_map_with(id: &str, options: &chimera_world::map::MapLoadOptions) -> Result<MapData, String> {
+    let (mount, name) = mount_of(id)?;
+    cs_source::game::bsp::load_level_with(&mount, name, options)
+}
+
+/// `load_map` without textures (`MapLoadOptions::lean`): for tests that
+/// never draw the map or read its texels (screenshot, drawn-part and
+/// texture tests load it whole).
+#[allow(dead_code)]
+pub fn load_map_lean(id: &str) -> Result<MapData, String> {
+    load_map_with(id, &chimera_world::map::MapLoadOptions::lean())
+}
+
+/// `load_map_level` without textures.
+#[allow(dead_code)]
+pub fn load_map_level_lean(id: &str, hdr_level: u8) -> Result<MapData, String> {
+    let options = chimera_world::map::MapLoadOptions { hdr_level, textures: false };
+    load_map_with(id, &options)
+}
+
 /// `load_map_level` from a file of the map (a downloaded copy), its
 /// content from the install.
 #[allow(dead_code)]

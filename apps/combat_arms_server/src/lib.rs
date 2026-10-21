@@ -127,7 +127,8 @@ pub fn load_map(id: &str) -> Result<MapData, String> {
         Some((game, _)) if format!("{game}:") != MAP_PREFIX => {
             Err(format!("{id}: not a Combat Arms map (combat_arms:<name>)"))
         }
-        _ => combat_arms::game::world::load(id),
+        // A server draws nothing: no textures.
+        _ => combat_arms::game::world::load_with(id, &map::MapLoadOptions::lean()),
     }
 }
 

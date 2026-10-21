@@ -46,7 +46,7 @@ fn probe(name: &str) -> Option<Recording> {
 }
 
 fn run(rec: &Recording) -> resim::Report {
-    let map = Arc::new(games::load_map("cs_source:de_dust2").expect("de_dust2"));
+    let map = Arc::new(games::load_map_lean("cs_source:de_dust2").expect("de_dust2"));
     let make = || {
         let map = MapPlugin {
             data: Some(map.clone()).into(),

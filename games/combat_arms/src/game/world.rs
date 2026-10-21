@@ -130,7 +130,8 @@
 //! shared_character_models`); lightmap texels are looked up per byte
 //! (`LightLut`) and kept as bytes until the atlas is laid out; each
 //! texture file is read once and decoded with its mip chain on threads
-//! (`decode_all`). Converted maps aren't cached on disk: a map converts in
+//! (`decode_all`, on `map::parallel::par_map`; none of it with
+//! `MapLoadOptions::textures` off). Converted maps aren't cached on disk: a map converts in
 //! 0.2-1.3 s, about what reading a cached copy of its textures and
 //! lightmaps (hundreds of MB) would take.
 //!
@@ -173,7 +174,7 @@ use crate::{
     core::Team,
     map::{
         BlendMode, DetailMode, MapAlpha, MapBlend, MapCollisionSet, MapData, MapDetail, MapDressing, MapEntity,
-        MapFlatEnvmap, MapFog, MapHull, MapLightmap, MapLoader, MapMesh, MapSkyCamera, MapTexture,
+        MapFlatEnvmap, MapFog, MapHull, MapLightmap, MapLoadOptions, MapLoader, MapMesh, MapSkyCamera, MapTexture,
         entities::engine_to_entity,
     },
     mount::Mount,
@@ -223,7 +224,7 @@ pub const ATLAS_MAX: u32 = 8192;
 /// `map::MapSources`.
 pub static MAP_LOADER: MapLoader = MapLoader {
     game: super::GAME,
-    load: |name, _| load(name),
+    load: |name, options| load_with(name, options),
 };
 
 /// What Combat Arms' gameplay brings to another game's map
@@ -254,11 +255,17 @@ pub fn dress(mount: &Mount, map: &mut MapData) {
 
 /// Map `id` (`combat_arms:<name>`, or the bare name) from the install.
 pub fn load(id: &str) -> Result<MapData, String> {
+    load_with(id, &MapLoadOptions::default())
+}
+
+/// `load` with `options` (`MapLoadOptions::textures` off: the world's
+/// textures aren't decoded; the dedicated server's).
+pub fn load_with(id: &str, options: &MapLoadOptions) -> Result<MapData, String> {
     let name = map_name(id);
     let mount = mount().ok_or_else(|| {
         "no Combat Arms install: set [games.combat_arms] path in chimera.local.toml".to_string()
     })?;
-    load_from(&mount, &name)
+    load_from_with(&mount, &name, options)
 }
 
 /// The install, mounted once per session (its archives' directories read
@@ -309,13 +316,18 @@ pub fn map_names(mount: &Mount) -> Vec<String> {
 /// The models (converted once per session, with the weapon data they
 /// need) load on a thread of their own beside the world.
 pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
+    load_from_with(mount, name, &MapLoadOptions::default())
+}
+
+/// `load_from` with `options`.
+pub fn load_from_with(mount: &Mount, name: &str, options: &MapLoadOptions) -> Result<MapData, String> {
     let file = |path: &str| mount.read(path).ok();
     let (map, models) = std::thread::scope(|s| {
         let models = s.spawn(|| {
             super::data::weapon_set();
             super::characters::models::shared_character_models(&file)
         });
-        let map = load_world(mount, name);
+        let map = load_world_with(mount, name, options);
         (map, models.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
     });
     let mut map = map?;
@@ -326,12 +338,17 @@ pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
 /// Map `name` from a mounted install: the world and its effects only
 /// (`load_from` without the character models every map shares).
 pub fn load_world(mount: &Mount, name: &str) -> Result<MapData, String> {
+    load_world_with(mount, name, &MapLoadOptions::default())
+}
+
+/// `load_world` with `options`.
+pub fn load_world_with(mount: &Mount, name: &str, options: &MapLoadOptions) -> Result<MapData, String> {
     let path = find(mount, name).ok_or_else(|| format!("{name}: no such map (worlds*/{name}.dat)"))?;
     let bytes = mount.read(&path).map_err(|e| format!("{path}: {e}"))?;
     let world = World::parse(&bytes).map_err(|e| format!("{path}: {e}"))?;
     let scale = super::movement::movement_data().meters_per_unit;
     let file = |path: &str| mount.read(path).ok();
-    let mut map = convert(&world, name, scale, &file);
+    let mut map = convert_with(&world, name, scale, &file, options.textures);
     map.warnings.extend(world.warnings.iter().map(|w| format!("{path}: {w}")));
     super::effects::library::add_to_map(&mut map, &world, &file);
     if let Ok(spec) = std::env::var(super::props::DEV_PROP_VAR) {
@@ -343,6 +360,18 @@ pub fn load_world(mount: &Mount, name: &str) -> Result<MapData, String> {
 /// A world as Chimera's map, `scale` metres per world unit; `file` reads
 /// a texture by its normalized path (lower case, `/`), None when missing.
 pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> MapData {
+    convert_with(world, name, scale, file, true)
+}
+
+/// `convert`; `decode` off leaves the world's textures undecoded
+/// (`MapLoadOptions::textures`: placeholders of the right size).
+pub fn convert_with(
+    world: &World,
+    name: &str,
+    scale: f32,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+    decode: bool,
+) -> MapData {
     let to_engine = |p: lt::Vec3| Vec3::from(lt::to_right_handed(p)) * scale;
     let mut map = MapData {
         name: format!("{MAP_PREFIX}{name}"),
@@ -394,8 +423,8 @@ pub fn convert(world: &World, name: &str, scale: f32, file: &dyn Fn(&str) -> Opt
         .collect();
     built.sort_by(|(a, a2), (b, b2)| (a.skybox, &a.material, a2).cmp(&(b.skybox, &b.material, b2)));
     let (mut meshes, seconds): (Vec<MapMesh>, Vec<Option<String>>) = built.into_iter().unzip();
-    textures(&mut meshes, &mut map, file);
-    second_layers(&mut meshes, &seconds, &mut map, file);
+    textures_with(&mut meshes, &mut map, file, decode);
+    second_layers(&mut meshes, &seconds, &mut map, file, decode);
     map.meshes = meshes;
     map.lightmap = Some(lightmap.map);
 
@@ -917,6 +946,17 @@ fn add_block(
 /// `alpharef`); a name that doesn't resolve keeps the mesh's flat colour,
 /// with a warning.
 pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+    textures_with(meshes, map, file, true);
+}
+
+/// `textures`; `decode` off keeps each texture's size only (no texels, no
+/// mip levels: `MapLoadOptions::textures`).
+pub(crate) fn textures_with(
+    meshes: &mut [MapMesh],
+    map: &mut MapData,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+    decode: bool,
+) {
     let mut missing = std::collections::BTreeMap::<String, String>::new();
     // Each file once (meshes differ by blend and sky too), read here and
     // decoded on threads (`decode_all`).
@@ -951,7 +991,7 @@ pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(
             }
         }
     }
-    let decoded = decode_all(files);
+    let decoded = decode_all(files, decode);
     let mut slots: Vec<Option<(usize, Option<u8>)>> = Vec::with_capacity(decoded.len());
     for ((material, path), d) in names.into_iter().zip(decoded) {
         match d {
@@ -988,8 +1028,9 @@ pub(crate) fn textures(meshes: &mut [MapMesh], map: &mut MapData, file: &dyn Fn(
 /// "DetailLevel" loads, with their box-filtered mip chains
 /// (`MapTexture::box_mips`) and `alpharef`, on up to 8 threads (in
 /// order).
-fn decode_all(files: Vec<(String, Vec<u8>)>) -> Vec<Result<(MapTexture, Option<u8>), String>> {
-    let decode = |(_, bytes): (String, Vec<u8>)| -> Result<(MapTexture, Option<u8>), String> {
+/// With `decode` off only the sizes (and `alpharef`) are read.
+fn decode_all(files: Vec<(String, Vec<u8>)>, decode: bool) -> Vec<Result<(MapTexture, Option<u8>), String>> {
+    crate::map::parallel::par_map(files, |(_, bytes)| -> Result<(MapTexture, Option<u8>), String> {
         let dtx = Dtx::parse(bytes).map_err(|e| e.to_string())?;
         let level = dtx.skipped_levels(DETAIL_LEVEL, 0);
         let (width, height) = dtx.level_dims(level);
@@ -999,32 +1040,14 @@ fn decode_all(files: Vec<(String, Vec<u8>)>) -> Vec<Result<(MapTexture, Option<u
             mips: Vec::new(),
             width,
             height,
-            rgba8: dtx.rgba(level),
+            rgba8: if decode { dtx.rgba(level) } else { Vec::new() },
         };
         // The mip chain here, on these threads, not on the main thread when
         // the map spawns (the drawing's own box filter).
-        texture.mips = texture.box_mips();
+        if decode {
+            texture.mips = texture.box_mips();
+        }
         Ok((texture, dtx.alpha_ref()))
-    };
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(8);
-    if threads < 2 || files.len() < 8 {
-        return files.into_iter().map(decode).collect();
-    }
-    let per = files.len().div_ceil(threads);
-    let mut chunks: Vec<Vec<(String, Vec<u8>)>> = Vec::new();
-    let mut files = files.into_iter().peekable();
-    while files.peek().is_some() {
-        chunks.push(files.by_ref().take(per).collect());
-    }
-    std::thread::scope(|s| {
-        let handles: Vec<_> = chunks
-            .into_iter()
-            .map(|c| s.spawn(move || c.into_iter().map(decode).collect::<Vec<_>>()))
-            .collect();
-        handles
-            .into_iter()
-            .flat_map(|h| h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
-            .collect()
     })
 }
 
@@ -1058,6 +1081,7 @@ pub(crate) fn second_layers(
     seconds: &[Option<String>],
     map: &mut MapData,
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
+    decode: bool,
 ) {
     /// A loaded texture: its index, and whether it is fullbright.
     #[derive(Clone)]
@@ -1080,7 +1104,7 @@ pub(crate) fn second_layers(
                     mips: Vec::new(),
                     width,
                     height,
-                    rgba8: dtx.rgba(level),
+                    rgba8: if decode { dtx.rgba(level) } else { Vec::new() },
                 });
                 Some(Loaded {
                     index: map.textures.len() - 1,

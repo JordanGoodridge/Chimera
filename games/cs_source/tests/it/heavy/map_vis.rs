@@ -19,7 +19,7 @@ fn load(name: &str) -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(crate::load_map(&format!("cs_source:{name}")).expect("load map"))
+    Some(crate::load_map_lean(&format!("cs_source:{name}")).expect("load map"))
 }
 
 /// Eye height of a standing player (64 units).

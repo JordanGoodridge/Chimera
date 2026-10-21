@@ -11,10 +11,9 @@
 //! <ip>:27016` (Combat Arms' part of it: `combat_arms::game::net`), or a
 //! dedicated server (apps/combat_arms_server, `combat_arms_server`).
 
-use avian3d::prelude::*;
 use bevy::prelude::*;
 use chimera_client::client::Args;
-use chimera_present::{MapPlugin, render};
+use chimera_present::{MapPlugin, PresentationPlugins};
 use chimera_world::greybox;
 use combat_arms_app::ClientPlugin;
 
@@ -81,31 +80,15 @@ fn main() {
                     custom_layer: chimera_client::client::console::log_layer,
                     ..default()
                 }),
-            // Rendering eases between ticks with `map::interp`, not
-            // avian's transform interpolation.
-            PhysicsPlugins::default()
-                .with_collision_hooks::<chimera_world::map::MapCollisionHooks>()
-                .build()
-                .disable::<PhysicsInterpolationPlugin>(),
+            // Avian as Chimera runs it (rendering eases between ticks with
+            // `map::interp`).
+            chimera_world::physics_plugins(),
             // The simulation at Combat Arms' tick (the app's tests run it
             // headless).
             combat_arms_app::SimPlugin,
         ))
-        // What the map's drawing needs (as the CS:S app adds them).
-        .add_plugins((
-            render::world_material::WorldMaterialPlugin,
-            render::rope_material::RopeMaterialPlugin,
-            render::sprite_material::SpriteMaterialPlugin,
-            render::prop_material::PropMaterialPlugin,
-            render::shadows::ShadowMaterialPlugin,
-            render::decal::DecalMaterialPlugin,
-            render::spray::SprayMaterialPlugin,
-            render::water::WaterMaterialPlugin,
-            render::particles::ParticleMaterialPlugin,
-            render::beams::BeamMaterialPlugin,
-            render::sky_occluder::SkyOccluderPlugin,
-            render::detail::DetailMaterialPlugin,
-        ))
+        // What the map's drawing needs.
+        .add_plugins(PresentationPlugins)
         // This build's version (`version`, bug reports; build.rs).
         .insert_resource(chimera_core::core::BuildVersion(combat_arms_app::VERSION))
         // Network play: a listen server, or a client (`connect`).

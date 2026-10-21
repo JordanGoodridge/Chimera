@@ -24,3 +24,18 @@ pub mod music;
 
 // `crate::core` inside `map`, as in the game crate.
 use chimera_core::core;
+
+/// Avian as Chimera runs it: its plugins with Chimera's collision hooks
+/// (`map::MapCollisionHooks`) and without transform interpolation (the
+/// map eases rendering between ticks itself, `map::interp`; headless,
+/// interpolation would make `Transform` show the previous tick). Every
+/// app and the test harness (`harness::add_headless_with`) add this one
+/// group, so the physics can't differ between them (docs/ARCHITECTURE.md).
+pub fn physics_plugins() -> bevy::app::PluginGroupBuilder {
+    use avian3d::prelude::*;
+    use bevy::app::PluginGroup as _;
+    PhysicsPlugins::default()
+        .with_collision_hooks::<map::MapCollisionHooks>()
+        .build()
+        .disable::<PhysicsInterpolationPlugin>()
+}

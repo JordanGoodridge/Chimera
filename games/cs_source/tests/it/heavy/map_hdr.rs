@@ -16,7 +16,7 @@ fn load(level: u8) -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(crate::load_map_level("cs_source:de_dust2", level).expect("load de_dust2"))
+    Some(crate::load_map_level_lean("cs_source:de_dust2", level).expect("load de_dust2"))
 }
 
 fn bsp_bytes() -> Vec<u8> {
@@ -30,7 +30,7 @@ fn bsp_bytes() -> Vec<u8> {
 #[test]
 fn level_zero_leaves_the_ldr_path_untouched() {
     let Some(ldr) = load(0) else { return };
-    let default = crate::load_map("cs_source:de_dust2").unwrap();
+    let default = crate::load_map_lean("cs_source:de_dust2").unwrap();
     assert!(ldr.look.hdr.is_none());
     assert!(ldr.look.source_ldr_lightmaps, "LDR lightmap encoding");
     assert_eq!(format!("{:?}", ldr.look), format!("{:?}", default.look));
@@ -89,6 +89,6 @@ fn maps_without_hdr_lighting_load_ldr_at_any_level() {
         return;
     }
     // cs_office (BSP v19) has no HDR lump.
-    let office = crate::load_map_level("cs_source:cs_office", 2).unwrap();
+    let office = crate::load_map_level_lean("cs_source:cs_office", 2).unwrap();
     assert!(office.look.hdr.is_none() && office.look.source_ldr_lightmaps);
 }

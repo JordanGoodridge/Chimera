@@ -237,7 +237,7 @@ fn run(map: &str, players: usize, clients: usize, seconds: f64) -> Results {
     } else {
         format!("{}:{map}", cs_source::GAME)
     };
-    let data = games::load_map(&id).unwrap_or_else(|e| panic!("{id}: {e}"));
+    let data = games::load_map_lean(&id).unwrap_or_else(|e| panic!("{id}: {e}"));
     let vis = data.visibility.clone();
     let one = OneMap(Arc::new(Mutex::new(Some((id.clone(), data.clone())))));
     let setup = {
