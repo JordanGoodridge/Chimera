@@ -1221,12 +1221,70 @@ pub fn goal_text(key: &str, goal: u32, resolve: impl Fn(&str) -> String) -> Stri
     }
 }
 
-/// A format's first `%d` or `%s` filled with `with` (none: the format).
+/// A format's first insert filled with `with` (none: the format).
 pub fn fill(format: &str, with: &str) -> String {
-    let at = [format.find("%d"), format.find("%s")].into_iter().flatten().min();
-    match at {
-        Some(i) => format!("{}{with}{}", &format[..i], &format[i + 2..]),
-        None => format.to_string(),
+    fill_all(format, &[with])
+}
+
+/// A format with its inserts filled from `with`: the install's
+/// FormatMessage style (`%1`, `%2!d!`, `%1!s!`: argument N, 1-based, the
+/// optional `!type!` after it dropped) and the plain `%d` / `%s` (the
+/// next argument in order); `%%` is a `%`. An insert with no argument
+/// stays as written.
+pub fn fill_all(format: &str, with: &[&str]) -> String {
+    let mut out = String::with_capacity(format.len());
+    let mut next = 0;
+    let mut rest = format;
+    while let Some(at) = rest.find('%') {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + 1..];
+        let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+        let (arg, used) = if tail.starts_with('%') {
+            out.push('%');
+            rest = &tail[1..];
+            continue;
+        } else if digits > 0 {
+            let n: usize = tail[..digits].parse().unwrap_or(0);
+            // `!type!` after the number.
+            let spec = tail[digits..]
+                .strip_prefix('!')
+                .and_then(|t| t.find('!').map(|e| e + 2))
+                .unwrap_or(0);
+            (n.checked_sub(1), digits + spec)
+        } else if tail.starts_with('d') || tail.starts_with('s') {
+            next += 1;
+            (Some(next - 1), 1)
+        } else {
+            out.push('%');
+            rest = tail;
+            continue;
+        };
+        match arg.and_then(|i| with.get(i)) {
+            Some(w) => out.push_str(w),
+            None => out.push_str(&rest[at..at + 1 + used]),
+        }
+        rest = &tail[used..];
+    }
+    out.push_str(rest);
+    out
+}
+
+#[cfg(test)]
+mod fill_tests {
+    use super::fill_all;
+
+    #[test]
+    fn inserts() {
+        assert_eq!(fill_all("%1!d! Kills", &["100"]), "100 Kills");
+        assert_eq!(fill_all("Goal: %1!s!", &["x"]), "Goal: x");
+        assert_eq!(fill_all("%2 of %1!d!", &["3", "9"]), "9 of 3");
+        assert_eq!(fill_all("%1 and %1", &["a"]), "a and a");
+        assert_eq!(fill_all("100%% of %1", &["a"]), "100% of a");
+        assert_eq!(fill_all("%1!d! / %2!d!", &["1"]), "1 / %2!d!");
+        assert_eq!(fill_all("%d of %s", &["1", "2"]), "1 of 2");
+        assert_eq!(fill_all("%d of %s", &["1"]), "1 of %s");
+        assert_eq!(fill_all("50% off", &[]), "50% off");
+        assert_eq!(fill_all("%0 %1!d", &["a"]), "%0 a!d", "an unclosed type stays");
     }
 }
 
