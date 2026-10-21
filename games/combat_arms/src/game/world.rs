@@ -412,17 +412,21 @@ pub fn convert_with(
         }
     }
     let lightmap = atlas.finish();
-    let mut built: Vec<(MapMesh, Option<String>)> = meshes
-        .into_values()
-        .map(|mut b| {
+    let mut built: Vec<(MapMesh, Option<String>, String)> = meshes
+        .into_iter()
+        .map(|(key, mut b)| {
             for (uv, rect) in b.mesh.lightmap_uvs.iter_mut().zip(b.rects) {
                 *uv = lightmap.uv(rect, *uv);
             }
-            (b.mesh, b.second)
+            (b.mesh, b.second, key)
         })
         .collect();
-    built.sort_by(|(a, a2), (b, b2)| (a.skybox, &a.material, a2).cmp(&(b.skybox, &b.material, b2)));
-    let (mut meshes, seconds): (Vec<MapMesh>, Vec<Option<String>>) = built.into_iter().unzip();
+    // The mesh key ends the order: meshes of one texture that differ in
+    // blend or world model compare equal otherwise, and the map's hash
+    // order (random per run) then decided which came first.
+    built.sort_by(|(a, a2, ak), (b, b2, bk)| (a.skybox, &a.material, a2, ak).cmp(&(b.skybox, &b.material, b2, bk)));
+    let (mut meshes, seconds): (Vec<MapMesh>, Vec<Option<String>>) =
+        built.into_iter().map(|(m, s, _)| (m, s)).unzip();
     textures_with(&mut meshes, &mut map, file, decode);
     second_layers(&mut meshes, &seconds, &mut map, file, decode);
     map.meshes = meshes;
