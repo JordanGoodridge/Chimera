@@ -2,11 +2,12 @@
 //! Combat Arms' simulation with the mashup's parts
 //! (`mashup_demo::MashupPartsPlugin`): Source's map logic runs for a
 //! Combat Arms soldier (de_nuke: +use opens a door pair, the M4A1 breaks a
-//! metal vent), CS:S's surfaces are Combat Arms' surface types (de_dust2's
-//! sand, stone and wood; a round into the sand plays Combat Arms' sand
-//! impact), and a slot of the loadout takes CS:S's AK-47, which a Combat
-//! Arms soldier fires into another on de_dust2. Passes with a note
-//! without both installs in chimera.local.toml.
+//! metal vent; cs_office: a door opens, CS:S's AK-47 breaks a window),
+//! CS:S's surfaces are Combat Arms' surface types (de_dust2's sand, stone
+//! and wood; a round into the sand plays Combat Arms' sand impact), and a
+//! slot of the loadout takes CS:S's AK-47, which a Combat Arms soldier
+//! fires into another on de_dust2. Passes with a note without both
+//! installs in chimera.local.toml.
 
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::{ecs::system::SystemState, prelude::*};
@@ -106,95 +107,150 @@ fn fire(sim: &mut Sim, p: Entity) {
     sim.ticks(3);
 }
 
-#[test]
-fn a_combat_arms_soldier_opens_nukes_doors_and_breaks_a_vent() {
-    let Some(map) = load("de_nuke") else { return };
-    let scale = map.entity_scale;
-    let doors: Vec<usize> = (0..map.entities.len())
-        .filter(|&i| map.entities[i].classname() == "func_door_rotating" && map.entities[i].mover)
-        .collect();
-    let vents: Vec<usize> = (0..map.entities.len())
-        .filter(|&i| map.entities[i].classname() == "func_breakable" && map.entities[i].get("material") == Some("2"))
-        .collect();
-    assert!(!doors.is_empty() && !vents.is_empty(), "de_nuke's doors and vents");
-    let entities = map.entities.clone();
-    let mut sim = sim(map);
-    let yaw = |sim: &Sim, i: usize| logic_class(sim, i).and_then(|c| pusher(&c).map(|p| p.angles.y));
+/// Map entities of class `class` (and `material`, if given), by index.
+fn entities_of(map: &MapData, class: &str, material: Option<&str>) -> Vec<usize> {
+    (0..map.entities.len())
+        .filter(|&i| {
+            let e = &map.entities[i];
+            e.classname() == class && (!class.starts_with("func_door") || e.mover) && material.is_none_or(|m| e.get("material") == Some(m))
+        })
+        .collect()
+}
 
-    // A door: stand 40 units in front of it on its floor, look at its
-    // middle, press +use.
-    let mut opened = false;
-    for &door in &doors {
-        let (lo, hi) = bounds(&entities[door]);
+/// A Combat Arms soldier stands 40 units in front of each of `used` in
+/// turn (either side) on its floor, looks at its middle and presses +use:
+/// the first (used, moved) pair where one of `watched` turned over 45
+/// degrees or moved over 8 units, if any (a door used itself, or one a
+/// button opens).
+fn use_to_move(sim: &mut Sim, entities: &[MapEntity], used: &[usize], watched: &[usize], scale: f32) -> Option<(usize, usize)> {
+    let pose = |sim: &Sim, i: usize| logic_class(sim, i).and_then(|c| pusher(&c).map(|p| (p.origin, p.angles)));
+    for &u in used {
+        let (lo, hi) = bounds(&entities[u]);
         let (size, centre) = (hi - lo, (lo + hi) / 2.0);
         let out = if size.x < size.y { Vec3::X } else { Vec3::Y } * (size.x.min(size.y) / 2.0 + 40.0);
         for side in [out, -out] {
             let feet = Vec3::new(centre.x, centre.y, lo.z) + side;
             let p = sim.spawn_character(entity_to_engine(feet, scale) + Vec3::Y * 1.0, movement::ID);
             sim.seconds(1.0);
-            aim(&mut sim, p, entity_to_engine(centre, scale));
+            aim(sim, p, entity_to_engine(centre, scale));
             sim.ticks(2);
-            let before = yaw(&sim, door).unwrap();
+            let before: Vec<_> = watched.iter().map(|&w| pose(sim, w).unwrap()).collect();
             sim.intent(p).use_key = true;
             sim.ticks(1);
             sim.intent(p).use_key = false;
-            sim.seconds(1.0);
-            let turned = (yaw(&sim, door).unwrap() - before).abs();
+            sim.seconds(1.5);
             sim.app.world_mut().entity_mut(p).despawn();
-            if turned > 45.0 {
-                eprintln!("de_nuke: door {door} turned {turned} degrees on a Combat Arms soldier's +use");
-                opened = true;
-                break;
+            for (&w, (origin, angles)) in watched.iter().zip(before) {
+                let (o, a) = pose(sim, w).unwrap();
+                let (moved, turned) = (o.distance(origin), (a.y - angles.y).abs());
+                if turned > 45.0 || moved > 8.0 {
+                    eprintln!("+use on {u} by a Combat Arms soldier: {w} turned {turned} degrees, moved {moved} units");
+                    return Some((u, w));
+                }
             }
         }
-        if opened {
-            break;
-        }
     }
-    assert!(opened, "a Combat Arms soldier's +use opens one of de_nuke's {} doors", doors.len());
+    None
+}
 
-    // A vent: a floating soldier 24 units off it shoots it with the M4A1.
-    let mut broke = false;
-    for &vent in &vents {
-        let (lo, hi) = bounds(&entities[vent]);
+/// A floating Combat Arms soldier 24 units off each breakable in turn
+/// (either side, with a clear line) shoots it once with `weapon`: the
+/// first one broken, if any.
+fn break_one(sim: &mut Sim, entities: &[MapEntity], targets: &[usize], scale: f32, weapon: &str) -> Option<usize> {
+    for &target in targets {
+        let (lo, hi) = bounds(&entities[target]);
         let (size, centre) = (hi - lo, (lo + hi) / 2.0);
         let thin = if size.x < size.y { Vec3::X } else { Vec3::Y };
         let out = thin * (size.dot(thin) / 2.0 + 24.0);
         for eye in [centre + out, centre - out] {
-            let (eye, target) = (entity_to_engine(eye, scale), entity_to_engine(centre, scale));
+            let (eye, at) = (entity_to_engine(eye, scale), entity_to_engine(centre, scale));
             let p = sim.spawn_character(eye, noclip::ID);
             sim.ticks(1);
             let offset = sim.state(p).eye_offset;
             sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = eye - offset;
             sim.seconds(1.5);
-            aim(&mut sim, p, target);
-            let clear = ray(&mut sim, eye, target, p);
-            if clear > eye.distance(target) + 0.2 {
+            aim(sim, p, at);
+            let clear = ray(sim, eye, at, p);
+            if clear > eye.distance(at) + 0.2 {
                 sim.app.world_mut().entity_mut(p).despawn();
                 continue;
             }
-            assert_eq!(sim.app.world().get::<Weapon>(active(&sim, p)).unwrap().id, weapons::RIFLE);
-            fire(&mut sim, p);
-            let gone = match logic_class(&sim, vent) {
+            assert_eq!(sim.app.world().get::<Weapon>(active(sim, p)).unwrap().id, weapon);
+            fire(sim, p);
+            let gone = match logic_class(sim, target) {
                 None => true,
-                Some(Class::Breakable(b)) => b.broken,
+                // A window breaks pane by pane.
+                Some(Class::Breakable(b)) => {
+                    b.broken || b.window.as_ref().is_some_and(|w| w.window_broken || w.broken.contains(&true))
+                }
                 Some(_) => false,
             };
             sim.app.world_mut().entity_mut(p).despawn();
             if gone {
-                eprintln!("de_nuke: vent {vent} broken by the M4A1");
-                broke = true;
-                break;
+                eprintln!("breakable {target} broken by {weapon}");
+                return Some(target);
             }
         }
-        if broke {
-            break;
-        }
     }
-    assert!(broke, "the M4A1 breaks one of de_nuke's metal vents");
+    None
+}
+
+#[test]
+fn a_combat_arms_soldier_opens_nukes_doors_and_breaks_a_vent() {
+    let Some(map) = load("de_nuke") else { return };
+    let scale = map.entity_scale;
+    let doors = entities_of(&map, "func_door_rotating", None);
+    let vents = entities_of(&map, "func_breakable", Some("2"));
+    assert!(!doors.is_empty() && !vents.is_empty(), "de_nuke's doors and vents");
+    let entities = map.entities.clone();
+    let mut sim = sim(map);
+    assert!(
+        use_to_move(&mut sim, &entities, &doors, &doors, scale).is_some(),
+        "a Combat Arms soldier's +use opens one of de_nuke's {} doors",
+        doors.len()
+    );
+    assert!(
+        break_one(&mut sim, &entities, &vents, scale, weapons::RIFLE).is_some(),
+        "the M4A1 breaks one of de_nuke's metal vents"
+    );
     let world = sim.app.world_mut();
     let nodes = world.query::<&MapBrushEntity>().iter(world).count();
     assert!(nodes > 0);
+}
+
+/// cs_office as the mashup plays it (A1 step 4): Combat Arms is the
+/// gameplay (its rules, HUD and binds; CS:S's rules aren't in the app),
+/// Source's logic opens its door (a func_door, used or through one of its
+/// buttons) for a Combat Arms soldier, and CS:S's AK-47, given in the
+/// loadout's primary slot, breaks one of its windows (func_breakable_surf
+/// glass, pane by pane).
+#[test]
+fn a_combat_arms_soldier_opens_offices_door_and_breaks_a_window_with_the_ak47() {
+    let Some(map) = load("cs_office") else { return };
+    let scale = map.entity_scale;
+    let doors = entities_of(&map, "func_door", None);
+    let used: Vec<usize> = entities_of(&map, "func_button", None).into_iter().chain(doors.clone()).collect();
+    let windows = entities_of(&map, "func_breakable_surf", None);
+    assert!(!doors.is_empty() && !windows.is_empty(), "cs_office's door and glass");
+    let entities = map.entities.clone();
+    let mut sim = sim(map);
+    let gameplay = sim.app.world().resource::<chimera_core::gameplay::Gameplay>().clone();
+    assert_eq!((gameplay.rules, gameplay.hud), (combat_arms::game::GAME, combat_arms::game::GAME));
+    assert!(
+        use_to_move(&mut sim, &entities, &used, &doors, scale).is_some(),
+        "a Combat Arms soldier's +use opens cs_office's door (itself or by one of {} buttons)",
+        used.len() - doors.len()
+    );
+    {
+        let catalog = sim.app.world().resource::<chimera_sim::weapon::data::WeaponCatalog>().clone();
+        let mut kit = sim.app.world_mut().resource_mut::<StartingWeapons>();
+        mashup_demo::set_slot(&mut kit, &catalog, 0, cs_source::game::weapons::AK47).unwrap();
+    }
+    assert!(
+        break_one(&mut sim, &entities, &windows, scale, cs_source::game::weapons::AK47).is_some(),
+        "CS:S's AK-47 breaks one of cs_office's {} windows",
+        windows.len()
+    );
 }
 
 /// Every world triangle's centre with its surface name and normal, engine

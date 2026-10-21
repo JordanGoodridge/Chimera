@@ -28,6 +28,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // What a game tells the shell about itself (its install, map cycle,
     // tick, binds, movement cvars): data the game registers.
     ("game_registry", &["mount"]),
+    // Which game fills each match-wide slot (rules, HUD, binds, tick) and
+    // the sets that gate a game's systems by it.
+    ("gameplay", &["core", "game_registry"]),
     ("slots", &["core"]),
     ("character", &["core", "slots"]),
     ("movement", &["core", "slots", "character"]),
@@ -60,7 +63,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // characters, the bomb as a weapon.
     (
         "objectives",
-        &["core", "console", "slots", "character", "map", "weapon"],
+        &["core", "console", "slots", "character", "map", "weapon", "gameplay"],
     ),
     ("rules", &["core", "console", "game_log", "weapon", "objectives"]),
     // Map logic (entity I/O, triggers, movers): game-independent; games
@@ -96,6 +99,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
         &[
             "lib",
             "core",
+            "gameplay",
             "console",
             "slots",
             "character",
@@ -132,6 +136,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "weapon",
             "mount",
             "game_registry",
+            "gameplay",
             "net",
             "metrics",
         ],
@@ -159,6 +164,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "mount",
             "profile",
             "game_registry",
+            "gameplay",
             "games",
             "logic",
             "net",
@@ -182,6 +188,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "mount",
             "profile",
             "game_registry",
+            "gameplay",
             "map",
             "music",
             "weapon",

@@ -991,14 +991,19 @@ fn autoexec(
     mut ui: ResMut<ConsoleUi>,
     args: Res<super::ClientArgs>,
     games: Option<Res<Games>>,
+    gameplay: Option<Res<crate::gameplay::Gameplay>>,
     mut root: Query<&mut Visibility, With<ConsoleRoot>>,
 ) {
     // Every key is a bind: the defaults first, then the player's config.
     // A config written before that has only the player's own binds after
     // its `unbindall`: the defaults go back on the keys it left free.
-    // The defaults are the default game's, from its install's file
-    // (`GameInfo::default_binds_cfg`, CS:S's config_default.cfg).
-    super::binds::read_install_defaults(games.and_then(|g| g.default_game()));
+    // The defaults are the gameplay's binds game's (else the default
+    // game's), from its install's file (`GameInfo::default_binds_cfg`,
+    // CS:S's config_default.cfg).
+    let binds = games.as_ref().and_then(|g| {
+        gameplay.as_ref().and_then(|p| g.get(p.binds)).or_else(|| g.default_game())
+    });
+    super::binds::read_install_defaults(binds);
     let config = crate::console::read_cfg("config.cfg");
     let marked = config.as_ref().is_none_or(|t| t.contains(super::binds::CONFIG_MARK));
     let current = config.as_ref().is_none_or(|t| t.contains(super::binds::DEFAULTS_MARK));
@@ -1936,14 +1941,18 @@ fn finish_map_load(w: &mut World) {
     );
     unload_greybox(w);
     crate::map::change_map(w, data, crate::map::MapDebugView::Normal);
-    // At the gameplay's server tick: the default game's (a mashup plays
-    // another game's map at its own game's tick), else the map's game's.
-    let tick = crate::game_registry::default_game(w)
-        .or_else(|| {
-            id.split_once(':')
-                .and_then(|(game, _)| w.get_resource::<Games>()?.get(game))
-        })
-        .map_or(std::time::Duration::from_secs_f64(1.0 / crate::core::DEFAULT_TICK_HZ), |g| g.tick());
+    // At the gameplay's server tick (a mashup plays another game's map at
+    // its gameplay's tick); without a gameplay the default game's, else
+    // the map's game's.
+    let tick = w.get_resource::<crate::gameplay::Gameplay>().map(|g| g.tick).or_else(|| {
+        crate::game_registry::default_game(w)
+            .or_else(|| {
+                id.split_once(':')
+                    .and_then(|(game, _)| w.get_resource::<Games>()?.get(game))
+            })
+            .map(|g| g.tick())
+    });
+    let tick = tick.unwrap_or(std::time::Duration::from_secs_f64(1.0 / crate::core::DEFAULT_TICK_HZ));
     crate::core::set_tick_length(w, tick);
     // Follow the map's presentation (Source LDR: no tonemapping).
     let tonemapping = w.resource::<crate::map::ActiveMapLook>().0.tonemapping;

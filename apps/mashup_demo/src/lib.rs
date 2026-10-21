@@ -26,10 +26,12 @@
 //!   the soldier is Combat Arms' size on de_dust2 with nothing rescaled
 //!   (`map::sources`).
 //! - `MashupPlugins`: Combat Arms' simulation (`combat_arms::SimPlugins`,
-//!   `CombatArmsPlugins`: the default game, so its tick, binds and HUD),
-//!   CS:S registered after it for its install (`map` lists the default
-//!   game's maps; `map cs_source:<name>` loads a CS:S one) and
-//!   `MashupPartsPlugin`.
+//!   `CombatArmsPlugins`: the default game, for bare map names), CS:S
+//!   registered after it for its install (`map` lists the default game's
+//!   maps; `map cs_source:<name>` loads a CS:S one) and
+//!   `MashupPartsPlugin`. The app (main.rs) sets Combat Arms as the
+//!   gameplay (`chimera_core::gameplay`: its rules, HUD, binds and tick);
+//!   CS:S's rules aren't in the app, only its maps, logic and guns.
 //! - `MashupPartsPlugin`: what the app adds to Combat Arms' simulation
 //!   (the headless tests run it on `combat_arms::harness::CaSim`): the
 //!   map logic of Source maps (doors, buttons, breakables, triggers,

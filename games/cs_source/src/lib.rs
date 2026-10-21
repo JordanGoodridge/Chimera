@@ -43,7 +43,7 @@ pub mod rules;
 pub mod ui;
 
 // `crate::core`, `crate::map` and the rest inside, as in the game crate.
-use chimera_core::{character, console, core, game_log, game_registry, mount, slots};
+use chimera_core::{character, console, core, game_log, game_registry, gameplay, mount, slots};
 use chimera_sim::weapon;
 use chimera_net::net;
 use chimera_world::map;
@@ -83,10 +83,17 @@ impl Plugin for SimPlugins {
 /// metrics; an app with several games' parts adds the base once and each
 /// game's parts. The guns alone (data and hooks, no rules) are
 /// `CsSourceGuns`.
+///
+/// Its match-wide systems (rules, objectives, bots, the network part's
+/// match state) run only while CS:S is the gameplay's rules
+/// (`objectives::plays`); CS:S becomes the gameplay when the app has none
+/// (`gameplay::GameplayAppExt::default_gameplay`).
 pub struct CsSourceParts;
 
 impl Plugin for CsSourceParts {
     fn build(&self, app: &mut App) {
+        use gameplay::GameplayAppExt;
+        app.default_gameplay(gameplay::Gameplay::of(&game::INFO));
         app.add_plugins((
             objectives::ObjectivesPlugin,
             rules::DeathmatchPlugin,

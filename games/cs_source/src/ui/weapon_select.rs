@@ -78,7 +78,8 @@ impl Plugin for WeaponSelectPlugin {
                         .chain()
                         .after(menu_input)
                         .run_if(resource_exists::<ActiveHud>),
-                ),
+                )
+                    .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
             );
         crate::console::resource_cvar::<FastSwitch, u8>(
             app,

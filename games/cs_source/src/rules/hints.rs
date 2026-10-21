@@ -95,9 +95,13 @@ pub(super) fn plugin(app: &mut App) {
             FixedPostUpdate,
             (HintSystems::Triggers, HintSystems::Deliver)
                 .chain()
-                .run_if(authoritative),
+                .run_if(authoritative)
+                .run_if(crate::objectives::plays),
         )
-        .add_systems(FixedPostUpdate, keep_history.before(HintSystems::Triggers))
+        .add_systems(
+            FixedPostUpdate,
+            keep_history.before(HintSystems::Triggers).run_if(crate::objectives::plays),
+        )
         .add_systems(FixedPostUpdate, deliver.in_set(HintSystems::Deliver));
     resource_cvar::<AutoHelp, u8>(
         app,

@@ -72,7 +72,9 @@ pub(super) fn plugin(app: &mut App) {
     ];
     app.add_systems(
         PostUpdate,
-        (objective_events, round_events, weapon_events, player_events).run_if(authoritative),
+        (objective_events, round_events, weapon_events, player_events)
+            .run_if(authoritative)
+            .run_if(crate::objectives::plays),
     );
 }
 

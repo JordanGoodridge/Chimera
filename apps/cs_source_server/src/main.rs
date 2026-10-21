@@ -110,6 +110,12 @@ fn main() {
         MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / FPS_MAX))),
     );
     app.add_plugins(cs_source_app::SimPlugins);
+    // CS:S is the gameplay: its rules and tick (the greybox keeps the
+    // engine's, below).
+    {
+        use cs_source_app::gameplay::{Gameplay, GameplayAppExt};
+        app.set_gameplay(Gameplay::of(&cs_source::INFO));
+    }
     // Ctrl+C exits as `quit` does (AppExit: `net::udp` hangs up on every
     // client), not killed with its clients left to time out.
     app.add_plugins((bevy::log::LogPlugin::default(), bevy::app::TerminalCtrlCHandlerPlugin));
@@ -132,9 +138,7 @@ fn main() {
                     data.spawns.len(),
                     data.warnings.len()
                 );
-                app.add_plugins(MapSimPlugin::new(data))
-                    .insert_resource(Time::<Fixed>::from_seconds(cs_source::TICK_INTERVAL))
-                    .insert_resource(LoadedMapName(id));
+                app.add_plugins(MapSimPlugin::new(data)).insert_resource(LoadedMapName(id));
             }
             Err(e) => {
                 eprintln!("error: +map {id}: {e}");
@@ -280,12 +284,11 @@ fn finish_level_change(world: &mut World) {
     match result {
         Ok(data) => {
             let summary = format!("loaded {id}: {} spawns", data.spawns.len());
-            cs_source_app::swap_map(
-                world,
-                &id,
-                Some(data),
-                Duration::from_secs_f64(cs_source::TICK_INTERVAL),
-            );
+            // At the gameplay's tick (CS:S's).
+            let tick = world
+                .get_resource::<cs_source_app::gameplay::Gameplay>()
+                .map_or(Duration::from_secs_f64(cs_source::TICK_INTERVAL), |g| g.tick);
+            cs_source_app::swap_map(world, &id, Some(data), tick);
             world.resource_mut::<Console>().info(summary);
         }
         Err(e) => {
