@@ -58,18 +58,36 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("spawning", &["core", "movement"]),
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
-    ("objectives", &["core", "console", "slots", "character", "map", "weapon"]),
+    (
+        "objectives",
+        &["core", "console", "slots", "character", "map", "weapon"],
+    ),
     ("rules", &["core", "console", "game_log", "weapon", "objectives"]),
     // Map logic (entity I/O, triggers, movers): game-independent; games
     // feed it through `map::MapData::entities`. `net`: it registers its
     // movers and HUD messages as its part of the network (`logic::net`).
     ("logic", &["core", "console", "map", "net"]),
-    ("bot", &["core", "console", "slots", "character", "map", "weapon", "objectives"]),
+    (
+        "bot",
+        &["core", "console", "slots", "character", "map", "weapon", "objectives"],
+    ),
     // Network play: transport, replication, the join handshake. Above the
     // engine's simulation it serves, below Source's logic, the games, the
     // client and harness (docs/plans/active/multiplayer.md, section 3): a
     // game registers what it replicates and fills its hooks (`net::parts`).
-    ("net", &["core", "console", "game_log", "slots", "character", "movement", "map", "weapon"]),
+    (
+        "net",
+        &[
+            "core",
+            "console",
+            "game_log",
+            "slots",
+            "character",
+            "movement",
+            "map",
+            "weapon",
+        ],
+    ),
     // The headless harness (chimera_world's `Sim`, chimera_net's `NetSim`,
     // cs_source's base and test maps). `lib` = crate-root items such as
     // `SimPlugins`.
@@ -206,7 +224,10 @@ const APP_SRC: &str = "apps/cs_source/src";
 
 /// The repository's root (this crate is checks/).
 fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -351,7 +372,9 @@ fn module_layering() {
     let mut errors = Vec::new();
 
     for (base, file) in files {
-        let Some(module) = module_of(&base, &file) else { continue };
+        let Some(module) = module_of(&base, &file) else {
+            continue;
+        };
         if module == "lib" || module == "main" {
             continue;
         }
@@ -430,7 +453,13 @@ fn module_layering() {
 /// simulation never names them; it says in plain data what its parts look
 /// like and `render` draws them (docs/ARCHITECTURE.md, "Drawn-part
 /// requests").
-const DRAWING_TYPES: &[&str] = &["Mesh3d", "MeshMaterial3d", "Assets<Mesh>", "StandardMaterial", "MaterialPlugin"];
+const DRAWING_TYPES: &[&str] = &[
+    "Mesh3d",
+    "MeshMaterial3d",
+    "Assets<Mesh>",
+    "StandardMaterial",
+    "MaterialPlugin",
+];
 
 /// Files of the simulation's layers that still name one of
 /// `DRAWING_TYPES` (file, why).
@@ -465,7 +494,9 @@ fn simulation_builds_no_drawn_parts() {
     let mut errors = Vec::new();
     let mut used_exceptions = BTreeSet::new();
     for (base, file) in files {
-        let Some(module) = module_of(&base, &file) else { continue };
+        let Some(module) = module_of(&base, &file) else {
+            continue;
+        };
         if !SIM.contains(&module.as_str()) {
             continue;
         }
@@ -505,7 +536,9 @@ fn simulation_builds_no_drawn_parts() {
         .filter(|n| n.ends_with(".wgsl"))
         .collect();
     if !wgsl.is_empty() {
-        errors.push(format!("chimera/world/src/map holds shaders {wgsl:?}: shaders are `render`'s."));
+        errors.push(format!(
+            "chimera/world/src/map holds shaders {wgsl:?}: shaders are `render`'s."
+        ));
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
@@ -544,8 +577,8 @@ fn game_parts_do_not_use_their_ui() {
                 "self::ui::".into(),
                 "crate::ui::".into(),
             ]
-                .iter()
-                .any(|p| code.contains(p.as_str()));
+            .iter()
+            .any(|p| code.contains(p.as_str()));
             if names_ui {
                 errors.push(format!(
                     "{}: uses `{game}::ui`, the game's front end. A game's parts must work without its menus \
@@ -607,11 +640,21 @@ fn no_game_assets_tracked() {
 /// chimera.local.toml and are read at run time.
 #[test]
 fn no_keys_tracked() {
-    const PLACES: &[&str] =
-        &["lithtech/", "games/combat_arms/", "apps/combat_arms/", "apps/mashup_demo/", "specs/combat_arms/"];
+    const PLACES: &[&str] = &[
+        "lithtech/",
+        "games/combat_arms/",
+        "apps/combat_arms/",
+        "apps/mashup_demo/",
+        "specs/combat_arms/",
+    ];
     let mut errors = Vec::new();
-    for f in tracked_files().iter().filter(|f| PLACES.iter().any(|p| f.starts_with(p))) {
-        let Ok(text) = fs::read_to_string(root().join(f)) else { continue };
+    for f in tracked_files()
+        .iter()
+        .filter(|f| PLACES.iter().any(|p| f.starts_with(p)))
+    {
+        let Ok(text) = fs::read_to_string(root().join(f)) else {
+            continue;
+        };
         let mut run = 0;
         if text.chars().any(|c| {
             run = if c.is_ascii_hexdigit() { run + 1 } else { 0 };
@@ -671,57 +714,41 @@ fn docs_map_links_resolve() {
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
-/// The docs every session reads stay short (architecture review, P2): the
-/// module list in docs/ARCHITECTURE.md and docs/tech-debt.md are one short
-/// line per entry, with the detail in each file's `//!` doc, so features
-/// don't edit (and parallel branches don't conflict on) paragraph-long rows.
+/// The doc lists built from the sources' `//!` docs (docs/modules.md and the
+/// generated entries of docs/tech-debt.md, architecture review T5) match the
+/// sources, so features edit only their own file's doc and parallel branches
+/// don't conflict on the lists. Also: the hand-kept debt entries stay one
+/// short line, and docs/ARCHITECTURE.md points at the module list.
 #[test]
-fn docs_stay_one_line_per_entry() {
-    const MODULE_LINE: usize = 160;
-    const DEBT_LINE: usize = 300;
+fn generated_docs_are_fresh() {
+    const HAND_DEBT_LINE: usize = 320;
     let mut errors = Vec::new();
-    let arch = fs::read_to_string(root().join("docs/ARCHITECTURE.md")).unwrap();
-    let modules = arch
-        .split("\n## Modules\n")
-        .nth(1)
-        .expect("docs/ARCHITECTURE.md has a \"## Modules\" section")
-        .split("\n## ")
-        .next()
-        .unwrap();
-    for line in modules.lines().filter(|l| l.starts_with("- ")) {
-        if line.chars().count() > MODULE_LINE {
-            errors.push(format!(
-                "docs/ARCHITECTURE.md module entry longer than {MODULE_LINE} characters: \
-                 {line:.80}... Keep one short line (what it is, its layer) and put the \
-                 detail in the file's `//!` doc."
-            ));
+    match repo_checks::docs_index::stale(&root()) {
+        Ok(stale) => {
+            for (path, _) in stale {
+                errors.push(format!(
+                    "{path} is stale: it is generated from the files' `//!` docs. Regenerate it \
+                     with `{}` and commit the result (change a summary or shortcut in the \
+                     file's `//!` doc, never in {path}).",
+                    repo_checks::docs_index::COMMAND
+                ));
+            }
         }
-        let path = line[2..].split('`').nth(1).unwrap_or("");
-        if ["src/", "source/", "lithtech/", "chimera/", "games/", "apps/"].iter().any(|p| path.starts_with(p))
-            && !root().join(path).exists()
-        {
-            errors.push(format!(
-                "docs/ARCHITECTURE.md lists {path}, which does not exist. Update the entry."
-            ));
-        }
+        Err(e) => errors.push(e),
     }
     let debt = fs::read_to_string(root().join("docs/tech-debt.md")).unwrap();
     for line in debt.lines().filter(|l| l.starts_with("- ")) {
-        if line.chars().count() > DEBT_LINE {
+        if line.chars().count() > HAND_DEBT_LINE {
             errors.push(format!(
-                "docs/tech-debt.md entry longer than {DEBT_LINE} characters: {line:.80}... \
-                 Keep one line (area, shortcut, where the detail is) and move the detail to \
-                 the module's `//!` doc under \"Known shortcuts\"."
+                "docs/tech-debt.md entry longer than {HAND_DEBT_LINE} characters: {line:.80}... \
+                 Keep one line; a shortcut that belongs to a file goes in its `//!` doc under \
+                 \"Known shortcuts\" and is listed by the generator."
             ));
         }
-        if let Some(path) = line.rsplit("(`").next().and_then(|p| p.strip_suffix("`)"))
-            && path.starts_with("src/")
-            && !root().join(path).exists()
-        {
-            errors.push(format!(
-                "docs/tech-debt.md points to {path}, which does not exist. Update the entry."
-            ));
-        }
+    }
+    let arch = fs::read_to_string(root().join("docs/ARCHITECTURE.md")).unwrap();
+    if !arch.contains("docs/modules.md") {
+        errors.push("docs/ARCHITECTURE.md must point at docs/modules.md (the generated module list).".into());
     }
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
@@ -797,13 +824,27 @@ fn workspace_crates() {
     // (the workspace-hack), so `cargo test -p <crate>` reuses the
     // workspace's builds; but the hack itself, Bevy's development features
     // and the crates that stay free of Bevy (.config/hakari.toml).
-    const NO_HACK: &[&str] =
-        &["chimera/workspace-hack", "chimera/dev", "source/formats", "lithtech/formats", "source/tools", "checks"];
+    const NO_HACK: &[&str] = &[
+        "chimera/workspace-hack",
+        "chimera/dev",
+        "source/formats",
+        "lithtech/formats",
+        "source/tools",
+        "checks",
+    ];
     for m in members.iter().filter(|m| !NO_HACK.contains(&m.as_str())) {
-        let path = if m == "." { "Cargo.toml".to_string() } else { format!("{m}/Cargo.toml") };
+        let path = if m == "." {
+            "Cargo.toml".to_string()
+        } else {
+            format!("{m}/Cargo.toml")
+        };
         let text = fs::read_to_string(root().join(&path)).unwrap();
         let manifest: toml::Table = text.parse().unwrap();
-        if manifest.get("dependencies").and_then(|d| d.get("workspace-hack")).is_none() {
+        if manifest
+            .get("dependencies")
+            .and_then(|d| d.get("workspace-hack"))
+            .is_none()
+        {
             errors.push(format!(
                 "{path} doesn't depend on `workspace-hack`, so `cargo test -p` of it builds Bevy and the rest \
                  again with its own features (docs/performance.md, \"Workspace-hack\"). Run `cargo hakari \
@@ -887,31 +928,112 @@ fn workspace_crates() {
             PURE_DATA,
         ),
         ("chimera/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
-        ("chimera/world", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], WORLD),
-        ("chimera/present", &["mashup", "cs_source", "combat_arms", "games"], PRESENT),
-        ("chimera/sim", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SIM),
-        ("chimera/net", &["chimera_present", "source_logic", "mashup", "cs_source", "combat_arms", "games"], NET),
-        ("games/cs_source", &["chimera_present", "chimera_client", "cs_source_app", "mashup", "combat_arms"], GAME),
         (
-            "games/combat_arms",
-            &["chimera_present", "chimera_client", "source_logic", "cs_source", "combat_arms_app", "mashup"],
+            "chimera/world",
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games"],
+            WORLD,
+        ),
+        (
+            "chimera/present",
+            &["mashup", "cs_source", "combat_arms", "games"],
+            PRESENT,
+        ),
+        (
+            "chimera/sim",
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games"],
+            SIM,
+        ),
+        (
+            "chimera/net",
+            &[
+                "chimera_present",
+                "source_logic",
+                "mashup",
+                "cs_source",
+                "combat_arms",
+                "games",
+            ],
+            NET,
+        ),
+        (
+            "games/cs_source",
+            &[
+                "chimera_present",
+                "chimera_client",
+                "cs_source_app",
+                "mashup",
+                "combat_arms",
+            ],
             GAME,
         ),
-        ("source/logic", &["chimera_present", "mashup", "cs_source", "combat_arms", "games"], SOURCE),
+        (
+            "games/combat_arms",
+            &[
+                "chimera_present",
+                "chimera_client",
+                "source_logic",
+                "cs_source",
+                "combat_arms_app",
+                "mashup",
+            ],
+            GAME,
+        ),
+        (
+            "source/logic",
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games"],
+            SOURCE,
+        ),
         ("apps/cs_source", &["mashup", "combat_arms"], APP),
         ("apps/combat_arms", &["mashup", "cs_source", "source_logic"], CA_APP),
-        ("apps/mashup_demo", &["mashup", "cs_source_app", "combat_arms_app"], MASHUP_APP),
-        ("chimera/tools", &["source_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
-        ("source/tools", &["bevy", "avian", "chimera_", "cs_source", "combat_arms", "games", "mashup"], TOOLS),
+        (
+            "apps/mashup_demo",
+            &["mashup", "cs_source_app", "combat_arms_app"],
+            MASHUP_APP,
+        ),
+        (
+            "chimera/tools",
+            &["source_", "cs_source", "combat_arms", "games", "mashup"],
+            TOOLS,
+        ),
+        (
+            "source/tools",
+            &[
+                "bevy",
+                "avian",
+                "chimera_",
+                "cs_source",
+                "combat_arms",
+                "games",
+                "mashup",
+            ],
+            TOOLS,
+        ),
         (
             "checks",
-            &["bevy", "avian", "chimera_", "source_", "cs_source", "combat_arms", "games", "mashup", "workspace-hack"],
+            &[
+                "bevy",
+                "avian",
+                "chimera_",
+                "source_",
+                "cs_source",
+                "combat_arms",
+                "games",
+                "mashup",
+                "workspace-hack",
+            ],
             CHECKS,
         ),
         ("games/cs_source/tools", &["mashup", "combat_arms"], TOOLS),
         (
             "apps/cs_source_server",
-            &["chimera_present", "chimera_client", "bevy_egui", "bevy-inspector-egui", "arboard", "mashup"],
+            &[
+                "chimera_present",
+                "chimera_client",
+                "bevy_egui",
+                "bevy-inspector-egui",
+                "arboard",
+                "mashup",
+            ],
             SERVER,
         ),
         (
@@ -931,7 +1053,14 @@ fn workspace_crates() {
         ),
         (
             "chimera/client",
-            &["source_logic", "bevy_replicon", "mashup", "cs_source", "combat_arms", "games"],
+            &[
+                "source_logic",
+                "bevy_replicon",
+                "mashup",
+                "cs_source",
+                "combat_arms",
+                "games",
+            ],
             CLIENT,
         ),
     ];
@@ -954,8 +1083,9 @@ fn workspace_crates() {
                     && m.get("features").and_then(|f| f.as_table()).is_some_and(|features| {
                         let turns_on = |list: &toml::Value| {
                             list.as_array().into_iter().flatten().any(|v| {
-                                v.as_str()
-                                    .is_some_and(|v| v == format!("dep:{dep}") || v == dep || v.starts_with(&format!("{dep}/")))
+                                v.as_str().is_some_and(|v| {
+                                    v == format!("dep:{dep}") || v == dep || v.starts_with(&format!("{dep}/"))
+                                })
                             })
                         };
                         features.iter().all(|(name, list)| name == feature || !turns_on(list))
@@ -966,7 +1096,12 @@ fn workspace_crates() {
             .iter()
             .filter_map(|k| m.get(*k).and_then(|t| t.as_table()).map(|t| (*k, t)))
             .collect();
-        for target in m.get("target").and_then(|t| t.as_table()).into_iter().flat_map(|t| t.values()) {
+        for target in m
+            .get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values())
+        {
             tables.extend(
                 ["dependencies", "dev-dependencies"]
                     .iter()
@@ -986,7 +1121,11 @@ fn workspace_crates() {
         for (table, dep) in tables.iter().flat_map(|(name, t)| t.keys().map(move |k| (*name, k))) {
             // The front end's optional dependencies in the build's tables;
             // the test-only ones in the tests' (dev-dependencies).
-            let allowed = if table == "dev-dependencies" { test_only(dep) } else { ui_only(dep) };
+            let allowed = if table == "dev-dependencies" {
+                test_only(dep)
+            } else {
+                ui_only(dep)
+            };
             if forbidden.iter().any(|f| dep.starts_with(f)) && !allowed {
                 errors.push(format!("{path} depends on `{dep}`: {krate} {why}"));
             }
@@ -1027,7 +1166,17 @@ fn game_ui_only_with_its_feature() {
         let tree = |args: &[&str]| -> String {
             let out = Command::new(&cargo)
                 .current_dir(root())
-                .args(["tree", "-p", package, "-e", "normal", "--prefix", "none", "--offline", "--locked"])
+                .args([
+                    "tree",
+                    "-p",
+                    package,
+                    "-e",
+                    "normal",
+                    "--prefix",
+                    "none",
+                    "--offline",
+                    "--locked",
+                ])
                 .args(args)
                 .output()
                 .expect("running cargo tree");
@@ -1067,12 +1216,28 @@ fn game_ui_only_with_its_feature() {
 fn server_builds_without_presentation() {
     // The presentation and crates only the client shell uses (not those
     // Bevy itself pulls in: ab_glyph, winit).
-    const CLIENT_ONLY: &[&str] = &["chimera_present", "chimera_client", "bevy_egui", "bevy-inspector-egui", "arboard"];
+    const CLIENT_ONLY: &[&str] = &[
+        "chimera_present",
+        "chimera_client",
+        "bevy_egui",
+        "bevy-inspector-egui",
+        "arboard",
+    ];
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let tree = |package: &str| -> String {
         let out = Command::new(&cargo)
             .current_dir(root())
-            .args(["tree", "-p", package, "-e", "normal", "--prefix", "none", "--offline", "--locked"])
+            .args([
+                "tree",
+                "-p",
+                package,
+                "-e",
+                "normal",
+                "--prefix",
+                "none",
+                "--offline",
+                "--locked",
+            ])
             .output()
             .expect("running cargo tree");
         assert!(
@@ -1162,7 +1327,10 @@ fn tests_are_one_binary_per_crate() {
         }
         for main in &declared {
             let main = dir.join(main);
-            let Some(bin_dir) = main.parent().filter(|_| main.file_name().is_some_and(|n| n == "main.rs")) else {
+            let Some(bin_dir) = main
+                .parent()
+                .filter(|_| main.file_name().is_some_and(|n| n == "main.rs"))
+            else {
                 continue;
             };
             let main_text = fs::read_to_string(&main).unwrap_or_default();
@@ -1177,7 +1345,10 @@ fn tests_are_one_binary_per_crate() {
                 // The module that declares it: main.rs for top-level files
                 // and inline blocks (`mod heavy { mod x; }`), else its
                 // folder's `mod.rs` or `<folder>.rs`.
-                let parent = rel.parent().filter(|p| !p.as_os_str().is_empty()).map(Path::to_path_buf);
+                let parent = rel
+                    .parent()
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .map(Path::to_path_buf);
                 let text = match &parent {
                     None => main_text.clone(),
                     Some(p) => {

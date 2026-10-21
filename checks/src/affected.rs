@@ -455,6 +455,7 @@ fn is_docs(path: &str) -> bool {
             "specs/",
             "scripts/",
             "dist/",
+            "tools/arch_survey/",
             "tools/css_probe/",
             "tools/renderdoc/",
         ]

@@ -25,6 +25,12 @@ toml.workspace = true
 name = "affected"
 test = false
 
+# Rebuilds the doc lists generated from the `//!` docs (docs/modules.md,
+# docs/tech-debt.md): `cargo run -q -p repo_checks --bin docs_index`.
+[[bin]]
+name = "docs_index"
+test = false
+
 # The architecture tests (checks/tests/it/architecture.rs): the repository's
 # layering, asset, spec and docs rules.
 [[test]]

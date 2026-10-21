@@ -1106,7 +1106,7 @@ or rebases last.
 | N3 | **Done 10-21** (note below). Lean map loads: `MapLoadOptions`; servers and collision-only heavy tests without textures; CS:S texture decode on threads (F1) | `chimera/world/src/map/sources.rs`, `games/cs_source/src/game/{bsp,material}.rs`, `games/combat_arms/src/game/world.rs`, test support | S-M | spawn dump identical with textures on; heavy tier sum and server RSS before and after |
 | N4 | **Done 2026-10-21.** Map lifetime: map-scoped resource registry, unload test; textures dropped after spawning (A2 1-2, F2) | `chimera/world/src/map/{mod,registration,spawn}.rs`, `chimera/present/src/render/{spawn,images}.rs` | S-M | spawn dump on five maps; `drawn_parts.rs`; new unload test; RSS after load |
 | N5 | CI on Linux and Windows without installs (T3) | `.github/workflows/` | S | the workflow itself |
-| N6 | Generated debt and module indexes; Combat Arms' finished briefs archived; survey scripts kept (T5) | `checks/src/bin/`, `docs/tech-debt.md`, `docs/ARCHITECTURE.md`, `docs/plans/`, `tools/arch_survey/` | S | `repo_checks` |
+| N6 **done** | Generated debt and module indexes; Combat Arms' finished briefs archived; survey scripts kept (T5) | `checks/src/bin/`, `docs/tech-debt.md`, `docs/ARCHITECTURE.md`, `docs/plans/`, `tools/arch_survey/` | S | `repo_checks` |
 | N7 **done** | App builder: `PresentationPlugins`, the physics setup shared with the harness (A4); `physics_plugins()` is a function returning the group (smallest change), the tick waits for A1; the five apps' system dumps identical | `chimera/present/src/lib.rs`, `chimera/world/src/lib.rs`, `apps/*/src/main.rs` | S | system dumps; dust2 and WAREHOUSE screenshots |
 
 N2 landed as `cs_source::CsSourceParts` (rules, objectives, bots, net part,
@@ -1156,6 +1156,31 @@ and character models still decode: small). Both dedicated servers load lean;
 Combat Arms' `decode_all` moved down). Not done: `AppHooks::load_map`
 (the client's) still takes an HDR level only, since a client always
 draws; X7 may fold it into the options.
+
+N6, done (10-21), with these choices. `repo_checks --bin docs_index`
+(`checks/src/docs_index.rs`; `--check` only reports) generates two things
+from every Rust file's `//!` doc: **`docs/modules.md`**, one line per file
+(first sentence of its first paragraph, at most 150 characters, files under
+`tests/` left out), and the generated block of `docs/tech-debt.md`, one line
+per "Known shortcuts" paragraph (its first sentence, 150 characters, file
+path first). The module list is a new file rather than ARCHITECTURE.md's
+"Modules" section because one line per file is 666 lines and 105 KB, which
+would undo P2; that section is now a pointer and ARCHITECTURE.md is 28 KB.
+The hand-curated layer tags and the folder-level lines are gone with it
+(folders are the headings). tech-debt.md keeps its header and the 17
+entries no file's doc carries. The test `generated_docs_are_fresh`
+(architecture.rs) replaces `docs_stay_one_line_per_entry`: it fails when
+either file is stale and names the command; it compares with CRLF
+normalised, so a Windows clone passes (2.5's finding). Combat Arms'
+briefs for Waves 1-4 (items 1-22, with their follow-up briefs; 1,765 lines)
+moved to `docs/plans/completed/combat-arms-briefs.md`; the board, decisions
+and Wave 5's briefs (items 23-29 are still in flight) stay. The survey
+scripts of 2.6 were not kept (they were throwaway), so
+`tools/arch_survey/survey.py` re-creates them: lines and tests per crate,
+function lengths and parameter counts, pattern counts and widest `Query`
+tuples, widest `Resource`/`Component`/`Message` structs, workspace
+dependency closures, non-merge commits by lowest crate. Its numbers are
+by the same method but not those of the first two passes.
 
 ### Next
 
