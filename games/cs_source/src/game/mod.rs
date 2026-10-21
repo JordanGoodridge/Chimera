@@ -252,13 +252,13 @@ pub static MAP_LOADER: crate::map::MapLoader = crate::map::MapLoader {
 };
 
 /// Map `name` (`de_dust2`) from the install (`mount::install`:
-/// chimera.local.toml, saved, or Steam) at a `mat_hdr_level`.
-pub fn load_installed_map(name: &str, hdr_level: u8) -> Result<crate::map::MapData, String> {
+/// chimera.local.toml, saved, or Steam) with `options`.
+pub fn load_installed_map(name: &str, options: &crate::map::MapLoadOptions) -> Result<crate::map::MapData, String> {
     let install = INFO
         .install()
         .ok_or_else(|| format!("no `{GAME}` install found (chimera_install <folder>, or chimera.local.toml)"))?;
     let mount = mount::open(&install).map_err(|e| e.to_string())?;
-    bsp::load_level(&mount, name, hdr_level)
+    bsp::load_level_with(&mount, name, options)
 }
 
 /// CS:S's default binds as its `cfg/config_default.cfg` lists them (what a

@@ -14,7 +14,10 @@ pub mod cs_source {
     pub use ::cs_source::ui;
 }
 
-use crate::{map::MapData, mount::config::LocalConfig};
+use crate::{
+    map::{MapData, MapLoadOptions},
+    mount::config::LocalConfig,
+};
 
 /// Load a map by namespaced ID, e.g. `cs_source:de_dust2`, from the
 /// install (`mount::install`: chimera.local.toml, saved, or Steam).
@@ -25,12 +28,18 @@ pub fn load_map(id: &str) -> Result<MapData, String> {
 /// `load_map` at a Source `mat_hdr_level` (0 LDR, 1 bloom, 2 HDR); games
 /// without HDR data ignore it.
 pub fn load_map_level(id: &str, hdr_level: u8) -> Result<MapData, String> {
+    load_map_with(id, &MapLoadOptions::hdr(hdr_level))
+}
+
+/// `load_map_level` with `options`: the dedicated server's are
+/// `MapLoadOptions::lean` (no textures).
+pub fn load_map_with(id: &str, options: &MapLoadOptions) -> Result<MapData, String> {
     let (game, name) = id
         .split_once(':')
         .ok_or_else(|| format!("map ID `{id}` should look like game:name"))?;
     match game {
         // CS:S's loader (`cs_source::MAP_LOADER`), as a mashup app uses it.
-        cs_source::GAME => (cs_source::MAP_LOADER.load)(name, hdr_level),
+        cs_source::GAME => (cs_source::MAP_LOADER.load)(name, options),
         other => Err(format!("no map loader for `{other}` yet")),
     }
 }

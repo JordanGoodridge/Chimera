@@ -72,7 +72,7 @@ migration of each; section 11 orders them for parallel agents):
 | P2 | Docs diet: one line per module and debt | **done, regressing** | ARCHITECTURE.md 133 KB to 22 KB on 10-13, 62 KB now; tech-debt.md 15 KB then, 34 KB now; both still top conflict files (2.6); T5 |
 | P3 | Sort `map` and `client` into modules | **done** (became crates) | `chimera_present` (render, audio), `chimera_client`, `chimera_world`; `simulation_builds_no_drawn_parts` checks it |
 | P4 | Test support module | **partial** | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
-| P4b | Heavy tier: measure, split, more slots, cache | **steps 1, 3, 4 done; 2 open** | full suite 1,812 s to 1,009 s (10-14), then 1,757 s with Combat Arms (10-19); no lean load path or cache yet: F1 |
+| P4b | Heavy tier: measure, split, more slots, cache | **steps 1, 3, 4 done; 2 open** | full suite 1,812 s to 1,009 s (10-14), then 1,757 s with Combat Arms (10-19); the lean load path is in (N3, 10-21: servers' and tests' memory halved, time saved per load 0.4-1.3 s); no cache yet |
 | P5 | Game composition as plugin groups | **partial** | `CsSourcePlugins`, `CombatArmsPlugins`, `CsSim`, `CaSim` exist; the 12 material plugins and the physics setup are listed by hand in all three game apps (`apps/*/src/main.rs`); A4 |
 | P6 | One VGUI dialog layer | **open, lower** | 7 copies of the UI scale clamp, no shared `Hit<T>`; Combat Arms built its own canvas (`client::canvas`), so this is CS:S-internal now |
 | P7 | One KeyValues tokenizer, one binary reader | **tokenizer done; reader open, grown** | six private cursor types now (`nav`, `pcf`, `vpk`, `net::query`, LithTech `ltb` and `world`) |
@@ -378,7 +378,7 @@ third game or an original minigame would hit next:
 | `core::Hitgroup` (core.rs:266) | Source's seven hit groups | keep as the normalised damage vocabulary, add `Other(u8)` for a game's own zones |
 | `mount::install::STEAM_GAMES` (chimera/core/src/mount/install.rs:43) | CS:S's Steam app and files in Chimera's base | a `steam: Option<SteamGame>` field on `GameInfo` |
 | `net::maps` (chimera/net/src/net/maps.rs:227) | the map offer is a BSP file (`maps/<name>.bsp`, `.bsp.bz2`, `sv_downloadurl`) | a `MapLoader` names its map's file (if one exists) and layout; maps without a downloadable file (Combat Arms') are by id and hash only |
-| `map::MapLoader::load(name, hdr_level)` (chimera/world/src/map/sources.rs:33) | Source's `mat_hdr_level` in the engine's loader interface | a `MapLoadOptions` struct (F1 adds `textures`, `models`, `sounds`) |
+| `map::MapLoader::load(name, hdr_level)` (chimera/world/src/map/sources.rs:33) | Source's `mat_hdr_level` in the engine's loader interface | a `MapLoadOptions` struct (done in N3 with `hdr_level` and `textures`; `models` and `sounds` when something turns them off) |
 | 80 `0.0254` literals in 30 Chimera files (most: `render/water.rs` 8, `weapon/drop.rs` 7, `render/emitters.rs` 7, `map/ragdoll.rs` 6); `net::quant`'s 1/32-inch grid | Source's numbers as engine defaults (drop distances, ragdoll pushes, effect sizes, third-person camera, shadows, audio distances) | each becomes a named constant of the game that measured it, passed as data; the net grid stays (it is a precision, 0.79 mm) but named in metres |
 | `logic::LogicSet` (source/logic/src/logic/bridge.rs:103) in the tick's order | the map-logic stages are Source's crate's | `SimSet::{LogicPre, LogicPost, LogicDamage}` in `chimera_core`; Source's logic and Combat Arms' world objects (Wave 5, item 23) both use them |
 | `client::debug_ui` (chimera/client/src/client/debug_ui.rs:177-183), `binds::POLLED`, the shell's `--help` text | `mp_*` cvars, CS:S's polled commands, `cs_source` in usage | from `GameDebug`, `GameInfo` |
@@ -677,6 +677,9 @@ The game is CPU-bound by per-entity and per-system work, not by the GPU
   look at textures (a list in the PR; screenshot tests keep them on);
   record the heavy tier's sum and the server's RSS before and after
   (`MapData::load_times` already times the phases).
+- **Done** as N3 (10-21): on a quiet comparison the texture decode was
+  0.4-0.7 s of a 1.8-3 s dust2/de_nuke load (on one thread, before), not a
+  third; the memory win is the one that held (servers 2.3x smaller).
 - **Estimate**: a third to a half off map loads where textures dominate,
   so roughly 10-15% off the heavy tier, and the servers' memory by the
   texture set. Measure first on dust2, de_nuke and surf_sedona.
@@ -1100,7 +1103,7 @@ or rebases last.
 |---|---|---|---|---|
 | N1 | `Sim` on the production executors with capped task pools; ambiguity ratchet and server/client order tests per game (E1 1-3) | `chimera/world/src/harness.rs`; new `games/*/tests/it/schedules.rs` | S-M | full suite twice; failures fixed with explicit edges |
 | N2 | Game parts without the base: `CsSourceParts`, `CombatArmsParts`, a weapons-only plugin each; both games' parts in one app builds (A1 step 1) | `games/*/src/lib.rs`, `games/*/src/harness.rs`, `apps/mashup_demo/src/lib.rs` | S | the five apps' system dumps identical; new two-games test |
-| N3 | Lean map loads: `MapLoadOptions`; servers and collision-only heavy tests without textures; CS:S texture decode on threads (F1) | `chimera/world/src/map/sources.rs`, `games/cs_source/src/game/{bsp,material}.rs`, `games/combat_arms/src/game/world.rs`, test support | S-M | spawn dump identical with textures on; heavy tier sum and server RSS before and after |
+| N3 | **Done 10-21** (note below). Lean map loads: `MapLoadOptions`; servers and collision-only heavy tests without textures; CS:S texture decode on threads (F1) | `chimera/world/src/map/sources.rs`, `games/cs_source/src/game/{bsp,material}.rs`, `games/combat_arms/src/game/world.rs`, test support | S-M | spawn dump identical with textures on; heavy tier sum and server RSS before and after |
 | N4 | Map lifetime: map-scoped resource registry, unload test; textures dropped after spawning (A2 1-2, F2) | `chimera/world/src/map/{mod,registration,spawn}.rs`, `chimera/present/src/render/{spawn,images}.rs` | S-M | spawn dump on five maps; `drawn_parts.rs`; new unload test; RSS after load |
 | N5 | CI on Linux and Windows without installs (T3) | `.github/workflows/` | S | the workflow itself |
 | N6 | Generated debt and module indexes; Combat Arms' finished briefs archived; survey scripts kept (T5) | `checks/src/bin/`, `docs/tech-debt.md`, `docs/ARCHITECTURE.md`, `docs/plans/`, `tools/arch_survey/` | S | `repo_checks` |
@@ -1108,6 +1111,23 @@ or rebases last.
 
 N3 and N4 both reach `MapData`'s consumers but not the same files; if
 N3 changes the `MapLoader` signature, N4 rebases on it (one line).
+
+N3, done (10-21; measurements in docs/performance.md, "Lean map loads"):
+`MapLoader::load` is `fn(&str, &MapLoadOptions)`
+(`chimera/world/src/map/sources.rs`; `MapSources::load_with`); the
+options hold `hdr_level` and `textures` only, since `models` and `sounds`
+would have nothing to turn off yet (view models already load on demand,
+character models once per session, sounds are data). Off, a texture is
+a placeholder of the right size (no texels, no mips); the CS:S
+loader's `MaterialLoader::lean` and Combat Arms' `world::load_with`
+honour it (CS:S's cubemaps and HDR sky, Combat Arms' props, view models
+and character models still decode: small). Both dedicated servers load lean;
+27 CS:S heavy files (never screenshot, drawn-part or texel tests) use
+`games::load_map_lean`. CS:S textures now decode on threads
+(`MaterialLoader::finish_textures` on `map::parallel::par_map`, which is
+Combat Arms' `decode_all` moved down). Not done: `AppHooks::load_map`
+(the client's) still takes an HDR level only, since a client always
+draws; X7 may fold it into the options.
 
 ### Next
 

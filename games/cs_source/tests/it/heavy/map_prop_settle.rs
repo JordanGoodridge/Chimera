@@ -26,7 +26,7 @@ fn dust2() -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(games::load_map("cs_source:de_dust2").expect("load de_dust2"))
+    Some(games::load_map_lean("cs_source:de_dust2").expect("load de_dust2"))
 }
 
 /// The dynamic physics props: (prop index, entity).
@@ -184,7 +184,7 @@ fn map_settles_with_no_body_awake() {
             eprintln!("skipping: no CS:S install configured");
             return;
         }
-        let map = games::load_map(&format!("cs_source:{name}")).expect("load map");
+        let map = games::load_map_lean(&format!("cs_source:{name}")).expect("load map");
         let mut sim = sim(map);
         sim.seconds(10.0);
         let awake = awake_bodies(&mut sim);

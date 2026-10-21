@@ -24,7 +24,7 @@ fn load(name: &str) -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(games::load_map(&format!("cs_source:{name}")).expect("load map"))
+    Some(games::load_map_lean(&format!("cs_source:{name}")).expect("load map"))
 }
 
 /// Ambient starts the logic asks for: (entity's targetname, entry,

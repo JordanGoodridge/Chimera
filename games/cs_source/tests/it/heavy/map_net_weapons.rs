@@ -42,7 +42,7 @@ fn dust2() -> Option<Arc<crate::stack::map::MapData>> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(Arc::new(games::load_map("cs_source:de_dust2").expect("load de_dust2")))
+    Some(Arc::new(games::load_map_lean("cs_source:de_dust2").expect("load de_dust2")))
 }
 
 /// The head box's centre in the world for one kept tick.

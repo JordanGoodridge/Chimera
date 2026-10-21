@@ -24,7 +24,7 @@ fn port() -> Option<MapData> {
         eprintln!("skipping: no CS:S install configured");
         return None;
     }
-    Some(games::load_map("cs_source:de_port").expect("load de_port"))
+    Some(games::load_map_lean("cs_source:de_port").expect("load de_port"))
 }
 
 #[test]
