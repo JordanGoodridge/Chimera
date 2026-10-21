@@ -152,6 +152,19 @@ fn gm87_goal_text() {
     assert_eq!(goal_string("CTF"), None, "the goal, a space and IDS_POINTS");
 }
 
+/// The install's table writes its inserts FormatMessage-style: the goal
+/// header shows the number, not the raw `%1!d!`.
+#[test]
+fn goal_text_fills_the_installs_inserts() {
+    let table = |id: &str| match id {
+        "IDS_GAMEROOM_KILL" => "%1!d! Kills".to_string(),
+        "IDS_GAMEROOM_ROUND" => "Goal: %1!d! Rounds".to_string(),
+        other => other.to_string(),
+    };
+    assert_eq!(goal_text("TDM", 100, table), "100 Kills");
+    assert_eq!(goal_text("TMM", 7, table), "Goal: 7 Rounds");
+}
+
 /// hud_crosshair.md 92, game_modes.md 88: the timer across a Search &
 /// Destroy round: the setup's delay (none at 0), the round's time, the
 /// bomb's fuse after a plant in its own timer, nothing at the result.
