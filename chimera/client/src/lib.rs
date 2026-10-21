@@ -20,7 +20,7 @@
 pub mod client;
 
 // `crate::console`, `crate::map`, ... inside `client`, as in the game crate.
-use chimera_core::{character, console, core, game_registry, metrics, slots};
+use chimera_core::{character, console, core, game_registry, gameplay, metrics, slots};
 use chimera_net::net;
 use chimera_present::{audio, render};
 use chimera_sim::{movement, weapon};

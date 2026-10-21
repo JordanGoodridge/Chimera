@@ -870,8 +870,9 @@ fn movement_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         .single(world)
         .map_or(0.0, |v| units(v.0).truncate().length());
     ui.label(format!("speed {speed:.1} units/s"));
-    // The default game's movement cvars (`GameInfo::movement_cvars`).
-    let game = crate::game_registry::default_game(world);
+    // The gameplay's movement cvars (`GameInfo::movement_cvars`; the
+    // binds game's, else the default game's).
+    let game = crate::gameplay::slot_game(world, |g| g.binds);
     ui.heading(format!("{} movement", game.map_or("Game", |g| g.short_name)));
     let names: Vec<&str> = game.map_or(&[][..], |g| g.movement_cvars).iter().map(|(n, _)| *n).collect();
     cvar_grid(ui, world, state, "movement_cvars", &names);

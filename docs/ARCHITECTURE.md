@@ -35,7 +35,7 @@ chimera_present (chimera/present/)   render, audio, MapPlugin
 chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; music; greybox, harness::Sim
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (chimera/core/)       core, console, slots, character, metrics, mount, game_registry
+ (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay
                       lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```
 
@@ -333,7 +333,10 @@ A module may use only the modules below it. Enforced by
   app adds it (main.rs). The shell names no game (checked): what it needs
   of one (install, map cycle, tick, default binds, movement cvars) is data
   the game registers (`game_registry::GameInfo`, the first registered
-  being the default game).
+  being the default game, for bare map names); which game's rules, HUD,
+  binds and tick play is the `gameplay::Gameplay` the app sets, and each
+  game's match-wide systems and HUD run only while it is the gameplay's
+  (`gameplay_is`, `hud_is`).
 - Rule modules (`rules::module`): a game registers its modes by name
   (`cs_source:bomb`, ...), picked by the map and cvars; their code is
   still in `rules` and `objectives` (engine-split.md).

@@ -250,7 +250,8 @@ impl Plugin for BotPlugin {
             FixedUpdate,
             radio::speak
                 .after(crate::core::apply_damage)
-                .run_if(crate::core::authoritative),
+                .run_if(crate::core::authoritative)
+                .run_if(crate::objectives::plays),
         );
         app.add_systems(
             FixedUpdate,
@@ -268,14 +269,20 @@ impl Plugin for BotPlugin {
                 // freeze time and the dead's (`rules::rounds::hold_frozen`).
                 .before(SimSet::Rules)
                 .before(crate::weapon::SelectWeapons)
-                .run_if(crate::core::authoritative),
+                .run_if(crate::core::authoritative)
+                .run_if(crate::objectives::plays),
         );
         // What they want from the shop (`weapon::economy::autobuy`).
-        app.add_systems(FixedUpdate, buy::wishes.run_if(crate::core::authoritative));
+        app.add_systems(
+            FixedUpdate,
+            buy::wishes.run_if(crate::core::authoritative).run_if(crate::objectives::plays),
+        );
         // A network server keeps the bots at the quota (`keep_quota`).
         app.add_systems(
             Update,
-            keep_quota.run_if(resource_equals(crate::core::NetRole::Server)),
+            keep_quota
+                .run_if(resource_equals(crate::core::NetRole::Server))
+                .run_if(crate::objectives::plays),
         );
         resource_cvar::<BotQuota, u32>(
             app,

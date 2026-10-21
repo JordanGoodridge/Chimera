@@ -40,7 +40,10 @@ pub struct OverviewPlugin;
 impl Plugin for OverviewPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(OverviewStatePlugin)
-            .add_systems(Update, draw.after(zoom).after(crate::client::spectate::SpectateSet));
+            .add_systems(
+                Update,
+                draw.after(zoom).after(crate::client::spectate::SpectateSet).run_if(crate::gameplay::hud_is(crate::game::GAME)),
+            );
     }
 }
 

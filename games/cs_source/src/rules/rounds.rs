@@ -447,7 +447,8 @@ pub(super) fn plugin(app: &mut App) {
             FixedUpdate,
             track_round_stats
                 .after(crate::core::apply_damage)
-                .run_if(crate::core::authoritative),
+                .run_if(crate::core::authoritative)
+                .run_if(crate::objectives::plays),
         );
     let cvars: [(&str, &str, fn(&mut RoundSettings) -> &mut f32); 3] = [
         ("mp_freezetime", "Seconds frozen at the start of each round.", |r| {

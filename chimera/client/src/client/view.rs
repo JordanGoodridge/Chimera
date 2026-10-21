@@ -287,9 +287,17 @@ pub fn camera_offset(
     pivot + third_person_offset(look, ideal, hit)
 }
 
-/// The camera's distances in the default game's unit.
-fn game_unit(games: Option<Res<crate::game_registry::Games>>, mut mode: ResMut<CameraMode>) {
-    let Some(unit) = games.and_then(|g| g.default_game()).map(|g| g.meters_per_unit) else {
+/// The camera's distances in the gameplay's rules game's unit (else the
+/// default game's).
+fn game_unit(
+    games: Option<Res<crate::game_registry::Games>>,
+    gameplay: Option<Res<crate::gameplay::Gameplay>>,
+    mut mode: ResMut<CameraMode>,
+) {
+    let game = games.as_ref().and_then(|g| {
+        gameplay.as_ref().and_then(|p| g.get(p.rules)).or_else(|| g.default_game())
+    });
+    let Some(unit) = game.map(|g| g.meters_per_unit) else {
         return;
     };
     if unit > 0.0 && mode.meters_per_unit != unit {

@@ -42,13 +42,14 @@ use bevy::prelude::*;
 use chimera_core::{
     console::{self, Console, ConsoleAppExt},
     core::{self, BuildVersion},
+    gameplay::{Gameplay, GameplayAppExt},
 };
 use chimera_net::net::{self, NetPlugin, NetSettings};
 use chimera_world::{
     greybox::{self, GreyboxMapPlugin},
     map::{self, LoadedMapName, MapData, MapSimPlugin},
 };
-use combat_arms::game::{CombatArmsPlugins, TICK_INTERVAL, world::MAP_PREFIX};
+use combat_arms::game::{CombatArmsPlugins, INFO, TICK_INTERVAL, world::MAP_PREFIX};
 
 /// This build's version (the banner, `version`): stamped by build.rs.
 pub const VERSION: &str = env!("CHIMERA_VERSION");
@@ -184,7 +185,8 @@ impl Plugin for ServerPlugin {
                 app.add_plugins((GreyboxMapPlugin, MapSimPlugin::empty()));
             }
         }
-        app.insert_resource(Time::<Fixed>::from_seconds(TICK_INTERVAL))
+        // Combat Arms is the gameplay: its rules and tick.
+        app.set_gameplay(Gameplay::of(&INFO))
             .insert_resource(BuildVersion(VERSION))
             .add_plugins((NetPlugin, CombatArmsPlugins))
             // A dedicated server takes eight players unless told otherwise.
@@ -275,7 +277,11 @@ pub fn swap_map(world: &mut World, id: &str, data: Option<MapData>) {
             world.insert_resource(LoadedMapName(net::GREYBOX.into()));
         }
     }
-    core::set_tick_length(world, Duration::from_secs_f64(TICK_INTERVAL));
+    // At the gameplay's tick (Combat Arms').
+    let tick = world
+        .get_resource::<Gameplay>()
+        .map_or(Duration::from_secs_f64(TICK_INTERVAL), |g| g.tick);
+    core::set_tick_length(world, tick);
     core::new_game(world);
 }
 

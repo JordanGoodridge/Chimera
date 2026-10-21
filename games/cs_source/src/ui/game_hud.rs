@@ -77,6 +77,14 @@ pub struct GameHudPlugin;
 
 impl Plugin for GameHudPlugin {
     fn build(&self, app: &mut App) {
+        // CS:S's HUD (this plugin's systems and those of the others
+        // `with_hud` adds) draws while it is the gameplay's
+        // (`gameplay::hud_is`); CS:S's is the gameplay's when the app has
+        // chosen none.
+        {
+            use crate::gameplay::{Gameplay, GameplayAppExt};
+            app.default_gameplay(Gameplay::of(&crate::game::INFO));
+        }
         app.init_resource::<DeathNotices>()
             .init_resource::<LastHits>()
             .add_systems(
@@ -88,7 +96,8 @@ impl Plugin for GameHudPlugin {
                         .chain()
                         .run_if(resource_exists::<ActiveHud>),
                     round_banner,
-                ),
+                )
+                    .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
             );
     }
 }

@@ -3,8 +3,9 @@
 //! character's components (`character`), the performance metrics, the
 //! mounts (`mount`: the VFS over a game's files, local config, finding
 //! installs), the environment variables and per-user folders under
-//! their new and old names (`env`), game events and the server log (`game_log`) and the games an app plays (`game_registry`: what a game
-//! tells the shell about itself). Code
+//! their new and old names (`env`), game events and the server log (`game_log`), the games an app plays
+//! (`game_registry`: what a game tells the shell about itself) and the
+//! gameplay (`gameplay`: which game fills each match-wide slot). Code
 //! everything else uses and that changes rarely, in its own crate so an
 //! edit higher up doesn't recompile it.
 //!
@@ -16,6 +17,7 @@ pub mod console;
 pub mod core;
 pub mod env;
 pub mod game_log;
+pub mod gameplay;
 pub mod game_registry;
 pub mod metrics;
 pub mod mount;

@@ -109,6 +109,19 @@ use crate::game_registry::{GameInfo, RegisterGame};
 /// `combat_arms:<weapon>`, its install's key in chimera.local.toml.
 pub const GAME: &str = "combat_arms";
 
+/// Combat Arms the gameplay when the app has chosen none
+/// (`gameplay::GameplayAppExt::default_gameplay`): its match-wide systems
+/// (rules, bots, the match's state on the network) run only while it is
+/// the gameplay's rules (`gameplay::gameplay_is(GAME)`).
+pub struct CaGameplayPlugin;
+
+impl Plugin for CaGameplayPlugin {
+    fn build(&self, app: &mut App) {
+        use crate::gameplay::{Gameplay, GameplayAppExt};
+        app.default_gameplay(Gameplay::of(&INFO));
+    }
+}
+
 /// The game's tick: the movement clock's 15 ms (specs/combat_arms/
 /// movement.md, "Tick clock"; the engine's default movement rate).
 pub const TICK_INTERVAL: f64 = 0.015;
@@ -218,6 +231,7 @@ impl PluginGroup for CombatArmsPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(RegisterGame(&INFO))
+            .add(CaGameplayPlugin)
             .add(data::CaDataPlugin)
             .add(movement::CaMovementPlugin)
             .add(hud::CaHudDataPlugin)

@@ -376,7 +376,9 @@ impl Plugin for CaBotsPlugin {
                         .after(SimSet::Weapons)
                         .after(crate::core::apply_damage),
                 )
-                    .run_if(server),
+                    .run_if(server)
+                    // While Combat Arms is the gameplay.
+                    .run_if(crate::gameplay::gameplay_is(super::GAME)),
             );
         // The network's `kick <name>` and its quota at serving's start.
         app.insert_resource(crate::net::BotHooks {

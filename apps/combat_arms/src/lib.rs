@@ -62,7 +62,8 @@ pub fn load_map(id: &str, _hdr_level: u8) -> Result<MapData, String> {
 
 /// The simulation as this app runs it (main.rs, and its tests on the
 /// headless harness): Chimera's and Combat Arms' simulation plugins
-/// (`combat_arms::SimPlugins`, `CombatArmsPlugins`) at Combat Arms' tick,
+/// (`combat_arms::SimPlugins`, `CombatArmsPlugins`), Combat Arms the
+/// gameplay (its rules, HUD, binds and tick: `chimera_core::gameplay`),
 /// with the install's data and the room's default mode (where the game's
 /// own scenario tests' `combat_arms::harness::CaSim` plays the built-in
 /// data and no mode).
@@ -70,8 +71,9 @@ pub struct SimPlugin;
 
 impl Plugin for SimPlugin {
     fn build(&self, app: &mut App) {
+        use chimera_core::gameplay::{Gameplay, GameplayAppExt};
         app.add_plugins((combat_arms::SimPlugins, combat_arms::game::CombatArmsPlugins))
-            .insert_resource(Time::<Fixed>::from_seconds(combat_arms::game::TICK_INTERVAL));
+            .set_gameplay(Gameplay::of(&combat_arms::game::INFO));
     }
 }
 

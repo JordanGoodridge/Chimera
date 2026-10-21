@@ -689,8 +689,10 @@ impl Plugin for CaRulesPlugin {
             .insert_resource(crate::core::NewGame(flow::new_game))
             .add_observer(on_leave)
             .add_observer(flow::number_players)
-            .add_systems(FixedUpdate, objects::read_map_objects.before(SimSet::Rules))
-            .add_systems(Update, (ctf::show_flags, spectator_rules))
+            // Everything below: while Combat Arms is the gameplay's rules
+            // (`gameplay::gameplay_is`).
+            .add_systems(FixedUpdate, objects::read_map_objects.before(SimSet::Rules).run_if(crate::gameplay::gameplay_is(super::GAME)))
+            .add_systems(Update, (ctf::show_flags, spectator_rules).distributive_run_if(crate::gameplay::gameplay_is(super::GAME)))
             .add_systems(
                 FixedUpdate,
                 (
@@ -717,9 +719,13 @@ impl Plugin for CaRulesPlugin {
                         .chain()
                         .after(crate::core::apply_damage),
                 )
-                    .run_if(server.and_then(mode_on)),
+                    .run_if(server.and_then(mode_on))
+                    .run_if(crate::gameplay::gameplay_is(super::GAME)),
             )
-            .add_systems(FixedUpdate, publish.run_if(server.and_then(not(mode_on))))
+            .add_systems(
+                FixedUpdate,
+                publish.run_if(server.and_then(not(mode_on))).run_if(crate::gameplay::gameplay_is(super::GAME)),
+            )
             .console_command(
                 "ca_hire",
                 "ca_hire <unit 0-9>: Hired Guns: hire a mercenary for the local player (the hire menu's keys 1-9, 0).",

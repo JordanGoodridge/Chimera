@@ -9,7 +9,7 @@ use crate::game::rules::CaRuleSettings;
 
 /// Combat Arms' whole simulation (`crate::SimPlugins` with
 /// `game::CombatArmsPlugins`: every part, placeholders included) as the
-/// harness runs it, headless, at the game's tick (`game::TICK_INTERVAL`),
+/// harness runs it, headless, as the gameplay (its tick, `game::TICK_INTERVAL`),
 /// on the built-in data only (`data::use_builtin_data_only`: never the
 /// install's attribute data), with no game mode (`ca_mode none`: the
 /// rules leave the test's characters alone; a mode's tests turn one on,
@@ -20,8 +20,9 @@ pub struct CaSim;
 impl Plugin for CaSim {
     fn build(&self, app: &mut App) {
         crate::game::data::use_builtin_data_only();
+        use crate::gameplay::{Gameplay, GameplayAppExt};
         app.add_plugins((crate::SimPlugins, crate::game::CombatArmsPlugins))
-            .insert_resource(Time::<Fixed>::from_seconds(crate::game::TICK_INTERVAL));
+            .set_gameplay(Gameplay::of(&crate::game::INFO));
         app.world_mut().resource_mut::<CaRuleSettings>().mode = "none".into();
     }
 }

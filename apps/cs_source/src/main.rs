@@ -5,13 +5,16 @@
 
 use bevy::prelude::*;
 use cs_source_app::{
-    SimPlugins, client, games, greybox,
+    SimPlugins, client, games,
+    gameplay::{Gameplay, GameplayAppExt},
+    greybox,
     map::{MapDebugView, MapPlugin},
     slots::Loadout,
 };
 
 fn main() {
     let args = client::Args::parse();
+    let args_map_is_cs_source = args.game_map().is_some_and(|id| id.starts_with("cs_source:"));
     let mut app = App::new();
     match args.game_map() {
         // At the HDR level the console will start with (mat_hdr_level).
@@ -100,14 +103,14 @@ fn main() {
         cs_source_app::games::cs_source::CsSourcePlugins,
         chimera_present::PresentationPlugins,
     ))
-    // A game's maps run at that game's server tick.
-    .insert_resource(match args.game_map() {
-        Some(id) if id.starts_with("cs_source:") => {
-            Time::<Fixed>::from_seconds(cs_source_app::games::cs_source::TICK_INTERVAL)
-        }
-        _ => Time::<Fixed>::from_hz(cs_source_app::DEFAULT_TICK_HZ),
-    })
-    .insert_resource(movement_config(&args))
+    // CS:S is the gameplay: its rules, HUD, binds and tick.
+    .set_gameplay(Gameplay::of(&cs_source_app::games::cs_source::INFO));
+    // The greybox (or another game's map) runs at the engine's tick, a
+    // CS:S map at the gameplay's.
+    if !args_map_is_cs_source {
+        app.insert_resource(Time::<Fixed>::from_hz(cs_source_app::DEFAULT_TICK_HZ));
+    }
+    app.insert_resource(movement_config(&args))
     .insert_resource(Loadout {
         movement: cs_source_app::games::cs_source::movement::ID,
     })

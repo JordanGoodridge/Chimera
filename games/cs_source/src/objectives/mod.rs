@@ -53,6 +53,20 @@ pub const UNIT: f32 = 0.0254;
 
 pub struct ObjectivesPlugin;
 
+/// CS:S's id (`game::GAME`), as the gameplay names it: here, in the
+/// lowest of CS:S's own modules, so its rules and bots reach it too.
+pub const GAME: &str = "cs_source";
+
+/// Run condition: CS:S is the gameplay's rules
+/// (`gameplay::gameplay_is(GAME)`): CS:S's match-wide systems (its rules,
+/// objectives, bots and match state on the network) run only then, so an
+/// app with several games' parts runs only the active one's. Not the
+/// C4's arming (`bomb`'s `Predict::Weapons` systems), which is the
+/// weapon's.
+pub fn plays(gameplay: Option<Res<crate::gameplay::Gameplay>>) -> bool {
+    gameplay.is_none_or(|g| g.rules == GAME)
+}
+
 impl Plugin for ObjectivesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MapObjectives>()
@@ -63,7 +77,7 @@ impl Plugin for ObjectivesPlugin {
             .add_message::<crate::map::PlaySound>()
             // Everywhere: a network client predicts arming the bomb in the
             // map's bomb targets.
-            .add_systems(FixedUpdate, load_objectives.before(SimSet::Rules));
+            .add_systems(FixedUpdate, load_objectives.before(SimSet::Rules).run_if(plays));
         bomb::plugin(app);
         hostages::plugin(app);
     }

@@ -1054,6 +1054,14 @@ impl Plugin for CaHudPlugin {
         let ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_else(CaUi::installed);
         let panels = ui.install.as_ref().and_then(|i| i.hud.as_ref()).and_then(install::HudPanels::new);
         let bound = BoundHud::of(&ui);
+        // The HUD (its state's and radar's updates, `HudUpdate` and
+        // `radar::RadarUpdate`, and the drawing below) runs while it is the
+        // gameplay's (`gameplay::hud_is`); Combat Arms' is the gameplay's
+        // when the app has chosen none.
+        {
+            use crate::gameplay::{Gameplay, GameplayAppExt};
+            app.default_gameplay(Gameplay::of(&crate::game::INFO));
+        }
         app.insert_resource(ui)
             .insert_resource(InstallHud(panels))
             .insert_resource(bound)
@@ -1068,7 +1076,7 @@ impl Plugin for CaHudPlugin {
                 Startup,
                 (spawn, score::spawn_root, draw::load_faces, draw::load_art, radar::spawn_root, full_map::spawn_root),
             )
-            .add_systems(Update, screen_size.before(HudUpdate))
+            .add_systems(Update, screen_size.before(HudUpdate).run_if(crate::gameplay::hud_is(crate::game::GAME)))
             .add_systems(
                 Update,
                 (
@@ -1082,9 +1090,22 @@ impl Plugin for CaHudPlugin {
                     draw_tags,
                     score::draw_score,
                 )
-                    .after(HudUpdate),
+                    .after(HudUpdate)
+                    .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
             )
-            .add_systems(Update, (radar::draw_radar, full_map::draw_full_map).after(radar::RadarUpdate));
+            .add_systems(
+                Update,
+                (radar::draw_radar, full_map::draw_full_map)
+                    .after(radar::RadarUpdate)
+                    .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
+            )
+            // After `CaHudStatePlugin` made the sets (configured earlier,
+            // they would be new graph nodes ahead of others, which
+            // reorders unordered systems).
+            .configure_sets(
+                Update,
+                (HudUpdate, radar::RadarUpdate).distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
+            );
     }
 }
 

@@ -38,7 +38,8 @@ impl Plugin for HudSpritesPlugin {
                 build.run_if(resource_exists_and_changed::<ActiveHud>),
                 teardown.run_if(resource_removed::<ActiveHud>),
                 (pain, update).chain().run_if(resource_exists::<ActiveHud>),
-            ),
+            )
+                .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
         );
     }
 }

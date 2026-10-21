@@ -223,7 +223,10 @@ pub mod weapons;
 // Pure-data readers moved to `source_formats`, at their old paths.
 pub use source_formats::{lumps, pak, phy, vhv, vpk, wav};
 
-pub const GAME: &str = "cs_source";
+/// The game's id (`cs_source`): defined with the gameplay's condition
+/// for CS:S's match-wide systems (`objectives::plays`), the lowest of its
+/// modules, so its rules and bots name it too.
+pub const GAME: &str = crate::objectives::GAME;
 
 /// What the client shell knows of CS:S (`game_registry`): its install
 /// and folder, map cycle, tick, default binds and movement cvars;
