@@ -460,3 +460,17 @@ fn install_hud_rest_binds() {
     assert!(t.iter().any(|x| x.0 == "Quarantine Regen"), "{t:?}");
     assert!(t.iter().all(|x| !x.0.starts_with('$')), "{t:?}");
 }
+
+/// With the install's real table (its goal formats are FormatMessage
+/// style, `%1!d!`) the goal header shows a number and a unit, no raw
+/// insert.
+#[test]
+fn install_goal_text_has_no_raw_inserts() {
+    let Some(mount) = install() else { return };
+    let (ui, _) = installed_ui(&mount);
+    for (key, goal) in [("TDM", 100), ("TMM", 7), ("HQM", 10), ("CTF", 5)] {
+        let text = combat_arms::ui::hud::model::goal_text(key, goal, |id| ui.strings.resolve(id));
+        eprintln!("{key}: {text:?}");
+        assert!(text.contains(&goal.to_string()) && !text.contains('%'), "{key}: {text}");
+    }
+}
