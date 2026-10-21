@@ -323,10 +323,12 @@ pub fn respawn_wait(data: &GearData, perks: &CaPerks) -> Option<f32> {
 /// A weapon's `Guntype` (weapon_classes.md): the install's record, else
 /// our built-in weapons'.
 pub fn gun_type(data: &super::data::CaDataInner, id: &str) -> Option<i32> {
-    let short = id.strip_prefix("combat_arms:").unwrap_or(id);
-    if let Some(r) = data.install_weapon(short) {
+    // `install_weapon` wants the namespaced id (it strips `combat_arms:`
+    // itself), the built-in table the short one.
+    if let Some(r) = data.install_weapon(id) {
         return Some(r.gun_type);
     }
+    let short = id.strip_prefix("combat_arms:").unwrap_or(id);
     Some(match short {
         "m9" => 0,
         "beretta_m92fs" => 1,
