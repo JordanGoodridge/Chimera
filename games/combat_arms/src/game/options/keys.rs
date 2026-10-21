@@ -206,13 +206,30 @@ impl KeyNames {
         }
     }
 
+    /// The names with each text that is a string id (`$Keyboard_Name_4`)
+    /// looked up by `lookup`; an id it cannot resolve (it returns the id)
+    /// is dropped, so the built-in name shows instead of the raw id.
+    pub fn resolved(&self, lookup: impl Fn(&str) -> String) -> Self {
+        let fix = |list: &[(String, String)]| -> Vec<(String, String)> {
+            list.iter()
+                .map(|(real, t)| {
+                    let t = if t.starts_with('$') { lookup(t) } else { t.clone() };
+                    // "ABCDE" is the table's placeholder for names it has
+                    // not been given.
+                    (real.clone(), if t.starts_with('$') || t == "ABCDE" { String::new() } else { t })
+                })
+                .collect()
+        };
+        Self { keyboard: fix(&self.keyboard), mouse: fix(&self.mouse) }
+    }
+
     /// The text of a keyboard token: the file's, else the built-in name,
     /// else the token itself (K2: a token missing from the file shows the
     /// device's own control name).
     pub fn keyboard_text(&self, token: &str) -> String {
         self.keyboard
             .iter()
-            .find(|(real, _)| real == token)
+            .find(|(real, t)| real == token && !t.is_empty())
             .map(|(_, t)| t.clone())
             .or_else(|| {
                 let n = number(token)?;
@@ -225,7 +242,7 @@ impl KeyNames {
     pub fn mouse_text(&self, token: &str) -> String {
         self.mouse
             .iter()
-            .find(|(real, _)| real == token)
+            .find(|(real, t)| real == token && !t.is_empty())
             .map(|(_, t)| t.clone())
             .or_else(|| match token {
                 WHEEL_UP => Some("WHEEL UP".into()),

@@ -31,6 +31,8 @@ use combat_arms::{
     ui::{
         chat::PLAYER_LIFE,
         menu::{CaMenuStatePlugin, InGameMenu},
+        CaUi,
+        layout::Strings,
         talk::{CaTalk, CaTalkKeysPlugin, CaTalkStatePlugin},
     },
 };
@@ -189,6 +191,42 @@ fn radio_menu_window_and_keys() {
     assert!(talk(&sim).radio.is_none());
     let calls = sim.app.world().resource::<CaChat>().last_radio;
     assert!(calls.is_some(), "the cooldown is stamped");
+}
+
+/// The install's radio data lists its entries by string id
+/// (`$RadioMsg_Report_list_N`): the menu shows the table's text (the
+/// number the text carries once), and a built-in line where the table has
+/// no such id, never the raw id.
+#[test]
+fn radio_menu_resolves_string_ids() {
+    let mut sim = sim();
+    {
+        let w = sim.app.world_mut();
+        let mut radio = w.resource_mut::<chat::CaRadio>();
+        let class = &mut radio.0.classes[radio::REPORT as usize];
+        class.entries.truncate(3);
+        class.entries[0].list_text = "$RadioMsg_Report_list_1".into();
+        class.entries[1].list_text = "$RadioMsg_Report_list_2".into();
+        class.entries[2].list_text = "$RadioMsg_Report_list_missing".into();
+        class.entries[2].chat = vec!["Fallback line".into()];
+        let mut ui = w.resource_mut::<CaUi>();
+        ui.strings = Strings::parse("RadioMsg_Report_list_1 = \"1. Roger\"\nRadioMsg_Report_list_2 = \"Negative\"\n");
+    }
+    chat::radio_key(sim.app.world_mut(), radio::REPORT);
+    sim.ticks(1);
+    let menu = talk(&sim).radio.clone().expect("the window");
+    assert_eq!(menu.lines, vec!["Roger", "Negative", "Fallback line"]);
+}
+
+#[test]
+fn radio_text_helpers() {
+    use combat_arms::ui::talk::{shown_id, without_number};
+    let t = Strings::parse("a = \"x\"");
+    assert_eq!(shown_id(&t, "$a", "f"), "x");
+    assert_eq!(shown_id(&t, "$b", "f"), "f");
+    assert_eq!(shown_id(&t, "plain", "f"), "plain");
+    assert_eq!(without_number("12. Go"), "Go");
+    assert_eq!(without_number("Go. now"), "Go. now");
 }
 
 /// Number keys are the game's when no menu is open.

@@ -40,7 +40,8 @@
 //!   thumb, right arrow), a missing control skipped; the check-button
 //!   states, the combo boxes and the scroll bars are not drawn (the
 //!   combo boxes are cycled by a click on their button or text, the
-//!   binding list has no scroll bar), and the music list, the language
+//!   binding list scrolls with the wheel inside the Control window, with no
+//!   bar), and the music list, the language
 //!   drop-down and the block list's rows are not built (the list shows
 //!   the names in one text).
 //! - "Register" takes the name from `OptionsScreen::name_box` (set by
@@ -242,6 +243,9 @@ pub const DROP_TEXTS: &[(&str, Cycle)] = &[
     ("droptext_speaker", Cycle::Speaker),
 ];
 
+/// One wheel notch of the Control tab's scroll, px.
+const CONTROL_SCROLL_STEP: i32 = 32;
+
 /// Voice controls other than the on/off switch.
 const VOICE_CONTROLS: &[&str] = &[
     "gamesoundforvoice_on",
@@ -281,6 +285,9 @@ pub struct OptionsScreen {
     pub played: Vec<Sound>,
     /// The name the block list's Register button adds.
     pub name_box: Option<String>,
+    /// The Control tab's scroll, px: its content moves up by this much
+    /// inside its window (the rows would run past it otherwise).
+    pub scroll: i32,
     /// The screen was open last frame.
     was_open: bool,
     /// The press that began a capture is not an event of it.
@@ -324,6 +331,7 @@ impl OptionsScreen {
             fired: Vec::new(),
             played: Vec::new(),
             name_box: None,
+            scroll: 0,
             was_open: false,
             skip_input: false,
             last: Vec::new(),
@@ -343,6 +351,43 @@ impl OptionsScreen {
             let (id, base) = self.roots[i];
             self.desk.sheets[self.sheets[i]].layout.tree.get_mut(id).pos = base + offset;
         }
+    }
+
+    /// The Control tab's visible region (its window's box, screen px) and
+    /// how far its content can scroll: the content's bottom below the
+    /// region's, 0 when it fits.
+    pub fn control_view(&self, ui: &CaUi) -> (PxRect, i32) {
+        let l = self.layout(3);
+        let mut clip = l.hit_rect(self.roots[3].0, &ui.ctx());
+        // The rect carries the scroll as the hit offset; the window's own
+        // place is without it.
+        clip.y0 += self.scroll;
+        clip.y1 += self.scroll;
+        let bottom = l
+            .draw(&ui.ctx())
+            .iter()
+            .map(|d| match d {
+                super::layout::Draw::Quad(_, q) => q.cover.y1,
+                super::layout::Draw::Text(t) => t.rect.y1,
+            })
+            .max()
+            .unwrap_or(0);
+        (clip, (bottom - clip.y1).max(0))
+    }
+
+    /// Scroll the Control tab by `delta` px (clamped); true when it moved.
+    pub fn scroll_control(&mut self, ui: &CaUi, delta: i32) -> bool {
+        let (_, max) = self.control_view(ui);
+        let to = (self.scroll + delta).clamp(0, max);
+        self.apply_scroll(to)
+    }
+
+    fn apply_scroll(&mut self, to: i32) -> bool {
+        let moved = to != self.scroll;
+        self.scroll = to;
+        let sheet = self.sheets[3];
+        self.desk.sheets[sheet].layout.hit_offset.y = -to;
+        moved
     }
 
     pub fn layout(&self, i: usize) -> &Layout {
@@ -619,7 +664,8 @@ pub fn sync(world: &mut World, screen: &mut OptionsScreen) {
     // The binding rows (K2).
     {
         let o = world.resource::<CaOptions>();
-        let names = o.key_names.clone();
+        let strings = world.get_resource::<CaUi>().map(|u| u.strings.clone()).unwrap_or_default();
+        let names = o.key_names.resolved(|id| strings.resolve(id));
         let capturing = o.capture.as_ref().map(|c| c.action);
         let texts: Vec<(usize, String)> = bindings::ACTIONS
             .iter()
@@ -755,6 +801,14 @@ fn pointer(world: &mut World, screen: &mut OptionsScreen, ui: &CaUi) {
     };
     let ctx = ui.ctx();
     let before: Vec<_> = (0..5).map(|i| states(screen.layout(i))).collect();
+    // A scrolled-off row outside the Control window is not under the
+    // pointer: its sheet hits nothing there.
+    let hidden = world.resource::<CaOptions>().tab == Tab::Control && !screen.control_view(ui).0.contains(p);
+    let sheet = screen.sheets[3];
+    let kept = screen.desk.sheets[sheet].layout.hit_offset;
+    if hidden {
+        screen.desk.sheets[sheet].layout.hit_offset = IVec2::splat(-100_000);
+    }
     screen.desk.pointer_moved(p, &ctx);
     if down {
         // A slider takes the press before a button under it.
@@ -774,6 +828,7 @@ fn pointer(world: &mut World, screen: &mut OptionsScreen, ui: &CaUi) {
         screen.desk.left_up();
         screen.drag = None;
     }
+    screen.desk.sheets[sheet].layout.hit_offset = kept;
     let after: Vec<_> = (0..5).map(|i| states(screen.layout(i))).collect();
     if before != after {
         screen.changed = true;
@@ -898,6 +953,22 @@ pub fn update(world: &mut World) {
         }
         // `flow::ok` and `cancel` close the screen; the next frame hides it.
         sync(world, screen);
+        // The Control tab's scroll: the wheel over its window, kept inside
+        // what the content overflows by.
+        if world.resource::<CaOptions>().tab == Tab::Control {
+            let (clip, max) = screen.control_view(&ui);
+            let mut to = screen.scroll.clamp(0, max);
+            if world.resource::<CaOptions>().capture.is_none()
+                && let Some(w) = world.get_resource::<AccumulatedMouseScroll>()
+                && w.delta.y != 0.0
+                && world.resource::<MenuPointer>().0.is_some_and(|p| clip.contains(p))
+            {
+                to = (to - (w.delta.y.signum() * CONTROL_SCROLL_STEP as f32) as i32).clamp(0, max);
+            }
+            if screen.apply_scroll(to) {
+                screen.changed = true;
+            }
+        }
         let draws = (0..5)
             .filter(|&i| screen.desk.sheets[screen.sheets[i]].shown)
             .flat_map(|i| screen.layout(i).draw(&ui.ctx()))
@@ -996,6 +1067,31 @@ fn draw_screen(
                 continue;
             }
             let draws = s.layout.draw(&ui.ctx());
+            if sheet == screen.sheets[3] {
+                // The Control window clips its content, scrolled.
+                let (clip, _) = screen.control_view(&ui);
+                p.spawn(Node {
+                    position_type: PositionType::Absolute,
+                    left: px(clip.x0 as f32),
+                    top: px(clip.y0 as f32),
+                    width: px((clip.x1 - clip.x0) as f32),
+                    height: px((clip.y1 - clip.y0) as f32),
+                    overflow: Overflow::clip(),
+                    ..default()
+                })
+                .with_children(|c| {
+                    c.spawn(Node {
+                        position_type: PositionType::Absolute,
+                        left: px(-clip.x0 as f32),
+                        top: px((-clip.y0 - screen.scroll) as f32),
+                        width: px(clip.x1 as f32 + 1.0),
+                        height: px(100_000.0),
+                        ..default()
+                    })
+                    .with_children(|c| draw::spawn_draws(c, &draws, &ui.stand_ins, art.as_deref(), fonts.as_deref(), faces.as_deref()));
+                });
+                continue;
+            }
             draw::spawn_draws(p, &draws, &ui.stand_ins, art.as_deref(), fonts.as_deref(), faces.as_deref());
         }
         // The sliders: a track and a thumb over each (the widget has no
@@ -1007,6 +1103,12 @@ fn draw_screen(
                 continue;
             }
             let r = l.hit_rect(id, &ui.ctx());
+            if i == 3 {
+                let (clip, _) = screen.control_view(&ui);
+                if r.y0 < clip.y0 || r.y1 > clip.y1 {
+                    continue;
+                }
+            }
             let thumb = screen.sliders.get(cvar).map_or(0, |s| s.thumb);
             let on = screen.enabled(bar) != Some(false);
             let bg = |x: i32, w: i32, c: Color| {

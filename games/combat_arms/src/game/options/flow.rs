@@ -73,12 +73,13 @@ pub fn load_at_start(world: &mut World) {
     world.resource_mut::<Console>().submit("options applybinds");
 }
 
-/// Save the profile when the game exits.
-pub fn save_at_exit(world: &mut World) {
-    let exit = world
-        .get_resource_mut::<Messages<AppExit>>()
-        .is_some_and(|mut m| m.drain().next().is_some());
-    if exit {
+/// Save the profile when the game exits (once). The exit message is only
+/// looked at, never drained: the app's runner reads it after this, and a
+/// drained one left `--screenshot` runs and `quit` running for ever.
+pub fn save_at_exit(world: &mut World, mut saved: Local<bool>) {
+    let exit = world.get_resource::<Messages<AppExit>>().is_some_and(|m| !m.is_empty());
+    if exit && !*saved {
+        *saved = true;
         let _ = save(world);
     }
 }
