@@ -13,6 +13,11 @@
 //!   (the round, bomb and hostages, team and class requests, round ends
 //!   and objective news); Source's logic's is `logic::net` (movers, HUD
 //!   messages).
+//! - **Own-state parts** (`OwnParts`, `NetAppExt::own_part`): what the
+//!   server tells a client about its own player that isn't predicted (CS:S's
+//!   money, armour, defusal kit and night vision), registered by name with
+//!   an encode and a decode, as `core::PredictedAppExt::predicted_codec`
+//!   does for predicted ones. They go in `OwnState::parts`, sorted by name.
 //! - **Hooks** the network calls where it used to name a game's rules:
 //!   `JoinRules` (how a remote player comes in: the join menus or a team,
 //!   out of the game while its client loads the map, in when it has it),
@@ -48,12 +53,110 @@ pub trait NetAppExt {
     /// `finish`), in name order with the other parts; nothing runs
     /// without a `NetPlugin`. A name registered again replaces the first.
     fn net_part(&mut self, name: &'static str, register: fn(&mut App)) -> &mut Self;
+
+    /// A part of a client's own state that the server sends beside its
+    /// predicted components (`OwnState::parts`): `encode` it for a
+    /// character (None: it has none), `decode` it over the client's player
+    /// (None: take it off). A name registered again replaces the first.
+    fn own_part(
+        &mut self,
+        name: &'static str,
+        encode: fn(&World, Entity) -> Option<Vec<u8>>,
+        decode: fn(&mut World, Entity, Option<&[u8]>),
+    ) -> &mut Self;
 }
 
 impl NetAppExt for App {
     fn net_part(&mut self, name: &'static str, register: fn(&mut App)) -> &mut Self {
         self.world_mut().get_resource_or_init::<NetParts>().0.insert(name, register);
         self
+    }
+
+    fn own_part(
+        &mut self,
+        name: &'static str,
+        encode: fn(&World, Entity) -> Option<Vec<u8>>,
+        decode: fn(&mut World, Entity, Option<&[u8]>),
+    ) -> &mut Self {
+        let mut parts = self.world_mut().get_resource_or_init::<OwnParts>();
+        let part = OwnPart { name, encode, decode };
+        match parts.0.binary_search_by_key(&name, |p| p.name) {
+            Ok(i) => parts.0[i] = part,
+            Err(i) => parts.0.insert(i, part),
+        }
+        self
+    }
+}
+
+/// A part of a client's own state that isn't predicted (`OwnParts`).
+struct OwnPart {
+    name: &'static str,
+    /// The server: the part's bytes for a character (None: it has none).
+    encode: fn(&World, Entity) -> Option<Vec<u8>>,
+    /// The client: write the bytes over its player (None: take it off).
+    decode: fn(&mut World, Entity, Option<&[u8]>),
+}
+
+/// The length `OwnParts::encode` writes for a part a character doesn't have.
+const ABSENT: u16 = u16::MAX;
+
+/// The own-state parts (`NetAppExt::own_part`), kept sorted by name as they
+/// are registered, so client and server agree on the order whichever
+/// order the games' plugins ran in.
+#[derive(Resource, Default)]
+pub struct OwnParts(Vec<OwnPart>);
+
+impl OwnParts {
+    /// The parts' names, in order.
+    pub fn names(&self) -> Vec<&'static str> {
+        self.0.iter().map(|p| p.name).collect()
+    }
+
+    /// `entity`'s parts as one blob: per part a little-endian `u16`
+    /// length (`u16::MAX`: absent) and its bytes.
+    pub fn encode(&self, world: &World, entity: Entity) -> Vec<u8> {
+        let mut out = Vec::new();
+        for part in &self.0 {
+            match (part.encode)(world, entity) {
+                Some(bytes) if bytes.len() < ABSENT as usize => {
+                    out.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+                    out.extend_from_slice(&bytes);
+                }
+                _ => out.extend_from_slice(&ABSENT.to_le_bytes()),
+            }
+        }
+        out
+    }
+
+    /// A blob's parts, in order. A blob of another layout is None.
+    fn split<'a>(&self, mut blob: &'a [u8]) -> Option<Vec<Option<&'a [u8]>>> {
+        let mut parts = Vec::with_capacity(self.0.len());
+        for _ in &self.0 {
+            let (len, rest) = blob.split_first_chunk::<2>()?;
+            blob = rest;
+            let len = u16::from_le_bytes(*len);
+            if len == ABSENT {
+                parts.push(None);
+                continue;
+            }
+            let (part, rest) = blob.split_at_checked(len as usize)?;
+            parts.push(Some(part));
+            blob = rest;
+        }
+        blob.is_empty().then_some(parts)
+    }
+
+    /// Write a blob from `encode` over `entity`, touching only the parts
+    /// that differ from what it has (so change detection stays quiet). A
+    /// blob of another layout changes nothing.
+    pub fn apply(&self, world: &mut World, entity: Entity, blob: &[u8]) {
+        let Some(parts) = self.split(blob) else { return };
+        for (part, bytes) in self.0.iter().zip(parts) {
+            let have = (part.encode)(world, entity);
+            if have.as_deref() != bytes {
+                (part.decode)(world, entity, bytes);
+            }
+        }
     }
 }
 
@@ -229,6 +332,44 @@ mod tests {
 
     #[derive(Resource, Default)]
     struct Order(Vec<&'static str>);
+
+    #[derive(Component)]
+    struct Tag(u8);
+
+    fn tag_encode(w: &World, e: Entity) -> Option<Vec<u8>> {
+        w.get::<Tag>(e).map(|t| vec![t.0])
+    }
+
+    fn tag_decode(w: &mut World, e: Entity, b: Option<&[u8]>) {
+        match b {
+            Some(b) => w.entity_mut(e).insert(Tag(b[0])),
+            None => w.entity_mut(e).remove::<Tag>(),
+        };
+    }
+
+    #[test]
+    fn own_parts_sort_by_name_and_round_trip() {
+        let mut app = App::new();
+        app.own_part("zeta", |_, _| None, |_, _, _| {})
+            .own_part("alpha", tag_encode, tag_decode)
+            .own_part("alpha", tag_encode, tag_decode);
+        assert_eq!(app.world().resource::<OwnParts>().names(), ["alpha", "zeta"]);
+        let a = app.world_mut().spawn(Tag(7)).id();
+        let b = app.world_mut().spawn_empty().id();
+        let blob = app.world().resource::<OwnParts>().encode(app.world(), a);
+        app.world_mut().resource_scope(|w, parts: Mut<OwnParts>| {
+            parts.apply(w, b, &blob);
+            assert_eq!(w.get::<Tag>(b).map(|t| t.0), Some(7));
+            // A blob of another layout changes nothing.
+            parts.apply(w, b, &[1]);
+            assert_eq!(w.get::<Tag>(b).map(|t| t.0), Some(7));
+            // An absent part takes it off.
+            let c = w.spawn_empty().id();
+            let empty = parts.encode(w, c);
+            parts.apply(w, b, &empty);
+            assert!(w.get::<Tag>(b).is_none());
+        });
+    }
 
     #[test]
     fn parts_register_in_name_order_whatever_the_plugin_order() {

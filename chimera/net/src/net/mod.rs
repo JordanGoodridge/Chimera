@@ -246,7 +246,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net27");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net28");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -649,16 +649,12 @@ pub struct OwnState {
     /// Freeze time holds the player until this tick (it may look and pick
     /// a weapon); `held` is the dead's hold (only the look).
     pub frozen_until: Option<u64>,
-    /// What the HUD shows of the player that isn't predicted: its money
-    /// (`weapon::economy::Money`), armour (amount, helmet) and whether it
-    /// has a defusal kit. (Arming and defusing the bomb are predicted:
-    /// `objectives::bomb::Arming`, `Defusing` in `state`.)
-    pub money: Option<u32>,
-    pub armor: Option<(f32, bool)>,
-    pub kit: bool,
-    /// Carries night vision goggles (`weapon::economy::NightVision`; the
-    /// player turns them on itself).
-    pub nightvision: bool,
+    /// What the HUD shows of the player that isn't predicted, as the
+    /// games' own-state parts (`parts::OwnParts`: CS:S's money, armour,
+    /// defusal kit and night vision), in one blob. (Arming and defusing the
+    /// bomb are predicted: `objectives::bomb::Arming`, `Defusing` in
+    /// `state`.)
+    pub parts: Vec<u8>,
     /// Ticks run without this client's command (its last one repeated),
     /// and commands that came after their tick, since it joined.
     pub missed: u32,
@@ -1249,6 +1245,7 @@ impl Plugin for NetPlugin {
             .init_resource::<NetSettings>()
             .init_resource::<NetVersion>()
             .init_resource::<NetHooks>()
+            .init_resource::<parts::OwnParts>()
             .add_message::<NetEvent>()
             .add_systems(Update, log_events);
         app.world_mut().resource_mut::<ProtocolHasher>().add_custom(NET_VERSION);
