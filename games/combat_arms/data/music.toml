@@ -1,0 +1,141 @@
+# Combat Arms' music and ambience (specs/combat_arms/music_ambience.md),
+# read by games/combat_arms/src/game/music/data.rs.
+#
+# The values that live in the install's keyed attribute files (BGM_Setting.txt,
+# clientbutes.txt, gameroom.txt: Open question 1) are not readable, so this
+# file is the built-in fallback the spec describes. Every track marked
+# "inferred" there is inferred here too, from its file name; the install's
+# values will go over these.
+#
+# Paths are below the install's Game/ folder, forward slashes, compared
+# without case.
+
+# The playlist's version string (a saved tick list of another version is
+# thrown away).
+version = "builtin-1"
+
+# Fades and thresholds (Constants).
+menu_fade = 10.0
+trigger_fade_default = 1.0
+quarantine_mode_fade = 10.0
+# Quarantine's end cue plays while the round time left is in (20, 22]
+# (the 22 -> 20 constant).
+quarantine_end_window = [20.0, 22.0]
+# Seize and Secure: capture time left at or below which its cue plays.
+hq_countdown = 20.0
+playlist_guard = 5000
+slider_step = 10
+music_volume_default = 100
+sound_volume_default = 100
+
+# The files the player knows and their lengths in seconds (Section 1,
+# measured on the loose files). A file the install does not hold does not
+# exist for the player; one not listed here has its length read when it
+# first decodes.
+[files]
+"BGM/BGM_LOOP.mp3" = 143.313
+"BGM/UIBGM_LOOP.mp3" = 50.659
+"BGM/WAITINGROOM_LOOP.mp3" = 52.801
+"BGM/BGM_Christmas.MP3" = 78.036
+"BGM/BGM_Independence.mp3" = 73.874
+"BGM/Halloween_BGM.mp3" = 79.499
+"BGM/Map_Loading.mp3" = 2.015
+"BGM/modebgm/Search&Destroy.mp3" = 18.969
+"BGM/modebgm/Elimination.mp3" = 20.384
+"BGM/modebgm/SpyHunt.mp3" = 19.260
+"BGM/modebgm/HiredGuns.mp3" = 35.713
+"BGM/modebgm/VIP_start.mp3" = 15.081
+"BGM/modebgm/Snow_Start.mp3" = 21.739
+"BGM/modebgm/weaponrace_start.mp3" = 17.771
+"BGM/modebgm/weaponrace_last.mp3" = 36.031
+"BGM/QRT_Count_BGM.mp3" = 27.123
+"BGM/HQM_count_BGM.mp3" = 20.828
+"BGM/Zombie_Ambience.mp3" = 100.266
+"BGM/Ambient_BGM.mp3" = 77.383
+"BGM/Hunted_DarkHill_BGM.mp3" = 320.894
+"BGM/Start_BGM.mp3" = 22.839
+"BGM/Last_BGM.mp3" = 96.060
+"BGM/AmbientCosta_BGM.mp3" = 70.038
+"BGM/SnowStorm_Start.mp3" = 28.113
+"BGM/SnowStorm_Boss.mp3" = 96.031
+"BGM/SnowStorm_Ending.mp3" = 28.845
+# The spec says 602.281 s; the decoder gives 600.12 s (the only file that
+# differs: the spec's figure is probably the size over the bitrate).
+"BGM/Null_60S.mp3" = 600.12
+"BGM/Ability/WarCry/WarCry.mp3" = 9.517
+"BGM/Ability/EagleEye/Alignment.mp3" = 8.864
+
+# The menu playlist, in order: display name and file (inferred: the names
+# of the loose files with no mode in them; Open question 2). All ticked
+# by default.
+[[playlist]]
+name = "BGM_LOOP"
+file = "BGM/BGM_LOOP.mp3"
+[[playlist]]
+name = "UIBGM_LOOP"
+file = "BGM/UIBGM_LOOP.mp3"
+[[playlist]]
+name = "WAITINGROOM_LOOP"
+file = "BGM/WAITINGROOM_LOOP.mp3"
+[[playlist]]
+name = "BGM_03"
+file = "BGM/BGM_03.mp3"
+[[playlist]]
+name = "BGM_05"
+file = "BGM/BGM_05.mp3"
+[[playlist]]
+name = "BGM_06"
+file = "BGM/BGM_06.mp3"
+[[playlist]]
+name = "BGM_07"
+file = "BGM/BGM_07.mp3"
+[[playlist]]
+name = "BGM_08"
+file = "BGM/BGM_08.mp3"
+[[playlist]]
+name = "BGM_09"
+file = "BGM/BGM_09.mp3"
+[[playlist]]
+name = "BGM_10"
+file = "BGM/BGM_10.mp3"
+[[playlist]]
+name = "BGM_11"
+file = "BGM/BGM_11.mp3"
+[[playlist]]
+name = "BGM_12"
+file = "BGM/BGM_12.mp3"
+
+# Cues by their attribute key (Section 4; inferred).
+[cues]
+loading = "BGM/Map_Loading.mp3"
+quarantine_mode = "BGM/Zombie_Ambience.mp3"
+quarantine_end = "BGM/QRT_Count_BGM.mp3"
+capture_progress = "BGM/HQM_count_BGM.mp3"
+last_stage = "BGM/modebgm/weaponrace_last.mp3"
+war_cry = "BGM/Ability/WarCry/WarCry.mp3"
+eagle_eye = "BGM/Ability/EagleEye/Alignment.mp3"
+
+# The mode start track at the first real round (the room data's
+# `StartBGM`, `LoopBGM`, by mode key; Open questions 1, 12): none for the
+# modes whose file is not obvious.
+[modes.TMM]
+start = "BGM/modebgm/Search&Destroy.mp3"
+[modes.TSV]
+start = "BGM/modebgm/Elimination.mp3"
+[modes.BNT]
+start = "BGM/modebgm/SpyHunt.mp3"
+[modes.SQM]
+start = "BGM/modebgm/HiredGuns.mp3"
+[modes.VTDM]
+start = "BGM/modebgm/VIP_start.mp3"
+[modes.VWRM]
+start = "BGM/modebgm/weaponrace_start.mp3"
+# Arms Race's start music repeats when the last stage is left
+# (`LoopBGM` set).
+loop = true
+
+# The interface sounds the cues name (Section 4, 7): attribute key to the
+# file in the install's sound archives. The files are in the keyed
+# attribute file (Open question 1), so none is named here; a key with no
+# file plays nothing (the cue still happens and is counted).
+[interface]

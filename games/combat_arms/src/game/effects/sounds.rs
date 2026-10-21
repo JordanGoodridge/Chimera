@@ -8,6 +8,11 @@
 //! bounces) go out as `GameSound`, which a network server also sends to
 //! every client.
 //!
+//! The effects master (`music::mix::CaVolumes::sound`, music_ambience.md
+//! 8) scales every sound here, a server sound by the machine that plays
+//! it first (a client's own slider doesn't reach the sounds the server
+//! sends: they arrive as Chimera's `GameSound`).
+//!
 //! Known shortcuts (docs/tech-debt.md): a 3D sound's gain and low-pass
 //! are set when it starts (Chimera's one-shots don't follow a moving
 //! listener); server sounds reach every client, not those within 2R
@@ -108,6 +113,7 @@ pub fn play(
     bank: Option<ResMut<SoundBank>>,
     mut files: ResMut<CaSoundFiles>,
     mut lengths: ResMut<super::CaSoundLengths>,
+    volumes: Option<Res<crate::game::music::mix::CaVolumes>>,
     mut out: MessageWriter<PlaySound>,
     mut game: MessageWriter<GameSound>,
 ) {
@@ -126,6 +132,9 @@ pub fn play(
             }
         }
     }
+    // The effects master (music_ambience.md 8): every effect, ambient
+    // sound and interface sound shares this one slider.
+    let master = volumes.map_or(1.0, |v| v.sound());
     for s in sounds.read() {
         let entry = s.entry();
         if bank.0.entry(&entry).is_none() {
@@ -137,7 +146,7 @@ pub fn play(
         let play = PlaySound {
             entry,
             at: s.at,
-            volume: Some((s.volume / 100.0).clamp(0.0, 1.0)),
+            volume: Some((s.volume / 100.0 * master).clamp(0.0, 1.0)),
             pitch: None,
             source: s.source,
             channel: s.channel,
