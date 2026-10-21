@@ -371,7 +371,7 @@ pub fn draw_full_map(
                 spawn_box(p, Vec2::ZERO, b, m.rect, [255; 4], art);
             }
             if let (Some(w), Some(view)) = (m.wedge, &m.look.view) {
-                spawn_quad(p, Vec2::ZERO, view, w, [255; 4], art);
+                spawn_quad(p, Vec2::ZERO, view, radar::upright(w, s), [255; 4], art);
             }
             if let Some((name, at)) = &m.name {
                 spawn_text(p, name, *at, 11.0 * s.yr(), [255; 4], fonts, faces, true, true);

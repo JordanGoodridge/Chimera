@@ -200,7 +200,7 @@ inline. Keep each line short (`checks/tests/it/architecture.rs` checks).
 - games/combat_arms ui: Install HUD panels: undriven controls hidden (no weapon image, set bonus) (`games/combat_arms/src/ui/hud/install.rs`)
 - games/combat_arms ui: Bound HUD panels: undriven controls and samples hidden; round dividers a stand-in texture (`games/combat_arms/src/ui/hud/bound.rs`)
 - games/combat_arms radar: Mission file found by world and mode; no image without the server's install; shared heartbeat list from the server; no scan notices or co-op objects (`games/combat_arms/src/game/radar/mod.rs`)
-- games/combat_arms ui: Radar and map: hidden while dead; no shear on turned quads; flat frame, panels and labels; infecting kills leave marks (`games/combat_arms/src/ui/hud/radar.rs`)
+- games/combat_arms ui: Radar and map: hidden while dead; wedges turned in square space (not stretched); no frame without the install, panels and labels; infecting kills leave marks (`games/combat_arms/src/ui/hud/radar.rs`)
 - games/combat_arms options: Template values ours; profile plain in the user folder; no lobby; renderer settings stored not applied; no music list, voice devices or joystick (`games/combat_arms/src/game/options/mod.rs`)
 - games/combat_arms ui: Options screen: the install's layouts bound by name, unread; no combo boxes or scroll bars drawn; no message box (`games/combat_arms/src/ui/options.rs`)
 - games/combat_arms ui: Bomb prompts: a site's box as the aimed target; Bombing Run's defuse side our reading; no fixed messages (`games/combat_arms/src/ui/hud/action.rs`)

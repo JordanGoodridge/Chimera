@@ -624,3 +624,84 @@ fn the_screen_is_stretched_not_squashed() {
     let w = radar(&sim).window.unwrap();
     assert!((w.min.x - 818.0 * 1.875).abs() < 1e-3 && (w.min.y - 5.0 * 1.40625).abs() < 1e-3);
 }
+
+// ---------------------------------------------------------------------------
+// Non-4:3 screens: the turned quads (wedge, guide, edge arrows) turn at the
+// view's speed and keep their shape; the spec's corners are sheared there.
+
+/// The edge u's angle of an upright quad.
+fn angle_of(q: [Vec2; 4]) -> f32 {
+    let u = q[1] - q[0];
+    u.y.atan2(u.x)
+}
+
+fn wrap(a: f32) -> f32 {
+    let t = std::f32::consts::TAU;
+    (a + std::f32::consts::PI).rem_euclid(t) - std::f32::consts::PI
+}
+
+#[test]
+fn a_wedge_turns_uniformly_on_a_16_9_screen() {
+    use combat_arms::{game::radar::maths, ui::hud::radar::upright};
+    let s = Screen::new(1920.0, 1080.0);
+    let step = std::f64::consts::TAU / 36.0;
+    let mut last: Option<f32> = None;
+    for i in 0..37 {
+        let yaw = step * i as f64;
+        let q = maths::wedge((948, 48), yaw, 0.0, 1.0, s.xr() as f64, s.yr() as f64);
+        let u = upright(q, s);
+        // A rectangle of the icon's 2:1 sides, whatever the yaw.
+        let (a, b) = (u[1] - u[0], u[3] - u[0]);
+        assert!(a.dot(b).abs() < 0.05, "square corners at {yaw}: {u:?}");
+        assert!((a.length() / b.length() - 2.0).abs() < 1e-3, "sides at {yaw}: {u:?}");
+        // Its angle is the view's: equal steps for equal yaw steps.
+        let ang = angle_of(u);
+        if let Some(l) = last {
+            assert!((wrap(ang - l) - step as f32).abs() < 1e-3, "step at {yaw}: {}", wrap(ang - l));
+        }
+        last = Some(ang);
+        // The same centre as the spec's quad.
+        assert!(((q[0] + q[2]) / 2.0 - (u[0] + u[2]) / 2.0).length() < 1e-3);
+    }
+}
+
+#[test]
+fn the_guide_turns_uniformly_on_a_16_9_screen() {
+    use combat_arms::{
+        game::radar::maths::{self, Frame},
+        ui::hud::radar::upright,
+    };
+    let s = Screen::new(1920.0, 1080.0);
+    let step = std::f64::consts::TAU / 36.0;
+    let mut last: Option<f32> = None;
+    for i in 0..37 {
+        let f = Frame::new((0.0, 0.0), step * i as f64, 1.0, false);
+        let g = upright(maths::guide(&f, s.xr() as f64, s.yr() as f64), s);
+        let (a, b) = (g[1] - g[0], g[3] - g[0]);
+        assert!(a.dot(b).abs() < 0.5 && (a.length() - b.length()).abs() < 1e-2, "{g:?}");
+        let ang = angle_of(g);
+        if let Some(l) = last {
+            assert!((wrap(ang - l) - step as f32).abs() < 1e-3);
+        }
+        last = Some(ang);
+    }
+}
+
+/// In the world at 16:9: the wedge drawn upright, the window inside the
+/// frame box.
+#[test]
+fn an_ally_wedge_at_16_9() {
+    let (mut sim, me) = live("TDM");
+    sim.app.world_mut().insert_resource(HudScreen(Screen::new(1920.0, 1080.0)));
+    let ally = spot(&mut sim, JSF, 300.0, 400.0, "Ally");
+    place(&mut sim, me, &[(ally, 300.0, 400.0)]);
+    let r = radar(&sim);
+    let w = mark_of(&r, ally).and_then(|m| m.wedge).expect("wedge");
+    let u = combat_arms::ui::hud::radar::upright(w, r.screen);
+    let (a, b) = (u[1] - u[0], u[3] - u[0]);
+    assert!(a.dot(b).abs() < 0.05 && (a.length() / b.length() - 2.0).abs() < 1e-3, "{u:?}");
+    let win = r.window.expect("window");
+    let (fx, fy, fw, fh) = combat_arms::ui::hud::radar::FRAME_AT;
+    let frame = r.screen.rect(Vec2::new(fx, fy), Vec2::new(fw, fh));
+    assert!(win.min.x >= frame.min.x && win.min.y >= frame.min.y && win.max.x <= frame.max.x && win.max.y <= frame.max.y);
+}

@@ -22,6 +22,7 @@ pub mod debug;
 pub mod debug_ui;
 pub mod debug_views;
 pub mod effects;
+pub mod clip_quad;
 pub mod fonts;
 pub mod front_end;
 pub mod color_correction;
@@ -402,6 +403,7 @@ impl PluginGroup for ClientPlugins {
             .add(hdr::HdrPlugin)
             .add(video::VideoPlugin)
             .add(hud_text::HudTextPlugin)
+            .add(clip_quad::ClipQuadPlugin)
             .add(interp::ClientInterpPlugin)
             .add(color_correction::ColorCorrectionPlugin)
             .add(net::ClientNetPlugin)
