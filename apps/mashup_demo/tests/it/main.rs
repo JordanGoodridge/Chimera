@@ -4,6 +4,8 @@
 //! `combat_arms::harness::CaSim`). `cargo test -p mashup_demo --features
 //! dev --test it`; where tests go: docs/OBSERVABILITY.md, section 1.
 
+mod two_games;
+
 // Slow ones (the user's installs): the fast tier skips `heavy::`.
 mod heavy {
     mod cs_maps;
