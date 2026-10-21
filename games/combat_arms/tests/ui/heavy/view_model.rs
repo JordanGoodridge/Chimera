@@ -116,7 +116,7 @@ fn rifle_and_knife_view_models_draw_on_the_greybox() {
             .add_plugins((GreyboxMapPlugin, MapPlugin::empty()))
             .init_resource::<LoadOnDemand>();
     });
-    if data::install_attributes().is_none() {
+    if data::CaData::install().attributes().is_none() {
         eprintln!("skipping: the process runs on the built-in data (another test's CaSim)");
         return;
     }

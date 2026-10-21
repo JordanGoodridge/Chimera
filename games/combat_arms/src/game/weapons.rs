@@ -651,10 +651,11 @@ pub struct CaServerSettings {
     pub reload_check_time: f64,
 }
 
-impl Default for CaServerSettings {
-    fn default() -> Self {
+impl CaServerSettings {
+    /// The settings `data` gives.
+    pub fn of(data: &super::data::CaData) -> Self {
         Self {
-            reload_check_time: super::data::reload_check_time(),
+            reload_check_time: data.reload_check_time(),
         }
     }
 }
@@ -1112,7 +1113,7 @@ use Location::{Arm, Groin, Head, Leg, Torso};
 
 /// Skeleton `index`'s hit table from data/characters.toml.
 fn hit_table(index: usize) -> &'static [HitSphere] {
-    let skel = characters::records::data().skeleton(index);
+    let skel = characters::records::builtin().skeleton(index);
     let table: Vec<HitSphere> = skel
         .spheres
         .iter()
@@ -1608,13 +1609,16 @@ impl Plugin for CaWeaponsPlugin {
         .register_weapon_hook::<CaAltFire>(ALT_FIRE, |e, _, p| {
             e.insert((*p, p.burst()));
         });
-        if let Err(e) = app.add_weapon_set(super::data::weapon_set()) {
+        let data = super::data::CaData::of(app);
+        if let Err(e) = app.add_weapon_set(data.weapon_set()) {
             panic!("Combat Arms weapon data: {e}");
+        }
+        if !app.world().contains_resource::<CaServerSettings>() {
+            app.insert_resource(CaServerSettings::of(&data));
         }
         app.init_resource::<SpreadScales>()
             .init_resource::<SpreadOptions>()
             .init_resource::<CaAiDamage>()
-            .init_resource::<CaServerSettings>()
             .insert_resource(CaSurfaces::built_in().clone())
             .add_message::<WeaponEvent>()
             .add_message::<Damage>()
@@ -2010,7 +2014,7 @@ pub fn geometry_at_by(
 ) -> (Vec3, Vec3, Vec<(Vec3, f32)>) {
     let unit = super::movement::movement_data().meters_per_unit;
     let squash = ((max.y - min.y) / (characters::STAND_HEIGHT * unit)).max(0.0);
-    let skel = characters::records::data().skeleton(data.first().map_or(0, |s| s.skeleton));
+    let skel = characters::records::builtin().skeleton(data.first().map_or(0, |s| s.skeleton));
     let mut posed = characters::skeleton::fallback(skel, squash);
     posed.aim(&skel.aim, pitch, 0.0, server);
     let feet = origin.with_y(min.y);

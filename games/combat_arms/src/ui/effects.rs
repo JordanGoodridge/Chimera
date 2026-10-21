@@ -73,8 +73,9 @@ pub struct CaEffectsDrawPlugin;
 
 impl Plugin for CaEffectsDrawPlugin {
     fn build(&self, app: &mut App) {
+        let mount = crate::game::data::CaData::of(app).mount();
         app.add_plugins(MaterialPlugin::<OnTopMaterial>::default())
-            .init_resource::<FxImages>()
+            .insert_resource(FxImages::new(mount))
             .add_systems(
                 Update,
                 (decals, tracers, casings, muzzle_flash, lights)
@@ -107,17 +108,34 @@ impl MaterialExtension for OnTop {
 }
 
 /// The install's effect textures as images (None: doesn't read).
-#[derive(Resource, Default)]
-pub struct FxImages(HashMap<String, Option<(Handle<Image>, UVec2)>>);
+#[derive(Resource)]
+pub struct FxImages {
+    /// The install (None: nothing reads; `CaData::mount`).
+    mount: Option<std::sync::Arc<crate::mount::Mount>>,
+    images: HashMap<String, Option<(Handle<Image>, UVec2)>>,
+}
 
 impl FxImages {
+    pub fn new(mount: Option<std::sync::Arc<crate::mount::Mount>>) -> Self {
+        Self {
+            mount,
+            images: HashMap::new(),
+        }
+    }
+
+    /// The install the images come from.
+    pub fn mount(&self) -> Option<std::sync::Arc<crate::mount::Mount>> {
+        self.mount.clone()
+    }
+
     /// A texture (`.dtx`) or a sprite's (`.spr`: its first frame's).
     pub fn get(&mut self, path: &str, images: &mut Assets<Image>) -> Option<(Handle<Image>, UVec2)> {
         let path = normalize(path);
-        self.0
+        let mount = self.mount.clone();
+        self.images
             .entry(path.clone())
             .or_insert_with(|| {
-                let mount = library::install_mount()?;
+                let mount = mount?;
                 let tex = if path.ends_with(".spr") {
                     library::sprite_texture(&mount.read(&path).ok()?)?
                 } else {
@@ -323,7 +341,8 @@ fn casings(
             .0
             .entry(s.fire.clone())
             .or_insert_with(|| {
-                let mesh = library::install_mount()
+                let mesh = fx_images
+                    .mount()
                     .and_then(|m| casing_mesh(&record.shell_model, &m))
                     .map(|m| meshes.add(m))
                     .unwrap_or_else(|| meshes.add(Cuboid::new(0.006, 0.006, 0.016)));

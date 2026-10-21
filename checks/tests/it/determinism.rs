@@ -21,12 +21,12 @@ use super::architecture::{root, rust_files};
 /// when you remove uses; never raise one.
 const BASELINE: &[(&str, usize, usize)] = &[
     ("chimera/core/src", 1, 2),
-    ("chimera/sim/src", 10, 1),
+    ("chimera/sim/src", 10, 0),
     ("chimera/world/src", 24, 1),
     ("chimera/net/src", 27, 0),
     ("source/logic/src", 9, 0),
     ("games/cs_source/src", 141, 6),
-    ("games/combat_arms/src", 110, 29),
+    ("games/combat_arms/src", 108, 22),
 ];
 
 /// Type words that make a static mutable or lazily filled.

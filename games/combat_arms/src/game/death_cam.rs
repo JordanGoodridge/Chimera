@@ -108,8 +108,8 @@ use crate::{
 pub const GUIDE_FILE: &str = "attributes/guide.txt";
 
 /// The install's tips (none without it, or in the test harness).
-pub fn install_tips() -> Vec<screen::Tip> {
-    if super::data::builtin_only() {
+pub fn install_tips(data: &super::data::CaData) -> Vec<screen::Tip> {
+    if data.builtin_only() {
         return Vec::new();
     }
     let Some(mount) = super::INFO.mount() else { return Vec::new() };
@@ -279,12 +279,13 @@ pub struct CaDeathCamPlugin;
 
 impl Plugin for CaDeathCamPlugin {
     fn build(&self, app: &mut App) {
+        let tips = install_tips(&super::data::CaData::of(app));
         app.init_resource::<CaSlots>()
             .init_resource::<CaEnemyCam>()
             .init_resource::<CaKillCamRoom>()
             .init_resource::<CaDeathInput>()
             .insert_resource(CaDeathCam {
-                tips: install_tips(),
+                tips,
                 ..default()
             })
             .add_message::<Died>()

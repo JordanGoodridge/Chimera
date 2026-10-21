@@ -284,8 +284,9 @@ fn a_combat_arms_soldier_fires_the_ak47_on_dust2() {
     );
     let mut sim = sim(map);
     {
+        let catalog = sim.app.world().resource::<chimera_sim::weapon::data::WeaponCatalog>().clone();
         let mut kit = sim.app.world_mut().resource_mut::<StartingWeapons>();
-        mashup_demo::set_slot(&mut kit, 0, cs_source::game::weapons::AK47).unwrap();
+        mashup_demo::set_slot(&mut kit, &catalog, 0, cs_source::game::weapons::AK47).unwrap();
     }
     let spawn = {
         let w = sim.app.world_mut();

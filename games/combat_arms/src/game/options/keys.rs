@@ -257,9 +257,9 @@ impl KeyNames {
 }
 
 /// The install's key names (`KEY_NAMES_FILE`); the built-in names without
-/// an install (or with `data::use_builtin_data_only`).
-pub fn read_installed() -> KeyNames {
-    if super::super::data::builtin_only() {
+/// an install (or with `CaData::builtin`).
+pub fn read_installed(data: &super::super::data::CaDataInner) -> KeyNames {
+    if data.builtin_only() {
         return KeyNames::default();
     }
     super::super::INFO

@@ -167,13 +167,14 @@ fn merged_numbers_against_ours() {
     eprintln!("merged: {} weapons ({new} from the install)", set.weapons.len());
     assert!(new > 0);
     // Each of ours has its install record.
-    for id in combat_arms::game::data::builtin_weapon_ids() {
+    let ca = combat_arms::game::data::CaData::install();
+    for id in ca.builtin_weapon_ids() {
         let r = combat_arms::game::data::install_weapon_in(w, id);
         eprintln!(
             "{id}: install record {:?}, AniType {:?} (ours {}), HHModel {:?}",
             r.map(|r| &r.name),
             r.map(|r| (r.ani_type, r.lower_ani_type)),
-            combat_arms::game::characters::records::data().weapon(Some(id)).ani_type,
+            ca.characters().weapon(Some(id)).ani_type,
             r.map(|r| &r.hh_model)
         );
         assert!(r.is_some(), "{id}: no install record");

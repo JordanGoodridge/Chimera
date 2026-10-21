@@ -81,6 +81,7 @@ fn install_missions_for_the_modes() {
     }
     let Some(mount) = world::mount() else { return };
     let i = missions::read_install(&|p| mount.read(p).ok());
+    let ca = combat_arms::game::data::CaData::install();
     if i.index.paths.is_empty() {
         eprintln!("no V1 key: no mission data");
         return;
@@ -118,15 +119,15 @@ fn install_missions_for_the_modes() {
             .map(|t| t.steps.iter().map(|s| (s.kill, s.candidates.clone())).collect())
             .unwrap_or_default();
         eprintln!("Arms Race G 15 on Steam: {steps:?}");
-        if let Some(w) = combat_arms::game::data::install_attributes().and_then(|a| a.weapons.as_ref()) {
+        if let Some(w) = ca.attributes().and_then(|a| a.weapons.as_ref()) {
             let name = |i: i32| w.weapons.get(i as usize).map(|r| r.name.clone());
-            let names: Vec<_> = steps.iter().map(|(_, c)| (c[0].0, name(c[0].0), combat_arms::game::data::weapon_for_index(c[0].0))).collect();
+            let names: Vec<_> = steps.iter().map(|(_, c)| (c[0].0, name(c[0].0), ca.weapon_for_index(c[0].0))).collect();
             eprintln!("  as weapon records: {names:?}");
             // The ids are weapon record indices (missions.md Open question
             // 6): every step names a weapon our set has with the install.
             assert!(names.iter().all(|(_, n, ours)| n.is_some() && ours.is_some()), "{names:?}");
             assert_eq!(names[0].1.as_deref(), Some("ACR_Sandfire"));
-            let ours = combat_arms::game::data::weapon_for_index;
+            let ours = |i| ca.weapon_for_index(i);
             assert_eq!(ours(191), Some("combat_arms:quarantine_virus_hand"), "the infected's");
             assert_eq!(ours(190), Some("combat_arms:quarantine_host_hand"), "the host's");
             assert_eq!(ours(934), Some("combat_arms:fist"), "Hunted's start");

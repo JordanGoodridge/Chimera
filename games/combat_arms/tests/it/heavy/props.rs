@@ -9,7 +9,6 @@ use chimera_core::mount::config::LocalConfig;
 use chimera_world::map::MapAlpha;
 use combat_arms::game::{
     GAME, INFO,
-    characters::records,
     model, movement, props,
     render_style::{self, Style},
     world,
@@ -117,7 +116,8 @@ fn pool_attachments_read() {
         return;
     }
     let file = |p: &str| mount.read(p).ok();
-    let d = records::data();
+    let ca = combat_arms::game::data::CaData::install();
+    let d = ca.characters();
     let mut failed = Vec::new();
     for (kind, pool, list) in [("goggle", &d.loadouts.goggles, &d.goggle), ("backpack", &d.loadouts.backpacks, &d.backpack)] {
         for &id in pool.iter().filter(|&&id| id >= 0) {

@@ -99,14 +99,11 @@
 //!   `.dtx`) are empty slots (`skin_paths`).
 
 pub mod attributes;
+mod store;
 
-use std::{
-    io,
-    sync::{
-        OnceLock,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+pub use store::{CaData, CaDataInner};
+
+use std::io;
 
 use bevy::prelude::*;
 use lithtech_formats::attributes::Document;
@@ -118,7 +115,6 @@ use self::attributes::{
     WeaponsFile,
 };
 use super::{attachments::CaModTable, movement::MovementData};
-use crate::weapon::data::WeaponSet;
 
 macro_rules! data_file {
     ($name:literal) => {
@@ -202,59 +198,6 @@ pub const WEAPON_DATA: &[(&str, &str)] = &[
 /// The namespace of our weapon and ammo IDs.
 const NS: &str = "combat_arms:";
 
-static BUILTIN_ONLY: AtomicBool = AtomicBool::new(false);
-
-/// Never read the install's attribute data in this process (scenario
-/// tests: their numbers are the built-in ones). Call before the data is
-/// first used.
-pub fn use_builtin_data_only() {
-    BUILTIN_ONLY.store(true, Ordering::Relaxed);
-}
-
-/// Whether this process reads nothing of the install at run time
-/// (`use_builtin_data_only`; the effects' sounds go silent too).
-pub fn builtin_only() -> bool {
-    BUILTIN_ONLY.load(Ordering::Relaxed)
-}
-
-/// Combat Arms' weapons as data, parsed once per process (and findable by
-/// `weapon::data::lookup`): the built-in documents, with the install's
-/// attribute data over them when it can be read. Bad built-in data panics
-/// (the tests load it); merged data that fails falls back to it.
-pub fn weapon_set() -> &'static WeaponSet {
-    static SET: OnceLock<&'static WeaponSet> = OnceLock::new();
-    SET.get_or_init(|| {
-        let builtin = || WeaponSet::parse(WEAPON_DATA, &[]).unwrap_or_else(|e| panic!("Combat Arms weapon data: {e}"));
-        let mods = install_attributes().and_then(|a| a.mods.as_ref());
-        let merged = install_attributes().and_then(|a| a.weapons.as_ref()).and_then(|w| {
-            let mpu = super::movement::movement_data().meters_per_unit as f64;
-            let docs = merge_weapon_docs_with_mods(WEAPON_DATA, w, mods, mpu)
-                .map_err(|e| warn!("Combat Arms: the install's weapons weren't merged: {e}"))
-                .ok()?;
-            let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
-            WeaponSet::parse(&refs, &[])
-                .map_err(|e| warn!("Combat Arms: the install's weapons don't load, using the built-in ones: {e}"))
-                .ok()
-        });
-        let set: &'static WeaponSet = Box::leak(Box::new(merged.unwrap_or_else(builtin)));
-        crate::weapon::data::publish(set);
-        set
-    })
-}
-
-/// The attachment records: the built-in ones (data/attachments/mods.toml)
-/// with the install's modification file over them by name.
-pub fn attachment_table() -> &'static CaModTable {
-    static TABLE: OnceLock<CaModTable> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        let mut table = CaModTable::built_in().clone();
-        if let Some(mods) = install_attributes().and_then(|a| a.mods.as_ref()) {
-            merge_mods(&mut table, mods);
-        }
-        table
-    })
-}
-
 /// The modification file's records over `table` by name (ours not in it
 /// stay).
 pub fn merge_mods(table: &mut CaModTable, mods: &ModFile) {
@@ -266,9 +209,9 @@ pub fn merge_mods(table: &mut CaModTable, mods: &ModFile) {
 }
 
 /// The movement data with the install's body type over it (called by
-/// `movement::movement_data`).
-pub fn with_install_movement(mut data: MovementData) -> MovementData {
-    if let Some(models) = install_attributes().and_then(|a| a.models.as_ref()) {
+/// `CaData::movement`).
+pub fn with_install_movement(mut data: MovementData, attributes: Option<&InstallAttributes>) -> MovementData {
+    if let Some(models) = attributes.and_then(|a| a.models.as_ref()) {
         merge_movement(&mut data, models);
     }
     data
@@ -346,37 +289,6 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
         gear,
     };
     (attrs, problems)
-}
-
-/// The install's attribute data, read once per process: `None` without
-/// an install, with `use_builtin_data_only`, or when `ATTRIBUTES.rez`
-/// can't be read (no V1 key: logged).
-pub fn install_attributes() -> Option<&'static InstallAttributes> {
-    static ATTRS: OnceLock<Option<InstallAttributes>> = OnceLock::new();
-    ATTRS
-        .get_or_init(|| {
-            if BUILTIN_ONLY.load(Ordering::Relaxed) {
-                return None;
-            }
-            let install = crate::mount::config::LocalConfig::load().ok()?.game_path(super::GAME)?;
-            let path = install.join("Game").join("ATTRIBUTES.rez");
-            if !path.is_file() {
-                return None;
-            }
-            let attrs = open_attributes(&path)
-                .map_err(|e| info!("Combat Arms: built-in data only: {e}"))
-                .ok()?;
-            Some(attrs)
-        })
-        .as_ref()
-}
-
-/// The server's `ReloadCheckTime` (attribute_data.md Corrections 3): the
-/// install's `[TimeWeight]`, else the built-in 0.8.
-pub fn reload_check_time() -> f64 {
-    install_attributes()
-        .and_then(|a| a.time_weight)
-        .map_or(ServerTimeWeight::BUILT_IN, |t| t.reload_check_time)
 }
 
 /// Read an install's `ATTRIBUTES.rez` with the configured keys. `Err`
@@ -666,54 +578,6 @@ fn is_install_name(name: &str, id: &str) -> bool {
     }
 }
 
-/// Our weapon document for an install weapon `Name` (`is_install_name`:
-/// the mission files' objective weapons, missions.md F3), if the set has
-/// it.
-pub fn weapon_for_name(name: &str) -> Option<&'static str> {
-    weapon_set()
-        .weapons
-        .iter()
-        .find(|w| w.id.strip_prefix("combat_arms:").is_some_and(|id| is_install_name(name, id)))
-        .map(|w| w.id.as_str())
-}
-
-/// Our weapon document for an install weapon record's index (the mission
-/// files' weapon ids: Arms Race ladders, the infected's and the agent's
-/// loadouts), with the V1 key; None without the install or a document
-/// for it.
-pub fn weapon_for_index(index: i32) -> Option<&'static str> {
-    let weapons = install_attributes()?.weapons.as_ref()?;
-    let name = &weapons.weapons.get(usize::try_from(index).ok()?)?.name;
-    weapon_for_name(name)
-}
-
-/// The IDs of our own weapon documents (the weapons a player is given:
-/// `inventory`, the modes, the bots). The models a map loads are theirs
-/// only: the install adds some 2,000 weapons, too many to load per map.
-pub fn builtin_weapon_ids() -> &'static std::collections::HashSet<String> {
-    static IDS: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
-    IDS.get_or_init(|| {
-        WEAPON_DATA
-            .iter()
-            .filter_map(|(_, text)| {
-                let t = text.parse::<Table>().ok()?;
-                // A detonator is never seen in a hand (no held model).
-                if t.get("hooks").and_then(|h| h.get(super::special::CONTROLLER)).is_some() {
-                    return None;
-                }
-                doc_id(&t).map(String::from)
-            })
-            .collect()
-    })
-}
-
-/// The install's record of weapon `id` (ours or one merged from the
-/// install: `combat_arms:<slug of its Name>`), when the install's
-/// weapons file was read.
-pub fn install_weapon(id: &str) -> Option<&'static WeaponRecord> {
-    install_weapon_in(install_attributes()?.weapons.as_ref()?, id)
-}
-
 /// Weapon `id`'s record in `file` (the merge's match: `combat_arms:` and
 /// the slug of its `Name`).
 pub fn install_weapon_in<'a>(file: &'a WeaponsFile, id: &str) -> Option<&'a WeaponRecord> {
@@ -967,19 +831,21 @@ pub fn merge_movement(data: &mut MovementData, models: &ModelsFile) {
     fig.stiff_duration = f.stiff_duration as f32;
 }
 
-/// Combat Arms' data, loaded as the game starts (so a bad file fails at
-/// once, not at the first weapon given).
+/// Combat Arms' data (`CaData`), loaded as the game starts (so a bad file
+/// fails at once, not at the first weapon given). Keeps the `CaData` the
+/// app already has (a harness's, a minigame's), else inserts the default.
 pub struct CaDataPlugin;
 
 impl Plugin for CaDataPlugin {
-    fn build(&self, _app: &mut App) {
-        weapon_set();
+    fn build(&self, app: &mut App) {
+        CaData::of(app).weapon_set();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::weapon::data::WeaponSet;
 
     /// Every file in data/weapons is built in (`WEAPON_DATA`), as it is
     /// on disk.
@@ -1001,13 +867,13 @@ mod tests {
         for (name, text) in WEAPON_DATA.iter().filter(|(n, _)| n.starts_with("placeholder_")) {
             assert!(text.contains("PLACEHOLDER"), "{name}: no PLACEHOLDER note");
         }
-        // The built-in documents parse on their own; `weapon_set()` is
-        // process-wide and may already hold the install's merged set
-        // (another test in this binary loaded it first).
+        // The built-in documents parse on their own and `CaData::builtin()`
+        // holds them.
         let builtin = WeaponSet::parse(WEAPON_DATA, &[]).unwrap();
         assert_eq!(builtin.weapons.len(), WEAPON_DATA.len());
-        for id in builtin_weapon_ids() {
-            assert!(weapon_set().get(id).is_some(), "{id}");
+        let data = CaData::builtin();
+        for id in data.builtin_weapon_ids() {
+            assert!(data.weapon_set().get(id).is_some(), "{id}");
         }
     }
 

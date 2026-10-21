@@ -405,7 +405,7 @@ fn case_57_an_item_expiring_during_a_match_changes_nothing_until_it_is_over() {
 #[test]
 fn every_item_stands_on_one_of_our_weapons() {
     let c = catalog();
-    let set = combat_arms::game::data::weapon_set();
+    let set = combat_arms::game::data::CaData::builtin_static().weapon_set();
     let ids: Vec<String> = set.weapons.iter().map(|d| d.id.clone()).collect();
     for i in c.items.values().filter(|i| i.kind.weapon()) {
         let w = i.weapon.as_ref().unwrap_or_else(|| panic!("{} has a weapon", i.name));

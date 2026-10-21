@@ -114,6 +114,7 @@ pub struct CaMusicPlayPlugin;
 
 impl Plugin for CaMusicPlayPlugin {
     fn build(&self, app: &mut App) {
+        crate::game::data::CaData::of(app);
         app.init_resource::<Playback>()
             .add_systems(Update, loading_flag.before(CaMusicSet))
             .add_systems(
@@ -132,12 +133,12 @@ fn loading_flag(loading: Option<Res<super::loading::CaLoading>>, mut flag: ResMu
 }
 
 /// Find the install's music once.
-fn scan(mut pb: ResMut<Playback>, mut music: ResMut<CaMusic>) {
+fn scan(mut pb: ResMut<Playback>, mut music: ResMut<CaMusic>, data: Res<crate::game::data::CaData>) {
     if pb.scanned {
         return;
     }
     pb.scanned = true;
-    if crate::game::data::builtin_only() {
+    if data.builtin_only() {
         return;
     }
     let Some(install) = INFO.install() else { return };
@@ -300,6 +301,7 @@ fn play_ambient(
     ambient: Res<CaAmbient>,
     objects: Res<CaObjects>,
     volumes: Res<CaVolumes>,
+    data: Res<crate::game::data::CaData>,
     me: Query<&Transform, With<LocalPlayer>>,
     mut bank: Option<ResMut<SoundBank>>,
     mut control: MessageWriter<SoundControl>,
@@ -316,7 +318,7 @@ fn play_ambient(
         pb.ambient.remove(&id);
         control.write(SoundControl::Stop(SoundKey(AMBIENT_KEYS | id as u64)));
     }
-    let mount = library::install_mount();
+    let mount = data.mount();
     for s in ambient.live() {
         // An ambient sound is centred and falls off by its gain; a placed
         // one has Chimera's radius level to do that.

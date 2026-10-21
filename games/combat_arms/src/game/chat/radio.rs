@@ -102,8 +102,8 @@ impl RadioData {
     }
 
     /// The install's radio file when it can be read, else ours.
-    pub fn load() -> Self {
-        if !crate::game::data::builtin_only()
+    pub fn load(data: &crate::game::data::CaDataInner) -> Self {
+        if !data.builtin_only()
             && let Some(mount) = crate::game::INFO.mount()
             && let Ok(bytes) = mount.read(FILE)
         {

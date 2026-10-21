@@ -107,16 +107,15 @@ pub struct CaRadarRound {
 #[derive(Resource, Clone, Copy)]
 pub struct RadarImageSource(pub fn(&str, &str) -> Option<MapImage>);
 
-impl Default for RadarImageSource {
-    fn default() -> Self {
-        Self(install_image)
+impl RadarImageSource {
+    /// The install's mission files, unless `data` reads nothing of the
+    /// install.
+    pub fn for_data(data: &super::data::CaDataInner) -> Self {
+        Self(if data.builtin_only() { |_, _| None } else { install_image })
     }
 }
 
 fn install_image(map: &str, mode: &str) -> Option<MapImage> {
-    if super::data::builtin_only() {
-        return None;
-    }
     let mount = super::INFO.mount()?;
     mission::image_of(&mount, map, mode)
 }
@@ -163,10 +162,13 @@ pub struct CaRadarPlugin;
 
 impl Plugin for CaRadarPlugin {
     fn build(&self, app: &mut App) {
+        if !app.world().contains_resource::<RadarImageSource>() {
+            let source = RadarImageSource::for_data(&super::data::CaData::of(app));
+            app.insert_resource(source);
+        }
         app.init_resource::<CaRadarProfile>()
             .init_resource::<CaWorldOffset>()
             .init_resource::<CaRadarRound>()
-            .init_resource::<RadarImageSource>()
             .init_resource::<CaScans>()
             .init_resource::<scan::CaDetectors>()
             .add_plugins(CaScannerHook)

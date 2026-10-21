@@ -322,9 +322,9 @@ pub fn respawn_wait(data: &GearData, perks: &CaPerks) -> Option<f32> {
 
 /// A weapon's `Guntype` (weapon_classes.md): the install's record, else
 /// our built-in weapons'.
-pub fn gun_type(id: &str) -> Option<i32> {
+pub fn gun_type(data: &super::data::CaDataInner, id: &str) -> Option<i32> {
     let short = id.strip_prefix("combat_arms:").unwrap_or(id);
-    if let Some(r) = super::data::install_weapon(short) {
+    if let Some(r) = data.install_weapon(short) {
         return Some(r.gun_type);
     }
     Some(match short {
@@ -372,6 +372,7 @@ pub struct CaPerksPlugin;
 
 impl Plugin for CaPerksPlugin {
     fn build(&self, app: &mut App) {
+        super::data::CaData::of(app);
         app.init_resource::<CaPerksEnabled>()
             .init_resource::<CaPerkRng>()
             .add_message::<Damage>()
@@ -736,7 +737,7 @@ fn tick_one(world: &mut World, data: &GearData, e: Entity, now: f64, dt: f32, ro
     let stamina = world.get::<CaMovement>(e).map_or(0.0, |m| m.stamina);
     let sprinting = world.get::<MovementState>(e).is_some_and(|s| s.sprinting);
     let zoomed_sniper = active_weapon(world, e).is_some_and(|w| {
-        world.get::<CaZoom>(w).is_some_and(|z| z.zoomed()) && world.get::<Weapon>(w).is_some_and(|x| gun_type(x.id) == Some(SNIPER))
+        world.get::<CaZoom>(w).is_some_and(|z| z.zoomed()) && world.get::<Weapon>(w).is_some_and(|x| gun_type(world.resource::<super::data::CaData>(), x.id) == Some(SNIPER))
     });
     let thrown_in_hand = active_weapon(world, e).is_some_and(|w| world.get::<Throwable>(w).is_some());
     let giver_gone = |w: &World, g: Entity| w.get_entity(g).is_err();
@@ -927,7 +928,7 @@ fn resourceful(world: &mut World, data: &GearData, killer: Entity, victim: Entit
     }
     let held = active_weapon(world, killer);
     let weapon_id = d.damage.weapon.or_else(|| held.and_then(|h| world.get::<Weapon>(h).map(|w| w.id)));
-    if !weapon_id.and_then(gun_type).is_some_and(resourceful_weapon) {
+    if !weapon_id.and_then(|id| gun_type(world.resource::<super::data::CaData>(), id)).is_some_and(resourceful_weapon) {
         return;
     }
     let probability = value(data, RESOURCEFUL, "DropProbability", level) as u32;
@@ -1180,7 +1181,7 @@ fn supply_frame(world: &mut World, point: Entity, now: f64, rounds: u32, players
             continue;
         }
         let Some(w) = active_weapon(world, p) else { continue };
-        let Some(ty) = world.get::<Weapon>(w).and_then(|x| gun_type(x.id)) else { continue };
+        let Some(ty) = world.get::<Weapon>(w).and_then(|x| gun_type(world.resource::<super::data::CaData>(), x.id)) else { continue };
         let Some(time) = charge_time(ty) else { continue };
         let Some(m) = world.get::<Magazine>(w) else { continue };
         let (total, max) = ammo_of(m);

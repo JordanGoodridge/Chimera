@@ -347,7 +347,8 @@ pub fn load(
     let mut m = model::convert_at(&loaded, VIEW_SCALE, &skin_of(skins), model::VIEW_SAMPLE_FPS);
     // Its pieces' render styles: the install weapon's `PVRenderStyle#`
     // (view_models.md 2; none without it: the default style).
-    let styles = super::data::install_weapon(key).map_or(&[][..], |r| &r.pv_render_styles[..]);
+    let ca = super::data::CaData::install();
+    let styles = ca.install_weapon(key).map_or(&[][..], |r| &r.pv_render_styles[..]);
     for (mesh, lod) in m.meshes.iter_mut().zip(model::drawn_lods(&loaded.model)) {
         super::render_style::apply(mesh, super::render_style::of_list(styles, lod.render_style));
     }
@@ -442,7 +443,7 @@ pub fn load_hands(
 /// Every Combat Arms weapon's view model that loads, into `map` (a
 /// warning for each that doesn't), with the default character's hands
 /// when they read.
-pub fn add_view_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+pub fn add_view_models(map: &mut MapData, data: &super::data::CaDataInner, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let choice = hands::choose(&hands::builtin(), &hands::HandProfile {
         character: true,
         ..default()
@@ -455,8 +456,8 @@ pub fn add_view_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>
         }
         None => None,
     };
-    let ours = super::data::builtin_weapon_ids();
-    for w in super::data::weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
+    let ours = data.builtin_weapon_ids();
+    for w in data.weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
         let Some(path) = w.models.view.as_deref() else { continue };
         let offset = w.models.view_offset.unwrap_or_default();
         match load(path, &w.id, &w.models.view_skins, offset, map, file) {

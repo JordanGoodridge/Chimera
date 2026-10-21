@@ -146,10 +146,11 @@ use serde::{Deserialize, Serialize};
 
 use self::{
     driver::{Driver, Inputs, Status},
-    records::Selection,
+    records::{CharacterData, Selection},
     skeleton::{Posed, Rig},
 };
 use super::{
+    data::CaData,
     movement::CaMovement,
     rules::spawns::CaProtected,
     weapons::{CaSpread, FEMALE, HitSpheres, Location, MALE, zoom::CaZoom},
@@ -246,7 +247,7 @@ impl CaAnim {
     /// The posed skeleton now, with aim (`server`: the server's shares).
     pub fn posed(&self, crouch: f32, squash: f32, server: bool) -> Posed {
         let d = &self.driver;
-        let skel = records::data().skeleton(self.skeleton);
+        let skel = records::builtin().skeleton(self.skeleton);
         let mut posed = match &self.rig {
             Some(rig) => {
                 let pose = if self.death.is_some() {
@@ -333,6 +334,7 @@ pub struct CaCharactersPlugin;
 
 impl Plugin for CaCharactersPlugin {
     fn build(&self, app: &mut App) {
+        CaData::of(app);
         app.add_message::<WeaponEvent>()
             .add_message::<Damage>()
             .add_message::<Died>()
@@ -423,6 +425,7 @@ fn send_look(
 fn receive_looks(
     mut requests: MessageReader<FromClient<CaLookRequest>>,
     clients: Query<(), With<Player>>,
+    data: Res<CaData>,
     mut commands: Commands,
 ) {
     for r in requests.read() {
@@ -430,7 +433,7 @@ fn receive_looks(
         if clients.get(client).is_err() {
             continue;
         }
-        match records::data().validated(r.message.0) {
+        match data.characters().validated(data.gear(), r.message.0) {
             Some(look) => {
                 commands.entity(client).insert(CaClientLook(look));
             }
@@ -445,8 +448,8 @@ fn unit() -> f32 {
 }
 
 /// The selection's body record, skeleton and rig.
-fn body_of(look: &Selection) -> (i32, usize, Option<Arc<Rig>>) {
-    let (record, _) = records::data().effective(look);
+fn body_of(data: &CaData, look: &Selection) -> (i32, usize, Option<Arc<Rig>>) {
+    let (record, _) = data.characters().effective(look);
     (record.id, record.skeleton, models::rig(&record.file))
 }
 
@@ -503,7 +506,7 @@ fn wear_looks(
         } else if let Some(sent) = sent {
             sent
         } else if bot && look.is_none() {
-            records::data().bot_look(look_seed(name, e))
+            records::builtin().bot_look(look_seed(name, e))
         } else {
             continue;
         };
@@ -517,12 +520,13 @@ fn wear_looks(
 /// changed selection, a new driver (a new body file).
 #[allow(clippy::type_complexity)]
 fn setup(
+    data: Res<CaData>,
     characters: Query<(Entity, Option<&Selection>, Option<&CaAnim>), (With<Intent>, With<MovementState>)>,
     mut commands: Commands,
 ) {
     for (e, look, anim) in &characters {
         let look = look.copied().unwrap_or_default();
-        let (body, skeleton, rig) = body_of(&look);
+        let (body, skeleton, rig) = body_of(&data, &look);
         let same = anim.is_some_and(|a| a.body == body && a.rig.as_ref().map(Arc::as_ptr) == rig.as_ref().map(Arc::as_ptr));
         if !same {
             let table = if skeleton == 1 { *FEMALE } else { *MALE };
@@ -587,6 +591,7 @@ fn axes(yaw: f32) -> (Vec3, Vec3) {
 fn die(
     mut died: MessageReader<Died>,
     mut characters: Query<(&mut CaAnim, &Transform, &Intent, Option<&CaPose>, Option<&CaMovement>, &Selection)>,
+    catalog: Res<crate::weapon::data::WeaponCatalog>,
     clock: Res<SimClock>,
     authoritative: Option<Res<NetRole>>,
     mut commands: Commands,
@@ -598,7 +603,7 @@ fn die(
         };
         let yaw = pose.map_or(intent.yaw, |p| p.body_yaw);
         let (forward, right) = axes(yaw);
-        let kind = death::kind_of(d.damage.kind, d.damage.weapon);
+        let kind = death::kind_of(&catalog, d.damage.kind, d.damage.weapon);
         let location = location_of(d.damage.hitgroup);
         // Quirk 6 (Open question 21): a fresh C-library generator seeded
         // with the clock in whole seconds, one draw.
@@ -707,6 +712,7 @@ pub const FLOOR_RAY: f32 = 10_000.0;
 /// only; others follow the server's `CaAnimNet`), then its pose.
 #[allow(clippy::type_complexity)]
 fn drive(
+    data: Res<CaData>,
     clock: Res<SimClock>,
     role: Option<Res<NetRole>>,
     server_time: Option<Res<ClientClock>>,
@@ -756,7 +762,7 @@ fn drive(
             {
                 anim.driver.start_emote(name);
             }
-            let inputs = inputs(&mut anim, intent, movement, weapon, protected, r, !client, clock.now);
+            let inputs = inputs(data.characters(), &mut anim, intent, movement, weapon, protected, r, !client, clock.now);
             anim.driver.update(ms, &inputs);
             // The aim: pitch from the look, the twist from the body yaw.
             anim.pitch = skeleton::clamp_aim(-intent.pitch);
@@ -809,6 +815,7 @@ fn wrap(a: f32) -> f32 {
 /// flag (cleared only while use is held); a client's own body's is masked
 /// by its weapon being in a firing state (not reloading, not empty).
 fn inputs(
+    characters: &CharacterData,
     anim: &mut CaAnim,
     intent: &Intent,
     movement: Option<&CaMovement>,
@@ -818,7 +825,7 @@ fn inputs(
     server: bool,
     now: f64,
 ) -> Inputs {
-    let look = records::data().weapon(weapon.map(|w| w.0.id));
+    let look = characters.weapon(weapon.map(|w| w.0.id));
     let reloading = weapon.and_then(|w| w.1).is_some_and(|s| s.reloading());
     let empty = weapon.and_then(|w| w.2).is_some_and(|m| m.clip == 0);
     let magazine = weapon.is_some_and(|w| w.2.is_some());
@@ -872,7 +879,7 @@ fn inputs(
 
 /// The pose's results in the character's frame.
 pub fn pose_of(anim: &CaAnim, posed: &Posed, body_yaw: f32, squash: f32) -> CaPose {
-    let skel = records::data().skeleton(anim.skeleton);
+    let skel = records::builtin().skeleton(anim.skeleton);
     let body = |p: Vec3| skeleton::to_body(p, posed.feet);
     let left_foot = if anim.rig.is_some() {
         posed.node("Left_foot").map(|j| posed.globals[j].0)
@@ -962,7 +969,7 @@ fn bodies(
     *round = Some(restarts.0);
     let delay = settings
         .and_then(|s| super::rules::mode_by_key(&s.mode))
-        .and_then(|m| records::data().body_removal(m.module));
+        .and_then(|m| records::builtin().body_removal(m.module));
     for (e, mut b) in &mut bodies {
         if new_round {
             commands.entity(e).despawn();
@@ -986,6 +993,7 @@ fn bodies(
 /// (camouflage, a teammate's mark), and hold their weapon (`Held`).
 #[allow(clippy::type_complexity)]
 fn dress(
+    data: Res<CaData>,
     models: Option<Res<CharacterModels>>,
     characters: Query<(
         Entity,
@@ -1003,7 +1011,7 @@ fn dress(
     let Some(models) = models else { return };
     let mine = local.iter().next().flatten().copied();
     for (e, look, team, (name, number, skin), inventory, held) in &characters {
-        let Some((want, body)) = models::drawn(look) else { continue };
+        let Some((want, body)) = models::drawn(&data, look) else { continue };
         if !models.0.iter().any(|m| m.name.as_deref() == Some(want.as_str())) {
             continue;
         }

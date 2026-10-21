@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use chimera_core::core::Team;
 use chimera_world::{harness::Sim, map::MapSimPlugin};
 use combat_arms::game::{
-    missions::{self, CaMission},
+    missions::CaMission,
     movement,
     objects::{CaObjects, runtime::Kind},
     rules::CaRuleSettings,
@@ -26,7 +26,7 @@ fn a_map_started_on_plays_its_mission() {
             return;
         }
     };
-    if missions::install().is_none_or(|i| i.index.paths.is_empty()) {
+    if combat_arms::game::data::CaData::install().missions().is_none_or(|i| i.index.paths.is_empty()) {
         eprintln!("skipping: no mission data (GMS.rez needs the V1 key)");
         return;
     }

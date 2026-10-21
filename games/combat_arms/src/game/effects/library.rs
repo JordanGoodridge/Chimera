@@ -93,16 +93,6 @@ pub fn normalize(path: &str) -> String {
     path.replace('\\', "/").to_lowercase()
 }
 
-/// The install's mount, opened once per process (None without an install
-/// or in the scenario tests' built-in-only mode).
-pub fn install_mount() -> Option<Arc<Mount>> {
-    static MOUNT: OnceLock<Option<Arc<Mount>>> = OnceLock::new();
-    if super::super::data::builtin_only() {
-        return None;
-    }
-    MOUNT.get_or_init(|| super::super::INFO.mount().map(Arc::new)).clone()
-}
-
 /// The particle material name of a texture drawn with `blend`.
 pub fn material_name(texture: &str, additive: bool) -> String {
     format!("ca_fx:{}|{}", normalize(texture), if additive { "add" } else { "alpha" })
@@ -169,15 +159,15 @@ pub fn wanted_groups(tables: &CaFxTables, weapons: &[CaWeaponFx], view_muzzles: 
 /// The effects' part of a map from the install: the effect file (once),
 /// the wanted groups' textures as particle materials, the surface types
 /// on the drawn meshes. `world` is the map's world file.
-pub fn add_to_map(map: &mut MapData, world: &World, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+pub fn add_to_map(map: &mut MapData, data: &super::super::data::CaDataInner, world: &World, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     tag_surfaces(map, world);
-    add_looks(map, file);
+    add_looks(map, data, file);
 }
 
 /// The effects' part of any map, a world file or not (another game's map
 /// in a mashup, `world::dress`): the effect file (once) and the wanted
 /// groups' textures as the map's particle materials.
-pub fn add_looks(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+pub fn add_looks(map: &mut MapData, data: &super::super::data::CaDataInner, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let fx = match load_fx_file(file) {
         Ok(f) => f,
         Err(e) => {
@@ -186,7 +176,7 @@ pub fn add_looks(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
             return;
         }
     };
-    let set = super::super::data::weapon_set();
+    let set = data.weapon_set();
     let weapons: Vec<CaWeaponFx> = set.weapons.iter().filter_map(|w| w.hook(EFFECTS)).collect();
     let muzzles: Vec<String> = set
         .weapons

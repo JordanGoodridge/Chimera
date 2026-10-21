@@ -529,15 +529,13 @@ pub fn hud_metres(units: f32, data: &MovementData) -> u32 {
     (units / data.hud_units_per_metre).floor().max(0.0) as u32
 }
 
-/// The movement data, parsed once per process, with the install's
-/// attribute data over it when it can be read (`data::with_install_movement`).
-/// Bad data panics (the tests load it).
+/// The built-in movement data (a read-only table, parsed once; the
+/// install's body type is over it in `CaData::movement`, which the app's
+/// `MovementData` resource holds). Bad data panics (the tests load it).
 pub fn movement_data() -> &'static MovementData {
     static DATA: OnceLock<MovementData> = OnceLock::new();
     DATA.get_or_init(|| {
-        super::data::with_install_movement(
-            toml::from_str(MOVEMENT_DATA).unwrap_or_else(|e| panic!("data/movement.toml: {e}")),
-        )
+        toml::from_str(MOVEMENT_DATA).unwrap_or_else(|e| panic!("data/movement.toml: {e}"))
     })
 }
 
@@ -547,7 +545,8 @@ pub struct CaMovementPlugin;
 
 impl Plugin for CaMovementPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(movement_data().clone())
+        let movement = super::data::CaData::of(app).movement().clone();
+        app.insert_resource(movement)
             .insert_resource(Loadout { movement: ID })
             .register_movement::<CaMovement>(ID)
             .add_systems(Predict::Movement, (step, sync_collider).chain())

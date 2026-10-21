@@ -210,6 +210,7 @@ pub fn post_stimuli(
     mut stimuli: ResMut<Stimuli>,
     clock: Res<SimClock>,
     data: Res<BotData>,
+    ca: Res<super::super::data::CaData>,
     mut commands: Commands,
 ) {
     let now = clock.now;
@@ -228,7 +229,7 @@ pub fn post_stimuli(
         if let Ok(mut b) = bots.get_mut(e.owner) {
             // The next round no sooner than the fire animation allows
             // (8.3).
-            let class = super::super::characters::records::data().weapon(Some(w.id)).ani_type;
+            let class = ca.characters().weapon(Some(w.id)).ani_type;
             b.next_shot = now + math::fire_interval_ms(class) as f64 / 1000.0;
             b.aim_offset = None;
             b.release = true;

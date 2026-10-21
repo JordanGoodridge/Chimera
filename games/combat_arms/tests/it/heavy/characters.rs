@@ -32,7 +32,8 @@ fn load(female: bool) -> Option<Rig> {
     }
     let mount = (INFO.open)(&install).unwrap();
     let file = |p: &str| mount.read(p).ok();
-    let record = records::data().model(if female { 7 } else { 0 }).unwrap();
+    let ca = combat_arms::game::data::CaData::install();
+    let record = ca.characters().model(if female { 7 } else { 0 }).unwrap();
     match model::load(&record.file, &file) {
         Ok(l) => Some(Rig::new(l.model, l.list)),
         Err(e) => {
@@ -95,7 +96,7 @@ fn drawn_body_skins_in_its_frame() {
     let mount = (INFO.open)(&install).unwrap();
     let file = |p: &str| mount.read(p).ok();
     let mut map = MapData::default();
-    models::add_character_models(&mut map, &file);
+    models::add_character_models(&mut map, &combat_arms::game::data::CaData::install(), &file);
     let Some(body) = map.characters.iter().find(|c| c.name.as_deref() == Some(models::body_name(0).as_str())) else {
         eprintln!("skipping: no character bodies (V2 key)");
         return;
@@ -164,7 +165,7 @@ fn near(got: Option<Vec3>, want: [f32; 3], what: &str) {
 
 fn aimed(rig: &Rig, pitch: f32, twist: f32, server: bool) -> Posed {
     let mut p = stand(rig, 0.0);
-    p.aim(&records::data().skeleton(0).aim, pitch.to_radians(), twist.to_radians(), server);
+    p.aim(&records::builtin().skeleton(0).aim, pitch.to_radians(), twist.to_radians(), server);
     p
 }
 
@@ -202,7 +203,7 @@ fn t21_male_aim() {
 fn t22_female_aim() {
     let Some(rig) = load(true) else { return };
     let mut p = stand(&rig, 0.0);
-    p.aim(&records::data().skeleton(1).aim, 30f32.to_radians(), 0.0, false);
+    p.aim(&records::builtin().skeleton(1).aim, 30f32.to_radians(), 0.0, false);
     near(p.sphere("Bip01 Head"), [2.95, 24.74, 17.70], "Bip01 Head");
     near(p.sphere("Headfuck"), [4.07, 25.08, 20.87], "Headfuck");
 }
@@ -211,7 +212,7 @@ fn t22_female_aim() {
 fn t23_to_27_sockets() {
     let Some(rig) = load(false) else { return };
     let bind = rig.bind();
-    for s in &records::data().skeleton(0).sockets {
+    for s in &records::builtin().skeleton(0).sockets {
         near(bind.socket(&s.name).map(|p| p.0), s.bind, &s.name);
     }
     near(stand(&rig, 0.0).socket("RightHand").map(|s| s.0), [12.54, 22.90, 19.93], "RightHand stand");
@@ -229,7 +230,7 @@ fn t28_29_32_tables() {
     for female in [false, true] {
         let Some(rig) = load(female) else { return };
         let (bind, lst) = (rig.bind(), single(&rig, "LST", 0));
-        let skel = records::data().skeleton(usize::from(female));
+        let skel = records::builtin().skeleton(usize::from(female));
         for s in skel.spheres.iter().filter(|s| s.radius > 0.0 && !s.absent) {
             near(bind.sphere(&s.name), s.bind.unwrap(), &format!("{} bind", s.name));
             near(lst.sphere(&s.name), s.at.unwrap(), &format!("{} LST", s.name));
@@ -275,12 +276,12 @@ fn t31_33_stand_and_crouch() {
 fn t34_35_counts() {
     let Some(rig) = load(false) else { return };
     let bind = rig.bind();
-    let skel = records::data().skeleton(0);
+    let skel = records::builtin().skeleton(0);
     let found = skel.spheres.iter().filter(|s| s.radius > 0.0 && bind.sphere(&s.name).is_some()).count();
     assert_eq!(found, 33);
     if let Some(f) = load(true) {
         let bind = f.bind();
-        let skel = records::data().skeleton(1);
+        let skel = records::builtin().skeleton(1);
         assert_eq!(skel.spheres.iter().filter(|s| s.radius > 0.0 && bind.sphere(&s.name).is_some()).count(), 35);
     }
 }
@@ -314,7 +315,7 @@ fn unkeyed_bodies_on_the_stock_skeletons() {
         assert_eq!(loaded.model.nodes.len(), nodes, "{path}");
         let rig = Rig::new(loaded.model, loaded.list);
         let bind = rig.bind();
-        let skel = records::data().skeleton(skeleton);
+        let skel = records::builtin().skeleton(skeleton);
         let mut far = 0.0f32;
         for s in skel.spheres.iter().filter(|s| s.radius > 0.0 && !s.absent && s.socket.is_none()) {
             let at = bind.sphere(&s.name).unwrap_or_else(|| panic!("{path}: no node {}", s.name));
@@ -401,10 +402,11 @@ fn default_bodies_wear_face_and_head() {
     }
     let mount = (INFO.open)(&install).unwrap();
     let file = |p: &str| mount.read(p).ok();
-    let data = records::data();
+    let ca = combat_arms::game::data::CaData::install();
+    let data = ca.characters();
     assert!(data.face(0).and_then(|f| f.file.as_ref()).is_some(), "the install's Face0 has a file");
     let mut map = MapData::default();
-    models::add_character_models(&mut map, &file);
+    models::add_character_models(&mut map, &combat_arms::game::data::CaData::install(), &file);
     eprintln!("warnings: {:?}", map.warnings);
     let groups = models::loaded_groups();
     for (id, face_id) in [(0, 0), (7, 4)] {
@@ -496,8 +498,8 @@ fn default_bodies_wear_face_and_head() {
     assert!(data.face(4).and_then(|f| f.hair).is_some());
     // Other players hold their weapon's own third-person model (`HHModel`
     // with its `HHSkin#`), textured, for every weapon players are given.
-    let ours = combat_arms::game::data::builtin_weapon_ids();
-    let with_model: Vec<_> = combat_arms::game::data::weapon_set()
+    let ours = ca.builtin_weapon_ids();
+    let with_model: Vec<_> = ca.weapon_set()
         .weapons
         .iter()
         .filter(|w| ours.contains(&w.id) && w.models.world.is_some())

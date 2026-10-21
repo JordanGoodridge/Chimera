@@ -10,16 +10,28 @@ use crate::game::rules::CaRuleSettings;
 /// Combat Arms' whole simulation (`crate::SimPlugins` with
 /// `game::CombatArmsPlugins`: every part, placeholders included) as the
 /// harness runs it, headless, at the game's tick (`game::TICK_INTERVAL`),
-/// on the built-in data only (`data::use_builtin_data_only`: never the
-/// install's attribute data), with no game mode (`ca_mode none`: the
-/// rules leave the test's characters alone; a mode's tests turn one on,
-/// `with_mode`).
+/// on the built-in data only (`data::CaData::builtin`: never the
+/// install's attribute data; an app's own `CaData` is its resource), with
+/// no game mode (`ca_mode none`: the rules leave the test's characters
+/// alone; a mode's tests turn one on, `with_mode`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CaSim;
 
 impl Plugin for CaSim {
     fn build(&self, app: &mut App) {
-        crate::game::data::use_builtin_data_only();
+        CaSimWith(crate::game::data::CaData::builtin()).build(app);
+    }
+}
+
+/// `CaSim` on `data` instead of the built-in data (tests of an app's own
+/// data: weapon tuning, an install merged by hand). Each app has its own,
+/// so two `Sim`s in one process can differ.
+#[derive(Clone)]
+pub struct CaSimWith(pub crate::game::data::CaData);
+
+impl Plugin for CaSimWith {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(self.0.clone());
         app.add_plugins((crate::SimPlugins, crate::game::CombatArmsPlugins))
             .insert_resource(Time::<Fixed>::from_seconds(crate::game::TICK_INTERVAL));
         app.world_mut().resource_mut::<CaRuleSettings>().mode = "none".into();

@@ -58,8 +58,8 @@ pub const MODE: CaMode = CaMode {
 pub struct CaFistKit;
 
 /// The start weapon: the install's fist, else our knife.
-pub fn start_weapon() -> &'static str {
-    super::super::data::weapon_for_index(FIST).unwrap_or(super::super::inventory::KNIFE)
+pub fn start_weapon(data: &super::super::data::CaDataInner) -> &'static str {
+    data.weapon_for_index(FIST).unwrap_or(super::super::inventory::KNIFE)
 }
 
 fn setup(world: &mut World) {
@@ -71,7 +71,7 @@ fn setup(world: &mut World) {
 fn update(world: &mut World) {
     // The fist only, once the loadout is there.
     let kits: Vec<Entity> = world.query_filtered::<Entity, With<CaFistKit>>().iter(world).collect();
-    let fist = start_weapon();
+    let fist = start_weapon(world.resource::<super::super::data::CaData>());
     for e in kits {
         let ids: Vec<&'static str> = world
             .get::<crate::weapon::Inventory>(e)

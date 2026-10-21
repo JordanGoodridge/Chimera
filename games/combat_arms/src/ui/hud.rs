@@ -722,6 +722,8 @@ struct HudInputs<'w, 's> {
     items: Res<'w, ItemNames>,
     /// The death camera: whom the dead player watches.
     death: Option<Res<'w, crate::game::death_cam::CaDeathCam>>,
+    /// The weapons this app loaded.
+    catalog: Res<'w, crate::weapon::data::WeaponCatalog>,
 }
 
 /// This frame's `CaHud` from the world and the memory.
@@ -797,7 +799,7 @@ fn update(
             crouch: p.3.is_some_and(|i| i.crouch),
             moving: p.4.is_some_and(|m| m.moving),
         };
-        let limits = crate::weapon::data::lookup(id.id).and_then(|d| d.hooks.get(SPREAD_HOOK));
+        let limits = world.catalog.get(id.id).and_then(|d| d.hooks.get(SPREAD_HOOK));
         let (perturb, r) = spread_of(limits, data, n, stance);
         // The firing part's own fraction when it runs on this weapon.
         let r = spread.map_or(r, CaSpread::fraction);
@@ -887,7 +889,7 @@ fn update(
 
     // The weapon panel (D4).
     if let Some((_, (id, _, hud_data, modes, burst, mag, item, _, (trigger, throw, _)))) = weapon {
-        let data = crate::weapon::data::lookup(id.id);
+        let data = world.catalog.get(id.id);
         let bursting = match (modes, burst) {
             (Some(m), Some(b)) if b.mode == m.current && b.count > 0 => Some(b.count),
             _ => None,
@@ -1051,7 +1053,8 @@ impl Plugin for CaHudPlugin {
     fn build(&self, app: &mut App) {
         // The install's UI data over ours (`ui::install`), and the
         // game's HUD panels bound by name when its HUD layout reads.
-        let ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_else(CaUi::installed);
+        let data = crate::game::data::CaData::of(app);
+        let ui = app.world().get_resource::<CaUi>().cloned().unwrap_or_else(|| CaUi::installed(&data));
         let panels = ui.install.as_ref().and_then(|i| i.hud.as_ref()).and_then(install::HudPanels::new);
         let bound = BoundHud::of(&ui);
         app.insert_resource(ui)

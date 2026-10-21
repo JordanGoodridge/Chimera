@@ -22,20 +22,20 @@ pub enum DeathKind {
 /// blasts the blown-off set, an `EndlessFall` volume's damage (its weapon
 /// `volumes::ENDLESS_FALL`) the endless fall, a thrown weapon's lasting
 /// generic damage (a gas grenade's `Poison`) poison; the rest bullet-style.
-pub fn kind_of(kind: crate::core::DamageKind, weapon: Option<&str>) -> DeathKind {
+pub fn kind_of(catalog: &crate::weapon::data::WeaponCatalog, kind: crate::core::DamageKind, weapon: Option<&str>) -> DeathKind {
     use crate::core::DamageKind as K;
     match kind {
         K::Blast => DeathKind::Explosion,
         K::Melee => DeathKind::Melee,
         _ if weapon == Some(super::super::volumes::ENDLESS_FALL) => DeathKind::EndlessFall,
-        K::Generic if weapon.is_some_and(is_thrown) => DeathKind::Poison,
+        K::Generic if weapon.is_some_and(|w| is_thrown(catalog, w)) => DeathKind::Poison,
         _ => DeathKind::Other,
     }
 }
 
 /// A thrown weapon (grenade data).
-fn is_thrown(id: &str) -> bool {
-    super::super::data::weapon_set().get(id).is_some_and(|d| d.has_hook(super::super::grenades::HOOK))
+fn is_thrown(catalog: &crate::weapon::data::WeaponCatalog, id: &str) -> bool {
+    catalog.get(id).is_some_and(|d| d.has_hook(super::super::grenades::HOOK))
 }
 
 /// The C library's generator (the Microsoft LCG) seeded with `seed`,

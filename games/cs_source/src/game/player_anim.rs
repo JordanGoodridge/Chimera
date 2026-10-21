@@ -638,7 +638,7 @@ fn hold_weapons(
             .and_then(|w| weapons.get(w).ok())
             .map(|(w, modes)| {
                 let silenced = modes.is_some_and(|m| m.current == 1)
-                    && crate::weapon::data::lookup(w.id).is_some_and(|d| d.models.world_alt.is_some());
+                    && super::weapons::data(w.id).is_some_and(|d| d.models.world_alt.is_some());
                 if silenced {
                     super::weapons::silenced_key(w.id)
                 } else {

@@ -10,9 +10,11 @@
 //! skins (`merge_install_pieces`); a client's selection is checked by
 //! `CharacterData::validated`.
 
-use std::{collections::HashMap, sync::OnceLock};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+
+use super::super::data::CaDataInner;
 
 /// A body record (`Model#`).
 #[derive(Deserialize, Clone, Debug)]
@@ -281,27 +283,35 @@ pub struct CharacterData {
     /// that names none.
     pub body_render_styles: Vec<String>,
     pub loadouts: Loadouts,
-    pub weapons: HashMap<String, WeaponLook>,
+    pub weapons: BTreeMap<String, WeaponLook>,
     /// Seconds a body stays after its owner respawned, by mode key.
-    pub body_removal: HashMap<String, f32>,
+    pub body_removal: BTreeMap<String, f32>,
     pub skeleton: Vec<SkeletonRecord>,
 }
 
-/// Combat Arms' character data (data/characters.toml).
-pub fn data() -> &'static CharacterData {
-    static DATA: OnceLock<CharacterData> = OnceLock::new();
-    DATA.get_or_init(|| {
+/// The built-in character data without any install, a read-only table
+/// for what the install doesn't change (the skeletons, the bot loadout
+/// pools, the bodies' removal times); what it does (`weapon`,
+/// `effective`, `validated`) comes from the app's `CaData::characters`.
+pub fn builtin() -> &'static CharacterData {
+    super::super::data::CaData::builtin_static().characters()
+}
+
+impl CharacterData {
+    /// Combat Arms' character data (data/characters.toml) with `ca`'s
+    /// install over it (`CaData::characters` keeps it).
+    pub fn load(ca: &CaDataInner) -> Self {
         let mut data: CharacterData =
             toml::from_str(include_str!("../../../data/characters.toml")).expect("data/characters.toml");
-        merge_install_weapons(&mut data);
-        merge_install_pieces(&mut data);
+        merge_install_weapons(&mut data, ca);
+        merge_install_pieces(&mut data, ca);
         for m in &mut data.model {
             if m.render_styles.is_empty() {
                 m.render_styles = data.body_render_styles.clone();
             }
         }
         data
-    })
+    }
 }
 
 /// The install's marks file over our team marks (their textures and
@@ -311,9 +321,8 @@ pub fn data() -> &'static CharacterData {
 /// redirects), each `Hair#` and `Face#` record by its index, its files,
 /// skins, render styles and (a face) `HairIndex` (characters.md sections
 /// 1 and 2); ours not in it stay.
-fn merge_install_pieces(data: &mut CharacterData) {
-    use super::super::data as ca;
-    if let Some(m) = ca::install_attributes().and_then(|a| a.marks.as_ref()) {
+fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
+    if let Some(m) = ca.attributes().and_then(|a| a.marks.as_ref()) {
         if let [enemy, teammate, ..] = &m.textures[..] {
             data.marks.enemy = enemy.clone();
             data.marks.teammate = teammate.clone();
@@ -321,7 +330,7 @@ fn merge_install_pieces(data: &mut CharacterData) {
         data.marks.render_styles = m.render_styles.clone();
     }
     // The attachments file's goggles and backpacks by record index.
-    if let Some(a) = ca::install_attributes().and_then(|a| a.attachments.as_ref()) {
+    if let Some(a) = ca.attributes().and_then(|a| a.attachments.as_ref()) {
         for (list, records) in [(&mut data.goggle, &a.goggles), (&mut data.backpack, &a.backpacks)] {
             for (i, r) in records.iter().enumerate() {
                 let id = i as i32;
@@ -330,7 +339,7 @@ fn merge_install_pieces(data: &mut CharacterData) {
                     name: r.name.clone(),
                     socket: r.socket.clone(),
                     files: r.files.clone(),
-                    skins: ca::skin_paths(&r.skins),
+                    skins: super::super::data::skin_paths(&r.skins),
                     render_styles: r.render_styles.clone(),
                 };
                 match list.iter_mut().find(|g| g.id == id) {
@@ -340,7 +349,7 @@ fn merge_install_pieces(data: &mut CharacterData) {
             }
         }
     }
-    let Some(models) = ca::install_attributes().and_then(|a| a.models.as_ref()) else {
+    let Some(models) = ca.attributes().and_then(|a| a.models.as_ref()) else {
         return;
     };
     // Our body records (`Model#` by id): the install's file, skins,
@@ -374,7 +383,7 @@ fn merge_install_pieces(data: &mut CharacterData) {
             id,
             name: r.name.clone(),
             files: r.files.clone(),
-            skins: ca::skin_paths(&r.skins),
+            skins: super::super::data::skin_paths(&r.skins),
             render_styles: r.render_styles.clone(),
         };
         match data.head.iter_mut().find(|h| h.id == id) {
@@ -388,7 +397,7 @@ fn merge_install_pieces(data: &mut CharacterData) {
             id,
             name: r.name.clone(),
             file: r.files.first().cloned().filter(|f| !f.is_empty()),
-            skins: ca::skin_paths(&r.skins),
+            skins: super::super::data::skin_paths(&r.skins),
             hair: r.hair,
             render_styles: r.render_styles.clone(),
         };
@@ -403,18 +412,17 @@ fn merge_install_pieces(data: &mut CharacterData) {
 /// set with an install record takes its `AniType`, `LowerAniType` and
 /// `HHSkin#` (characters.md's "Third-person weapon model and animation
 /// class"); `HHAniFrame_#` isn't read (our data has none either).
-fn merge_install_weapons(data: &mut CharacterData) {
-    use super::super::data as ca;
-    if ca::install_attributes().is_none() {
+fn merge_install_weapons(data: &mut CharacterData, ca: &CaDataInner) {
+    if ca.attributes().is_none() {
         return;
     }
-    for id in ca::builtin_weapon_ids() {
-        let Some(r) = ca::install_weapon(id) else { continue };
+    for id in ca.builtin_weapon_ids() {
+        let Some(r) = ca.install_weapon(id) else { continue };
         let look = data.weapons.entry(id.clone()).or_default();
         look.ani_type = r.ani_type;
         look.lower_ani_type = r.lower_ani_type;
         if !r.hh_skins.is_empty() {
-            look.skins = ca::skin_paths(&r.hh_skins);
+            look.skins = super::super::data::skin_paths(&r.hh_skins);
         }
         if !r.hh_render_styles.is_empty() {
             look.render_styles = r.hh_render_styles.clone();
@@ -609,10 +617,9 @@ impl CharacterData {
     /// redirect covers (ours: without the install's models file our data
     /// names only face 0); known head pieces the records and the bots'
     /// pool (likewise).
-    pub fn validated(&self, s: Selection) -> Option<Selection> {
+    pub fn validated(&self, gear: &crate::game::gear::records::GearData, s: Selection) -> Option<Selection> {
         // A vest only the gear data knows (gear_perks.md 3) is a valid
         // choice too: it plays as itself and is drawn as the default body.
-        let gear = crate::game::gear::gear_data();
         let base = self.model(s.model).or_else(|| gear.vests.contains_key(&s.model).then(|| self.default_model()))?;
         let known = |ok: bool, id: i32| if ok { id } else { -1 };
         let face_ok = self.face(s.face).is_some() || usize::try_from(s.face).is_ok_and(|f| f < base.faces.len());
@@ -656,11 +663,10 @@ impl CharacterData {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn data_reads() {
-        let d = data();
+        let d = crate::game::data::CaData::builtin();
+        let d = d.characters();
         assert_eq!(d.skeleton.len(), 2);
         for s in &d.skeleton {
             assert_eq!(s.aim.len(), 7);

@@ -248,9 +248,10 @@ pub static DRESSING: MapDressing = MapDressing {
 /// take an unknown surface's).
 pub fn dress(mount: &Mount, map: &mut MapData) {
     let file = |path: &str| mount.read(path).ok();
-    super::effects::library::add_looks(map, &file);
-    super::view_model::add_view_models(map, &file);
-    super::characters::models::add_character_models(map, &file);
+    let data = super::data::CaData::install();
+    super::effects::library::add_looks(map, &data, &file);
+    super::view_model::add_view_models(map, &data, &file);
+    super::characters::models::add_character_models(map, &data, &file);
 }
 
 /// Map `id` (`combat_arms:<name>`, or the bare name) from the install.
@@ -324,7 +325,7 @@ pub fn load_from_with(mount: &Mount, name: &str, options: &MapLoadOptions) -> Re
     let file = |path: &str| mount.read(path).ok();
     let (map, models) = std::thread::scope(|s| {
         let models = s.spawn(|| {
-            super::data::weapon_set();
+            super::data::CaData::install().weapon_set();
             super::characters::models::shared_character_models(&file)
         });
         let map = load_world_with(mount, name, options);
@@ -350,7 +351,7 @@ pub fn load_world_with(mount: &Mount, name: &str, options: &MapLoadOptions) -> R
     let file = |path: &str| mount.read(path).ok();
     let mut map = convert_with(&world, name, scale, &file, options.textures);
     map.warnings.extend(world.warnings.iter().map(|w| format!("{path}: {w}")));
-    super::effects::library::add_to_map(&mut map, &world, &file);
+    super::effects::library::add_to_map(&mut map, &super::data::CaData::install(), &world, &file);
     if let Ok(spec) = std::env::var(super::props::DEV_PROP_VAR) {
         super::props::dev_prop(&world, &mut map, &spec, scale, &file);
     }

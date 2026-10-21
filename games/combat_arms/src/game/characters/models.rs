@@ -36,6 +36,7 @@ use lithtech_formats::ltb;
 
 use super::{
     super::{
+        data::{CaData, CaDataInner},
         model,
         render_style::{self, Style},
         view_model::hands,
@@ -160,8 +161,8 @@ pub fn register_group(group: BodyGroup) {
 /// face, else the body's default, the head piece worn:
 /// `CharacterData::worn_head`, its goggles and backpack); None when no
 /// loaded group has its body.
-pub fn drawn(look: &Selection) -> Option<(String, i32)> {
-    let data = records::data();
+pub fn drawn(ca: &CaData, look: &Selection) -> Option<(String, i32)> {
+    let data = ca.characters();
     let (record, _) = data.effective(look);
     let g = groups().lock().ok()?;
     let group = g.iter().find(|g| g.records.contains(&record.id))?;
@@ -177,9 +178,9 @@ pub fn drawn(look: &Selection) -> Option<(String, i32)> {
 /// The loaded bodies (`LOADED`, one character model per skeleton) and
 /// every third-person weapon of ours into `map` (when they read);
 /// `shared_character_models` once per session.
-pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
+pub fn add_character_models(map: &mut MapData, ca: &CaDataInner, file: &dyn Fn(&str) -> Option<Vec<u8>>) {
     let scale = super::super::movement::movement_data().meters_per_unit;
-    let data = records::data();
+    let data = ca.characters();
     let mut failed = Vec::new();
     let mut skeletons: Vec<usize> = Vec::new();
     for id in LOADED {
@@ -209,8 +210,8 @@ pub fn add_character_models(map: &mut MapData, file: &dyn Fn(&str) -> Option<Vec
         ));
     }
     let Some(hand) = data.skeleton(0).socket("RightHand") else { return };
-    let ours = super::super::data::builtin_weapon_ids();
-    for w in super::super::data::weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
+    let ours = ca.builtin_weapon_ids();
+    for w in ca.weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
         let Some(path) = w.models.world.as_deref() else { continue };
         let look = data.weapon(Some(&w.id));
         match held(path, &w.id, &look, hand, map, file) {
@@ -237,8 +238,9 @@ pub fn shared_character_models(file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Arc<Sh
     cached
         .get_or_insert_with(|| {
             let mut data = MapData::default();
-            add_character_models(&mut data, file);
-            let rigs = records::data()
+            add_character_models(&mut data, &CaData::install(), file);
+            let rigs = CaData::install()
+                .characters()
                 .model
                 .iter()
                 .filter(|r| LOADED.contains(&r.id))
@@ -288,7 +290,8 @@ pub fn append_shared(map: &mut MapData, models: &SharedModels) {
 /// A texture slot's file for a family (2: 0 upper, 1 legs, 2 team mark,
 /// 3 and 4 clan background and emblem: mark 0 without a clan).
 fn slot(record: &ModelRecord, slot: i32, c: i32, teammate: bool) -> String {
-    let data = records::data();
+    let ca = CaData::install();
+    let data = ca.characters();
     let (upper, lower) = data.skins(record, c);
     match slot {
         0 => upper.unwrap_or_default().to_string(),
@@ -365,7 +368,8 @@ fn body_group(
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<MapCharacterModel, String> {
     let base = *records.first().ok_or("no body")?;
-    let data = records::data();
+    let ca = CaData::install();
+    let data = ca.characters();
     let loaded = model::load(&base.file, file)?;
     let base_lods: Vec<(i32, i32)> = model::drawn_lods(&loaded.model).into_iter().map(model::slot_and_style).collect();
     // Chimera's animation set only needs the body's own pose (the
