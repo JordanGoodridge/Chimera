@@ -44,7 +44,8 @@
 //! so no mode has a per-map start track; the perk cues play when the local player's War Cry or Eagle Eye buff begins
 //! (the replicated effects on a client: its free stamina and spread cut, so
 //! Virulent's free stamina plays War Cry's cue too); Arms Race's last-stage event is
-//! derived from the replicated statistics on each client, not sent;
+//! read from the players' `CaLadder` marks, which remote clients aren't
+//! sent (a client hears it only on a listen server), not sent as an event;
 //! "loading reports finished" isn't known, so the loading track is
 //! stopped when the screen closes; a trigger's `OFF` does nothing in
 //! another mode, like `ON`; a late joiner is told when its player
@@ -71,7 +72,7 @@ use super::{
     effects::sounds::CaSound,
     objects::CaObjects,
     perks::{CaPerkEffects, CaPerkState},
-    rules::{CaMatchView, CaRuleSettings, CaStats, Phase, arms_race, objectives::CaObjectives, scoreboard},
+    rules::{CaMatchView, CaRuleSettings, Phase, arms_race, objectives::CaObjectives, scoreboard},
 };
 use crate::{
     console::ConsoleAppExt,
@@ -171,20 +172,18 @@ fn gather(world: &mut World) {
         .then_some(view.round_ends)
         .flatten()
         .map(|t| t - now);
-    let (move_time, ladder, per_step) = {
-        let o = &world.resource::<CaRuleSettings>().objectives;
-        (o.flag_move_time as f64, o.ladder.len(), o.ladder_kills)
-    };
+    let move_time = world.resource::<CaRuleSettings>().objectives.flag_move_time as f64;
     let capture_left = world
         .resource::<CaObjectives>()
         .pole
         .filter(|p| p.team.is_some())
         .map(|p| move_time - (now - p.since));
-    let last_stage = if view.mode == "VWRM" && ladder > 0 {
+    // Arms Race's last stage: the ladder marks each player who reached it.
+    let last_stage = if view.mode == "VWRM" {
         world
-            .query::<&CaStats>()
+            .query::<&arms_race::CaLadder>()
             .iter(world)
-            .filter(|s| arms_race::step(s.kills, per_step, ladder) == ladder - 1)
+            .filter(|l| l.last_stage)
             .count() as u32
     } else {
         0

@@ -24,6 +24,28 @@ pub fn fov_x(fov_y: f32, aspect: f32) -> f32 {
     2.0 * (aspect * (fov_y.to_radians() / 2.0).tan()).atan().to_degrees()
 }
 
+/// The world camera's horizontal FOV (5.2, Open question 14): `FovY`
+/// stays 75°, `FovX` is recomputed from the aspect only when the camera is
+/// reset (client start, each world start); a window change in between
+/// keeps it (the picture stretches). The view model's own projection
+/// takes the live aspect at every draw (`fov_x(PV_FOV_Y, a)`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorldFov {
+    pub fov_x: f32,
+}
+
+impl WorldFov {
+    /// A camera reset at aspect `a`.
+    pub fn reset(a: f32) -> Self {
+        Self {
+            fov_x: fov_x(WORLD_FOV_Y, a),
+        }
+    }
+
+    /// The window changed: nothing until the next reset.
+    pub fn resize(&mut self, _a: f32) {}
+}
+
 /// The view model's camera-space origin (4): `Pos` + the sway (w, h, 0)
 /// + the jiggle j on all three axes (Quirk 2).
 pub fn model_origin(pos: Vec3, sway: (f32, f32), jiggle: f32) -> Vec3 {

@@ -409,6 +409,7 @@ fn install_hud_rest_binds() {
         captures: 0,
         returns: 0,
         mission_points: 0,
+        hunted_ms: 0,
         ping: None,
     };
     let board = CaScoreboard {
@@ -418,6 +419,7 @@ fn install_hud_rest_binds() {
         headers: ["Alpha".into(), "Bravo".into()],
         order: Some(ScoreOrder::Kills),
         ffa: false,
+        mode: None,
         result: Some(RoundResult::Win),
         lists_shown: true,
         sound: None,

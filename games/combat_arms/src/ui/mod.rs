@@ -108,7 +108,26 @@ impl Plugin for CaUiPlugin {
                 m.pressed.push(5);
             }
             Ok(None)
-        });
+        })
+        .add_message::<crate::game::bots::chat::CaBotChat>()
+        .add_systems(Update, bot_chat);
+    }
+}
+
+/// A bot's chat line in the chat box (bots.md 10): "nickname : line", the
+/// line its string-table key resolved, for its team.
+fn bot_chat(
+    mut lines: MessageReader<crate::game::bots::chat::CaBotChat>,
+    ui: Option<Res<CaUi>>,
+    names: Query<(&Name, Option<&crate::core::Team>)>,
+    mut out: MessageWriter<crate::client::chat::ChatLine>,
+) {
+    for l in lines.read() {
+        let line = ui.as_ref().map_or_else(|| l.key.clone(), |ui| ui.strings.resolve(&l.key));
+        let (name, team) = names.get(l.bot).map_or(("bot".to_string(), None), |(n, t)| (n.to_string(), t.copied()));
+        let mut chat = crate::client::chat::ChatLine::plain(format!("{name} : {line}"));
+        chat.1 = team;
+        out.write(chat);
     }
 }
 

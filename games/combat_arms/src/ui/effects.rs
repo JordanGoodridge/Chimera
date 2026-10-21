@@ -29,9 +29,10 @@
 //!
 //! Known shortcuts: lights light what Bevy lights (the lightmapped world
 //! may not show them); decals aren't clipped to their polygon (as the
-//! game's `MarksClip` 0) and lie 0.2 cm off the surface; with several
-//! jitters the largest amplitude counts (the spec says nothing of
-//! overlaps).
+//! game's `MarksClip` 0) and lie 0.2 cm off the surface (their point is
+//! the impact's, 1 u back along the ray: 0.5 u off a wall hit at 60°, Open
+//! question 19); several jitters add up (`CaFx::jitter_at`, Open question
+//! 24).
 
 use std::collections::HashMap;
 
@@ -444,7 +445,8 @@ fn muzzle_flash(
         let (vm, inv) = (p.0, p.1);
         let at = vm.flash_at?;
         let (view, mods) = inv.active.and_then(|w| weapons.get(w).ok())?;
-        let group = pv_muzzle(&tables, &view?.muzzle_fx, mods).to_string();
+        let view = view?;
+        let group = pv_muzzle(&tables, &view.muzzle_fx, &view.flash_hider_fx, mods).to_string();
         Some((vm.clone(), at, group))
     });
     let Some((vm, at, group)) = shown else {

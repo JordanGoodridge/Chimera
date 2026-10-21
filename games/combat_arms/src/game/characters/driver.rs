@@ -258,6 +258,32 @@ impl Default for Rates {
     }
 }
 
+/// The server's reload timer (7, The server's reload; cases 48-50), ms:
+/// none when the weapon's `HHAniFrame_5` is set (`frame` > 0: the
+/// third-person reload animation ends it); else the reload animation's
+/// length `length` over the server's reload rate 1.2 min(r, 2), truncated
+/// to whole ms; 500 ms when the class has no reload animation.
+pub fn server_reload_timer(length: Option<u32>, rate: f32, frame: u32) -> Option<u32> {
+    if frame > 0 {
+        return None;
+    }
+    Some(match length {
+        Some(l) => (l as f64 / (1.2 * rate.min(2.0) as f64)).floor() as u32,
+        None => SERVER_RELOAD_FALLBACK,
+    })
+}
+
+/// The server's reload timer without a reload animation, ms.
+pub const SERVER_RELOAD_FALLBACK: u32 = 500;
+
+/// "Fire held" for the driver (5, Open question 17): the server's is the
+/// frame's raw fire flag (cleared while use is held); a client's own
+/// body's is masked by its weapon being in a firing state (not reloading,
+/// not empty).
+pub fn fire_held(fire: bool, use_key: bool, server: bool, magazine: bool, reloading: bool, empty: bool) -> bool {
+    fire && !use_key && (server || !(magazine && (reloading || empty)))
+}
+
 /// The upper rate (7): L r_w / F for a weapon whose `HHAniFrame` for the
 /// posture is F > 0, else 1.
 pub fn upper_rate(length: u32, rate: f32, frame: u32) -> f32 {
@@ -320,14 +346,20 @@ fn thrown(class: i32) -> bool {
 }
 
 /// The upper-body names of a state (6): the run name and its walk and
-/// sprint variants.
+/// sprint variants. The digit classes (Open question 18): the revolver
+/// (24) and the FAMAS (26) carry their digit on the reload only, the
+/// double barrel (27) and the snowball gun (29) on fire, alt-fire, select
+/// and reload (their alt-fire is their fire).
 pub fn upper_names(class: i32, posture: Posture, dir: Direction) -> (String, Option<String>, Option<String>) {
     let (code, digit) = class_code(class);
+    let all_digit = matches!(class, 27 | 29);
+    let fire_digit = if all_digit { digit } else { "" };
     let d = dir.upper();
     let moving = dir != Direction::None;
     // Sniper select and reload reuse the rifle's.
     let sr = if class == 5 { "RF" } else { code };
     let name = |stance: &str, action: &str, suffix: &str| format!("U{code}{stance}{action}{suffix}");
+    let posture = if all_digit && posture == Posture::AltFire { Posture::Fire } else { posture };
     match posture {
         Posture::Hit => ("D_HIT".into(), None, None),
         Posture::Hit2 => ("D_HITT".into(), None, None),
@@ -342,7 +374,7 @@ pub fn upper_names(class: i32, posture: Posture, dir: Direction) -> (String, Opt
             if knife(class) {
                 (name("R", "Fi", "S"), None, None)
             } else {
-                let suffix = format!("{d}{digit}{part}");
+                let suffix = format!("{d}{fire_digit}{part}");
                 (name("R", "Fi", &suffix), Some(name("W", "Fi", &suffix)), Some(name("RR", "Am", "F")))
             }
         }
@@ -355,7 +387,7 @@ pub fn upper_names(class: i32, posture: Posture, dir: Direction) -> (String, Opt
         }
         Posture::Select | Posture::Reload => {
             let action = if posture == Posture::Select { "Se" } else { "Re" };
-            let digit = if posture == Posture::Reload { digit } else { "" };
+            let digit = if posture == Posture::Reload { digit } else { fire_digit };
             if !moving {
                 (format!("U{sr}RS{action}S{digit}"), None, Some(format!("U{sr}RR{action}S{digit}")))
             } else if class == 1 && posture == Posture::Reload {
@@ -422,6 +454,24 @@ pub struct Driver {
     reload_finished: bool,
     /// The body (file) is new: the next update starts every tracker.
     fresh: bool,
+    /// The emote playing on the upper and lower trackers (9), its entry.
+    pub emote: Option<usize>,
+}
+
+/// The emote menu's choices 1-4 (9: Hunted only; `DT` is disabled).
+pub const EMOTES: [&str; 4] = ["Insult", "Surrender", "Insult_Dance", "Salute"];
+
+/// The hit kick on a remote character (9, case 52): the displayed pitch
+/// offset (radians, upward) of the k-th damage notice since the counter
+/// last restarted, and the counter after it: 0.1 k for k = 1..5, 0.1 (10 -
+/// k) for 6..10; the 11th adds nothing and restarts the counter.
+pub fn hit_kick(count: u32) -> (f32, u32) {
+    let k = count + 1;
+    match k {
+        1..=5 => (0.1 * k as f32, k),
+        6..=10 => (0.1 * (10 - k) as f32, k),
+        _ => (0.0, 0),
+    }
 }
 
 impl Driver {
@@ -442,7 +492,28 @@ impl Driver {
             jump: Jump::None,
             reload_finished: false,
             fresh: true,
+            emote: None,
         }
+    }
+
+    /// Start emote `name` (9): only while aiming with no direction,
+    /// walking or running, and with nothing else emoting; both the upper
+    /// and the lower tracker play it once. False when it can't (or the
+    /// library lacks it: the US male's `Insult` and `Salute`).
+    pub fn start_emote(&mut self, name: &str) -> bool {
+        let quiet = self.last.posture == Posture::Aim
+            && self.last.direction == Direction::None
+            && matches!(self.last.movement, Movement::Walk | Movement::Run);
+        let Some(e) = self.find(name) else { return false };
+        if !quiet || self.emote.is_some() {
+            return false;
+        }
+        for t in [&mut self.upper, &mut self.lower] {
+            t.start(e);
+            t.looping = false;
+        }
+        self.emote = Some(e);
+        true
     }
 
     /// The entry named `name`, if the library has it.
@@ -624,6 +695,25 @@ impl Driver {
         let (lower, crouch) = leg_names(i.legs, movement, direction);
         // Sprint in a direction without legs: nothing started or kept.
         let Some(lower) = lower else { return };
+        // An emote holds both trackers until it is done or the player
+        // moves, fires, reloads, draws or jumps (9).
+        if let Some(e) = self.emote {
+            let quiet = posture == Posture::Aim
+                && direction == Direction::None
+                && matches!(movement, Movement::Walk | Movement::Run);
+            if quiet && self.upper.current == e && !self.done(&self.upper) {
+                self.crouch.multiplier = i.crouch.clamp(0.0, 1.0);
+                self.last = Decided {
+                    class,
+                    posture,
+                    movement,
+                    direction,
+                };
+                return;
+            }
+            self.emote = None;
+            self.fresh = true;
+        }
         let (run, walk, sprint) = upper_names(class, posture, direction);
         let exists = |n: &Option<String>| n.as_deref().and_then(|n| self.find(n));
         let upper = match movement {
@@ -879,6 +969,11 @@ fn build_library(female: bool) -> Arc<AnimList> {
         }
     }
     for n in ["DC_1", "DCH", "DCH_1", "DCB", "DCB_1", "DCBH", "DCBH_1", "DHB_1", "DTB_1", "D_BO_B", "D_BO_L", "D_BO_R", "SD"] {
+        add(n.to_string());
+    }
+    // The emotes the US male library has (9: not `Insult` or `Salute`;
+    // their lengths aren't measured: the kind's default).
+    for n in ["Surrender", "Insult_Dance"] {
         add(n.to_string());
     }
     let mut list = AnimList::default();

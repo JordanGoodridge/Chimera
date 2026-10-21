@@ -130,6 +130,7 @@ fn setup(class: Class, per_press: u32, clip_size: u32) -> Setup {
         shells: false,
         clip_size,
         rates: Rates::default(),
+        ..Setup::default()
     }
 }
 
@@ -1311,4 +1312,239 @@ fn no_muzzle_flash_under_water() {
         assert!(!vm(&sim, p).flash.shown && vm(&sim, p).flash_at.is_none());
         sim.ticks(1);
     }
+}
+
+// ---------------------------------------------------------------------
+// Follow-up cases (Open questions 9-16: cases 33-44).
+
+/// 33. Full-automatic cadence: `fire_0` (105 ms) seen done after 7
+/// advances at 60 fps (116.7 ms a round), 11 at 100 fps (110 ms).
+#[test]
+fn t33_full_automatic_cadence() {
+    let mut r = Run::draw(m4a1(), setup(Class::Primary, 0, 30), 30, 120);
+    r.settle();
+    r.frames(40, FIRE);
+    let at: Vec<u32> = r.shots.iter().map(|s| s.0).collect();
+    assert!(at.len() >= 4, "{at:?}");
+    assert!(at.windows(2).all(|w| w[1] - w[0] == 7), "every 7 updates: {at:?}");
+    // 100 fps.
+    let mut m = ViewMachine::draw(m4a1(), setup(Class::Primary, 0, 30), 7);
+    let mut shots = Vec::new();
+    let (mut clip, mut total) = (30, 120);
+    for n in 0..400u32 {
+        let fire = n >= 150;
+        let out = m.update(&Inputs { clip, total, ..if fire { FIRE } else { NONE } });
+        if out.shot.is_some() {
+            shots.push(n);
+            clip -= 1;
+            total -= 1;
+        }
+        m.advance(0.01);
+    }
+    assert!(shots.windows(2).all(|w| w[1] - w[0] == 11), "every 11 updates at 100 fps: {shots:?}");
+}
+
+/// 34. Dry fire is unreachable: clip 0 with rounds left reloads; with
+/// none, idles; never `dryFire`.
+#[test]
+fn t34_dry_fire_unreachable() {
+    let mut r = Run::draw(m4a1(), setup(Class::Primary, 0, 30), 0, 30);
+    r.frames(120, FIRE);
+    assert!(!r.started("reload").is_empty(), "the automatic reload");
+    assert!(r.started("dryFire").is_empty());
+    let mut r = Run::draw(m92fs(), pistol(), 0, 0);
+    r.settle();
+    r.frames(120, FIRE);
+    assert!(r.started("dryFire").is_empty() && r.shots.is_empty());
+}
+
+/// 35. Holster: no `deselect` in the stock files (an instant switch); a
+/// file with a 400 ms one plays it at 1.0 whatever the draw rate, the
+/// switch waiting for it: done after 401 ms of advance (update 25 at
+/// 60 fps).
+#[test]
+fn t35_holster() {
+    let mut m = ViewMachine::draw(m4a1(), setup(Class::Primary, 0, 30), 7);
+    assert!(!m.holster(), "none in the stock files");
+    let mut anims = (*m4a1()).clone();
+    anims.push(a("deselect", 400, &[]));
+    let mut s = setup(Class::Primary, 0, 30);
+    s.rates.draw = 1.5;
+    let mut m = ViewMachine::draw(Arc::new(anims), s, 7);
+    assert!(m.holster());
+    let mut n = 0;
+    while !m.holstered() {
+        m.update(&Inputs { clip: 30, total: 120, ..NONE });
+        m.advance(F);
+        n += 1;
+        assert!(n < 100);
+    }
+    assert_eq!(n, 25, "seen done on update 25 (416.7 ms)");
+}
+
+/// 36. The double barrel's `reload_1` with a round left; `reload` empty;
+/// other guns always `reload`.
+#[test]
+fn t36_reload_one() {
+    let anims = || {
+        Arc::new(vec![
+            a("select", 500, &[]),
+            a("idle_0", 2000, &[]),
+            a("fire_0", 300, &[(0, "FIRE_KEY")]),
+            a("reload", 2000, &[]),
+            a("reload_1", 1200, &[]),
+        ])
+    };
+    let db = || Setup {
+        double_barrel: true,
+        ..setup(Class::Shotgun, 1, 2)
+    };
+    for (s, clip, want) in [(db(), 1, "reload_1"), (db(), 0, "reload"), (setup(Class::Shotgun, 1, 2), 1, "reload")] {
+        let mut r = Run::draw(anims(), s, clip, 10);
+        r.frames(60, NONE);
+        r.frames(3, RELOAD);
+        assert_eq!(r.started("reload_1").is_empty(), want != "reload_1", "clip {clip}: {:?}", r.starts);
+        assert!(!r.started(want).is_empty(), "clip {clip}: {:?}", r.starts);
+    }
+}
+
+/// 37. The projectile piece: shown at a draw with a round, hidden on the
+/// shot; the hidden pieces hide at the fire sequence's end with nothing
+/// left; a draw empty shows neither.
+#[test]
+fn t37_projectile_piece() {
+    let launcher = || {
+        Arc::new(vec![
+            a("select", 500, &[]),
+            a("idle_0", 2000, &[]),
+            a("fire_0", 300, &[(0, "FIRE_KEY")]),
+            a("reload", 2000, &[]),
+        ])
+    };
+    let s = Setup {
+        ammo_max: 1,
+        ..setup(Class::Special, 1, 1)
+    };
+    let mut r = Run::draw(launcher(), s, 1, 1);
+    r.m.draw_ammo(1, 1);
+    assert!(r.m.pieces.projectile && !r.m.pieces.hidden_list);
+    r.settle();
+    r.frames(2, FIRE);
+    r.frames(60, NONE);
+    assert_eq!(r.shots.len(), 1);
+    assert!(!r.m.pieces.projectile, "hidden on the shot");
+    assert!(r.m.pieces.hidden_list, "total 0 at the fire sequence's end");
+    let mut again = ViewMachine::draw(launcher(), s, 7);
+    again.draw_ammo(0, 0);
+    assert!(!again.pieces.projectile && again.pieces.hidden_list);
+}
+
+/// 38. A hand record's colour variant replaces its whole skin list (skin
+/// 5 of the ghillie hands for model colour 1); colour 0: the plain list.
+#[test]
+fn t38_hand_colour() {
+    let mut table = hands::builtin();
+    let mut ghillie = table.hands[0].clone();
+    let mut coloured = ghillie.skins.clone();
+    coloured.resize(12, String::new());
+    coloured[5] = "CHARS_T_BODY\\CM_Fur_Ghillie_Suit_DE_SD.DTX".into();
+    ghillie.colour_skins.insert(1, coloured);
+    table.hands[0] = ghillie;
+    let pick = |colour: u32| {
+        hands::choose(&table, &HandProfile {
+            colour,
+            ..HandProfile::default()
+        })
+        .unwrap()
+    };
+    assert_eq!(pick(1).skins.get(5).map(String::as_str), Some("CHARS_T_BODY\\CM_Fur_Ghillie_Suit_DE_SD.DTX"));
+    assert_ne!(pick(0).skins.get(5).map(String::as_str), Some("CHARS_T_BODY\\CM_Fur_Ghillie_Suit_DE_SD.DTX"));
+}
+
+/// 40. Projection: the world's horizontal FOV from 75° vertical at the
+/// aspect of the last camera reset; the view model's from 50° at every
+/// draw's aspect.
+#[test]
+fn t40_projection() {
+    let deg = |a: f32, fov: f32| place::fov_x(fov, a);
+    assert!((deg(16.0 / 9.0, 75.0) - 107.51).abs() < 0.01);
+    assert!((deg(16.0 / 9.0, 50.0) - 79.32).abs() < 0.01);
+    assert!((deg(1.25, 50.0) - 60.47).abs() < 0.01);
+    assert!((deg(1.25, 75.0) - 87.61).abs() < 0.01);
+    let mut fov = place::WorldFov::reset(16.0 / 9.0);
+    fov.resize(1.25);
+    assert!((fov.fov_x - 107.51).abs() < 0.01, "kept until the next world start");
+    fov = place::WorldFov::reset(1.25);
+    assert!((fov.fov_x - 87.61).abs() < 0.01);
+}
+
+/// 41. The footing ray: 140 u above a floor can step, 160 u can't.
+#[test]
+fn t41_footing_ray() {
+    use combat_arms::game::view_model::sway::can_step;
+    assert!(can_step(false, false, false, false, Some(140.0)));
+    assert!(!can_step(false, false, false, false, Some(160.0)));
+    assert!(!can_step(false, false, false, false, None));
+    assert!(can_step(false, false, true, true, None), "on the ground");
+    assert!(!can_step(false, false, false, true, Some(10.0)), "jumped");
+    assert!(!can_step(true, true, true, false, Some(1.0)), "on sky");
+}
+
+/// 42. A spectated gun sways by its keys alone (the distance test always
+/// passes): full amplitude 0.1 s after the key, 1.4 cycles a second;
+/// without a key it decays to 0 in 0.1 s.
+#[test]
+fn t42_spectated_sway() {
+    let mut s = Sway::default();
+    let step = |s: &mut Sway, i: usize, moving: bool| {
+        s.step(&SwayInputs {
+            dt: F,
+            clock: i as f64 * F,
+            active: true,
+            run: true,
+            moving,
+            speed: 0.0,
+            spectating: true,
+            weapon: true,
+            zoomed: false,
+            scale: 1.0,
+        });
+    };
+    for i in 1..=7 {
+        step(&mut s, i, true);
+    }
+    assert_eq!(s.amp, 10.0, "full after 0.1 s against a wall");
+    for i in 8..=14 {
+        step(&mut s, i, false);
+    }
+    assert_eq!(s.amp, 0.0);
+}
+
+/// 44. Attached effects: created hidden, shown with the model; a key
+/// hides effect 1 and it stays hidden through a scope until a show key.
+#[test]
+fn t44_attached_effects() {
+    let anims = Arc::new(vec![
+        a("select", 500, &[]),
+        a("idle_0", 2000, &[]),
+        a("fire_0", 300, &[(0, "HIDE_PVATTACHFX 1"), (100, "FIRE_KEY")]),
+        a("postfire", 200, &[(50, "SHOW_PVATTACHFX 1")]),
+    ]);
+    let s = Setup {
+        attach_fx: 5,
+        ..setup(Class::Special, 1, 1)
+    };
+    let mut r = Run::draw(anims, s, 1, 1);
+    assert_eq!(r.m.pieces.fx_shown, vec![false; 5], "created hidden");
+    r.m.set_visible(true);
+    assert_eq!(r.m.pieces.fx_shown, vec![true; 5]);
+    r.settle();
+    r.frames(2, FIRE);
+    r.frames(6, NONE);
+    assert!(!r.m.pieces.fx_shown[1], "hidden by the key");
+    r.m.set_visible(false);
+    r.m.set_visible(true);
+    assert!(!r.m.pieces.fx_shown[1], "still hidden after a scope");
+    r.frames(30, NONE);
+    assert!(r.m.pieces.fx_shown[1], "shown by the key");
 }

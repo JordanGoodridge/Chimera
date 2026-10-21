@@ -410,7 +410,7 @@ fn t23_silencer_flash() {
     let c = mods(&["Silencer_C_AR"], 2000, 1400);
     let a = mods(&["Silencer_A_AR"], 2000, 1400);
     assert_eq!(effects::hh_muzzle(t(), &m4, Some(&c)), "Silenced01_HH_Muzz", "a group the file lacks: nothing");
-    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", Some(&c)), "Silenced01_PV_Muzz");
+    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", &[], Some(&c)), "Silenced01_PV_Muzz");
     assert_eq!(effects::hh_muzzle(t(), &m4, Some(&a)), "WEAPON_HH");
     assert_eq!(effects::hh_muzzle(t(), &m4, Some(&mods(&["Silencer_A_AR_Red"], 2000, 1400))), "Silenced01_HH_Muzz");
     for m in [&c, &a] {
@@ -425,7 +425,7 @@ fn t23_silencer_flash() {
 fn t24_own_muzzle() {
     let params: combat_arms::game::view_model::CaViewParams =
         weapon_set().get("combat_arms:m4a1").unwrap().hook(combat_arms::game::view_model::VIEW).unwrap();
-    assert_eq!(effects::pv_muzzle(t(), &params.muzzle_fx, None), "AK47_pv_muzz");
+    assert_eq!(effects::pv_muzzle(t(), &params.muzzle_fx, &[], None), "AK47_pv_muzz");
     assert_eq!(rules::FLASH_TIME, 0.05);
     assert_eq!(t().fire(&wfx("combat_arms:m4a1").fire).unwrap().fx, "test", "the smoke puff's group");
 }
@@ -1075,4 +1075,156 @@ fn grenade_bounce_volume() {
     assert_eq!(effects::bounce_volume(true, 1.0), 50.0, "half in water");
     assert_eq!(effects::bounce_volume(true, 0.5), 25.0);
     assert_eq!(effects::bounce_volume(false, 3.0), 100.0);
+}
+
+/// view_models.md case 43: a muzzle part with `FlashHiderLevel` 2 on a
+/// weapon with `PVFlashHiderFXName2` = G takes G; without that key no
+/// first-person flash at all.
+#[test]
+fn view_models_43_flash_hider() {
+    let mut c = mods(&["Silencer_C_AR"], 2000, 1400);
+    let slot = c.parts.iter().position(Option::is_some).unwrap();
+    c.parts[slot].as_mut().unwrap().record.flash_hider_level = 2;
+    let hider = vec![String::new(), String::new(), "G".to_string()];
+    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", &hider, Some(&c)), "G");
+    assert_eq!(effects::pv_muzzle(t(), "AK47_pv_muzz", &[], Some(&c)), "", "no flash");
+}
+
+// ---------------------------------------------------------------------
+// Follow-up cases (Open questions 1, 4, 6, 8, 17-25: cases 40-57).
+
+/// 40. Placement: a socket-attached key (mode 4) follows the socket, its
+/// offset along the socket's forward; a fixed one (mode 0) stays at its
+/// creation point, only its offset turning.
+#[test]
+fn t40_placement_modes() {
+    let turn = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+    let socket = Transform::from_translation(Vec3::new(10.0, 0.0, 0.0)).with_rotation(turn);
+    let offset = Vec3::new(0.0, 0.0, 2.0);
+    let attached = rules::place_key(4, socket, Vec3::ZERO, offset, turn);
+    assert!(attached.distance(Vec3::new(10.0, 0.0, 0.0) + turn * offset) < 1e-5);
+    assert!((attached.distance(socket.translation) - 2.0).abs() < 1e-5, "2 u along the socket's axis");
+    let fixed = rules::place_key(0, socket, Vec3::new(1.0, 0.0, 0.0), offset, turn);
+    assert!(fixed.distance(Vec3::new(1.0, 0.0, 0.0) + turn * offset) < 1e-5);
+}
+
+/// 41. A two-key alpha curve on a 2 s looping key: linear, held after its
+/// last key, starting over.
+#[test]
+fn t41_key_curve() {
+    let keys = [(0.0, 1.0), (0.5, 0.0)];
+    let at = |t: f32| rules::key_curve(&keys, t, 2.0, true, 1.0);
+    assert!((at(0.5) - 0.5).abs() < 1e-5);
+    assert!(at(1.0).abs() < 1e-5);
+    assert!(at(1.5).abs() < 1e-5, "held");
+    assert!((at(2.5) - 0.5).abs() < 1e-5, "again");
+}
+
+/// 42. A cone emitter's start points lie in the cone, most of them in its
+/// wide half.
+#[test]
+fn t42_cone_emitter() {
+    let mut high = 0;
+    let n = 1000;
+    for i in 0..n {
+        let u = [((i * 7919) % 1000) as f32 / 1000.0, ((i * 104729) % 997) as f32 / 997.0, ((i * 31) % 991) as f32 / 991.0];
+        let p = rules::cone_start(10.0, 40.0, u);
+        assert!(p.z >= 0.0 && p.z <= 40.0);
+        assert!(p.truncate().length() <= 10.0 * p.z / 40.0 + 1e-4, "{p}");
+        if p.z > 20.0 {
+            high += 1;
+        }
+    }
+    assert!(high > n / 2, "{high}");
+}
+
+/// 43. A marked particle bounces off its plane, an unmarked one passes.
+#[test]
+fn t43_bounce() {
+    let (p, v) = rules::bounce_step(Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, -100.0, 0.0), 0.05, 0.0, true);
+    assert_eq!(p, Vec3::new(0.0, 1.0, 0.0));
+    assert!((v - Vec3::new(0.0, 75.0, 0.0)).length() < 1e-4);
+    let (p, _) = rules::bounce_step(Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, -100.0, 0.0), 0.05, 0.0, false);
+    assert!(p.y < 0.0);
+}
+
+/// 50. Kill call-outs: `EnemyDown` by the killer; `ManDown` by the
+/// victim's nearest living teammate within 1000 u; none for a team kill.
+#[test]
+fn t50_callouts() {
+    let e = |i: u32| Entity::from_raw_u32(i).unwrap();
+    let alpha = (e(1), 1u8, Vec3::ZERO);
+    let bravo = (e(2), 2u8, Vec3::new(0.0, 0.0, 100.0));
+    let c = (e(3), 2u8, Vec3::new(0.0, 0.0, 900.0));
+    let d = (e(4), 2u8, Vec3::new(0.0, 0.0, 1300.0));
+    assert_eq!(rules::callouts(Some(alpha), bravo, &[alpha, c, d]), (Some(e(1)), Some(e(3))));
+    assert_eq!(rules::callouts(Some(alpha), bravo, &[alpha, d]), (Some(e(1)), None), "C dead");
+    let mate = (e(5), 1u8, Vec3::ZERO);
+    assert_eq!(rules::callouts(Some(alpha), mate, &[alpha]).0, None, "a team kill");
+}
+
+/// 51. A map sound's messages.
+#[test]
+fn t51_map_sound_messages() {
+    let mut s = rules::SoundFxState::created(false);
+    assert!(!s.playing);
+    s.message("TOGGLE");
+    assert!(s.playing);
+    s.message("TOGGLE");
+    assert!(!s.playing);
+    s.message("TRIGGER");
+    s.message("TRIGGER");
+    assert!(s.playing);
+    assert_eq!(s.starts, 3, "restarted from the beginning, one copy");
+}
+
+/// 53. A playing sound's gain follows the listener inside r..R, and keeps
+/// its last value beyond R.
+#[test]
+fn t53_gain_follows_motion() {
+    let (r, big_r) = (100.0, 1000.0);
+    let mut s = rules::PlayingSound::start(500.0, r, big_r, 100.0);
+    assert!((s.gain - rules::gain(500.0, r, big_r, 100.0)).abs() < 1e-6);
+    s.update(900.0);
+    assert!((s.gain - rules::gain(900.0, r, big_r, 100.0)).abs() < 1e-6);
+    let last = s.gain;
+    s.update(1100.0);
+    assert_eq!(s.gain, last, "kept beyond R");
+    s.update(950.0);
+    assert!((s.gain - rules::gain(950.0, r, big_r, 100.0)).abs() < 1e-6);
+}
+
+/// 54. The 256th live sound is refused; none is stopped.
+#[test]
+fn t54_instance_cap() {
+    let mut live = rules::LiveSounds::default();
+    for _ in 0..255 {
+        assert!(live.start());
+    }
+    assert!(!live.start());
+    assert_eq!(live.0, 255);
+}
+
+/// 56. The camera's rise: an 18 u step at 180 u/s (in 0.1 s), a 4 u one
+/// at 140 u/s, a 1 u one at once.
+#[test]
+fn t56_camera_rise() {
+    use combat_arms::game::movement::{CameraRise, movement_data};
+    let d = movement_data();
+    let climb = |step: f32| -> f32 {
+        let mut c = CameraRise::default();
+        c.step(0.0, 0.001, false, d);
+        let mut t: f32 = 0.0;
+        while c.step(step, 0.001, false, d) < step {
+            t += 0.001;
+        }
+        t
+    };
+    // 18 u: the case's 180 u/s for 0.1 s; movement.md (its case 53)
+    // recomputes the speed from the gap every frame: about 0.12 s.
+    assert!((0.09..=0.125).contains(&climb(18.0)), "{}", climb(18.0));
+    // 4 u at 140 u/s: about 29 ms in the case, 21 ms with movement.md's
+    // snap within the last 1 u (ours).
+    assert!((0.02..=0.03).contains(&climb(4.0)), "{}", climb(4.0));
+    assert_eq!(climb(1.0), 0.0);
 }

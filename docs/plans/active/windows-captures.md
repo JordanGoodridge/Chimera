@@ -186,6 +186,47 @@ own client, any map unless named; a screen recording of each is easiest.
 16. **Group 5 textures** (textures_dtx.md Q4): an effect that shows one of
     `FX.rez`'s 28 group-5 textures at a known size (a screenshot close up):
     is it its file's level 0 or one level down? We load level 0.
+17. **Server reload** (characters.md Q2): reload an M4A1 and fire at
+    1.6 s and at 1.9 s after the key (a second client counting shots):
+    both should register (the server's third-person timer, 1555 ms, ends
+    before the client's 2300 ms refill). We end the server's reload pose
+    on that timer.
+18. **Emote legs** (characters.md Q20): in Hunted start `Insult_Dance`
+    standing still and watch from a second client: do the legs dance for
+    the whole animation, or do they snap back to standing? We hold both.
+19. **Plant time on Steam** (game_modes.md Q4): time from pressing fire
+    with the bomb on a site to the "planted" text (3.9 s expected from
+    the older XK-2 files).
+20. **Protected enemy puff** (game_modes.md Q25): shoot a freshly
+    respawned enemy standing in front of a wall: is a surface puff drawn
+    on the enemy? We draw nothing.
+21. **Ties on the scoreboard** (game_modes.md Q31): screenshots of the
+    scoreboard and the round result screen in each mode with two players
+    tied on kills.
+22. **Late joiners** (game_modes.md Q22): in an Elimination Pro room two
+    rounds from the end, try to join from a second account.
+23. **Bot fire with an M-class gun** (bots.md Q3): give a bot an
+    M60-class weapon of `AniType` 8 (or watch one carry it): does it fire
+    at all?
+24. **Stuck bots** (bots.md Q11): on Short Fuse, block a narrow corridor
+    with a crate-sized prop or a teammate and time how long a patrolling
+    bot pushes against it before turning. We plan again and jump after
+    1.5 s.
+25. **Catch breath** (bots.md Q20): let a bot chase you out of sight for
+    its endurance time (12 s on Easy) and time its pause.
+26. **Beyond the outer radius** (effects_sounds.md Q1): stand 2100 units
+    from a firing M4A1 on an open map: silent?
+27. **Light through a thin wall** (effects_sounds.md Q4): a muzzle flash
+    behind a thin wall at medium detail: is the wall's far face lit?
+28. **Unseen footsteps** (effects_sounds.md Q8): stand behind a wall while
+    an enemy runs on the other side: are its steps heard?
+29. **Steam's mission values** (missions.md Q1): Ghost Town Search &
+    Destroy's round timer at the start of round 1 (the Steam mission file
+    reads 120 s, the older client's 180 s), and Quarantine's points
+    (the Steam file: kill 2, infect 1, humans' win 5, infected's 2).
+30. **A 4-unit step** (effects_sounds.md case 56): walk up a 4-unit step
+    while recording at 144 fps: does the camera take about 21 ms
+    (movement.md's snap within the last unit) or 29 ms?
 
 ## What each sitting unlocks
 
@@ -202,4 +243,8 @@ own client, any map unless named; a screen recording of each is easiest.
   spread's turn term, pickup boxes and drop spots, the spent grenade's
   list entry, free-for-all team ids and name tag height; the server's
   frame rate, grenades through bodies, the end-of-round phase, the sky's
-  edge, fullbright textures and group-5 mip skipping.
+  edge, fullbright textures and group-5 mip skipping; the Wave 3
+  follow-ups' live checks (server reload, emote legs, plant time, the
+  protected enemy's puff, scoreboard ties, late joiners, bots' fire,
+  stuck bots and catch breath, sounds beyond R, lights and unseen steps,
+  Steam's mission values, a 4-unit step).

@@ -46,6 +46,10 @@
 
 use std::collections::HashMap;
 
+/// What an `EndlessFall` volume's damage names as its weapon: the
+/// `EndlessFall` damage kind (characters.md 10).
+pub const ENDLESS_FALL: &str = "combat_arms:endless_fall";
+
 use bevy::prelude::*;
 
 use crate::{
@@ -402,7 +406,9 @@ fn volume_damage(
                 dir: Vec3::ZERO,
                 hitgroup: Hitgroup::Generic,
                 kind: v.kind,
-                weapon: None,
+                // The endless fall's own damage kind (characters.md 10:
+                // its death animation `D_W`).
+                weapon: (v.class == "EndlessFall").then_some(ENDLESS_FALL),
                 force: Vec3::ZERO,
             });
         }

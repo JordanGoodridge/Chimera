@@ -656,7 +656,7 @@ fn t10_no_arming_distance() {
     let shooter = player(&mut sim, 0.0, 0.0, std::f32::consts::PI, 0);
     let e = eye(&sim, shooter);
     let at = Vec3::new(e.x / U, e.y / U, e.z / U);
-    let shell = projectile(&mut sim, M32, Some(shooter), at, Vec3::new(0.0, 0.0, 1550.0));
+    let _shell = projectile(&mut sim, M32, Some(shooter), at, Vec3::new(0.0, 0.0, 1550.0));
     let (f, _, _, boom) = until_boom(&mut sim, 1.0);
     sim.ticks(2);
     // Contact (0, y - 0.39, 30), the post-gravity direction (0, -80, 1550).

@@ -7,9 +7,13 @@
 //! (data/modes.toml, `rule_module::parse_settings`) the `ca_*` cvars set
 //! after.
 //!
-//! Known shortcuts: the per-map mission files aren't read (every map has
-//! the stock values: no TDM time limit, 180 s Elimination Pro rounds, a
-//! 10 s warm-up); `ca_goal` takes any value (the lobby's range and step
+//! The per-map mission files are `game::missions`' (their `TimeLimit`,
+//! `TrainingTimeLimit`, objective weapons and mode sections over the
+//! numbers here, which stay the fallback: the stock values of
+//! missions.md); with the install, the single-player host's server file
+//! (`ATTRIBUTES\SERVER.CFG`) sets the phase lengths at start-up.
+//!
+//! Known shortcuts: `ca_goal` takes any value (the lobby's range and step
 //! aren't enforced: 0 is the mode's default); the respawn waits and the
 //! protection run on the game's clock, not the OS millisecond clocks.
 
@@ -37,6 +41,12 @@ pub struct ModeData {
     /// The mission's `TrainingTimeLimit` (s): the warm-up round's length,
     /// for the modes that have one.
     pub training_time_limit: Option<f32>,
+    /// The mission's objective weapons (`JSFWeapon`, `CreedWeapon`: weapon
+    /// `Name`s).
+    #[serde(default)]
+    pub jsf_weapon: Vec<String>,
+    #[serde(default)]
+    pub creed_weapon: Vec<String>,
 }
 
 /// The objectives' numbers (data/modes.toml `[objectives]`): the shared
@@ -80,9 +90,60 @@ pub struct ObjectiveData {
     /// M12: the points a death is worth by the victim's VIP rank (the last
     /// for higher ranks).
     pub vip_points: Vec<i32>,
-    /// M14: the weapon ladder and the kills a step takes.
-    pub ladder: Vec<String>,
-    pub ladder_kills: u32,
+    /// M12 (missions.md F4.7): the VIP tables, (`TargetPoint`, VIPs for a
+    /// team of 1..8).
+    pub vip_tables: Vec<(i32, [i32; 8])>,
+    /// M7: `Stage2PlayTime` and `AgentCameraHoldingTime`, s.
+    pub stage2_time: f32,
+    pub agent_camera_hold: f32,
+    /// M14 (missions.md F4.8): the default ladder's `Percent` and its
+    /// stock steps per goal; our weapon standing in for each stock weapon
+    /// id without the install.
+    pub ladder_percent: i32,
+    pub ladders: Vec<LadderData>,
+    pub stand_ins: BTreeMap<String, String>,
+    /// S12: each box item's pick weights (lose, even, win; items 0..9,
+    /// then the revenge buff's 10).
+    pub mutation_weights: Vec<[u32; 3]>,
+}
+
+/// One stock Arms Race ladder: its goal and steps (kills, weapon id,
+/// weapon type).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LadderData {
+    pub goal: i32,
+    pub steps: Vec<[i32; 3]>,
+}
+
+impl ObjectiveData {
+    /// The stock ladders as the mission files' tables (one candidate of
+    /// weight 100 per step, everyone's: `ItemNo` -1).
+    pub fn ladders(&self) -> Vec<super::super::missions::StepTable> {
+        use super::super::missions::{Step, StepTable};
+        self.ladders
+            .iter()
+            .map(|l| StepTable {
+                goal: l.goal,
+                item_no: -1,
+                percent: self.ladder_percent,
+                steps: l
+                    .steps
+                    .iter()
+                    .map(|[kill, id, kind]| Step {
+                        kill: *kill,
+                        weapon_type: *kind,
+                        candidates: vec![(*id, 100)],
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    /// Our weapon standing in for stock weapon id `id`.
+    pub fn stand_in(&self, id: i32) -> Option<String> {
+        self.stand_ins.get(&id.to_string()).cloned()
+    }
 }
 
 /// Hired Guns' numbers (data/modes.toml `[hired_guns]`; game_modes_2.md
@@ -237,6 +298,14 @@ impl CaRuleSettings {
 /// The settings and their cvars.
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<CaRuleSettings>();
+    // The single-player host's server file (missions.md, The server file):
+    // the phase lengths, over ours (the same values in the stock copy).
+    if let Some(server) = super::super::missions::install().and_then(|i| i.server.clone()) {
+        let mut s = app.world_mut().resource_mut::<CaRuleSettings>();
+        s.object_start = server.object_start as f32;
+        s.object_end = server.object_end as f32;
+        s.mission_end = server.mission_end as f32;
+    }
     // The AI cap from the data; the factor is the console variable's.
     let cap = app.world().resource::<CaRuleSettings>().ai_damage.clone();
     let factor = app.world().get_resource::<CaAiDamage>().map_or(CaAiDamage::default().factor, |a| a.factor);

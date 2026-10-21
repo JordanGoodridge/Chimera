@@ -17,7 +17,9 @@
 //! excepted), the mission weapons and targets of co-op aren't there (the
 //! modes aren't built); Quarantine's infecting kills still leave a death
 //! mark; a player's yaw is its `Intent`'s (the body's turn on a client
-//! that has no intent for it: the transform's).
+//! that has no intent for it: the transform's); Arms Race's last stage
+//! is the server's `arms_race::CaLadder`, which a network client isn't
+//! sent (no last-stage marks there).
 
 use bevy::{ecs::system::SystemParam, prelude::*};
 
@@ -31,7 +33,7 @@ use crate::{
             scan::{self, View},
         },
         rules::{
-            CaMatchView, CaRuleSettings, CaStats, arms_race, bombing_run,
+            CaMatchView, CaStats, arms_race, bombing_run,
             objectives::{CaCarry, CaObjectives, FlagAt},
             objects::CaMapObjects,
             search_destroy,
@@ -151,8 +153,9 @@ pub struct SceneInputs<'w, 's> {
     objects: Option<Res<'w, CaMapObjects>>,
     objectives: Option<Res<'w, CaObjectives>>,
     round: Option<Res<'w, CaRadarRound>>,
-    settings: Option<Res<'w, CaRuleSettings>>,
     screen: Option<Res<'w, super::HudScreen>>,
+    /// Arms Race: each player's place on the ladder (the last stage).
+    ladders: Query<'w, 's, &'static arms_race::CaLadder>,
 }
 
 /// The spec's yaw of a character: its intent's, else its body's.
@@ -217,19 +220,13 @@ pub fn update_scene(inputs: SceneInputs, mut scene: ResMut<CaScene>) {
         fov_v: scan::FOV_VERTICAL,
         aspect: next.aspect,
     });
-    let arms_last = |stats: Option<&CaStats>| -> bool {
-        if mode != "VWRM" {
-            return false;
-        }
-        let Some(o) = inputs.settings.as_ref().map(|s| &s.objectives) else { return false };
-        let kills = stats.map_or(0, |s| s.kills);
-        !o.ladder.is_empty() && o.ladder_kills > 0 && arms_race::step(kills, o.ladder_kills, o.ladder.len()) == o.ladder.len() - 1
-    };
+    // Arms Race: on the ladder's last step (`arms_race::CaLadder`).
+    let arms_last = |e: Entity| mode == "VWRM" && inputs.ladders.get(e).is_ok_and(|l| l.last_stage);
 
     let mut items: Vec<Thing> = Vec::new();
     let mut npcs: Vec<Thing> = Vec::new();
     let mut players: Vec<Thing> = Vec::new();
-    for (e, t, h, team, carry, seen, stats, intent, name, dead, npc, vip) in &inputs.chars {
+    for (e, t, h, team, carry, seen, _stats, intent, name, dead, npc, vip) in &inputs.chars {
         if Some(e) == local {
             continue;
         }
@@ -263,7 +260,7 @@ pub fn update_scene(inputs: SceneInputs, mut scene: ResMut<CaScene>) {
             alive,
             carry: carry.copied().unwrap_or_default(),
             vip,
-            last_stage: arms_last(stats),
+            last_stage: arms_last(e),
             shared_scan: seen.scanned_by(viewer.team),
             contact: match (&my_scan, &scan_view) {
                 (Some(s), Some(v)) => alive && scan::contact(v, t.translation, s.scan_dist),

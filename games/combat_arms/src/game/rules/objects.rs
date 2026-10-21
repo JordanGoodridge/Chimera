@@ -17,6 +17,8 @@
 //! - flag zones (`FlagZoneTrigger`): `Team`, `LinkedFlag`, a box;
 //! - use triggers (`ActivateTrigger`, Seize and Secure's
 //!   `ActivateTrigger_A` and `_B` by `Name`): a box;
+//! - Seize and Secure's flag pole: the object named `FlagPolePos`, its
+//!   position.
 //! - Hired Guns' banks (`BullionSaveTrigger`, game_modes_2.md M11.2):
 //!   `Team` (empty: every team), a box; its mercenaries' spawn objects by
 //!   name (`UNITSPAWN_ALPHA`, `UNITSPAWN_BRAVO`, of any class: the stock
@@ -56,7 +58,7 @@ pub const MODE_CLASSES: &[&str] = &[
 
 /// Objects of any class the modes find by their name's start (Hired
 /// Guns' mercenary spawns).
-pub const NAMED_OBJECTS: &[&str] = &["UNITSPAWN_"];
+pub const NAMED_OBJECTS: &[&str] = &["UNITSPAWN_", "FLAGPOLEPOS"];
 
 /// Whether `game::world` passes an object of `class` named `name` through
 /// for the modes.
@@ -64,6 +66,10 @@ pub fn is_mode_object(class: &str, name: Option<&str>) -> bool {
     MODE_CLASSES.contains(&class)
         || name.is_some_and(|n| NAMED_OBJECTS.iter().any(|p| n.to_ascii_uppercase().starts_with(p)))
 }
+
+/// The name of Seize and Secure's flag pole position object (M10), passed
+/// through whatever its class.
+pub const FLAG_POLE: &str = "FlagPolePos";
 
 /// A flag's box half-extents when its object has none (M4), world units.
 pub const FLAG_DIMS: Vec3 = Vec3::new(10.0, 25.0, 10.0);
@@ -196,6 +202,9 @@ pub struct CaMapObjects {
     pub flags: Vec<FlagObject>,
     pub flag_zones: Vec<FlagZone>,
     pub triggers: Vec<UseTrigger>,
+    /// Seize and Secure's flag pole: the object named `FlagPolePos`
+    /// (M10, Open question 24; engine metres).
+    pub flag_pole: Option<Vec3>,
     pub banks: Vec<BankTrigger>,
     pub escape_zones: Vec<EscapeZone>,
     pub points: Vec<NamedPoint>,
@@ -246,6 +255,9 @@ fn area(e: &MapEntity, scale: f32, default_dims: Vec3) -> ObjBox {
 pub fn read(entities: &[MapEntity], scale: f32) -> CaMapObjects {
     let mut out = CaMapObjects::default();
     for e in entities {
+        if e.get("targetname") == Some(FLAG_POLE) {
+            out.flag_pole = Some(entity_to_engine(e.origin(), scale));
+        }
         let family = e.get("GameType").unwrap_or("").to_string();
         match e.classname() {
             "GameStartPoint" => {

@@ -24,12 +24,17 @@
 //!   melee and other direct damage land at `FF_SCALE` (explosions and
 //!   fire at full).
 //!
-//! Known shortcuts: the scaling applies to what reached the target after
-//! its armour (the weapon parts take armour before the damage message);
-//! the "team id 0 or above 254" part of the filter isn't there (every
-//! player in a mode is on Alpha or Bravo); there are no heals in the game
-//! yet, so `heal` has no caller but the tests; the teammate-hit voice
-//! isn't played.
+//! The order (Open question 26, answered): a teammate's round is scaled
+//! before armour and the zone factor (`weapons`' hit: a rifle hit of 40
+//! enters the armour rules as 10; the message it writes carries the
+//! amount before this step, which scales it again).
+//!
+//! Known shortcuts: the knife's and other non-round direct damage are
+//! scaled after their armour; the "team id 0 or above 254" part of the
+//! filter isn't there (every team-mode player is on Alpha or Bravo, the
+//! free-for-all ids are distinct); there are no heals in the game yet, so
+//! `heal` has no caller but the tests; the teammate-hit voice isn't
+//! played.
 
 use std::collections::HashMap;
 

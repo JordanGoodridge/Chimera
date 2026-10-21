@@ -39,6 +39,13 @@ use lithtech_formats::{
 
 const TICK: u32 = 15;
 
+/// The character data as the scenario tests see it: ours only (the
+/// install's records never merged in, whichever test reads it first).
+fn builtin() -> &'static records::CharacterData {
+    combat_arms::game::data::use_builtin_data_only();
+    records::data()
+}
+
 fn close(a: Vec3, b: Vec3, tol: f32) -> bool {
     (a - b).abs().max_element() <= tol
 }
@@ -48,7 +55,7 @@ fn close(a: Vec3, b: Vec3, tol: f32) -> bool {
 
 #[test]
 fn t01_body_by_face() {
-    let d = records::data();
+    let d = builtin();
     let (r, figure) = d.effective(&Selection::default());
     assert_eq!((r.file.as_str(), r.skeleton, figure), ("CHARS_M_BODY\\CM_VST_NM_DF_Nuts_JS.ltb", 0, 0));
     let (r, figure) = d.effective(&Selection {
@@ -68,7 +75,7 @@ fn t01_body_by_face() {
 
 #[test]
 fn t02_defaults() {
-    let d = records::data();
+    let d = builtin();
     for model in [-1, 3, 999] {
         assert_eq!(d.effective(&Selection { model, ..default() }).0.id, 0, "model {model}");
     }
@@ -78,7 +85,7 @@ fn t02_defaults() {
 
 #[test]
 fn t03_camouflage_skins() {
-    let d = records::data();
+    let d = builtin();
     let m = d.model(0).unwrap();
     assert_eq!(
         d.skins(m, 3),
@@ -95,7 +102,7 @@ fn t03_camouflage_skins() {
 /// of them doesn't all look the same.
 #[test]
 fn bot_looks_vary() {
-    let d = records::data();
+    let d = builtin();
     assert_eq!(d.bot_look(7), d.bot_look(7));
     let looks: Vec<Selection> = (0..16).map(|s| d.bot_look(s)).collect();
     let distinct = |f: fn(&Selection) -> i32| {
@@ -147,7 +154,7 @@ fn body_group_numbers() {
         assert_eq!(chimera_world::map::body_choice(&g.parts(), n, part), want);
     }
     models::register_group(g.clone());
-    let d = records::data();
+    let d = builtin();
     // Model 1 (Light), face 2, head piece 2 (the combat helmet).
     let look = Selection {
         model: 1,
@@ -163,7 +170,7 @@ fn body_group_numbers() {
 
 #[test]
 fn t04_team_marks() {
-    let d = records::data();
+    let d = builtin();
     assert_eq!(d.team_mark(true, false), "CHARS_T_BODY\\RED_Tie.dtx");
     assert_eq!(d.team_mark(false, false), "CHARS_T_BODY\\Alpha.dtx");
     assert_eq!(d.team_mark(true, true), "CHARS_T_BODY\\Alpha.dtx");
@@ -171,7 +178,7 @@ fn t04_team_marks() {
 
 #[test]
 fn t05_head_pieces_and_goggles() {
-    let d = records::data();
+    let d = builtin();
     assert_eq!(d.head_file(2, 0), Some("CHARS_M_HEAD\\Combat_Helmet.ltb"));
     assert_eq!(d.head_file(2, 1), Some("CHARS_M_HEAD\\W_Combat_Helmet.ltb"));
     assert_eq!(d.goggle_file(0, 1), Some(("Eyes", "ATTACH_M\\W_Glass.ltb")));
@@ -502,7 +509,7 @@ fn aim_chain() -> Posed {
 }
 
 fn male_aim() -> Vec<String> {
-    records::data().skeleton(0).aim.clone()
+    builtin().skeleton(0).aim.clone()
 }
 
 fn angle_of(p: &Posed, name: &str) -> f32 {
@@ -555,7 +562,7 @@ fn t20_clamp_and_bytes() {
 #[test]
 fn t21_22_aim_moves_the_spec_skeleton() {
     for skel in [0, 1] {
-        let s = records::data().skeleton(skel);
+        let s = builtin().skeleton(skel);
         let rest = skeleton::fallback(s, 1.0);
         let head = if skel == 0 { "Head" } else { "Bip01 Head" };
         let mut down = rest.clone();
@@ -671,7 +678,7 @@ impl StandIn {
 /// The default male's skeleton by the spec's bind positions: every node
 /// sphere's node, the socket spheres' parents, and the sockets.
 fn male_stand_in(with_nuts: bool) -> StandIn {
-    let s = records::data().skeleton(0);
+    let s = builtin().skeleton(0);
     let mut nodes: Vec<(&'static str, Option<usize>, [f32; 3])> = Vec::new();
     for n in &s.nodes {
         let parent = n.parent.as_ref().and_then(|p| nodes.iter().position(|m| m.0 == p.as_str()));
@@ -702,7 +709,7 @@ const STAND_IN_ANIMS: &[(&str, u32)] = &[("baseAnim", 4800), ("URFRAmS", 4000), 
 
 #[test]
 fn t23_right_hand_socket() {
-    let s = records::data().skeleton(0).socket("RightHand").unwrap();
+    let s = builtin().skeleton(0).socket("RightHand").unwrap();
     assert_eq!((s.parent.as_str(), s.offset, s.rotation), ("Right_hand", [7.085, 1.661, 1.277], [0.0573, -0.7151, -0.0818, 0.6918]));
     // On a stand-in, the socket is its node's transform times the offset.
     let rig = male_stand_in(true).rig(STAND_IN_ANIMS);
@@ -722,9 +729,9 @@ fn t23_right_hand_socket() {
 /// 11.51) turned by its yaw (our frame: Z mirrored).
 #[test]
 fn t24_name_socket() {
-    let s = records::data().skeleton(0).socket("NAME_socket").unwrap();
+    let s = builtin().skeleton(0).socket("NAME_socket").unwrap();
     assert_eq!((s.parent.as_str(), s.offset), ("Head", [16.5, 0.0, 0.906]));
-    assert_eq!(records::data().skeleton(1).socket("NAME_socket").unwrap().parent, "Bip01 Head");
+    assert_eq!(builtin().skeleton(1).socket("NAME_socket").unwrap().parent, "Bip01 Head");
     let mut sim = sim();
     let yaw = 0.7;
     let p = player(&mut sim, Vec3::new(0.0, 1.0, 12.0), yaw);
@@ -739,8 +746,8 @@ fn t24_name_socket() {
 #[test]
 #[allow(clippy::approx_constant)] // the data's quaternions as stored
 fn t25_26_sockets() {
-    let m = records::data().skeleton(0);
-    let f = records::data().skeleton(1);
+    let m = builtin().skeleton(0);
+    let f = builtin().skeleton(1);
     let eyes = m.socket("Eyes").unwrap();
     assert_eq!((eyes.parent.as_str(), eyes.offset, eyes.bind), ("Face_Eyelid", [3.011, 0.0, 1.314], [0.03, 41.38, 5.68]));
     let eyes = f.socket("Eyes").unwrap();
@@ -787,7 +794,7 @@ fn t27_death_drop_at_the_left_foot() {
 fn t28_bind_centres_on_a_stand_in() {
     let rig = male_stand_in(true).rig(STAND_IN_ANIMS);
     let bind = rig.bind();
-    for s in &records::data().skeleton(0).spheres {
+    for s in &builtin().skeleton(0).spheres {
         if s.radius <= 0.0 || s.absent || s.socket.is_some() {
             continue;
         }
@@ -810,7 +817,7 @@ fn t29_lst_centres() {
     let p = player(&mut sim, Vec3::new(0.0, 1.0, 12.0), 0.0);
     let world = sim.app.world();
     let pose = world.get::<CaPose>(p).unwrap();
-    let skel = records::data().skeleton(0);
+    let skel = builtin().skeleton(0);
     for (s, at) in skel.spheres.iter().zip(&pose.spheres) {
         match (s.at, at) {
             (Some(want), Some(got)) if s.radius > 0.0 => {
@@ -861,7 +868,7 @@ fn t30_spheres_follow_the_animation() {
 fn t31_crouch_lowers_the_spheres() {
     let mut sim = sim();
     let p = player(&mut sim, Vec3::new(0.0, 1.0, 12.0), 0.0);
-    let skel = records::data().skeleton(0);
+    let skel = builtin().skeleton(0);
     let head = skel.spheres.iter().position(|s| s.name == "Head").unwrap();
     let stand = sim.app.world().get::<CaPose>(p).unwrap().spheres[head].unwrap();
     sim.intent(p).crouch = true;
@@ -884,7 +891,7 @@ fn t32_female_table() {
     let world = sim.app.world();
     let pose = world.get::<CaPose>(p).unwrap();
     assert_eq!(pose.skeleton, 1);
-    let skel = records::data().skeleton(1);
+    let skel = builtin().skeleton(1);
     let i = skel.spheres.iter().position(|s| s.name == "Headfuck").unwrap();
     assert!(close(pose.spheres[i].unwrap(), Vec3::new(4.12, 83.37, -12.42), 1e-3));
     let i = skel.spheres.iter().position(|s| s.name == "Bip01 Head").unwrap();
@@ -897,7 +904,7 @@ fn t32_female_table() {
 #[test]
 fn t34_sphere_counts() {
     let count = |table: &[combat_arms::game::weapons::HitSphere]| table.iter().filter(|s| s.radius > 0.0).count();
-    let d = records::data();
+    let d = builtin();
     assert_eq!(d.skeleton(0).spheres.iter().filter(|s| s.radius > 0.0).count(), 35);
     assert_eq!(count(&MALE), 33, "Left_Shld and Right_Shld never exist");
     assert_eq!(d.skeleton(1).spheres.iter().filter(|s| s.radius > 0.0).count(), 35);
@@ -1010,7 +1017,7 @@ fn t40_crouched_deaths_stand() {
 
 #[test]
 fn t41_body_lifetime() {
-    let tdm = records::data().body_removal(combat_arms::game::rules::TDM);
+    let tdm = builtin().body_removal(combat_arms::game::rules::TDM);
     assert_eq!(tdm, Some(5.0));
     let end = 3.033 + 0.001;
     assert!((death::removal_time(end, Some(2.0), tdm).unwrap() - 8.034).abs() < 1e-9);
@@ -1121,7 +1128,7 @@ fn scenario_player_states() {
     sim.intent(p).reload = false;
     assert_eq!(playing(&sim, p).0, "URFRSReS");
     // Looking down lowers the head sphere.
-    let head = records::data().skeleton(0).spheres.iter().position(|s| s.name == "Head").unwrap();
+    let head = builtin().skeleton(0).spheres.iter().position(|s| s.name == "Head").unwrap();
     let level = sim.app.world().get::<CaPose>(p).unwrap().spheres[head].unwrap();
     sim.intent(p).pitch = -0.5;
     sim.ticks(1);
@@ -1134,7 +1141,7 @@ fn scenario_player_states() {
 /// sockets the model's.
 #[test]
 fn scenario_modelled_body() {
-    let file = &records::data().model(1).unwrap().file;
+    let file = &builtin().model(1).unwrap().file;
     let mut stand_in = male_stand_in(true);
     // Shift every node by 5 units on X so the model's pose is told from
     // the spec's skeleton.
@@ -1150,7 +1157,7 @@ fn scenario_modelled_body() {
     models::unregister(file);
     assert!(pose.modelled);
     assert_eq!(playing(&sim, p), ("URFRAmS".into(), "LST".into(), "LC".into()));
-    let skel = records::data().skeleton(0);
+    let skel = builtin().skeleton(0);
     let torso = skel.spheres.iter().position(|s| s.name == "Torso").unwrap();
     // The stand-in's bind Torso (5, 5.14, 0.74) with its feet at -50.
     assert!(close(pose.spheres[torso].unwrap(), Vec3::new(5.0, 55.14, -0.74), 1e-3), "{:?}", pose.spheres[torso]);
@@ -1299,7 +1306,7 @@ fn looks_in_play() {
     let look = |sim: &Sim, e: Entity| *sim.app.world().get::<Selection>(e).unwrap();
     let drawn = look(&sim, bot);
     let seed = "Bot Kilo".bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
-    assert_eq!(drawn, records::data().bot_look(seed));
+    assert_eq!(drawn, builtin().bot_look(seed));
     assert_eq!(look(&sim, me), mine);
     assert_eq!(look(&sim, other), Selection::default());
     // The female face: the female body, its skeleton and hit table.
@@ -1310,4 +1317,232 @@ fn looks_in_play() {
     assert_eq!(sim.app.world().get::<CaAnim>(me).unwrap().skeleton, 0);
     sim.seconds(1.0);
     assert_eq!(look(&sim, bot), drawn, "a bot keeps its look");
+}
+
+// ---------------------------------------------------------------------
+// Follow-up cases (Open questions 2, 5, 9, 13-22: cases 43-57).
+
+/// 43. The female `Bip01 Neck` and right-hand socket, `LST` t = 0 (data).
+#[test]
+fn t43_female_neck_and_right_hand() {
+    let s = builtin().skeleton(1);
+    let neck = s.nodes.iter().find(|n| n.name == "Bip01 Neck").unwrap();
+    assert_eq!(neck.at, Some([1.74, 27.99, 9.61]));
+    let hand = s.socket("RightHand").unwrap();
+    assert_eq!((hand.parent.as_str(), hand.offset), ("Right_hand", [7.08465, 1.66108, 1.27744]));
+    assert_eq!(hand.at, Some([5.69, 23.62, 22.09]));
+}
+
+/// 44. The skeleton's root at the hull's bottom for every crouch r: the
+/// root (-50 + 10 r) against the half-height 50 - 10 r.
+#[test]
+fn t44_body_against_the_hull() {
+    let rig = male_stand_in(true).rig(STAND_IN_ANIMS);
+    let pose: Vec<(ltb::Vec3, ltb::Quat)> = (0..rig.model.nodes.len()).map(|_| ([0.0; 3], [0.0, 0.0, 0.0, 1.0])).collect();
+    for r in [0.0, 0.5, 1.0] {
+        let feet = rig.posed(&pose, r).feet;
+        let half = 50.0 - 10.0 * r;
+        assert!((feet + half).abs() < 1e-4, "r {r}: root {feet}, hull bottom {}", -half);
+    }
+}
+
+/// 45. Defaults without lobby data: the female face draws the female
+/// body, the face's hair and its own face model; male faces no head.
+#[test]
+fn t45_defaults() {
+    let d = builtin();
+    let look = Selection { face: 4, ..default() };
+    let (body, skeleton) = d.effective(&look);
+    assert_eq!((body.id, body.file.as_str()), (7, "CHARS_M_BODY\\Nomal_W_vest.ltb"));
+    let head = d.worn_head(0, 4, skeleton);
+    assert_eq!(head, 23);
+    assert_eq!(d.head_file(head, skeleton), Some("CHARS_M_HEAD\\Hair_W_A.ltb"));
+    assert_eq!(d.face(4).and_then(|f| f.file.as_deref()), Some("CHARS_M_FACE\\Face_W_A.ltb"));
+    assert_eq!((look.goggle, look.backpack), (-1, -1), "no goggle, no backpack");
+    assert_eq!(d.head_file(d.worn_head(0, 0, 0), 0), None, "face 0: no head model");
+    assert_eq!(d.face(0).and_then(|f| f.file.as_deref()), Some("CHARS_M_FACE\\Face_A.ltb"));
+    assert_eq!(d.head_file(d.worn_head(0, 7, 1), 1), None, "face 7: none");
+}
+
+/// 46. The stock bodies' skins by camouflage index (data).
+#[test]
+fn t46_skins() {
+    let d = builtin();
+    let f8 = d.model(8).unwrap();
+    assert_eq!(d.skins(f8, 0), (Some("CHARS_T_BODY\\F_Upper_Lev02_OD.dtx"), Some("CHARS_T_BODY\\F_Leg_Lev03_OD.dtx")));
+    assert_eq!(d.skins(f8, 2), (Some("CHARS_T_BODY\\CW_VST_LT_SN_00_HM.DTX"), Some("CHARS_T_BODY\\CW_LG_HV_SN_00_HM.dtx")));
+    let m1 = d.model(1).unwrap();
+    assert_eq!(d.skins(m1, 6), (Some("CHARS_T_BODY\\CM_VST_LT_TG_00_JS.DTX"), Some("CHARS_T_BODY\\CM_LG_HV_TG_00_JS.dtx")));
+}
+
+/// 47. The digit classes' names.
+#[test]
+fn t47_digit_suffixes() {
+    use driver::{Direction as D, Posture as P, upper_names};
+    let run = |class, p, d| upper_names(class, p, d).0;
+    let walk = |class, p, d| upper_names(class, p, d).1.unwrap();
+    assert_eq!(run(24, P::Reload, D::None), "UPRSReS1");
+    assert_eq!(run(24, P::Fire, D::None), "UPRFiS");
+    assert_eq!(run(24, P::Select, D::None), "UPRSSeS");
+    assert_eq!(run(26, P::Reload, D::F), "USMRReS2");
+    assert_eq!(run(26, P::Fire, D::None), "USMRFiS");
+    assert_eq!(run(27, P::Fire, D::None), "USGRFiS1");
+    assert_eq!(run(27, P::Select, D::None), "USGRSSeS1");
+    assert_eq!(walk(27, P::Fire, D::F), "USGWFiF1");
+    assert_eq!(run(27, P::AltFire, D::None), run(27, P::Fire, D::None), "alt fire = fire");
+    assert_eq!(run(29, P::Reload, D::None), "USGRSReS2");
+    assert_eq!(run(29, P::Fire, D::F), "USGRFiF2");
+}
+
+/// 48-50. The server's reload timer.
+#[test]
+fn t48_50_server_reload_timer() {
+    assert_eq!(driver::server_reload_timer(Some(1866), 1.0, 0), Some(1555));
+    assert_eq!(driver::server_reload_timer(Some(1866), 2.5, 0), Some(777));
+    assert_eq!(driver::server_reload_timer(Some(1866), 1.0, 2300), None, "49: the animation ends it");
+    assert_eq!(driver::upper_rate(1866, 1.0, 2300), 1866.0 / 2300.0);
+    assert_eq!(driver::server_reload_timer(None, 1.0, 0), Some(500), "50");
+}
+
+/// 48 on the server: an M4A1 reload's upper body leaves the reload pose
+/// 1555 ms after it starts (the timer), before the weapon's 2300 ms.
+#[test]
+fn t48_server_reload_pose_ends_on_the_timer() {
+    let mut sim = sim();
+    let p = sim.spawn_character(Vec3::new(0.0, 1.0, 10.0), movement::ID);
+    sim.seconds(1.5);
+    let w = sim.app.world().get::<Inventory>(p).unwrap().active.unwrap();
+    sim.app.world_mut().get_mut::<Magazine>(w).unwrap().clip = 10;
+    sim.intent(p).reload = true;
+    sim.ticks(2);
+    sim.intent(p).reload = false;
+    let posture = |sim: &Sim| sim.app.world().get::<CaAnim>(p).unwrap().driver.last.posture;
+    assert_eq!(posture(&sim), Posture::Reload);
+    sim.seconds(1.45);
+    assert_eq!(posture(&sim), Posture::Reload, "before 1555 ms");
+    sim.seconds(0.2);
+    assert_ne!(posture(&sim), Posture::Reload, "after 1555 ms");
+    assert!(sim.app.world().get::<weapon::WeaponState>(w).unwrap().reloading(), "the weapon still reloads");
+}
+
+/// 51. "Fire held": the server's raw flag, the own client's masked.
+#[test]
+fn t51_fire_held() {
+    assert!(driver::fire_held(true, false, true, true, true, false), "server: raw while reloading");
+    assert!(!driver::fire_held(true, false, false, true, true, false), "own client: masked");
+    assert!(!driver::fire_held(true, true, true, true, false, false), "use held");
+    // The server's driver keeps the reload pose while reloading with fire
+    // held; when its timer lets the reload finish, the fire waits for the
+    // reload animation's end (1866 ms), then fires.
+    let mut d = drv();
+    let i = Inputs {
+        fire: true,
+        reloading: true,
+        ..rifle()
+    };
+    run(&mut d, &i, 3);
+    assert_eq!(d.last.posture, Posture::Reload);
+    let done = Inputs {
+        reload_may_finish: true,
+        ..i.clone()
+    };
+    run(&mut d, &done, 2);
+    assert_eq!(d.last.posture, Posture::Reload, "the animation still plays");
+    run(&mut d, &done, (1866 / TICK) as usize);
+    assert_eq!(d.last.posture, Posture::Fire);
+}
+
+/// 52. The hit kick's offsets on ten notices, the eleventh none.
+#[test]
+fn t52_hit_kick() {
+    let mut k = 0;
+    let mut out = Vec::new();
+    for _ in 0..11 {
+        let (kick, next) = driver::hit_kick(k);
+        out.push((kick * 10.0).round() as i32);
+        k = next;
+    }
+    assert_eq!(out, vec![1, 2, 3, 4, 5, 4, 3, 2, 1, 0, 0]);
+    assert_eq!(k, 0, "the counter restarted");
+}
+
+/// 53. An emote: both trackers play it; pressing forward ends it.
+#[test]
+fn t53_emote() {
+    let mut d = drv();
+    run(&mut d, &rifle(), 3);
+    assert!(!d.start_emote("Salute"), "the US male has no Salute");
+    assert!(d.start_emote("Surrender"));
+    run(&mut d, &rifle(), 2);
+    assert_eq!((d.name_of(&d.upper), d.name_of(&d.lower)), ("Surrender", "Surrender"));
+    run(&mut d, &Inputs { forward: true, ..rifle() }, 1);
+    assert_eq!(d.emote, None);
+    assert_ne!(d.name_of(&d.upper), "Surrender");
+}
+
+/// 54. The floor snap.
+#[test]
+fn t54_floor_snap() {
+    use combat_arms::game::characters::snap;
+    let at = Vec3::new(0.0, 300.0, 0.0);
+    let p = snap(at, 200.0, 50.0, 0.1);
+    assert!((p.y - 150.1).abs() < 1e-4);
+    assert!((p.y + 0.1 - 150.2).abs() < 1e-4, "the body 0.1 u above");
+    assert_eq!(snap(at, 40.0, 50.0, 0.1), at, "within the half-height: no move");
+}
+
+/// 55. A body neither stops shots nor has spheres.
+#[test]
+fn t55_corpses_dont_stop_shots() {
+    let mut sim = sim();
+    let p = sim.spawn_character(Vec3::new(0.0, 1.0, 10.0), movement::ID);
+    sim.seconds(0.2);
+    sim.app.world_mut().write_message(Damage {
+        target: p,
+        attacker: None,
+        amount: 10.0,
+        point: Vec3::ZERO,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Chest,
+        kind: DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.seconds(0.2);
+    let w = sim.app.world_mut();
+    let bodies: Vec<Entity> = w.query_filtered::<Entity, With<CaBody>>().iter(w).collect();
+    assert_eq!(bodies.len(), 1);
+    let e = w.entity(bodies[0]);
+    assert!(!e.contains::<avian3d::prelude::Collider>() && !e.contains::<combat_arms::game::weapons::HitSpheres>());
+}
+
+/// 56. Death types by damage kind.
+#[test]
+fn t56_death_types() {
+    use combat_arms::game::volumes::ENDLESS_FALL;
+    assert_eq!(death::kind_of(DamageKind::Generic, Some(ENDLESS_FALL)), DeathKind::EndlessFall);
+    assert_eq!(death::kind_of(DamageKind::Generic, Some("combat_arms:g7a")), DeathKind::Poison, "a gas grenade's lasting damage");
+    assert_eq!(death::kind_of(DamageKind::Bullet, Some(RIFLE)), DeathKind::Other);
+    let pick = |kind| {
+        death::choose(
+            &DeathInputs {
+                kind,
+                dir: Vec3::Z,
+                forward: Vec3::NEG_Z,
+                right: Vec3::X,
+                head: false,
+                groin: false,
+                coin: true,
+                jumping: false,
+                special: None,
+            },
+            |_| true,
+        )
+    };
+    assert_eq!(pick(DeathKind::EndlessFall), "D_W");
+    assert_eq!(pick(DeathKind::Poison), "D_P");
+    assert_eq!(pick(DeathKind::Other), "DT");
+    // Quirk 6's coin: the C library's first draw for a seed, mod 2.
+    assert!(!death::coin(0), "seed 0: first draw 38");
+    assert!(death::coin(1), "seed 1: first draw 41");
 }

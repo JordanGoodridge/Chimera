@@ -36,61 +36,65 @@
 //! 20 Hz frames (`grenades::SERVER_FRAME`, the dedicated server's rate:
 //! Open question 1), their aim, movement keys and trigger every tick.
 //!
+//! The follow-up answers (bots.md Open questions 3, 6, 11, 14, 16-24):
+//! a bot's rounds wait its fire animation's interval by class
+//! (`math::fire_interval_ms`); its rounds get the hit-zone factors on the
+//! server's pose (`characters::CaPose::server_spheres`); jump-up volumes
+//! link one way (`map_ai`); the sight's eye is the bot's hull x/z at its
+//! `Head` node's height, its targets the hull centre then the `Head` node;
+//! footsteps are posted at the keys of each character's leg animation
+//! (running, sprinting and the jumps' landings: walking and crouching are
+//! silent) and the footstep sense counts false stimulations
+//! (`math::Sense`); the dodge tries its five directions in the spec's
+//! order (`math::DODGE_STEPS`); the knife closes to its 130 u reach; a bot
+//! is protected 3 s from every damage and respawns 7 s after its death
+//! (`rules::spawns`); bots chat on their kills, deaths and respawns
+//! (`chat`). Ally stimuli stay off (Open question 14: confirmed).
+//!
 //! Known shortcuts (docs/tech-debt.md; the most literal reading where the
 //! spec is unclear, listed for its open questions):
-//! - Open question 6: bots move and fire through the player's parts (the
-//!   brain writes `Intent`, as the task's design asks), not at constant
+//! - Open question 6 (the design stays ours): bots move and fire through
+//!   the player's parts (the brain writes `Intent`), not at constant
 //!   template speeds confined to AI volumes: they run at Combat Arms'
 //!   movement speed (the template's run and jump speeds are data only),
-//!   jump and fall as players, and nothing refuses a step off the areas.
+//!   jump and fall as players, and nothing refuses a step off the volumes.
 //!   Their shots go through the weapon frame, with `weapons::ExactAim`
 //!   taking the spread cone, the recoil kick and extra pellets away (one
 //!   ray per shot, Quirk 7), so each round goes where the brain aims; the
-//!   fire rate is the weapon's own (no fire animation keys, Open question
-//!   3), the server's fire delay applies; damage is the player's (zone
-//!   factors included, though the spec says AI shooters never get them).
-//! - Navigation: the map's AI volumes where it has them (five of the 33
-//!   readable maps: costarecon_cp's 86, bossbattle_cp, infectedship_cp,
-//!   noxiousdamnation, snowstorm; `map_ai`, whose Known shortcuts say what
-//!   of them isn't used: volume types, doors, weights); elsewhere the
-//!   areas are generated from the collision (0.5 m cells merged into
-//!   rectangles, rises up to 0.8 m with a jump, `brain::nav_params`),
-//!   where the 48 u link minimum (generated rectangles meet along ragged
-//!   edges), doors, ladders and teleport volumes don't apply. Patrol
-//!   nodes: the map's `AINodePatrol`s where it has them, else ours
-//!   (`nav::PatrolGraph`: area centres 7 m apart, linked within 16 m of
-//!   path); either way with the spec's link choice (unvisited, least
-//!   recently visited, straight-on bonus) and no waits or guard nodes. A
-//!   bot that makes no progress for 1.5 s plans again and jumps (the spec
-//!   has no unstick logic, Open question 11).
-//! - Senses: a character's torso is 0.2 m above its centre, its head 0.6
-//!   m (no skeletons); the eye is the movement's; the sight shortcut through
-//!   areas is the floor-level straight walk; sight rays meet the gameplay
-//!   layers (`core::SOLID_LAYERS`: players-only blockers pass, traces-only
-//!   detail blocks) but for see-through surfaces (Chimera's `SeeThrough`:
-//!   the maps' glass, `world::GLASS_SURFACE_TYPES`); footsteps are posted every
-//!   0.4 s while a character moves on the ground faster than 100 u/s
-//!   (no footstep events yet), surface noise 1; "false stimulations" aren't
-//!   counted; gunfire is heard by enemies only (ally gunfire off). Grenade
-//!   danger comes from grenades thrown by players (not bots) that touched
-//!   something or rest, read from `grenades::CaGrenade`; the dodge tries
-//!   the five directions away from it at 45 degree steps (the spec's
-//!   "6" minus the three toward it).
-//! - Not there: placed devices (mines, claymores: no such items yet), so no
-//!   mine drops while patrolling and nothing but characters as targets;
-//!   bot chat; the "catch breath" stop lasts 1 s; the crouch a teammate
-//!   asks for lasts the crouch hold (10 s); a roll is a fast sidestep;
-//!   the knife is the player's knife with the bot's 130 u reach
-//!   (`inventory::KnifeReach`; its swing trace and zones stay, where the
-//!   spec deals the damage straight to the target), swung within 130 u
-//!   after closing to 90 u; a reload's attack move starts with the reload
-//!   key, not the animation; spawn protection and the respawn wait are the
-//!   mode's (4 s, game_modes.md), not the bot base's 3 s; no bodies.
+//!   weapon's own cycle binds where it is longer than the bot's interval
+//!   (an M4A1 at 105 ms, not 100).
+//! - Navigation: the map's AI volumes where it has them (`map_ai`, whose
+//!   Known shortcuts say what of them isn't used: ladders, jumps, doors);
+//!   elsewhere the areas are generated from the collision (0.5 m cells
+//!   merged into rectangles, rises up to 0.8 m with a jump,
+//!   `brain::nav_params`), where the 48 u link minimum, doors, ladders and
+//!   teleport volumes don't apply. Patrol nodes: the map's `AINodePatrol`s
+//!   where it has them, else ours (`nav::PatrolGraph`); either way with
+//!   the spec's link choice and no look-around stops, guard nodes or the
+//!   bot game-mode file's start nodes. A bot that makes no progress for
+//!   1.5 s plans again and jumps (the spec has none: Open question 11,
+//!   still open).
+//! - Senses: the `Head` height is the standing pose's (not crouched or
+//!   animated); the sight shortcut through areas is the floor-level
+//!   straight walk; sight rays meet the gameplay layers
+//!   (`core::SOLID_LAYERS`) but for see-through surfaces (Chimera's
+//!   `SeeThrough`); a footstep's radius is 256 u on every surface (the
+//!   surface's `MoveNoiseMod` isn't known to the bots). Grenade danger
+//!   comes from grenades thrown by players (not bots) that touched
+//!   something or rest, read from `grenades::CaGrenade`.
+//! - Not there: placed devices (mines, claymores), so no mine drops while
+//!   patrolling and nothing but characters as targets; doors (and their
+//!   retry); the "catch breath" stop lasts 1 s (its length is open: Open
+//!   question 20); a roll is a fast sidestep; the knife is the player's
+//!   knife with the bot's 130 u reach (`inventory::KnifeReach`; its swing
+//!   trace and zones stay, where the spec deals the damage straight to
+//!   the target); bodies; chat on battle, search, grenade and mine events
+//!   and for network clients.
 //! - Profiles: the install's profile file isn't read: a bot is
 //!   `AI_<Team>_<profile>`, its archetype the profile number mod 3, its
-//!   item sets ours (data/bots.toml), the draw ρ our seeded dice (not the
-//!   clock plus `rand()`). With no human, a bot joins the smaller team, so
-//!   bots fight bots.
+//!   item sets ours (data/bots.toml), the draw ρ our seeded dice (any
+//!   uniform draw is parity, Open question 22). With no human, a bot joins
+//!   the smaller team, so bots fight bots.
 //!
 //! The lift of CS:S's bot brain into Chimera (L16) is not done: Combat
 //! Arms' brain shares no rule with CS:S's (no turn rate, a hit/miss cycle
@@ -99,6 +103,7 @@
 //! are shared.
 
 pub mod brain;
+pub mod chat;
 pub mod data;
 pub mod map_ai;
 pub mod math;
@@ -240,7 +245,11 @@ pub struct CaBot {
     /// The sight cooldown ends (patrolling, 5.2).
     pub sight_cooldown: f64,
     /// The footstep sense's stimulation, the newest step it took.
-    pub footsteps: f32,
+    pub footsteps: math::Sense,
+    /// Where the last heard footstep was.
+    pub last_step_at: Option<Vec3>,
+    /// The next round the fire animation allows (s, 8.3).
+    pub next_shot: f64,
     pub last_step: u64,
     pub last_gunfire: u64,
     pub last_call: u64,
@@ -306,7 +315,9 @@ impl CaBot {
             exact: false,
             passes: 0,
             sight_cooldown: 0.0,
-            footsteps: 0.0,
+            footsteps: math::Sense::default(),
+            last_step_at: None,
+            next_shot: 0.0,
             last_step: 0,
             last_gunfire: 0,
             last_call: 0,
@@ -345,7 +356,9 @@ pub struct CaBotsPlugin;
 impl Plugin for CaBotsPlugin {
     fn build(&self, app: &mut App) {
         let server = crate::core::authoritative;
-        app.init_resource::<BotSettings>()
+        app.add_message::<chat::CaBotChat>()
+            .add_message::<crate::core::Died>()
+            .init_resource::<BotSettings>()
             .init_resource::<BotData>()
             .init_resource::<roster::Roster>()
             .init_resource::<brain::Stimuli>()
@@ -358,7 +371,7 @@ impl Plugin for CaBotsPlugin {
                         .chain()
                         .before(SimSet::Rules)
                         .before(crate::weapon::SelectWeapons),
-                    (brain::post_stimuli, brain::camping)
+                    (brain::post_stimuli, brain::camping, chat::chat)
                         .chain()
                         .after(SimSet::Weapons)
                         .after(crate::core::apply_damage),

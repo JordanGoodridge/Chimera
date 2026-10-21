@@ -97,6 +97,8 @@ pub struct CaScoreboard {
     pub headers: [String; 2],
     /// The mode's order (its column).
     pub order: Option<ScoreOrder>,
+    /// The mode's room key (its column's title, S13).
+    pub mode: Option<String>,
     /// A free-for-all mode (one list).
     pub ffa: bool,
     /// The round's result banner while the result shows (none in a
@@ -216,6 +218,7 @@ fn update(world: &mut World) {
             ["Alpha".into(), "Bravo".into()]
         },
         order: mode.map(|m| m.order),
+        mode: mode.map(|m| m.key.to_string()),
     };
     if *world.resource::<CaScoreboard>() != next {
         world.insert_resource(next);
@@ -333,8 +336,13 @@ impl BoundBoard {
         // The headers: the mode's column only where it has one.
         let mission = board.order.and_then(|o| board.lists.iter().flatten().next().and_then(|r| r.mode_column(o))).is_some();
         for name in ["menu_Mission"] {
-            let id = l.tree.find_from(panel, name).and_then(|t| l.tree.get(t).parent);
+            let text = l.tree.find_from(panel, name);
+            let id = text.and_then(|t| l.tree.get(t).parent);
             bound::show(&mut l, id, mission);
+            // S13's title of the mode's column.
+            if let Some(title) = board.mode.as_deref().and_then(crate::game::rules::scoreboard::mode_column_title) {
+                bound::set_text(&mut l, text, Some(title), None);
+            }
         }
         for name in ["menu_SubMission", "menu_Clan"] {
             let id = l.tree.find_from(panel, name).and_then(|t| l.tree.get(t).parent);

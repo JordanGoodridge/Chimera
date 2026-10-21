@@ -34,15 +34,26 @@
 //!   is asked for by its death camera (`game::death_cam`: the countdown,
 //!   Relentless's shorter wait, F7's fast flag: `request_respawn_with`).
 //!
-//! Known shortcuts: every player's box is the fallback hull (15, 50, 15)
-//! (no per-figure dimensions); dead players count as player objects where
-//! their entity lies (we have no separate body); instant-hit shots don't
-//! pass through a protected player for `protect_bullets` s (they stop at
-//! it and do nothing, as all damage is blocked for the longer
-//! `protect_all`), and clients still draw blood on it; a point's
+//! A player's box for the occupied test and telefrags is its current hull
+//! (`MovementState`: (15, 50, 15) standing, (15, 40, 15) crouched; Open
+//! question 30).
+//!
+//! Bots (bots.md 10, Open question 21): 3 s of protection from every
+//! damage (`BOT_GOD_MODE`) and a respawn 7 s after their death
+//! (`BOT_RESPAWN`), whatever the mode's waits.
+//!
+//! Instant-hit shots stop at a protected player and do nothing (Open
+//! question 25, answered: no damage, no blood or impact, `effects`).
+//!
+//! Known shortcuts: dead players count as player objects where
+//! their entity lies (we have no separate body); the shots' window is
+//! `protect_all` (all damage is blocked for longer than
+//! `protect_bullets`), and a network client, which isn't told of the
+//! protection, still draws blood (the spec's client keeps its own 3.5 s
+//! flag); a point's
 //! `Command` isn't run (no `SendCommandOnRespawn` on stock team points);
 //! the waits are game time, not the OS millisecond clocks; the fast
-//! respawn item isn't there.
+//! respawn item isn't there (S5: no items are owned without the lobby).
 
 use avian3d::prelude::ColliderDisabled;
 use serde::{Deserialize, Serialize};
@@ -67,14 +78,32 @@ use crate::{
 pub const HULL: Vec3 = Vec3::new(15.0, 50.0, 15.0);
 /// A point is occupied inside a player's box scaled by this (S4).
 pub const OCCUPIED_SCALE: f32 = 2.0;
+/// A bot's spawn protection (`GodModeTime`) and respawn delay (s, bots.md
+/// 10).
+pub const BOT_GOD_MODE: f32 = 3.0;
+pub const BOT_RESPAWN: f64 = 7.0;
 /// What a telefrag's crush damage counts as.
 pub const TELEFRAG: &str = "combat_arms:telefrag";
 
 /// Whether a player whose centre is `d` (world units) from a point
 /// occupies it: strictly inside twice its half-extents on every axis.
 pub fn occupied(d: Vec3) -> bool {
-    let r = HULL * OCCUPIED_SCALE;
+    occupied_by(d, HULL)
+}
+
+/// The same for a player whose box has half-extents `half` (u): its
+/// current hull, (15, 40, 15) fully crouched (Open question 30).
+pub fn occupied_by(d: Vec3, half: Vec3) -> bool {
+    let r = half * OCCUPIED_SCALE;
     d.x.abs() < r.x && d.y.abs() < r.y && d.z.abs() < r.z
+}
+
+/// A character's current hull half-extents in world units (the fallback
+/// without a movement state).
+fn hull_of(state: Option<&crate::core::MovementState>) -> Vec3 {
+    state
+        .filter(|s| s.hull_max != s.hull_min)
+        .map_or(HULL, |s| (s.hull_max - s.hull_min) * 0.5 / inventory::UNIT)
 }
 
 /// Each team list's cursor (S4), Alpha and Bravo; the first point's
@@ -136,9 +165,9 @@ pub fn points(world: &mut World, team: Option<u8>) -> Vec<Transform> {
 
 /// Where every other player object is (players in the game, alive or
 /// dead), and whether it is alive and unprotected.
-fn others(world: &mut World, me: Entity) -> Vec<(Entity, Vec3, bool)> {
+fn others(world: &mut World, me: Entity) -> Vec<(Entity, Vec3, bool, Vec3)> {
     world
-        .query_filtered::<(Entity, &Transform, &Health, Has<Dead>, Has<CaProtected>), (
+        .query_filtered::<(Entity, &Transform, &Health, Has<Dead>, Has<CaProtected>, Option<&crate::core::MovementState>), (
             With<Intent>,
             Without<Connecting>,
             Without<Spectating>,
@@ -147,7 +176,7 @@ fn others(world: &mut World, me: Entity) -> Vec<(Entity, Vec3, bool)> {
         )>()
         .iter(world)
         .filter(|(e, ..)| *e != me)
-        .map(|(e, t, h, dead, protected)| (e, t.translation, !dead && h.current > 0.0 && !protected))
+        .map(|(e, t, h, dead, protected, state)| (e, t.translation, !dead && h.current > 0.0 && !protected, hull_of(state)))
         .collect()
 }
 
@@ -223,7 +252,7 @@ fn first_point(world: &mut World) -> Option<Transform> {
 pub fn pick(world: &mut World, me: Entity, team: u8) -> Option<(Transform, bool)> {
     let unit = inventory::UNIT;
     let others = others(world, me);
-    let taken = |p: &Transform| others.iter().any(|(_, at, _)| occupied((*at - p.translation) / unit));
+    let taken = |p: &Transform| others.iter().any(|(_, at, _, half)| occupied_by((*at - p.translation) / unit, *half));
     if side(team).is_none() && !super::state::plays(team) {
         return first_point(world).map(|p| (p, taken(&p)));
     }
@@ -272,8 +301,8 @@ fn telefrag(world: &mut World, me: Entity, at: Vec3) {
     let unit = inventory::UNIT;
     let victims: Vec<(Entity, Vec3)> = others(world, me)
         .into_iter()
-        .filter(|(_, p, alive)| *alive && occupied((*p - at) / unit))
-        .map(|(e, p, _)| (e, p))
+        .filter(|(_, p, alive, half)| *alive && occupied_by((*p - at) / unit, *half))
+        .map(|(e, p, _, _)| (e, p))
         .collect();
     for (v, p) in victims {
         world.write_message(Damage {
@@ -292,7 +321,13 @@ fn telefrag(world: &mut World, me: Entity, at: Vec3) {
 
 /// S6: protect `e` from now (nothing with `protect_all` 0).
 pub fn protect(world: &mut World, e: Entity) {
-    let s = world.resource::<CaRuleSettings>().clone();
+    let mut s = world.resource::<CaRuleSettings>().clone();
+    // A bot's own `GodModeTime` (bots.md 10, Open question 21): 3 s of no
+    // damage at all, whatever the mode's protection.
+    if world.get::<crate::core::Bot>(e).is_some() {
+        s.protect_all = BOT_GOD_MODE;
+        s.protect_bullets = BOT_GOD_MODE;
+    }
     if s.protect_all <= 0.0 {
         return;
     }
@@ -429,9 +464,9 @@ pub(super) fn ask_for_respawns(world: &mut World) {
         return;
     }
     let now = world.resource::<SimClock>().now;
-    let wait = world.resource::<CaRuleSettings>().respawn_wait_client as f64;
+    let player_wait = world.resource::<CaRuleSettings>().respawn_wait_client as f64;
     let due: Vec<Entity> = world
-        .query_filtered::<(Entity, &Dead, &Team), (
+        .query_filtered::<(Entity, &Dead, &Team, Has<crate::core::Bot>), (
             With<Intent>,
             Without<RemotePlayer>,
             Without<CaAsked>,
@@ -442,7 +477,12 @@ pub(super) fn ask_for_respawns(world: &mut World) {
             Without<LocalPlayer>,
         )>()
         .iter(world)
-        .filter(|(_, d, t)| super::state::plays(t.0) && now - d.since > wait + 1e-9)
+        .filter(|(_, d, t, bot)| {
+            // A bot comes back 7 s after its death, whatever the mode's
+            // waits (bots.md 10).
+            let wait = if *bot { BOT_RESPAWN } else { player_wait };
+            super::state::plays(t.0) && now - d.since > wait + 1e-9
+        })
         .map(|(e, ..)| e)
         .collect();
     for e in due {

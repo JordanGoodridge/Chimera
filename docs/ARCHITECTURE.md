@@ -553,6 +553,7 @@ that the paths exist).
 - `games/combat_arms/src/game/bots/`: the bots' roster, data, formulas, the map's AI volumes and nodes, path search and brain (games)
 - `games/combat_arms/data/bots.toml`: Combat Arms' bot templates, per-weapon AI rows, profile counts and item sets (games)
 - `games/combat_arms/data/modes.toml`: Combat Arms' mode settings: room and server values, constants, goals, mission data, objectives (games)
+- `games/combat_arms/src/game/missions.rs`: Combat Arms' per-map mission files and the modes' clocks, our data as fallback (games)
 - `games/combat_arms/src/ui/hud/score.rs`: Combat Arms' score panel, round and bomb timers and action gauge from the match (games_ui)
 - `games/combat_arms/src/ui/scoreboard.rs`: Combat Arms' scoreboard (Tab, and a round's result), the install's layouts bound by name (games_ui)
 - `games/combat_arms/src/ui/effects.rs`: drawing Combat Arms' decals, tracers, casings, first-person flash and effect lights (games_ui)

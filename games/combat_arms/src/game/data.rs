@@ -666,6 +666,27 @@ fn is_install_name(name: &str, id: &str) -> bool {
     }
 }
 
+/// Our weapon document for an install weapon `Name` (`is_install_name`:
+/// the mission files' objective weapons, missions.md F3), if the set has
+/// it.
+pub fn weapon_for_name(name: &str) -> Option<&'static str> {
+    weapon_set()
+        .weapons
+        .iter()
+        .find(|w| w.id.strip_prefix("combat_arms:").is_some_and(|id| is_install_name(name, id)))
+        .map(|w| w.id.as_str())
+}
+
+/// Our weapon document for an install weapon record's index (the mission
+/// files' weapon ids: Arms Race ladders, the infected's and the agent's
+/// loadouts), with the V1 key; None without the install or a document
+/// for it.
+pub fn weapon_for_index(index: i32) -> Option<&'static str> {
+    let weapons = install_attributes()?.weapons.as_ref()?;
+    let name = &weapons.weapons.get(usize::try_from(index).ok()?)?.name;
+    weapon_for_name(name)
+}
+
 /// The IDs of our own weapon documents (the weapons a player is given:
 /// `inventory`, the modes, the bots). The models a map loads are theirs
 /// only: the install adds some 2,000 weapons, too many to load per map.
@@ -985,6 +1006,9 @@ mod tests {
         // (another test in this binary loaded it first).
         let builtin = WeaponSet::parse(WEAPON_DATA, &[]).unwrap();
         assert_eq!(builtin.weapons.len(), WEAPON_DATA.len());
+        for id in builtin_weapon_ids() {
+            assert!(weapon_set().get(id).is_some(), "{id}");
+        }
     }
 
     #[test]

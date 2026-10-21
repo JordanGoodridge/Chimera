@@ -562,6 +562,7 @@ fn case_19_scoreboard_sort() {
         captures: 0,
         returns: 0,
         mission_points: mp,
+        hunted_ms: 0,
         ping: None,
     };
     let mut rows = vec![row(1, 1300, 3), row(2, 1300, 5), row(3, 900, 9)];

@@ -128,11 +128,12 @@ pub fn wait_for(sim: &mut Sim, secs: f64, test: impl Fn(&Sim) -> bool) -> bool {
     test(sim)
 }
 
-/// Past the warm-up: at the first real round's live phase.
+/// Past the warm-up: at the first real round's live phase (Hunted's 20 s
+/// warm-up and the 6 s between rounds the longest).
 pub fn past_warmup(sim: &mut Sim) {
     until_live(sim);
     assert!(m(sim).warmup, "a warm-up first");
-    until(sim, 20.0, |p| matches!(p, Phase::Setup { .. }));
+    until(sim, 40.0, |p| matches!(p, Phase::Setup { .. }));
     until_live(sim);
     assert!(!m(sim).warmup);
 }

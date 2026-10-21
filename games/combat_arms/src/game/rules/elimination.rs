@@ -23,8 +23,15 @@
 //!   round is live with 3 or more players in (S1). Spawns: the
 //!   `Team Death Match` points, as TDM.
 //!
-//! Known shortcuts: the dead spectate with Chimera's spectating (no mode
-//! rules on whom they may watch); no late-join closing.
+//! - Spectating (Open question 35): the dead watch their living
+//!   teammates, then anyone once none is left (`rules::spectator_rules`,
+//!   Chimera's spectating with force 2; Last Man Standing and Hunted:
+//!   anyone).
+//!
+//! Known shortcuts: the death camera follows Chimera's (its death cam on
+//! the killer, then the first allowed player), not "the killer first while
+//! alive with the enemy-view option on"; the enemy-view room option isn't
+//! there (always on); no late-join closing.
 
 use bevy::prelude::*;
 

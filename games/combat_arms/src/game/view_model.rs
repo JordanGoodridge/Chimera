@@ -67,31 +67,46 @@
 //! keys all 13 draw their own models with the hands, textured
 //! (`heavy::view_model::keyed_view_models_with_hands`).
 //!
+//! The follow-up answers (view_models.md Open questions 9-16): the
+//! machine plays `reload_1` for the double barrel with rounds left, a
+//! file's `deselect` on a holster (`ViewMachine::holster`; no stock file
+//! has one), keeps the pieces (`Pieces`: the `HiddenPiece` list by the
+//! total, the `ProjectilePiece` by shots, reloads and the draw) and the
+//! attached effects (`PVAttachFX`: hidden at creation, shown with the
+//! model, `HIDE_PVATTACHFX` / `SHOW_PVATTACHFX` keys); dry fire never plays
+//! and is silent (C6); a flash hider's part takes the weapon's
+//! `PVFlashHiderFXName`h (`effects::pv_muzzle`; none: no flash); the
+//! sway's footing is the 150 u ray (`sway::can_step`) and a spectated
+//! (another player's) gun sways by its keys alone; the world's horizontal
+//! FOV at a camera reset is `place::WorldFov`.
+//!
 //! Known shortcuts (docs/tech-debt.md):
 //! - The machine drives the picture only: in play the shots, hits, ammo
 //!   and reload times stay the weapon frame's (`weapons`, `inventory`,
-//!   `grenades`), so the knife's hits keep inventory.md's timings (its
-//!   1 ms pre-fire; view_models.md C1 says none), a key's shot is not the
-//!   game's, a full-automatic's fire animation restarts on the frame after
-//!   it ends while the frame fires on its own clock, and a reload asked for
-//!   during the fire sequence plays after `postfire` while the clip fills
-//!   on the frame's time. The machine's shots and reloads are checked
-//!   against the spec's timelines in the scenario tests.
+//!   `grenades`). Open question 9 (answered: the view model's keys are the
+//!   client's only clock) stands against it: the weapon frame's cycle is
+//!   the fire animation's length (`trigger.cycle`, 105 ms for the M4A1),
+//!   the high-frame-rate limit of the frame-rounded cadence (116.7 ms at
+//!   60 fps, 110 ms at 100 fps, case 33: the machine's), and the knife's
+//!   hits keep inventory.md's timings (its 1 ms pre-fire; C1 says none).
+//!   The machine's shots and reloads are checked against the spec's
+//!   timelines in the scenario tests.
 //! - The tracker counts exact frame time (the spec's test arithmetic), not
 //!   whole milliseconds of a millisecond clock; the pose between samples
 //!   is `model`'s resampling (`VIEW_SAMPLE_FPS`, nlerp between samples).
-//! - Dry fire never plays (C6), no `deselect` (holster time 0), no
-//!   `reload_1`, hidden pieces, projectile pieces, attached effects
-//!   (`PVAttachFX`), player-view attachments, the file-name reset when the
-//!   character or uniform changes, spectating's sway and the 150-unit
-//!   footing ray (the footing is on the ground or a ladder).
-//! - No flash hider's effect. Key sounds and casings are `effects`'
-//!   (CaViewKey).
+//! - The pieces' and attached effects' states aren't drawn (no piece
+//!   hiding or effect groups on the view model yet); no player-view
+//!   attachments (no character record has any); the hands' file-name
+//!   reset at the local character's creation isn't there (every draw
+//!   builds fresh hands); the weapons' `PVFlashHiderFXName#` aren't read
+//!   from the install (no stock weapon has them).
+//! - Effects: key sounds and casings are `effects`' (CaViewKey).
 //! - Projection (5.1): Chimera's view-model camera keeps its 1 cm near
 //!   plane (`VIEW_SCALE` makes that the spec's 0.1 u) and no far plane
 //!   (the spec's 7 u); `ViewModelSettings` would zoom the view model with
 //!   the world's zoom, but the model is hidden whenever zoomed. The world
-//!   camera's FOV is the shell's (5.2: 75 degrees vertical).
+//!   camera's FOV is the shell's (5.2: 75 degrees vertical), recomputed
+//!   every frame rather than at a world start only.
 //! - No left-handed mirroring (none in the game); the character's model
 //!   id, face, uniform and colour are `hands::HandProfile`'s defaults
 //!   (no character data yet); the hands' render styles aren't read
@@ -171,6 +186,10 @@ pub struct CaViewParams {
     /// The view model throws casings (kept as data; which shots eject is
     /// the ammo's FireFX, `effects`).
     pub shells: bool,
+    /// `PVFlashHiderFXName`h by flash-hider level h (9: a part with
+    /// `FlashHiderLevel` h takes it; a missing one: no flash). No stock
+    /// weapon has any.
+    pub flash_hider_fx: Vec<String>,
 }
 
 impl Default for CaViewParams {
@@ -183,6 +202,7 @@ impl Default for CaViewParams {
             flash_time: place::FLASH_TIME as f32,
             under_water_flash: false,
             shells: false,
+            flash_hider_fx: Vec::new(),
         }
     }
 }
@@ -502,6 +522,7 @@ fn setup_of(parts: &WeaponParts) -> Setup {
             reload: animation_rate(1.0 + reload),
             draw: animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + select),
         },
+        ..Setup::default()
     }
 }
 
@@ -526,7 +547,13 @@ fn drive(
         Entity,
         &Inventory,
         &Intent,
-        (Option<&MovementState>, Option<&Health>, Option<&Velocity>, Option<&Transform>),
+        (
+            Option<&MovementState>,
+            Option<&Health>,
+            Option<&Velocity>,
+            Option<&Transform>,
+            Option<&super::movement::CaMovement>,
+        ),
         (
             Option<&mut ViewAnimator>,
             Option<&mut CaViewModel>,
@@ -541,13 +568,14 @@ fn drive(
     mut tables: Local<HashMap<String, Arc<Vec<AnimInfo>>>>,
     mut commands: Commands,
     volumes: Query<&CaVolume>,
+    spatial: avian3d::prelude::SpatialQuery,
 ) {
     let (dt, now) = (time.delta_secs_f64(), time.elapsed_secs_f64());
     let events: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
     if models.as_ref().is_some_and(|m| m.is_changed()) {
         tables.clear();
     }
-    for (e, inventory, intent, (state, health, velocity, transform), (view, vm, offset, owned, _local)) in &mut characters {
+    for (e, inventory, intent, (state, health, velocity, transform, movement), (view, vm, offset, owned, local)) in &mut characters {
         let (Some(mut view), Some(mut vm), Some(mut offset), true) = (view, vm, offset, owned) else {
             commands.entity(e).insert((
                 ViewAnimator::default(),
@@ -585,7 +613,10 @@ fn drive(
                     .or_insert_with(|| Arc::new(anim_infos(&set)))
                     .clone();
                 let seed = vm.roll().to_bits();
-                vm.machine = Some(ViewMachine::draw(table, setup_of(p), seed));
+                let mut m = ViewMachine::draw(table, setup_of(p), seed);
+                let (clip, total) = p.1.map_or((0, 0), |m| (m.clip, m.clip + m.reserve));
+                m.draw_ammo(clip, total);
+                vm.machine = Some(m);
             }
         }
         let Some(parts) = parts else {
@@ -598,18 +629,38 @@ fn drive(
         // 11: hidden from the zoom-in to the end of the zoom-out.
         vm.hidden = zoom.is_some_and(|z| z.level > 0 || z.transition.is_some());
         view.hidden = vm.hidden;
-        // 6: the sway, before the weapon update.
+        let shown = !vm.hidden && alive;
+        if let Some(m) = vm.machine.as_mut() {
+            m.set_visible(shown);
+        }
+        // 6: the sway, before the weapon update: the footing test (a
+        // ray 150 u down from the hull centre when neither on the ground
+        // nor a ladder nor jumped); another player's (spectated) gun by
+        // its keys alone.
         let speed = velocity.map_or(0.0, |v| v.0.length() / UNIT) as f64;
         let moving = intent.move_axis != Vec2::ZERO || intent.jump;
         let zoomed = vm.hidden;
+        let footing = state.on_ground || state.on_ladder || {
+            let jumped = movement.is_some_and(|m| m.in_jump);
+            let floor = (!jumped)
+                .then(|| transform.map(|t| t.translation))
+                .flatten()
+                .and_then(|at| {
+                    let filter = avian3d::prelude::SpatialQueryFilter::from_mask(crate::core::SOLID_LAYERS)
+                        .with_excluded_entities([e]);
+                    spatial.cast_ray(at, Dir3::NEG_Y, sway::FOOTING_RAY as f32 * UNIT, true, &filter)
+                })
+                .map(|hit| hit.distance as f64 / UNIT as f64);
+            sway::can_step(false, false, false, jumped, floor)
+        };
         vm.sway.step(&SwayInputs {
             dt,
             clock: now,
-            active: alive && (state.on_ground || state.on_ladder),
+            active: alive && (footing || !local),
             run: (!intent.walk || state.sprinting) && !state.crouching,
             moving,
             speed,
-            spectating: false,
+            spectating: !local,
             weapon: true,
             zoomed,
             scale: sway_option.0.min(10) as f64 / 10.0,

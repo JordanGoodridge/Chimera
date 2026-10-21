@@ -99,25 +99,15 @@ fn until(sim: &mut Sim, secs: f64, test: impl Fn(&Sim) -> bool) -> bool {
     test(sim)
 }
 
-/// The mode's start trigger, as the mission data names it (S&D's
-/// `Level02StartTrigger`, CTF's `Level05StartTrigger` on GRAYHAMMER: it
-/// shows the map's gate, `Gate_Nml`, among its mode's objects); the
-/// rules don't read the mission files yet.
-fn mission_start(sim: &mut Sim, trigger: &str) {
-    sim.app.world_mut().write_message(combat_arms::game::objects::CaObjectMessage {
-        target: trigger.into(),
-        message: "trigger".into(),
-    });
-    sim.ticks(5);
-}
-
-/// Bots fight in S&D and CTF on GRAYHAMMER but take no objective.
+/// Bots fight in S&D and CTF on GRAYHAMMER but take no objective (the
+/// rules fire each mode's start trigger from the mission data, S&D's
+/// `Level02StartTrigger`, CTF's `Level05StartTrigger`: it shows the map's
+/// gate, `Gate_Nml`, among its mode's objects).
 #[test]
 fn bots_play_no_objective_on_grayhammer() {
     let Some(mount) = mount() else { return };
     // Search & Destroy.
     let mut sim = sim_on(&mount, "grayhammer", "TMM");
-    mission_start(&mut sim, "Level02StartTrigger");
     {
         let o = sim.app.world().resource::<CaMapObjects>();
         assert!(o.bomb_zones.iter().filter(|z| z.family == "Doobic").count() >= 2, "the map's sites");
@@ -151,14 +141,13 @@ fn bots_play_no_objective_on_grayhammer() {
 
     // Capture the flag.
     let mut sim = sim_on(&mount, "grayhammer", "CTF");
-    mission_start(&mut sim, "Level05StartTrigger");
     for team in [1, 2, 1, 2, 1, 2, 1, 2] {
         bots::add_bot(sim.app.world_mut(), Some(team)).unwrap();
     }
     let mut taken = false;
-    // 150 s: the teams patrol their own halves first; when they meet
-    // depends on their paths (about 100 s with the corrected movement).
-    for _ in 0..(150.0 / TICK_INTERVAL / 10.0) as usize {
+    // 180 s: the teams patrol their own halves first; when they meet
+    // depends on their paths (about 90-100 s).
+    for _ in 0..(180.0 / TICK_INTERVAL / 10.0) as usize {
         sim.ticks(10);
         let o = sim.app.world().resource::<CaObjectives>();
         taken |= o.flags.iter().any(|f| f.at != FlagAt::Home);

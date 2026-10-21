@@ -5,30 +5,37 @@
 //! first, then G rounds played of `TimeLimit` 3 minutes.
 //!
 //! - Hosts: H = 1 with N <= 3 players on teams, else max(round(N x
-//!   `selection_rate`), `min_hosts`) (`hosts`), chosen at random among
-//!   the living humans; with H or fewer humans alive then, the round is
-//!   void (no winner).
+//!   `SelectionRate`), `MinHostNum`) (`hosts`), chosen at random among
+//!   the living humans, only in real rounds (never in the warm-up); with H
+//!   or fewer humans alive then, the round is void (no winner).
 //! - Infected (`infect`): on Bravo, `movement::CaInfected` (S14's
-//!   knock-back), the knife only; after `infected_still` (3 s) without
-//!   moving they heal `infected_heal` every `infected_heal_period` (1 s).
+//!   knock-back), the mission's infected weapons (a host's: the host's;
+//!   stock 191 and 190, our documents for them with the V1 key), else our
+//!   knife; after `WaitingTIme` (3 s) standing exactly still they heal
+//!   `Heal` (0.1) of their maximum hit points every `TickTime` (1 s), the
+//!   first at once when the wait ends; a move, a hit or firing restarts
+//!   the wait (Open question 12, answered).
 //! - Deaths: S7's personal counts (`scoring::personal`) and the mission
-//!   points: a human killing an infected +3, the infected killed -1; an
-//!   infected killing a human +2, and that human becomes infected.
+//!   points (`[ExpAndGPSetting]`): a human killing an infected +3, the
+//!   infected killed -1; an infected killing a human +2, the human 0, and
+//!   that human is back at once where it died (on the floor below), at
+//!   full health, infected (M8).
 //! - Round win: no human alive, the infected; after the selection, no
 //!   infected alive, the humans. Time-out: the humans. The living members
 //!   of the winning side get +10 (humans) or +5 (infected) at the round's
-//!   end. Match end: after G rounds played.
+//!   end. Match end: after G rounds played, with no winner (players rank
+//!   by mission points).
 //! - Spawns: the `Quarantine` points, one list (all `JSF` in the stock
 //!   maps). No respawn request.
 //!
-//! Known shortcuts (the most literal readings): a human killed by an
-//! infected comes back at once as infected at the next point (M8 says only
-//! "become infected"; with no respawn request); the host selection runs
-//! only in real rounds; the infected keep their body (no infected model
-//! from the mission file) and get our knife; the heal is in hit points
-//! (Open question 12); the match has no winner of its own (M8 names none:
-//! the result is a draw, the scoreboard's mission points rank the
-//! players).
+//! The numbers are the mission's (`missions::quarantine`) or, without the
+//! install's, our data's.
+//!
+//! Known shortcuts: the infected keep their body (the model record's
+//! infection override isn't loaded) and no change effect or sound plays;
+//! the infected's live projectiles aren't removed (`[DestroyProjectiles]`
+//! is read, not applied); any enemy kill by an infected infects (the
+//! infected hold only their infection weapon).
 
 use bevy::prelude::*;
 
@@ -88,17 +95,22 @@ pub struct CaQuarantine {
     pub picked: bool,
 }
 
-/// An infected player's stillness (the heal's clock).
+/// An infected player's stillness (the heal's clock): where it stood,
+/// since when (its last move, hit or fire), the next heal, its health then.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct CaStill {
     pub at: Vec3,
     pub since: f64,
     pub next_heal: f64,
+    pub health: f32,
 }
 
-/// An infected player waiting for its loadout to be cut to the knife.
+/// An infected player waiting for its loadout to become the infected's
+/// (a host's when `host`).
 #[derive(Component, Clone, Copy, Debug, Default)]
-pub struct CaInfectedKit;
+pub struct CaInfectedKit {
+    pub host: bool,
+}
 
 /// M8's host count for `n` players on teams.
 pub fn hosts(n: usize, rate: f32, min: u32) -> usize {
@@ -119,10 +131,12 @@ fn setup(world: &mut World) {
     }
 }
 
-/// `e` becomes infected: Bravo, the knife only.
-pub fn infect(world: &mut World, e: Entity) {
+/// `e` becomes infected (a host when `host`): Bravo, the mission's
+/// infected (or host) weapons, else our knife.
+pub fn infect(world: &mut World, e: Entity, host: bool) {
     let now = world.resource::<SimClock>().now;
     let at = world.get::<Transform>(e).map_or(Vec3::ZERO, |t| t.translation);
+    let health = world.get::<Health>(e).map_or(0.0, |h| h.current);
     world.entity_mut(e).insert((
         Team(BRAVO),
         super::super::movement::CaInfected,
@@ -130,9 +144,25 @@ pub fn infect(world: &mut World, e: Entity) {
             at,
             since: now,
             next_heal: now,
+            health,
         },
-        CaInfectedKit,
+        CaInfectedKit { host },
     ));
+}
+
+/// M8 (Open question 12, answered): a human killed by an infected is
+/// back at once where it died, on the floor below, at full health.
+fn revive_in_place(world: &mut World, e: Entity) {
+    let Some(t) = world.get::<Transform>(e).copied() else { return };
+    let half = world
+        .get::<crate::core::MovementState>(e)
+        .map_or(0.0, |s| -s.hull_min.y)
+        .max(0.0);
+    let floor = objectives::floor_below(world, t.translation - Vec3::Y * half);
+    let at = Transform::from_translation(floor + Vec3::Y * half).with_rotation(t.rotation);
+    super::super::inventory::respawn_inventory(world, e);
+    crate::spawning::revive(world, e, Some(at));
+    world.entity_mut(e).remove::<(spawns::CaAsked, spawns::CaHeld)>();
 }
 
 /// Host selection, the infected's kit and heal, the win tests.
@@ -143,6 +173,7 @@ fn update(world: &mut World) {
     if !counting {
         return;
     }
+    let n = super::super::missions::quarantine(world);
     let state = *world.resource::<CaQuarantine>();
     let since = match state.live_since {
         Some(s) => s,
@@ -153,8 +184,7 @@ fn update(world: &mut World) {
     };
     if !state.picked && now + 1e-9 >= since + o.host_delay as f64 {
         world.resource_mut::<CaQuarantine>().picked = true;
-        let n = players(world).len();
-        let h = hosts(n, o.selection_rate, o.min_hosts);
+        let h = hosts(players(world).len(), n.selection_rate, n.min_hosts);
         let mut humans: Vec<Entity> = objectives::living(world)
             .into_iter()
             .filter(|p| p.team == ALPHA)
@@ -166,12 +196,16 @@ fn update(world: &mut World) {
         }
         objectives::shuffle(world, &mut humans);
         for e in humans.into_iter().take(h) {
-            infect(world, e);
+            infect(world, e, true);
         }
     }
-    // The knife only, once the loadout is there.
-    let kits: Vec<Entity> = world.query_filtered::<Entity, With<CaInfectedKit>>().iter(world).collect();
-    for e in kits {
+    // The infected's weapons only, once the loadout is there.
+    let kits: Vec<(Entity, CaInfectedKit)> = world.query::<(Entity, &CaInfectedKit)>().iter(world).map(|(e, k)| (e, *k)).collect();
+    for (e, kit) in kits {
+        let mut keep = if kit.host { n.host_weapons.clone() } else { n.infected_weapons.clone() };
+        if keep.is_empty() {
+            keep.push(super::super::inventory::KNIFE);
+        }
         let ids: Vec<&'static str> = world
             .get::<crate::weapon::Inventory>(e)
             .map(|i| {
@@ -184,24 +218,28 @@ fn update(world: &mut World) {
         if ids.is_empty() {
             continue;
         }
-        for id in ids.into_iter().filter(|id| *id != super::super::inventory::KNIFE) {
+        for id in &keep {
+            objectives::give_weapon(world, e, id);
+        }
+        for id in ids.into_iter().filter(|id| !keep.contains(id)) {
             objectives::take_weapon(world, e, id);
         }
         world.entity_mut(e).remove::<CaInfectedKit>();
     }
-    // The heal after standing still.
-    let still: Vec<(Entity, CaStill, Vec3)> = world
-        .query::<(Entity, &CaStill, &Transform, &Health)>()
+    // The heal after standing still: `heal` of the maximum hit points
+    // every period, the wait restarted by a move, a hit or firing.
+    let still: Vec<(Entity, CaStill, Vec3, Health, bool)> = world
+        .query::<(Entity, &CaStill, &Transform, &Health, &crate::core::Intent)>()
         .iter(world)
-        .filter(|(.., h)| h.current > 0.0)
-        .map(|(e, s, t, _)| (e, *s, t.translation))
+        .filter(|(_, _, _, h, _)| h.current > 0.0)
+        .map(|(e, s, t, h, i)| (e, *s, t.translation, h.clone(), i.fire))
         .collect();
-    for (e, mut s, at) in still {
-        if at.distance(s.at) > 1e-3 {
+    for (e, mut s, at, health, firing) in still {
+        if at.distance(s.at) > 1e-3 || health.current < s.health - 1e-6 || firing {
             s.at = at;
             s.since = now;
-            s.next_heal = now + o.infected_still as f64;
-        } else if now + 1e-9 >= s.since + o.infected_still as f64 && now + 1e-9 >= s.next_heal {
+            s.next_heal = now + n.heal_wait as f64;
+        } else if now + 1e-9 >= s.since + n.heal_wait as f64 && now + 1e-9 >= s.next_heal {
             // Calloused (gear_perks.md 15): an infected with an
             // infected-mercenary item heals at `HPRecoverRate` 2.
             let rate = if world.get::<super::super::gear::CaLoadout>(e).is_some_and(|l| l.infected_item) {
@@ -210,10 +248,11 @@ fn update(world: &mut World) {
                 1.0
             };
             if let Some(mut h) = world.get_mut::<Health>(e) {
-                h.current = (h.current + rate * o.infected_heal * super::super::inventory::HP).min(h.max);
+                h.current = (h.current + rate * n.heal * h.max).min(h.max);
             }
-            s.next_heal = now + o.infected_heal_period as f64;
+            s.next_heal = now + n.heal_period as f64;
         }
+        s.health = world.get::<Health>(e).map_or(health.current, |h| h.current);
         world.entity_mut(e).insert(s);
     }
     test_win(world);
@@ -236,17 +275,18 @@ fn test_win(world: &mut World) {
 
 fn on_death(world: &mut World, d: &Death) {
     personal(world, d);
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
+    let n = super::super::missions::quarantine(world);
     if d.kind == DeathKind::Enemy
         && let Some(k) = d.killer
     {
         if d.victim_team == BRAVO {
-            stats(world, k).mission_points += o.human_kills_infected;
-            stats(world, d.victim).mission_points += o.infected_killed_by_human;
+            stats(world, k).mission_points += n.kill_point;
+            stats(world, d.victim).mission_points += n.dead_point;
         } else {
-            stats(world, k).mission_points += o.infected_infects;
-            spawns::respawn(world, d.victim);
-            infect(world, d.victim);
+            stats(world, k).mission_points += n.infect_point;
+            stats(world, d.victim).mission_points += n.infected_point;
+            revive_in_place(world, d.victim);
+            infect(world, d.victim, false);
         }
     }
     test_win(world);
@@ -259,8 +299,8 @@ fn round_over(world: &mut World) {
         return;
     }
     let Some(winner) = m.winner else { return };
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
-    let points = if winner == ALPHA { o.humans_win } else { o.infected_win };
+    let n = super::super::missions::quarantine(world);
+    let points = if winner == ALPHA { n.human_win_point } else { n.infect_win_point };
     for p in objectives::living(world) {
         if p.team == winner {
             stats(world, p.e).mission_points += points;
