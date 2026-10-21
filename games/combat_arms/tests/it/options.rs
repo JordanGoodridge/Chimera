@@ -601,6 +601,24 @@ fn t34_the_right_button_is_stolen_from_zoom() {
     assert_eq!(binding(&s, "ZoomIn"), " @ @ ");
 }
 
+/// The install's key-name file gives string ids (`$Keyboard_Name_4`) as
+/// the shown text: resolved through the string table, and the built-in
+/// name where the table has none (never the raw id).
+#[test]
+fn key_names_given_as_string_ids_resolve_or_fall_back() {
+    let names = keys::KeyNames::parse(
+        &lithtech_formats::attributes::Document::parse(
+            b"[Keyboard0]\nRealName = \"##42\"\nTriggerName = \"$Keyboard_Name_4\"\n[Keyboard1]\nRealName = \"##57\"\nTriggerName = \"$Keyboard_Name_nope\"\n",
+        )
+        .unwrap(),
+    );
+    let table = |id: &str| if id == "$Keyboard_Name_4" { "LSH".to_string() } else { id.to_string() };
+    let r = names.resolved(table);
+    assert_eq!(r.keyboard_text("##42"), "LSH");
+    assert_eq!(r.keyboard_text("##57"), "SPACE");
+    assert!(!names.resolved(|id| id.to_string()).keyboard_text("##42").starts_with('$'));
+}
+
 #[test]
 fn t35_a_new_key_leaves_the_old_one() {
     let mut s = sim();
@@ -999,4 +1017,21 @@ fn the_machine_limits_music_and_triple_buffering() {
     assert_eq!(value(&s, "triplebuffer"), "0");
     assert_eq!(value(&s, "MusicActive"), "0");
     assert_eq!(s.app.world().resource::<CaSoundLevels>().music, 0.0);
+}
+
+/// Saving the profile at exit only looks at the exit message: the app's
+/// runner still reads it, so `--screenshot` and `quit` end the run.
+#[test]
+fn saving_at_exit_leaves_the_exit_message_for_the_runner() {
+    let mut s = sim();
+    let dir = std::env::temp_dir().join(format!("chimera_ca_exit_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    combat_arms::game::options::use_user_profile(&mut s.app, Some(dir.join("profile.txt")));
+    s.app.world_mut().write_message(bevy::app::AppExit::Success);
+    s.app.update();
+    let kept = !s.app.world().resource::<Messages<bevy::app::AppExit>>().is_empty();
+    let saved = dir.join("profile.txt").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(kept, "the exit message was drained");
+    assert!(saved, "the profile is saved at exit");
 }

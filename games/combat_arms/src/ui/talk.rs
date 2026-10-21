@@ -96,6 +96,27 @@ impl Plugin for CaTalkStatePlugin {
     }
 }
 
+/// A radio text as shown: an id (`$RadioMsg_Report_list_4`) looked up in
+/// the string table, `fallback` when the table has no such id (never the
+/// raw `$` id); a plain text unchanged.
+pub fn shown_id(strings: &super::layout::text::Strings, text: &str, fallback: &str) -> String {
+    if !text.starts_with('$') {
+        return text.to_string();
+    }
+    let v = strings.resolve(text);
+    if v.starts_with('$') { fallback.to_string() } else { v }
+}
+
+/// The text without a leading "N. " (the menu numbers its own entries; the
+/// install's list texts carry the number already).
+pub fn without_number(s: &str) -> String {
+    let rest = s.trim_start_matches(|c: char| c.is_ascii_digit());
+    match rest.strip_prefix(". ") {
+        Some(r) if rest.len() < s.len() => r.to_string(),
+        _ => s.to_string(),
+    }
+}
+
 fn update(world: &mut World) {
     let now = now_ms(world);
     let screen = world.get_resource::<HudScreen>().map_or(Screen::default(), |s| s.0);
@@ -111,8 +132,15 @@ fn update(world: &mut World) {
         let data = world.resource::<CaRadio>();
         let (title, entries) = data.menu(class)?;
         Some(RadioView {
-            title: title.to_string(),
-            lines: entries.iter().map(|e| e.list_text.clone()).collect(),
+            title: shown_id(&ui.strings, title, "Radio"),
+            lines: entries
+                .iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    let fallback = e.chat.first().cloned().unwrap_or_else(|| format!("Message {}", i + 1));
+                    without_number(&shown_id(&ui.strings, &e.list_text, &fallback))
+                })
+                .collect(),
         })
     });
     let mut talk = world.resource_mut::<CaTalk>();

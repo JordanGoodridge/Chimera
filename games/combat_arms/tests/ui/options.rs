@@ -386,6 +386,64 @@ fn the_binding_rows_show_the_keys() {
     assert_eq!(t(&s, "Use_Perk"), "`");
 }
 
+/// The install's key-name file gives string ids as the rows' texts: the
+/// string table's text shows, and the built-in name where it has none.
+#[test]
+fn the_binding_rows_resolve_key_name_ids() {
+    let mut s = sim();
+    open(&mut s);
+    click(&mut s, "tab_control");
+    {
+        let w = s.app.world_mut();
+        w.resource_mut::<CaUi>().strings = combat_arms::ui::layout::Strings::parse("Keyboard_Name_17 = \"WW\"\n");
+        let mut o = w.resource_mut::<CaOptions>();
+        o.key_names.keyboard = vec![("##17".into(), "$Keyboard_Name_17".into()), ("##32".into(), "$Keyboard_Name_32".into())];
+    }
+    s.app.update();
+    let u = ui(&s);
+    assert_eq!(screen(&s).row_text("Forward", &u).unwrap(), "WW");
+    assert_eq!(screen(&s).row_text("Right", &u).unwrap(), "D", "no table entry: the built-in name");
+}
+
+/// The Control tab's rows stay inside its window: what overflows scrolls
+/// (the wheel; here the call), rows scrolled out of the window are not
+/// clicked, and the first rows are back at 0.
+#[test]
+fn the_control_tab_scrolls_what_overflows() {
+    let mut s = sim();
+    open(&mut s);
+    click(&mut s, "tab_control");
+    let u = ui(&s);
+    // Our layout fits; make the window shorter than its rows.
+    {
+        let mut sc = s.app.world_mut().resource_mut::<OptionsScreen>();
+        let (id, sheet) = (sc.roots[3].0, sc.sheets[3]);
+        sc.desk.sheets[sheet].layout.tree.get_mut(id).size.y = 200;
+    }
+    let (clip, max) = screen(&s).control_view(&u);
+    assert!(max > 0, "the rows overflow the window");
+    let before = screen(&s).rect_of("Back", &u).unwrap();
+    assert!(before.y1 <= clip.y1 || before.y0 < clip.y1);
+    let moved = s.app.world_mut().resource_mut::<OptionsScreen>().scroll_control(&u, 40);
+    assert!(moved);
+    let after = screen(&s).rect_of("Back", &u).unwrap();
+    assert_eq!(after.y0, before.y0 - 40, "the row moved up with the scroll");
+    // The last row is reachable at the end; the scroll stops there.
+    let end = s.app.world_mut().resource_mut::<OptionsScreen>().scroll_control(&u, 100_000);
+    assert!(end);
+    assert_eq!(screen(&s).scroll, screen(&s).control_view(&u).1);
+    let last = screen(&s).rect_of("Back", &u).unwrap();
+    assert!(last.y0 < before.y0, "scrolled further");
+    // A row below the window is not under a click outside it.
+    s.app.world_mut().resource_mut::<OptionsScreen>().scroll_control(&u, -100_000);
+    let below = IVec2::new(before.x0 + 5, clip.y1 + 10);
+    let fired = screen(&s).fired.len();
+    move_to(&mut s, below);
+    press(&mut s);
+    release(&mut s);
+    assert_eq!(screen(&s).fired.len(), fired, "nothing below the window fires");
+}
+
 #[test]
 fn a_click_on_a_row_captures_the_next_key() {
     let mut s = sim();
