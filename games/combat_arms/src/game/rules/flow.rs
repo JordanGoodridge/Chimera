@@ -495,6 +495,10 @@ pub fn enter_game(world: &mut World, e: Entity) {
     if world.get_entity(e).is_err() {
         return;
     }
+    // The lobby keeps a player out of the match until their room's "go".
+    if super::super::lobby::host::holds(world, e) {
+        return;
+    }
     world.entity_mut(e).remove::<Connecting>();
     let Some(mode) = current_mode(world) else {
         crate::net::parts::enter_at_spawn(world, e);

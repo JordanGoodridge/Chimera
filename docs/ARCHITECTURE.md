@@ -167,7 +167,12 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `characters`: model choice, third-person animation, the posed
   skeleton's hit spheres and sockets, death and bodies, `gear`: what the
   vest, helmet, goggles, backpack, gear mods and set items change and the
-  loadout that brings them, `perks`: the perks and what each changes, `net`:
+  loadout that brings them, `perks`: the perks and what each changes,
+  `lobby`: the lobby service (rooms, teams, ready, start and countdown,
+  join in progress), the client's checks and room list, the loadout's
+  rules and item lifetimes, and its host on the engine (`ca_lobby`;
+  `ui::lobby`: the room list, creation popup, waiting room and inventory
+  screens), `net`:
   its part of the
   network on `chimera_net`, `world`: the install's maps as `MapData`),
   with its feature `ui` its

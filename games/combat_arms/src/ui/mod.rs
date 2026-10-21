@@ -48,7 +48,10 @@
 //! in-game menu is the game's (`menu`); ours stay the fallback, and the
 //! headless tests'.
 //!
-//! Known shortcuts: no other screens (lobby, shop, result screen: the
+//! `lobby`: the lobby's screens (room list, creation popup, waiting room,
+//! inventory; `ca_lobby 1`).
+//!
+//! Known shortcuts: no other screens (shop, result screen: the
 //! game has them as menus at 1024 x 768; no vote panel yet, and the
 //! death screen only with the install's layout); without the install the HUD's panels keep their places as code
 //! (`hud::model`, from hud_crosshair.md); with it the crosshair and name
@@ -63,6 +66,7 @@ pub mod hud;
 pub mod install;
 pub mod layout;
 pub mod loading;
+pub mod lobby;
 pub mod menu;
 pub mod music;
 pub mod options;
@@ -98,6 +102,7 @@ impl Plugin for CaUiPlugin {
             effects::CaEffectsDrawPlugin,
             menu::CaMenuPlugin,
             options::CaOptionsPlugin,
+            lobby::CaLobbyScreenPlugin,
             options_apply::CaOptionsApplyPlugin,
             scoreboard::CaScoreboardPlugin,
             loading::CaLoadingPlugin,
