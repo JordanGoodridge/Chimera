@@ -235,6 +235,8 @@ pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo
     tick_interval: TICK_INTERVAL,
     open: mount::open,
     map_cycle,
+    map_names,
+    map_file: |name| format!("maps/{name}.bsp"),
     import_map: mount::import_map,
     default_binds_cfg: "cfg/config_default.cfg",
     default_binds: DEFAULT_BINDS,
@@ -242,6 +244,24 @@ pub static INFO: crate::game_registry::GameInfo = crate::game_registry::GameInfo
     movement_cvars: movement::CVARS,
     meters_per_unit: 0.0254,
 };
+
+/// Every map the mounted install holds: `maps/<name>.bsp`, sorted.
+pub fn map_names(mount: &crate::mount::Mount) -> Vec<String> {
+    let mut names: Vec<String> = mount
+        .entries()
+        .into_iter()
+        .filter_map(|(e, _)| {
+            e.path
+                .strip_prefix("maps/")
+                .and_then(|p| p.strip_suffix(".bsp"))
+                .filter(|p| !p.contains('/'))
+                .map(String::from)
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
 
 /// CS:S's maps from the install (`map::MapLoader`): what an app that
 /// plays CS:S maps chooses, the faithful one or a mashup

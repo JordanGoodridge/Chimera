@@ -61,3 +61,26 @@ fn mount_layers_shared_hl2_content() {
         "expected HL2 textures behind CS:S content, got {from_hl2}"
     );
 }
+
+#[test]
+fn lists_maps_from_the_bsp_layout() {
+    struct Fake;
+    impl FileSource for Fake {
+        fn name(&self) -> String {
+            "fake".into()
+        }
+        fn entries(&self) -> Vec<chimera_core::mount::Entry> {
+            ["maps/de_dust2.bsp", "maps/cs_office.bsp", "maps/de_dust2.nav", "maps/sub/x.bsp", "worlds/a.dat"]
+                .iter()
+                .map(|p| chimera_core::mount::Entry { path: p.to_string(), size: 1 })
+                .collect()
+        }
+        fn read(&self, _: &str) -> Option<std::io::Result<Vec<u8>>> {
+            None
+        }
+    }
+    let mut mount = chimera_core::mount::Mount::default();
+    mount.push(Fake);
+    assert_eq!((cs_source::INFO.map_names)(&mount), ["cs_office", "de_dust2"]);
+    assert_eq!((cs_source::INFO.map_file)("de_dust2"), "maps/de_dust2.bsp");
+}
