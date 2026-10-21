@@ -30,5 +30,6 @@ mod heavy {
     mod death_screen;
     mod install_ui;
     mod options;
+    mod strings;
     mod view_model;
 }
