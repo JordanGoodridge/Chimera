@@ -59,6 +59,8 @@
 //! - `chat`: radio and chat: the radio menus and calls, chat channels,
 //!   text commands, filter, muting, spam limits and voice channels
 //!   (radio_chat.md).
+//! - `lobby`: rooms, ready and start, the loadout's rules and the lobby
+//!   on the engine (lobby.md; `ca_lobby 1`);
 //! - `music`: the menu playlist, the cues of a match, map music triggers,
 //!   ambient map sounds and the two volume channels (music_ambience.md).
 //! - `options`: the options' settings, the player profile, key binding,
@@ -79,6 +81,7 @@ pub mod gear;
 pub mod grenades;
 pub mod hud;
 pub mod inventory;
+pub mod lobby;
 pub mod model;
 pub mod music;
 pub mod missions;
@@ -238,6 +241,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(characters::CaCharactersPlugin)
             .add(gear::CaGearPlugin)
             .add(perks::CaPerksPlugin)
+            .add(lobby::CaLobbyPlugin)
             .add(net::CaNetPlugin)
             .add(props::CaPropsPlugin)
     }

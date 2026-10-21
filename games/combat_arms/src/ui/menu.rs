@@ -217,6 +217,7 @@ fn popup_input(
     options: Option<Res<crate::game::options::CaOptions>>,
     chat: Option<Res<crate::client::chat::ChatInput>>,
     talk: Option<Res<crate::game::chat::CaChat>>,
+    lobby: Option<Res<super::lobby::LobbyScreen>>,
     mut player: Query<&mut crate::core::Intent, With<crate::core::LocalPlayer>>,
     mut last: Local<Option<(bool, f32, f32)>>,
     mut held: Local<Option<(bool, f32, f32)>>,
@@ -225,7 +226,8 @@ fn popup_input(
     let open = menu.open
         || options.is_some_and(|o| o.open)
         || chat.is_some_and(|c| c.open.is_some())
-        || talk.is_some_and(|c| c.is_open());
+        || talk.is_some_and(|c| c.is_open())
+        || lobby.is_some_and(|l| l.open);
     if !open {
         *held = None;
         *last = Some((intent.crouch, intent.yaw, intent.pitch));
@@ -292,11 +294,17 @@ impl Plugin for CaMenuStatePlugin {
     }
 }
 
-fn sync_status(menu: Res<InGameMenu>, options: Option<Res<crate::game::options::CaOptions>>, mut status: ResMut<MenuStatus>) {
+fn sync_status(
+    menu: Res<InGameMenu>,
+    options: Option<Res<crate::game::options::CaOptions>>,
+    lobby: Option<Res<super::lobby::LobbyScreen>>,
+    mut status: ResMut<MenuStatus>,
+) {
     let options_open = options.as_ref().is_some_and(|o| o.open);
-    if menu.is_changed() || options.is_some_and(|o| o.is_changed()) {
+    let lobby_open = lobby.as_ref().is_some_and(|l| l.open);
+    if menu.is_changed() || options.is_some_and(|o| o.is_changed()) || lobby.is_some_and(|l| l.is_changed()) {
         status.set_if_neq(MenuStatus {
-            open: menu.open || options_open,
+            open: menu.open || options_open || lobby_open,
             in_game: true,
             ..default()
         });
@@ -310,9 +318,11 @@ fn keys(
     chat: Option<Res<crate::client::chat::ChatInput>>,
     options: Option<Res<crate::game::options::CaOptions>>,
     talk: Option<Res<crate::game::chat::CaChat>>,
+    lobby: Option<Res<super::lobby::LobbyScreen>>,
     mut menu: ResMut<InGameMenu>,
 ) {
     let busy = console.is_some_and(|c| c.open)
+        || lobby.is_some_and(|l| l.open)
         || chat.is_some_and(|c| c.open.is_some())
         || options.is_some_and(|o| o.open)
         || talk.is_some_and(|c| c.is_open());
@@ -354,7 +364,12 @@ fn pointer(pointer: Res<MenuPointer>, mouse: Res<ButtonInput<MouseButton>>, ui: 
 }
 
 /// What the buttons do; their sounds counted.
-fn act(mut menu: ResMut<InGameMenu>, console: Option<ResMut<Console>>) {
+fn act(
+    mut menu: ResMut<InGameMenu>,
+    console: Option<ResMut<Console>>,
+    lobby: Option<ResMut<crate::game::lobby::CaLobbyClient>>,
+) {
+    let mut lobby = lobby;
     if menu.desk.events.is_empty() {
         return;
     }
@@ -368,8 +383,15 @@ fn act(mut menu: ResMut<InGameMenu>, console: Option<ResMut<Console>>) {
             CMD_CANCEL => menu.set_open(false),
             CMD_LOBBY => {
                 menu.set_open(false);
-                if let Some(c) = console.as_mut() {
-                    c.submit("quit");
+                // With a lobby, EXIT returns to the room (X); without, the
+                // game quits.
+                match lobby.as_mut().filter(|l| l.0.active && l.0.room.is_some()) {
+                    Some(l) => l.0.leave_match(),
+                    None => {
+                        if let Some(c) = console.as_mut() {
+                            c.submit("quit");
+                        }
+                    }
                 }
             }
             _ => {}
@@ -413,13 +435,14 @@ fn window_pointer(
 fn cursor(
     menu: Res<InGameMenu>,
     options: Option<Res<crate::game::options::CaOptions>>,
+    lobby: Option<Res<super::lobby::LobbyScreen>>,
     mouse: Res<ButtonInput<MouseButton>>,
     ui: Option<Res<crate::client::console::ConsoleUi>>,
     cursor: Option<Single<&mut bevy::window::CursorOptions>>,
     mut regrab: Local<bool>,
 ) {
     let Some(mut cursor) = cursor else { return };
-    if menu.open || options.is_some_and(|o| o.open) {
+    if menu.open || options.is_some_and(|o| o.open) || lobby.is_some_and(|l| l.open) {
         if crate::client::input::cursor_grabbed(&cursor) {
             crate::client::input::release_cursor(&mut cursor);
         }

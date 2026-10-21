@@ -1260,6 +1260,7 @@ others need the V2 key); add `--screenshot shot.png --frames 120 --window
 triangles, textures, spawns and warnings. The world files' numbers:
 `cargo test -p lithtech_formats -- heavy::world_install --nocapture`
 (`every_plain_map_summary` prints each map's version and counts).
+`+ca_lobby 1 +wait 40 +ca_lobby_demo 6` turns the lobby on and puts the player in a demo room with six made-up players (`--screenshot lobby.png` photographs the waiting room; the lobby's tests: tests/it/lobby*.rs, tests/ui/lobby.rs).
 `+ingamemenu` opens Combat Arms' in-game menu (Esc) for a screenshot of
 it, e.g. `--window 1280x720 --screenshot menu.png --frames 120
 +ingamemenu`. With the V1 key the HUD's panels (health, weapon, kill

@@ -1,0 +1,547 @@
+# Combat Arms' lobby data: our defaults, from specs/combat_arms/lobby.md
+# (section letters below are its). The room data file (GAMEROOM.TXT) and
+# the layout attributes' [ArmsOption] list are the install's and are not
+# read (Known shortcuts in game/lobby/data.rs); these are the "US room
+# data" numbers the spec quotes (D, C "Ranges offered", O, S).
+#
+# Read by games/combat_arms/src/game/lobby/data.rs (`LobbyData`).
+
+# C: the five default room titles (picked by the millisecond clock).
+titles = [
+    "Welcome to Combat Arms: the Classic",
+    "Weapons Hot!",
+    "Nowhere to Hide",
+    "Armed & Dangerous",
+    "Engaging the Enemy",
+]
+
+# D: the arms options (`[ArmsOption]`, US names). `kind`: only, except, or
+# none (All Permitted); `order`: the dropdown order; `listed` false: in no
+# list (Duty Roster, quirk 8); `cup`: listed only in the Go4CA Cup mode.
+[[arms]]
+id = 0
+name = "All Permitted"
+kind = "none"
+order = 0
+[[arms]]
+id = 1
+name = "Pistols Only"
+kind = "only"
+order = 7
+[[arms]]
+id = 2
+name = "Melee Only"
+kind = "only"
+order = 8
+[[arms]]
+id = 3
+name = "No Sniper Rifles"
+kind = "except"
+order = 1
+[[arms]]
+id = 4
+name = "No Explosives"
+kind = "except"
+order = 3
+[[arms]]
+id = 5
+name = "No Backpack"
+kind = "except"
+order = 4
+[[arms]]
+id = 6
+name = "Sniper Only"
+kind = "only"
+order = 5
+[[arms]]
+id = 7
+name = "Shotguns Only"
+kind = "only"
+order = 6
+[[arms]]
+id = 8
+name = "No Shotguns"
+kind = "except"
+order = 2
+[[arms]]
+id = 9
+name = "Duty Roster"
+kind = "none"
+order = 9
+listed = false
+[[arms]]
+id = 10
+name = "Only Go4CA Cup Item"
+kind = "only"
+order = 10
+cup = true
+
+# D: the maps. `key` is the world's name in the install (`combat_arms:
+# <key>`); the modes each offers are ours (the room data's `GMS_<key>`
+# entries are the install's). Sorted by name in the dropdown.
+[[map]]
+id = 0
+key = "hgoilrig"
+name = "OIL RIG"
+size = "Large"
+modes = ["TDM", "TSV", "TMM", "CTF", "BNT", "QRT", "SBT", "HQM", "ESC", "VTDM", "ESL", "COOP", "BDM", "SCOP"]
+[[map]]
+id = 1
+key = "junkflea"
+name = "JUNK FLEA"
+size = "Medium"
+modes = ["TDM", "TMM", "CTF", "FFA", "LMS", "VWRM", "QRT"]
+[[map]]
+id = 2
+key = "warehouse"
+name = "WAREHOUSE"
+size = "Small"
+modes = ["TDM", "TSV", "TMM", "CTF", "FFA", "LMS", "VWRM", "SBT", "VTDM"]
+[[map]]
+id = 3
+key = "darkhills"
+name = "DARK HILLS"
+size = "Large"
+modes = ["TDM", "HG", "FFA", "BNT", "QRT"]
+[[map]]
+id = 4
+key = "bloodmoney"
+name = "BLOOD MONEY"
+size = "Large"
+modes = ["TDM", "SQM", "HQM"]
+
+# D, C, O, S: the modes, `[Mode#]` in the room data's order. Fields:
+#  id, key (the room key), name (US), game_type, sort (SortingOrder),
+#  default_map (a map id), enable_play, single_play, rules (the lobby has
+#  rules for it: modes 20-25 have none), one_team,
+#  players = [min, max, step, recommended], goal = [min, max, step,
+#  default] with goal_label; goal_lobby_max (the lobby's own wider limit,
+#  open question 13),
+#  weapon_use / join_combat / team_kill / view_enemy / mutation / perk
+#  (the Enable...Setting flags; perk absent = on),
+#  refuse_ff / refuse_cam / refuse_perk / refuse_arms (the lobby's O table),
+#  cam_default / perk_default / arms_default (O defaults),
+#  start (S): "teams" [host team min, other min] or "total" n (the lobby's
+#  rule; the client's is min_players / 2 a team, or the same total).
+[[mode]]
+id = 0
+key = "TDM"
+name = "Elimination"
+game_type = 1
+sort = 0
+default_map = 0
+players = [2, 16, 2, 16]
+goal = [30, 140, 10, 100]
+goal_label = "Kills"
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+mutation = true
+start = { teams = [1, 1] }
+
+[[mode]]
+id = 1
+key = "TMM"
+name = "Search & Destroy"
+game_type = 2
+sort = 1
+default_map = 0
+players = [2, 16, 2, 16]
+goal = [3, 9, 2, 5]
+goal_label = "Rounds"
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+start = { teams = [3, 3] }
+
+[[mode]]
+id = 2
+key = "COOP"
+name = "Fireteam"
+game_type = 5
+sort = 2
+default_map = 0
+one_team = true
+players = [8, 8, 1, 8]
+goal = [0, 2, 1, 1]
+goal_label = "Difficulty"
+join_combat = true
+refuse_ff = true
+refuse_cam = true
+refuse_arms = true
+start = { total = 4 }
+
+[[mode]]
+id = 3
+key = "FFA"
+name = "One Man Army"
+game_type = 6
+sort = 3
+default_map = 1
+one_team = true
+players = [2, 16, 1, 8]
+goal = [15, 45, 15, 30]
+goal_label = "Kills"
+weapon_use = true
+join_combat = true
+view_enemy = true
+mutation = true
+refuse_ff = true
+start = { total = 2 }
+
+[[mode]]
+id = 4
+key = "CTF"
+name = "Capture the Flag"
+game_type = 7
+sort = 4
+default_map = 0
+players = [4, 16, 2, 16]
+goal = [3, 7, 2, 5]
+goal_label = "Points"
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+start = { teams = [2, 2] }
+
+[[mode]]
+id = 5
+key = "BNT"
+name = "Spy Hunt"
+game_type = 9
+sort = 5
+default_map = 0
+one_team = true
+players = [4, 16, 1, 16]
+goal = [8, 16, 4, 12]
+goal_label = "Min."
+join_combat = true
+team_kill = true
+view_enemy = true
+refuse_arms = true
+start = { total = 4 }
+
+[[mode]]
+id = 6
+key = "SFM"
+name = "Snowball Fight"
+game_type = 10
+sort = 6
+default_map = 0
+enable_play = false
+players = [2, 16, 2, 16]
+goal = [30, 90, 20, 50]
+goal_label = "Kills"
+join_combat = true
+team_kill = true
+view_enemy = true
+perk_default = false
+refuse_perk = true
+refuse_arms = true
+start = { teams = [1, 1] }
+
+[[mode]]
+id = 7
+key = "QRT"
+name = "Quarantine Regen"
+game_type = 11
+sort = 7
+default_map = 0
+one_team = true
+players = [8, 16, 1, 16]
+goal = [5, 9, 2, 7]
+goal_label = "Rounds"
+join_combat = true
+refuse_ff = true
+refuse_cam = true
+refuse_arms = true
+start = { total = 4 }
+
+[[mode]]
+id = 8
+key = "TSV"
+name = "Elimination Pro"
+game_type = 12
+sort = 8
+default_map = 0
+players = [6, 16, 2, 16]
+goal = [5, 9, 2, 7]
+goal_lobby_max = 11
+goal_label = "Rounds"
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+start = { teams = [1, 1] }
+
+[[mode]]
+id = 9
+key = "LMS"
+name = "Last Man Standing"
+game_type = 14
+sort = 9
+default_map = 1
+one_team = true
+players = [2, 16, 1, 8]
+goal = [3, 9, 2, 5]
+goal_label = "Rounds"
+weapon_use = true
+join_combat = true
+view_enemy = true
+refuse_ff = true
+start = { total = 2 }
+
+[[mode]]
+id = 10
+key = "SBT"
+name = "Bombing Run"
+game_type = 15
+sort = 10
+default_map = 0
+players = [6, 16, 2, 16]
+goal = [3, 9, 2, 5]
+goal_label = "Rounds"
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+start = { teams = [3, 3] }
+
+[[mode]]
+id = 11
+key = "HQM"
+name = "Seize and Secure"
+game_type = 17
+sort = 11
+default_map = 0
+players = [6, 16, 2, 16]
+goal = [8, 16, 4, 12]
+goal_label = "Min."
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+start = { teams = [2, 2] }
+
+[[mode]]
+id = 12
+key = "SQM"
+name = "Hired Guns"
+game_type = 19
+sort = 12
+default_map = 4
+players = [6, 16, 2, 16]
+goal = [3, 9, 2, 7]
+goal_label = "Rounds"
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+start = { teams = [3, 3] }
+
+[[mode]]
+id = 13
+key = "ESL"
+name = "S&D for Go4CA Cup"
+game_type = 21
+sort = 13
+default_map = 0
+players = [8, 10, 2, 10]
+goal = [5, 5, 1, 5]
+goal_lobby_min = 3
+goal_lobby_max = 9
+goal_label = "Rounds"
+join_combat = true
+perk_default = false
+arms_default = 10
+refuse_ff = true
+refuse_cam = true
+refuse_perk = true
+refuse_arms = true
+start = { teams = [1, 1], cup = true }
+
+[[mode]]
+id = 14
+key = "VWRM"
+name = "Arms Race"
+game_type = 22
+sort = 14
+default_map = 1
+one_team = true
+players = [2, 16, 1, 8]
+goal = [15, 45, 15, 15]
+goal_label = "Kills"
+join_combat = true
+view_enemy = true
+refuse_ff = true
+start = { total = 2 }
+
+[[mode]]
+id = 15
+key = "ESC"
+name = "VIP Escort"
+game_type = 23
+sort = 15
+default_map = 0
+players = [4, 16, 2, 16]
+goal = [5, 11, 2, 7]
+goal_label = "Rounds"
+weapon_use = true
+join_combat = true
+refuse_ff = true
+refuse_cam = true
+swap_display = true
+start = { teams = [2, 2] }
+
+[[mode]]
+id = 16
+key = "VTDM"
+name = "VIP Elimination"
+game_type = 25
+sort = 16
+default_map = 2
+players = [2, 16, 2, 16]
+goal = [100, 180, 10, 140]
+# Quirk 6: the lobby's label test (game type) comes first, so Points.
+goal_label = "Points"
+weapon_use = true
+join_combat = true
+team_kill = true
+view_enemy = true
+mutation = true
+start = { teams = [1, 1] }
+
+[[mode]]
+id = 17
+key = "BDM"
+name = "Elimination (bot play)"
+game_type = 28
+sort = 17
+default_map = 0
+single_play = true
+players = [5, 8, 1, 8]
+goal = [20, 50, 10, 40]
+goal_lobby_max = 60
+goal_label = "Kills"
+join_combat = true
+weapon_use = true
+team_kill = true
+view_enemy = true
+start = { teams = [1, 1] }
+
+[[mode]]
+id = 18
+key = "SCOP"
+name = "Fireteam (single play)"
+game_type = 5
+sort = 18
+default_map = 0
+single_play = true
+one_team = true
+players = [8, 8, 1, 8]
+goal = [0, 2, 1, 1]
+goal_label = "Difficulty"
+join_combat = true
+refuse_ff = true
+refuse_cam = true
+refuse_arms = true
+start = { total = 4 }
+
+[[mode]]
+id = 19
+key = "HG"
+name = "Hunted"
+game_type = 29
+sort = 19
+default_map = 3
+one_team = true
+players = [3, 16, 1, 16]
+goal = [3, 9, 2, 5]
+goal_label = "Rounds"
+join_combat = true
+view_enemy = true
+cam_default = true
+perk_default = false
+refuse_perk = true
+start = { total = 3 }
+
+# 20-25: room-data-only modes: listed by a client that trusts EnablePlay,
+# but the lobby has no rules for them (edge cases): never offered here.
+[[mode]]
+id = 20
+key = "BIG"
+name = "Big Head"
+game_type = 31
+sort = 20
+default_map = 0
+rules = false
+players = [2, 16, 2, 16]
+goal = [30, 140, 10, 100]
+goal_label = "Kills"
+start = { teams = [1, 1] }
+[[mode]]
+id = 21
+key = "REM"
+name = "Race Combat"
+game_type = 32
+sort = 21
+default_map = 0
+rules = false
+players = [2, 16, 1, 16]
+goal = [30, 140, 10, 100]
+goal_label = "Kills"
+one_team = true
+start = { total = 2 }
+[[mode]]
+id = 22
+key = "TRCM"
+name = "Team Race Combat"
+game_type = 33
+sort = 22
+default_map = 0
+rules = false
+players = [2, 16, 2, 16]
+goal = [30, 140, 10, 100]
+goal_label = "Kills"
+start = { teams = [1, 1] }
+[[mode]]
+id = 23
+key = "LHG"
+name = "Lone Combat"
+game_type = 34
+sort = 23
+default_map = 0
+rules = false
+players = [2, 16, 1, 16]
+goal = [30, 140, 10, 100]
+goal_label = "Kills"
+one_team = true
+start = { total = 2 }
+[[mode]]
+id = 24
+key = "LLHG"
+name = "Lone Combat Infected"
+game_type = 35
+sort = 24
+default_map = 0
+rules = false
+players = [2, 16, 1, 16]
+goal = [30, 140, 10, 100]
+goal_label = "Kills"
+one_team = true
+start = { total = 2 }
+[[mode]]
+id = 25
+key = "TDMSKILL"
+name = ""
+game_type = 36
+sort = 25
+default_map = 0
+rules = false
+players = [2, 16, 2, 16]
+goal = [30, 140, 10, 100]
+goal_label = "Kills"
+start = { teams = [1, 1] }
