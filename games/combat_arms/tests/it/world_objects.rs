@@ -331,6 +331,53 @@ fn t25_no_crush() {
     assert!(t.w.fx.iter().all(|f| !matches!(f, combat_arms::game::objects::runtime::Fx::Explode { .. })));
 }
 
+/// Riders (world_objects.md 10, server): a player standing on a lift
+/// rises with it, by the lift's own displacement; a world model that
+/// doesn't collide (HGOILRIG's sea, `Solid` false) carries nobody: it
+/// passes through the player above it.
+#[test]
+fn riders_only_on_solid_world_models() {
+    use combat_arms::game::objects::runtime::Fx;
+    let carried = |solid: bool| {
+        let (mut kv, centre) = wm(
+            "SlidingWorldModel",
+            "Lift",
+            Vec3::ZERO,
+            Vec3::new(50.0, 10.0, 50.0),
+            // Forced, as the sea is (a lift that isn't stops at the
+            // player it would push: blocking, case 7).
+            &[
+                ("MoveDir", v(0.0, 1.0, 0.0)),
+                ("MoveDist", "100".into()),
+                ("PowerOnTime", "1".into()),
+                ("ForceMove", "1".into()),
+            ],
+        );
+        for (k, val) in &mut kv {
+            if k == keys::SOLID {
+                *val = (solid as u8).to_string();
+            }
+        }
+        let mut t = T::new(vec![(kv, centre)]);
+        // Standing on its top (y 10).
+        t.w.chars = vec![player(1, Vec3::new(-16.0, 10.0, -16.0), Vec3::new(16.0, 110.0, 16.0))];
+        t.send("Lift", "TRIGGER");
+        let mut up = 0.0;
+        for _ in 0..30 {
+            t.frame();
+            for f in t.w.fx.drain(..) {
+                if let Fx::Carry { delta, .. } = f {
+                    up += delta.y;
+                }
+            }
+        }
+        assert_eq!(t.state("Lift"), State::On);
+        up
+    };
+    close(carried(true), 100.0, 1e-2, "carried up with a solid lift");
+    assert_eq!(carried(false), 0.0, "nothing stands on a world model that doesn't collide");
+}
+
 /// A trigger relay with `props`, its first command `msg <out> toggle`.
 fn trigger(name: &str, props: &[(&str, String)]) -> (Vec<(String, String)>, Option<Vec3>) {
     obj("Trigger", name, props)

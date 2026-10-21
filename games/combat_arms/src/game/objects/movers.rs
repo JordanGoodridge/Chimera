@@ -126,8 +126,14 @@ pub struct Blocking<'a> {
 
 impl Blocking<'_> {
     /// Characters standing on the box at `pose` (their box a little
-    /// lowered meets it, their own box doesn't).
+    /// lowered meets it, their own box doesn't); none on a world model
+    /// that doesn't collide: nothing stands on it (HGOILRIG's rising sea,
+    /// `Solid` false, passes through the players above it, which its
+    /// water volume, not the sea, then holds).
     pub fn riders(&self, pose: &Pose) -> Vec<usize> {
+        if !self.solid {
+            return Vec::new();
+        }
         let obb = pose.obb();
         self.chars
             .iter()
