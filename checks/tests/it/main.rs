@@ -4,3 +4,4 @@
 //! in seconds (no workspace crate under them). `cargo test -p repo_checks`.
 
 mod architecture;
+mod determinism;
