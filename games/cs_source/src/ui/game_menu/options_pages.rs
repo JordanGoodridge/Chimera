@@ -319,7 +319,7 @@ impl GameMenu {
     /// Whether Chimera has a keyboard action's command.
     pub(super) fn known_command(&self, line: &str) -> bool {
         let first = line.split_whitespace().next().unwrap_or_default().to_lowercase();
-        binds::is_polled(line) || self.known.contains(&first)
+        self.known.contains(&first) || self.known.contains(&line.trim().to_lowercase())
     }
 
     /// Whether setting `i` shows as a combo box: choices, window sizes,

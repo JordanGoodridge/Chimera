@@ -246,7 +246,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net28");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net29");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -470,6 +470,8 @@ pub struct NetCmd {
     pub pitch: f32,
     /// `buttons::*` bits.
     pub buttons: u16,
+    /// `Intent::actions`: the named actions held (`core::ActionRegistry`).
+    pub actions: u32,
     pub select: Option<u8>,
     /// The server tick (fractional) the client drew others at when it made
     /// this command (`interp::InterpClock::render_tick`; 0: none, or
@@ -478,7 +480,8 @@ pub struct NetCmd {
     pub view_tick: f64,
 }
 
-/// `NetCmd::buttons` bits.
+/// `NetCmd::buttons` bits (Chimera's own buttons; a game's named actions
+/// are `NetCmd::actions`).
 pub mod buttons {
     pub const JUMP: u16 = 1;
     pub const CROUCH: u16 = 1 << 1;
@@ -522,6 +525,7 @@ impl NetCmd {
             pitch: i.pitch,
             buttons: b,
             select: i.select,
+            actions: i.actions,
             view_tick: 0.0,
         }
     }
@@ -558,6 +562,7 @@ impl NetCmd {
         i.last_weapon = on(LAST_WEAPON);
         i.use_key = on(USE);
         i.opposed = BVec2::new(on(OPPOSED_X), on(OPPOSED_Y));
+        i.actions = self.actions;
         i.select = self.select.filter(|s| *s < crate::core::PICK_SLOTS * (crate::core::PICK_DEPTH + 1));
     }
 
@@ -1645,6 +1650,7 @@ mod tests {
             pitch: 7.0,
             buttons: buttons::JUMP | buttons::FIRE,
             select: Some(200),
+            actions: 0b101,
             view_tick: f64::NAN,
         }
         .apply(&mut i);
@@ -1652,6 +1658,7 @@ mod tests {
         assert_eq!(i.yaw, 0.0);
         assert_eq!(i.pitch, std::f32::consts::FRAC_PI_2);
         assert!(i.jump && i.fire && !i.crouch);
+        assert_eq!(i.actions, 0b101);
         assert_eq!(i.select, None);
         // A view tick that isn't one, or one ahead of its command: none,
         // or the command's own.
@@ -1673,11 +1680,13 @@ mod tests {
             crouch: true,
             use_key: true,
             select: Some(2),
+            actions: 0b10,
             ..default()
         };
         let mut back = crate::core::Intent::default();
         NetCmd::of(1, &src).apply(&mut back);
         assert_eq!(NetCmd::of(1, &back), NetCmd::of(1, &src));
+        assert_eq!(back.actions, 0b10);
     }
 
     #[test]

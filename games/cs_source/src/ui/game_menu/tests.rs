@@ -880,7 +880,8 @@ fn keyboard() -> GameMenu {
     let mut b = BTreeMap::new();
     binds::use_game_defaults(crate::game::DEFAULT_BINDS);
     binds::bind_defaults(&mut b, true);
-    m.set_binds(b, BTreeSet::from(["bugreport".to_string()]));
+    let known = binds::POLLED.iter().map(|c| c.to_string()).chain(["bugreport".to_string()]);
+    m.set_binds(b, known.collect());
     click(&mut m, MainItem::Options);
     m
 }

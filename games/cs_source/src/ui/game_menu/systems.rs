@@ -179,7 +179,13 @@ fn menu_values(w: &mut World) -> (HashMap<String, String>, BTreeMap<String, Stri
         };
         let console = w.resource::<Console>();
         let binds = console.binds.clone();
-        let known: BTreeSet<String> = console.names().into_iter().map(|n| n.to_lowercase()).collect();
+        let mut known: BTreeSet<String> = console.names().into_iter().map(|n| n.to_lowercase()).collect();
+        // Commands the systems read from the held keys are Chimera's too.
+        if let Some(p) = w.get_resource::<crate::client::binds::PolledBinds>() {
+            known.extend(p.all().map(str::to_string));
+        } else {
+            known.extend(binds::POLLED.iter().map(|c| c.to_string()));
+        }
         let values = cvars
             .into_iter()
             .filter_map(|c| (c.get)(w).map(|v| (c.name.clone(), v)))

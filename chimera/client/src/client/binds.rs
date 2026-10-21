@@ -19,19 +19,29 @@
 //! defaults not among the game's `GameInfo::old_default_binds`) on free
 //! keys, so older configs get defaults added since; saved binds win.
 //!
-//! Binds whose whole line is one of `POLLED` (`+forward`, `slot1`,
-//! `buymenu`, `radio1`, ...) are read by the system that owns the action,
-//! from the keys held this frame (`pressed`, `just_pressed`,
-//! `wheel_notches`), with that system's own rules (only while playing, not
-//! while typing ...); `console::run_binds` leaves them alone. Every other
-//! bind runs its line through the console. A key may hold several commands
-//! (`a; b`, a game's two actions on one key): `keys_for` finds it for each,
-//! and only the parts that are not polled run (`runnable`). Source key names, rebind and
-//! clear lines for the options.
+//! Binds whose whole line is polled (Chimera's `POLLED`: `+forward`,
+//! `slot1`, `lastinv` ...; a game's own, `BindsAppExt::polled_bind`:
+//! CS:S's `buymenu`, `radio1`; the `+name` of each named action,
+//! `BindsAppExt::bound_action`) are read by the system that owns the
+//! action, from the keys held this frame (`pressed`, `just_pressed`,
+//! `wheel_notches`), with that system's own rules (only while playing,
+//! not while typing ...); `PolledBinds::runnable`, used by
+//! `console::run_binds`, leaves them alone. Every other bind runs its
+//! line through the console. A key may hold several commands (`a; b`, a
+//! game's two actions on one key): `keys_for` finds it for each, and only
+//! the parts that are not polled run. Source key names, rebind and clear
+//! lines for the options.
 //!
-//! Known shortcuts: `POLLED` lists CS:S's polled commands (`buymenu`,
-//! `chooseteam`, `radio1`..`radio3`) beside the generic ones: a game can't
-//! add its own yet.
+//! Named actions: a bind is still a line, so `bind mouse4 +throw` is the
+//! same in saved configs and profiles as before; `+throw` names the action
+//! `throw` the game registered (`core::ActionRegistry`), and the local
+//! intent source sets its bit in `Intent::actions` while a key bound to it
+//! is held. The fixed buttons (`+jump`, `+attack` ...) stay Chimera's own
+//! aliases (the fields of `Intent`).
+//!
+//! Known shortcuts: a named action is only a held button: it has no
+//! console `+throw` typed-hold (`console::HeldActions` keeps Chimera's
+//! own) and no wheel notch.
 
 use std::{collections::BTreeMap, sync::RwLock};
 
@@ -299,8 +309,11 @@ pub fn bind_added_defaults(binds: &mut BTreeMap<String, String>) {
     }
 }
 
-/// Commands the systems that own them read from the held keys instead of
-/// the console running them (see the module docs).
+/// Chimera's own polled commands: read from the held keys by the systems
+/// that own them instead of the console running them (see the module
+/// docs). A game adds its own with `BindsAppExt::polled_bind` (CS:S:
+/// `buymenu`, `chooseteam`, `radio1`..`radio3`) and its named actions with
+/// `bound_action`.
 pub const POLLED: &[&str] = &[
     "+forward",
     "+back",
@@ -324,11 +337,6 @@ pub const POLLED: &[&str] = &[
     "slot5",
     "lastinv",
     "drop",
-    "buymenu",
-    "chooseteam",
-    "radio1",
-    "radio2",
-    "radio3",
     "messagemode",
     "messagemode2",
     "bug",
@@ -340,10 +348,63 @@ fn norm(line: &str) -> String {
     line.trim().to_lowercase()
 }
 
-/// Whether a bind's line is read by its system rather than run.
-pub fn is_polled(line: &str) -> bool {
-    let l = norm(line);
-    POLLED.contains(&l.as_str())
+/// The commands beyond `POLLED` that systems read from the held keys: a
+/// game's own (`BindsAppExt::polled_bind`) and the `+name` of each named
+/// action (`bound_action`).
+#[derive(Resource, Default, Clone, Debug, PartialEq)]
+pub struct PolledBinds {
+    extra: std::collections::BTreeSet<String>,
+}
+
+impl PolledBinds {
+    /// Whether a bind's line is read by its system rather than run.
+    pub fn is_polled(&self, line: &str) -> bool {
+        let l = norm(line);
+        POLLED.contains(&l.as_str()) || self.extra.contains(&l)
+    }
+
+    /// Every polled command, Chimera's and the game's.
+    pub fn all(&self) -> impl Iterator<Item = &str> {
+        POLLED.iter().copied().chain(self.extra.iter().map(String::as_str))
+    }
+
+    /// The part of a bind's line that is run when its key goes down: the
+    /// commands that are not polled (those are read by the systems that
+    /// own them), joined with `; `. None when nothing is left to run.
+    pub fn runnable(&self, line: &str) -> Option<String> {
+        let rest: Vec<String> = parts(line)
+            .into_iter()
+            .filter(|p| !p.is_empty() && !self.is_polled(p))
+            .collect();
+        (!rest.is_empty()).then(|| rest.join("; "))
+    }
+}
+
+/// A game plugin telling the client what its binds mean.
+pub trait BindsAppExt {
+    /// `command` is read from the held keys by the game's own system
+    /// (`pressed`, `just_pressed`), so a bind to it is not run.
+    fn polled_bind(&mut self, command: &str) -> &mut Self;
+    /// Register the named action `name` (`core::ActionRegistry`): the
+    /// keys bound to `+name` set its bit in the local `Intent::actions`
+    /// while held, and `+name` is polled.
+    fn bound_action(&mut self, name: &str) -> &mut Self;
+}
+
+impl BindsAppExt for App {
+    fn polled_bind(&mut self, command: &str) -> &mut Self {
+        self.world_mut()
+            .get_resource_or_insert_with(PolledBinds::default)
+            .extra
+            .insert(norm(command));
+        self
+    }
+
+    fn bound_action(&mut self, name: &str) -> &mut Self {
+        use crate::core::ActionAppExt;
+        self.intent_action(name);
+        self.polled_bind(&format!("+{}", norm(name)))
+    }
 }
 
 /// A bind's commands: its line split at `;` outside quotes (one key may
@@ -363,14 +424,6 @@ pub fn parts(line: &str) -> Vec<String> {
     }
     out.push(line[start..].trim().to_string());
     out
-}
-
-/// The part of a bind's line that is run when its key goes down: the
-/// commands that are not `POLLED` (those are read by the systems that own
-/// them), joined with `; `. None when nothing is left to run.
-pub fn runnable(line: &str) -> Option<String> {
-    let rest: Vec<String> = parts(line).into_iter().filter(|p| !p.is_empty() && !is_polled(p)).collect();
-    (!rest.is_empty()).then(|| rest.join("; "))
 }
 
 /// The keys bound to exactly `command`, in key order.
@@ -582,10 +635,21 @@ mod tests {
         assert_eq!(keys_for(&b, "+forward"), ["w"]);
         assert_eq!(keys_for(&b, "+use"), ["e"]);
         // Polled parts are read by their systems; the rest runs.
-        assert_eq!(runnable("+reload; lastinv"), None);
-        assert_eq!(runnable("+reload; choose_1"), Some("choose_1".into()));
-        assert_eq!(runnable("say \"a; b\"; +use"), Some("say \"a; b\"".into()));
-        assert_eq!(runnable("+forward"), None);
+        let p = PolledBinds::default();
+        assert_eq!(p.runnable("+reload; lastinv"), None);
+        assert_eq!(p.runnable("+reload; choose_1"), Some("choose_1".into()));
+        assert_eq!(p.runnable("say \"a; b\"; +use"), Some("say \"a; b\"".into()));
+        assert_eq!(p.runnable("+forward"), None);
+        // A game's own polled commands are polled once it says so.
+        assert_eq!(p.runnable("buymenu"), Some("buymenu".into()));
+        let mut app = App::new();
+        app.polled_bind("BuyMenu").bound_action("Throw");
+        let p = app.world().resource::<PolledBinds>();
+        assert_eq!(p.runnable("buymenu; +throw"), None);
+        assert!(p.all().any(|c| c == "+throw") && p.all().any(|c| c == "+forward"));
+        let reg = app.world().resource::<crate::core::ActionRegistry>();
+        assert_eq!(reg.bit("throw"), 1);
+        assert_eq!(reg.bit("nope"), 0);
     }
 
     /// A game's default binds file as it might read (CS:S's

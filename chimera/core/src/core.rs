@@ -3,7 +3,9 @@
 //! three").
 //!
 //! `Intent` (with its command number, stamped each tick in `SimSet::Commands`:
-//! the tick offset by the character's `Seed`), `Velocity`, `MovementState`
+//! the tick offset by the character's `Seed`; `Intent::actions` carries a
+//! game's named actions, `ActionRegistry`/`ActionAppExt::intent_action`),
+//! `Velocity`, `MovementState`
 //! (with the hull, the moving solid stood on and whether it is on a ladder),
 //! `BaseVelocity`, `EntityGravity`, `MovingSolid`, `Health`, `Damage`/`Died`
 //! messages (damage applied after weapons, `Died` carries the killing `Damage`;
@@ -118,6 +120,11 @@ pub struct Intent {
     /// The use key (Source `+use`, E): doors, buttons. Held level; the
     /// logic layer acts on presses.
     pub use_key: bool,
+    /// Named actions held this tick (`ActionRegistry`): bit `i` is the
+    /// action registered `i`th (by name order). A game's own buttons
+    /// (`throw`, `ability`, `emote`) ride here beside the fields above,
+    /// which stay as Chimera's own names for the common ones.
+    pub actions: u32,
     /// This tick's command number (Source's usercmd `command_number`):
     /// shared randoms (shot spread, recoil) are seeded from it. Stamped
     /// every tick after the rules (`SimSet::Commands`, `number_commands`);
@@ -130,7 +137,69 @@ pub const PICK_SLOTS: u8 = 10;
 /// Weapons per slot a pick can name.
 pub const PICK_DEPTH: u8 = 8;
 
+/// Most named actions a game set can register (`Intent::actions` is a
+/// `u32`).
+pub const MAX_ACTIONS: usize = 32;
+
+/// The named actions of this app (`ActionAppExt::intent_action`): a game
+/// or minigame registers `throw` and binds `+throw` (the client reads
+/// the keys bound to it, `chimera_client::binds`); the bit rides in
+/// `Intent::actions` and the network command. Kept sorted by name, so
+/// the server and its clients agree on the bits whatever order the games
+/// registered them in (as `PredictedComponents` does).
+#[derive(Resource, Default, Clone, Debug, PartialEq)]
+pub struct ActionRegistry {
+    names: Vec<String>,
+}
+
+impl ActionRegistry {
+    /// Add an action (idempotent; names are lower-case). Returns false
+    /// when the registry is full.
+    pub fn register(&mut self, name: &str) -> bool {
+        let name = name.trim().to_lowercase();
+        match self.names.binary_search(&name) {
+            Ok(_) => true,
+            Err(_) if self.names.len() >= MAX_ACTIONS => false,
+            Err(at) => {
+                self.names.insert(at, name);
+                true
+            }
+        }
+    }
+
+    /// The registered names, in bit order.
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    /// An action's bit in `Intent::actions` (0: not registered).
+    pub fn bit(&self, name: &str) -> u32 {
+        let name = name.trim().to_lowercase();
+        self.names.binary_search(&name).map_or(0, |i| 1 << i)
+    }
+}
+
+/// Registering actions from a plugin.
+pub trait ActionAppExt {
+    /// Register the named action `name` (see `ActionRegistry`).
+    fn intent_action(&mut self, name: &str) -> &mut Self;
+}
+
+impl ActionAppExt for App {
+    fn intent_action(&mut self, name: &str) -> &mut Self {
+        if !self.world_mut().get_resource_or_insert_with(ActionRegistry::default).register(name) {
+            warn!("action {name}: no room (at most {MAX_ACTIONS} named actions)");
+        }
+        self
+    }
+}
+
 impl Intent {
+    /// Whether the named action `name` is held.
+    pub fn action(&self, registry: &ActionRegistry, name: &str) -> bool {
+        self.actions & registry.bit(name) != 0
+    }
+
     /// The `select` value picking the `nth` weapon (from 0, in inventory
     /// order) in `slot`.
     pub fn pick(slot: u8, nth: u8) -> u8 {
@@ -1733,7 +1802,8 @@ pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<Intent>()
+        app.init_resource::<ActionRegistry>()
+            .register_type::<Intent>()
             .register_type::<Velocity>()
             .register_type::<MovementState>()
             .register_type::<Health>()

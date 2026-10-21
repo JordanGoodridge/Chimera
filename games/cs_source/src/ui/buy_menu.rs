@@ -43,6 +43,8 @@ pub struct BuyMenuPlugin;
 
 impl Plugin for BuyMenuPlugin {
     fn build(&self, app: &mut App) {
+        use crate::client::binds::BindsAppExt;
+        app.polled_bind("buymenu");
         app.init_resource::<BuyMenu>()
             .add_systems(Update, (keys, pointer, draw, draw_vgui).chain());
         crate::client::front_end::sync_panel::<BuyMenu, _>(app, "buy", true, |m| m.open, draw_vgui);
