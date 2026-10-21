@@ -25,3 +25,19 @@ fn install_mounts_its_archives() {
         assert_eq!(keyed.unwrap_err().kind(), ErrorKind::PermissionDenied);
     }
 }
+
+/// The shell's map list (`GameInfo::map_names`) finds the install's maps.
+#[test]
+fn install_lists_its_maps_for_the_console() {
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else {
+        eprintln!("skipping: no Combat Arms install configured");
+        return;
+    };
+    if !install.join("Game").is_dir() {
+        eprintln!("skipping: no Combat Arms install at {}", install.display());
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let names = (INFO.map_names)(&mount);
+    assert!(names.iter().any(|n| n == "warehouse"), "{} maps, no warehouse", names.len());
+}

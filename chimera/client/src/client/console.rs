@@ -1777,17 +1777,7 @@ pub fn map_names(game: Option<&'static GameInfo>) -> Vec<String> {
             let Some(mount) = game.mount() else {
                 return (game.id, Vec::new());
             };
-            let mut names: Vec<String> = mount
-                .entries()
-                .into_iter()
-                .filter_map(|(e, _)| {
-                    e.path
-                        .strip_prefix("maps/")
-                        .and_then(|p| p.strip_suffix(".bsp"))
-                        .filter(|p| !p.contains('/'))
-                        .map(String::from)
-                })
-                .collect();
+            let mut names = (game.map_names)(&mount);
             names.sort();
             names.dedup();
             (game.id, names)
@@ -1832,7 +1822,7 @@ fn follow_map_cycle(
 /// Where a map of `game`'s comes from: the game's own content, its
 /// download folder, or Chimera's cache.
 fn map_source(game: &GameInfo, name: &str) -> &'static str {
-    let file = format!("maps/{name}.bsp");
+    let file = (game.map_file)(name);
     let in_dir = |dir: Option<std::path::PathBuf>| dir.is_some_and(|d| d.join(&file).is_file());
     if in_dir(game.content_cache()) {
         "imported"
@@ -2474,6 +2464,8 @@ mod tests {
             tick_interval: 0.015,
             open: |_| Err(std::io::ErrorKind::NotFound.into()),
             map_cycle: |_| Vec::new(),
+            map_names: |_| Vec::new(),
+            map_file: |n| format!("maps/{n}.bsp"),
             import_map: |_| Err("no".into()),
             default_binds_cfg: "cfg/config_default.cfg",
             default_binds: &[],
