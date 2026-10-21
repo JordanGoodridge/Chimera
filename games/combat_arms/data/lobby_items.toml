@@ -1,0 +1,169 @@
+# Combat Arms' lobby item list: ours, from specs/combat_arms/lobby.md E and P.
+# The install's ITEMS.TXT and the shop lists are the service's and are not
+# read; this is "a local item list" (F, offline stand-ins). The base items
+# and their numbers are the spec's (E, "Defaults for a new player"); the
+# others are examples with numbers of ours in the 900s, each standing on one
+# of our weapon documents (`weapon`). Gear (heads, goggles, backpacks,
+# bodies) is built from data/gear.toml by item number (head 4000 + id,
+# goggles 5000 + id, backpack 7000 + id, character 10000 + id).
+#
+# kind: knife, throwable, assault, smg, sniper, mg, rocket, flame, shotgun
+# (primary), pistol, shotgun2 (the item type listed as shotgun, type 5),
+# special, assassin, crossbow. grade: higher is better (the expiry
+# fallback's tie-break).
+
+[[item]]
+no = 0
+name = "M9"
+kind = "knife"
+weapon = "combat_arms:m9_knife"
+base = true
+
+[[item]]
+no = 901
+name = "Bowie Knife"
+kind = "knife"
+weapon = "combat_arms:bowie_knife"
+grade = 2
+
+[[item]]
+no = 902
+name = "Machete"
+kind = "knife"
+weapon = "combat_arms:machete"
+grade = 2
+
+[[item]]
+no = 7
+name = "M67"
+kind = "throwable"
+weapon = "combat_arms:m67"
+base = true
+explosive = true
+
+[[item]]
+no = 903
+name = "XM84"
+kind = "throwable"
+weapon = "combat_arms:xm84"
+grade = 2
+
+[[item]]
+no = 904
+name = "M18"
+kind = "throwable"
+weapon = "combat_arms:m18"
+grade = 2
+
+[[item]]
+no = 20
+name = "M16A3"
+kind = "assault"
+weapon = "combat_arms:m4a1"
+base = true
+
+[[item]]
+no = 910
+name = "M4A1"
+kind = "assault"
+weapon = "combat_arms:m4a1"
+grade = 2
+
+[[item]]
+no = 911
+name = "AK-47"
+kind = "assault"
+weapon = "combat_arms:m4a1"
+grade = 2
+
+[[item]]
+no = 912
+name = "MP5A4"
+kind = "smg"
+weapon = "combat_arms:mp5a4"
+grade = 2
+
+[[item]]
+no = 913
+name = "M60"
+kind = "mg"
+weapon = "combat_arms:m60"
+grade = 3
+
+[[item]]
+no = 914
+name = "Remington 870"
+kind = "shotgun"
+weapon = "combat_arms:remington_870"
+grade = 2
+
+[[item]]
+no = 915
+name = "L96A1"
+kind = "sniper"
+weapon = "combat_arms:l96a1"
+grade = 3
+
+[[item]]
+no = 916
+name = "SVD Dragunov"
+kind = "sniper"
+weapon = "combat_arms:dragunov_svd"
+grade = 3
+
+[[item]]
+no = 24
+name = "Beretta M92FS"
+kind = "pistol"
+weapon = "combat_arms:beretta_m92fs"
+base = true
+
+[[item]]
+no = 920
+name = "Desert Eagle"
+kind = "pistol"
+weapon = "combat_arms:beretta_m92fs"
+grade = 2
+
+[[item]]
+no = 921
+name = "Sawed-off"
+kind = "shotgun2"
+weapon = "combat_arms:remington_870"
+grade = 2
+
+[[item]]
+no = 930
+name = "RPG-7"
+kind = "rocket"
+weapon = "combat_arms:rpg-7"
+explosive = true
+grade = 3
+
+[[item]]
+no = 931
+name = "Flamethrower"
+kind = "flame"
+weapon = "combat_arms:flamethrower"
+grade = 3
+
+[[item]]
+no = 932
+name = "Claymore"
+kind = "special"
+weapon = "combat_arms:claymore"
+explosive = true
+grade = 2
+
+[[item]]
+no = 933
+name = "Medkit"
+kind = "special"
+weapon = "combat_arms:medkit"
+grade = 1
+
+# Gear that is not in data/gear.toml: the base head and backpack by their
+# spec numbers (E), when the gear data has no record for them.
+[base]
+head = 4007
+backpack = 7001

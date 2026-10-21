@@ -17,6 +17,7 @@ mod bound;
 mod camera;
 mod death_screen;
 mod hud;
+mod lobby;
 mod music;
 mod net_hud;
 mod options;

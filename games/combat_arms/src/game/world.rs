@@ -426,10 +426,22 @@ fn model_look(world: &World, name: &str) -> Option<MapAlpha> {
     let Some(o) = world.objects.iter().find(|o| o.name() == Some(name)) else {
         return Some(MapAlpha::Opaque);
     };
-    if o.class == "DemoSkyWorldModel" || o.bool("Visible") == Some(false) || o.bool("StartHidden") == Some(true) {
+    if o.class == "DemoSkyWorldModel" || flag(o, "Visible") == Some(false) || flag(o, "StartHidden") == Some(true) {
         return None;
     }
     Some(blend_of(o))
+}
+
+/// A boolean property as the engine reads it: a bool, or a number that
+/// is not zero (SHORTFUSE's `Filter` volumes store `Visible` as the real
+/// 0, which a bool-only read took as absent, so their boxes were drawn
+/// as flat slabs over the doors).
+fn flag(o: &Object, key: &str) -> Option<bool> {
+    match o.get(key)? {
+        lt::Value::Bool(b) => Some(*b),
+        lt::Value::Real(x) | lt::Value::Long(x) | lt::Value::Flags(x) => Some(*x != 0.0),
+        _ => None,
+    }
 }
 
 /// An object's `BlendMode` as drawn (`Additive`, `Translucent`, opaque
