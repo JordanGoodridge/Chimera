@@ -34,7 +34,7 @@ use combat_arms::{
             armour_and_zone, gear_torso,
         },
     },
-    harness::CaSim,
+    harness::{CaSim, CaSimWith},
 };
 
 use super::movement::{T, close};
@@ -1745,4 +1745,99 @@ fn quirk_one_needs_more_than_255_pieces() {
     small.piece_count = 200;
     let r = gear::resolve(&small, &movement_data().character.figure, quirks, &look(0), &CaLoadout::default(), &effects, false);
     assert_eq!(r.ids, [0]);
+}
+
+// ---------------------------------------------------------------------------
+// Perks limited to a weapon class, on the install's records
+
+/// Install data whose weapons file holds one record per `(name, Guntype)`
+/// (all with one ammo type): data an install would differ from ours by.
+fn install_with(records: &[(&str, i32)]) -> combat_arms::game::data::CaData {
+    use combat_arms::game::data::{CaData, InstallAttributes, attributes::WeaponsFile};
+    let mut text = String::from("[Ammo0] Name=\"5.56mm\"\n");
+    for (i, (name, ty)) in records.iter().enumerate() {
+        text += &format!("[Weapon{i}] Name=\"{name}\" AmmoName0=\"5.56mm\" Guntype={ty}\n");
+    }
+    let doc = lithtech_formats::attributes::Document::parse(text.as_bytes()).unwrap();
+    let weapons = WeaponsFile::read(&doc).unwrap();
+    CaData::with_attributes(InstallAttributes { weapons: Some(weapons), ..default() })
+}
+
+/// 57. A weapon's class is the install's `Guntype` when it has a record
+/// (looked up by the namespaced id), else ours: a bug looked the record up
+/// by the short id and always fell back to our table.
+#[test]
+fn case_57_gun_type_reads_the_install_record() {
+    let install = install_with(&[("M4A1", 6), ("L96A1", 4), ("Test Rifle", 3)]);
+    assert_eq!(perks::gun_type(&install, "combat_arms:m4a1"), Some(6));
+    assert_eq!(perks::gun_type(&install, "combat_arms:l96a1"), Some(4));
+    assert_eq!(perks::gun_type(&install, "combat_arms:test_rifle"), Some(3), "a weapon only the install has");
+    assert_eq!(perks::gun_type(&install, "combat_arms:m67"), Some(7), "no record: ours");
+    assert_eq!(perks::gun_type(&install, "combat_arms:nothing"), None);
+    let ours = combat_arms::game::data::CaData::builtin();
+    assert_eq!(perks::gun_type(&ours, "combat_arms:m4a1"), Some(4));
+    assert_eq!(perks::gun_type(&ours, "combat_arms:l96a1"), Some(perks::SNIPER));
+    assert_eq!(perks::gun_type(&ours, "combat_arms:m67"), Some(perks::THROWN));
+}
+
+/// The greybox on `data` with a perk player at the origin holding `weapon`.
+fn class_sim(data: combat_arms::game::data::CaData, item: i32, weapon: &'static str) -> (Sim, Entity, Entity) {
+    let mut sim = Sim::with(CaSimWith(data), |app| {
+        app.add_plugins(GreyboxMapPlugin);
+    });
+    sim.set_tick_interval(TICK_INTERVAL);
+    let p = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), movement::ID);
+    sim.app.world_mut().entity_mut(p).insert((look(0), perks_of(&[item])));
+    sim.seconds(0.5);
+    let w = weapon::give(sim.app.world_mut(), p, weapon).unwrap();
+    sim.app.world_mut().get_mut::<Inventory>(p).unwrap().wanted = Some(w);
+    sim.seconds(2.0);
+    (sim, p, w)
+}
+
+/// Whether Steady Hand is on with `weapon` zoomed in on `data`.
+fn steady_on(data: combat_arms::game::data::CaData, weapon: &'static str) -> bool {
+    let (mut sim, p, _) = class_sim(data, 16005, weapon);
+    let w = sim.app.world().get::<Inventory>(p).unwrap().active.expect("a weapon in hand");
+    // The install's class decides what scope fits, not this test's subject.
+    let scope = ca::zoom::Scope { name: "test scope".into(), fov: vec![20.0] };
+    sim.app.world_mut().get_mut::<ca::zoom::CaZoom>(w).unwrap().scope = Some(scope);
+    sim.intent(p).secondary = true;
+    sim.ticks(1);
+    sim.intent(p).secondary = false;
+    sim.seconds(1.0);
+    assert_eq!(sim.app.world().get::<ca::zoom::CaZoom>(w).map(|z| z.zoomed()), Some(true), "zoomed in (builtin only: {})", sim.app.world().resource::<combat_arms::game::data::CaData>().builtin_only());
+    sim.app.world().get::<CaPerkEffects>(p).unwrap().steady
+}
+
+/// 58. Steady Hand follows the install's class: a record that makes the
+/// L96A1 a rifle switches it off, and a sniper record keeps it on.
+#[test]
+fn case_58_steady_hand_follows_the_install_class() {
+    assert!(steady_on(combat_arms::game::data::CaData::builtin(), "combat_arms:l96a1"), "ours");
+    assert!(steady_on(install_with(&[("L96A1", perks::SNIPER)]), "combat_arms:l96a1"));
+    assert!(!steady_on(install_with(&[("L96A1", 4)]), "combat_arms:l96a1"), "a rifle in the install's data");
+}
+
+/// Whether a kill with the M4A1 on `data` (the roll forced to pass, the
+/// killer's HP 30) drops a box.
+fn resourceful_drops(data: combat_arms::game::data::CaData) -> bool {
+    let (mut sim, p, _) = class_sim(data, 16001, M4A1);
+    sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = Vec3::new(0.0, 1.0, 30.0);
+    sim.ticks(2);
+    set_health(&mut sim, p, 30.0);
+    sim.app.world_mut().resource_mut::<CaPerkRng>().forced = vec![0];
+    let victim = dummy(&mut sim, 2, Vec3::new(0.0, 1.0, 0.0));
+    kill(&mut sim, p, victim);
+    !boxes(&mut sim).is_empty()
+}
+
+/// 59. Resourceful drops for the classes it lists and not for a special
+/// weapon, by the install's record.
+#[test]
+fn case_59_resourceful_follows_the_install_class() {
+    assert!(resourceful_drops(combat_arms::game::data::CaData::builtin()), "ours: a rifle");
+    assert!(resourceful_drops(install_with(&[("M4A1", 6)])), "a sniper");
+    assert!(resourceful_drops(install_with(&[("M4A1", 7)])), "a thrown weapon");
+    assert!(!resourceful_drops(install_with(&[("M4A1", 8)])), "a special weapon");
 }
