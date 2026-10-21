@@ -590,6 +590,50 @@ fn t11_t15_light_group_and_lighting_multiply() {
     assert!((shown(0.8, 128, 128.0 / 255.0) - 0.2016).abs() < 0.015, "{}", shown(0.8, 128, 128.0 / 255.0));
 }
 
+/// A volume's world model is drawn only when its object says `Visible`:
+/// SHORTFUSE's `Filter` volumes store `Visible` as the real 0 (not a
+/// bool), and read as bool-only they were drawn as flat slabs over the
+/// doors beside them. A bool false, a real 0 and a long 0 all hide it;
+/// a real 1 and no property show it.
+#[test]
+fn a_volume_with_visible_zero_is_not_drawn() {
+    let drawn = |visible: Option<Value>| {
+        let mut w = small_world();
+        let mut m = physics(&[([0.0, 1.0, 0.0], [[0.0, 100.0, 0.0], [0.0, 100.0, 100.0], [100.0, 100.0, 100.0], [100.0, 100.0, 0.0]])]);
+        m.flags = 0;
+        m.name = "Room".into();
+        w.models.push(m);
+        let vertex = |pos: [f32; 3]| RenderVertex { pos, color: 0xFF80_8080, normal: [0.0, 1.0, 0.0], ..default() };
+        w.render.models.push((
+            "Room".into(),
+            lithtech_formats::world::RenderWorld {
+                blocks: vec![RenderBlock {
+                    sections: vec![Section {
+                        textures: ["textures\\flat.dtx".into(), String::new()],
+                        shader: shader::GOURAUD,
+                        triangle_count: 1,
+                        ..default()
+                    }],
+                    vertices: vec![vertex([0.0, 100.0, 0.0]), vertex([0.0, 100.0, 100.0]), vertex([100.0, 100.0, 0.0])],
+                    triangles: vec![Triangle { indices: [0, 1, 2], polygon: 0 }],
+                    ..default()
+                }],
+                models: Vec::new(),
+            },
+        ));
+        let mut properties = vec![prop("Name", Value::String("Room".into()))];
+        properties.extend(visible.map(|v| prop("Visible", v)));
+        w.objects.push(Object { class: "Filter".into(), properties });
+        let map = world::convert(&w, "small", 0.01, &|_| None);
+        map.meshes.iter().filter(|m| m.material.contains("flat")).count()
+    };
+    assert_eq!(drawn(None), 1, "no property: drawn");
+    assert_eq!(drawn(Some(Value::Real(1.0))), 1);
+    assert_eq!(drawn(Some(Value::Bool(false))), 0);
+    assert_eq!(drawn(Some(Value::Real(0.0))), 0, "SHORTFUSE's Filter volumes");
+    assert_eq!(drawn(Some(Value::Long(0.0))), 0);
+}
+
 /// world_dat.md case 12 (Q12) on a built world: a group whose
 /// `LightGroup` object starts off adds nothing; one that starts on adds
 /// its `StartColor`; without an object, the stored colour.
