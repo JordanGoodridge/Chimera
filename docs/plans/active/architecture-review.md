@@ -1285,8 +1285,8 @@ X6, done (10-21), with these choices. `GameInfo::steam` is an
 layer stays below the games. `LocalConfig::game_path(id)` now searches only
 the config and the saved settings (no Steam); `game_path_in(id, steam)` and
 `GameInfo::install()` add Steam, and CS:S's own code uses the latter (the
-tests' `game_path(GAME)` need the config or a saved path, as on the dev
-box). `GameInfo::map_file` returns `Option<String>`: the map's downloadable
+CS:S's tests and tools call `game_path_in(GAME, INFO.steam.as_ref())`, so
+they still find a Steam-only install). `GameInfo::map_file` returns `Option<String>`: the map's downloadable
 file under a content folder, None for a map offered by id and hash only.
 Combat Arms returns None, which replaces its `worlds/<name>.dat`
 approximation (its worlds live in several `worlds*` archives and are read

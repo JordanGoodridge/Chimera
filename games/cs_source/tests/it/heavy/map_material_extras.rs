@@ -15,7 +15,7 @@ use crate::stack::{
 };
 
 fn load(name: &str) -> Option<MapData> {
-    let install = LocalConfig::load().ok()?.game_path(cs_source::GAME)?;
+    let install = LocalConfig::load().ok()?.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())?;
     let stock = install.join("cstrike/maps").join(format!("{name}.bsp")).is_file();
     let cached = content_dir(cs_source::GAME).is_some_and(|d| d.join("maps").join(format!("{name}.bsp")).is_file());
     if !stock && !cached {

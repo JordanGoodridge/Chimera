@@ -13,7 +13,7 @@ use chimera_core::mount::config::LocalConfig;
 fn installed() -> bool {
     let ok = LocalConfig::load()
         .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
+        .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !ok {
         eprintln!("skipping: no CS:S install configured");
@@ -82,7 +82,7 @@ fn entity_models_read_their_animations() {
     if !installed() {
         return;
     }
-    let path = LocalConfig::load().unwrap().game_path(cs_source::GAME).unwrap();
+    let path = LocalConfig::load().unwrap().game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()).unwrap();
     let mount = cs_source::mount::open(&path).unwrap();
     let read = |p: &str| mount.read(&p.to_lowercase().replace('\\', "/")).ok();
     let mut models: Vec<String> = Vec::new();
@@ -413,7 +413,7 @@ fn switchable_lights_that_start_on_are_baked_in() {
     if !installed() {
         return;
     }
-    let install = LocalConfig::load().unwrap().game_path(cs_source::GAME).unwrap();
+    let install = LocalConfig::load().unwrap().game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()).unwrap();
     let mount = cs_source::mount::open(&install).unwrap();
     let bytes = mount.read("maps/cs_office.bsp").unwrap();
     let bsp = vbsp::Bsp::read(&bytes).unwrap();

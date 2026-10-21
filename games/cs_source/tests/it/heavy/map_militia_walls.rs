@@ -22,7 +22,7 @@ fn src(p: Vec3) -> Vec3 {
 }
 
 fn load(name: &str) -> Option<MapData> {
-    let install = LocalConfig::load().ok()?.game_path(cs_source::GAME)?;
+    let install = LocalConfig::load().ok()?.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())?;
     if !install.join("cstrike/maps").join(format!("{name}.bsp")).is_file() {
         eprintln!("skipping {name}: not installed");
         return None;

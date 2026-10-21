@@ -7,7 +7,7 @@ use ::cs_source::game::{self as cs_source, vpk::Vpk};
 use chimera_core::mount::{FileSource, config::LocalConfig};
 
 fn install() -> Option<PathBuf> {
-    let path = LocalConfig::load().ok()?.game_path(cs_source::GAME)?;
+    let path = LocalConfig::load().ok()?.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())?;
     if path.join("cstrike").is_dir() {
         Some(path)
     } else {

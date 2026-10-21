@@ -20,7 +20,7 @@ use crate::stack::{
 fn dust2() -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()?
-        .game_path(cs_source::GAME)
+        .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !installed {
         eprintln!("skipping: no CS:S install configured");
@@ -178,7 +178,7 @@ fn map_settles_with_no_body_awake() {
     ] {
         let installed = LocalConfig::load()
             .ok()
-            .and_then(|c| c.game_path(cs_source::GAME))
+            .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
             .is_some_and(|p| p.join("cstrike").is_dir());
         if !installed {
             eprintln!("skipping: no CS:S install configured");

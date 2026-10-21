@@ -207,7 +207,7 @@ fn steam_env(cmd: &mut Command) -> &mut Command {
 
 fn capture_ref(file: &ViewsFile, out: &Path, keep_running: bool) -> Result<(), String> {
     let install = LocalConfig::load()?
-        .game_path("cs_source")
+        .game_path_in("cs_source", cs_source::INFO.steam.as_ref())
         .ok_or("no [games.cs_source] path in chimera.local.toml")?;
     let screenshots = install.join("cstrike/screenshots");
 

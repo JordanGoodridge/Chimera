@@ -186,7 +186,7 @@ mod tests {
     fn the_installs_icon_decodes_when_there_is_one() {
         let Some(install) = crate::mount::config::LocalConfig::load()
             .ok()
-            .and_then(|c| c.game_path(crate::game::GAME))
+            .and_then(|c| c.game_path_in(crate::game::GAME, crate::game::INFO.steam.as_ref()))
         else {
             return;
         };
