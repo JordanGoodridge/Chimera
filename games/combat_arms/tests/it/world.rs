@@ -479,6 +479,98 @@ fn lightmap_pass_matched_by_place_not_polygon() {
     }
 }
 
+/// One polygon's lightmap on two pages (WAREHOUSE's wall at z = 588: the
+/// upper triangle's on one shader-2 section, the lower one's on another).
+/// The texture pass's two triangles share their block vertices; a corner
+/// they share must not be shared in the drawn mesh, or one triangle reads
+/// the other's page there and interpolates across the atlas (before the
+/// fix: horizontal streaks over the wall).
+#[test]
+fn one_polygon_lightmapped_on_two_pages() {
+    let p = [[0.0, 0.0, 0.0], [100.0, 0.0, 0.0], [0.0, 0.0, 100.0], [100.0, 0.0, 100.0]];
+    let vertex = |i: usize, uv0: [f32; 2]| RenderVertex {
+        pos: p[i],
+        uv0,
+        color: 0xFFFF_FFFF,
+        normal: [0.0, 1.0, 0.0],
+        ..default()
+    };
+    // Lightmap pass: A = p0 p1 p2 on page 1 (200), B = p1 p3 p2 on page 2
+    // (50), each its own vertices; texture pass: both over the shared
+    // vertices 6..9, one polygon.
+    let mut vertices = vec![
+        vertex(0, [0.5, 0.5]),
+        vertex(1, [0.5, 0.5]),
+        vertex(2, [0.5, 0.5]),
+        vertex(1, [0.5, 0.5]),
+        vertex(3, [0.5, 0.5]),
+        vertex(2, [0.5, 0.5]),
+    ];
+    vertices.extend((0..4).map(|i| vertex(i, [0.0, 0.0])));
+    let lm_section = |b: u8| Section {
+        shader: shader::LIGHTMAP,
+        triangle_count: 1,
+        lightmap_width: 1,
+        lightmap_height: 1,
+        lightmap: vec![b; 3],
+        ..default()
+    };
+    let mut w = small_world();
+    w.render.blocks = vec![RenderBlock {
+        sections: vec![
+            lm_section(200),
+            lm_section(50),
+            Section {
+                textures: ["textures\\lit.dtx".into(), String::new()],
+                shader: shader::LIGHTMAP_TEXTURE,
+                triangle_count: 2,
+                ..default()
+            },
+        ],
+        vertices,
+        triangles: vec![
+            Triangle {
+                indices: [0, 1, 2],
+                polygon: 1,
+            },
+            Triangle {
+                indices: [3, 4, 5],
+                polygon: 1,
+            },
+            Triangle {
+                indices: [6, 7, 8],
+                polygon: 7,
+            },
+            Triangle {
+                indices: [7, 9, 8],
+                polygon: 7,
+            },
+        ],
+        ..default()
+    }];
+    let map = world::convert(&w, "small", 1.0, &|_| None);
+    let lm = map.lightmap.as_ref().unwrap();
+    let m = map.meshes.iter().find(|m| m.material == "textures\\lit.dtx").expect("the lit mesh");
+    let read = |v: u32| {
+        let [u, t] = m.lightmap_uvs[v as usize];
+        let (x, y) = ((u * lm.width as f32) as u32, (t * lm.height as f32) as u32);
+        lm.rgb[(y * lm.width + x) as usize][0]
+    };
+    let has_p0 = |t: &[u32]| {
+        t.iter().any(|&v| {
+            let q = m.positions[v as usize];
+            q[0].abs() < 1e-3 && q[2].abs() < 1e-3
+        })
+    };
+    assert_eq!(m.indices.len(), 6);
+    for t in m.indices.chunks(3) {
+        let want = world::light_value(if has_p0(t) { 200 } else { 50 }, 1.0);
+        for &v in t {
+            assert!((read(v) - want).abs() < 1e-4, "corner {:?}: {} not {want}", m.positions[v as usize], read(v));
+        }
+    }
+}
+
 /// world_dat.md case 11 (Q12): a light group adds ⌊colour × x⌋ to each
 /// channel, at most 255; case 15 (Q7): the drawn light is twice the
 /// lightmap (`Saturate`) times the lightmap factor on both passes.

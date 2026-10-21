@@ -23,7 +23,9 @@
 //!   corners and winding (`lightmap_for`; the engine's equal-depth
 //!   multiply), not by polygon index, which differs between the passes
 //!   for most triangles (`heavy::world_install::
-//!   texture_pass_triangles_have_lightmap_twins`), packed into one atlas
+//!   texture_pass_triangles_have_lightmap_twins`; one polygon's triangles
+//!   can have theirs on different pages, so a drawn vertex is shared only
+//!   with the same lightmap place), packed into one atlas
 //!   (`MapLightmap`) with a one-texel border copied from their edges; a
 //!   triangle whose lightmap coordinates leave 0..1 is cut where they
 //!   cross 0 and 1 and the parts outside take the edge (so it clamps per
@@ -826,7 +828,8 @@ fn add_block(
             rects.push(rect);
             (mesh.positions.len() - 1) as u32
         };
-        let mut shared: HashMap<(u32, u32), u32> = HashMap::new();
+        // Drawn vertices by block vertex and lightmap place.
+        let mut shared: HashMap<(u32, u32, [u32; 2]), u32> = HashMap::new();
         for t in tris {
             let corners = t.indices.map(|i| {
                 let v = &block.vertices[i as usize];
@@ -882,12 +885,12 @@ fn add_block(
             }
             let mut tri = [0u32; 3];
             for (k, &i) in t.indices.iter().enumerate() {
-                tri[k] = *shared.entry((i, t.polygon)).or_insert_with(|| {
-                    let (rect, lm) = found[k].unwrap_or_else(|| (atlas.add_flat([1.0; 3]), [0.5, 0.5]));
-                    let c = Corner {
-                        lm: lm.map(|x| x.clamp(0.0, 1.0)),
-                        ..corners[k]
-                    };
+                let (rect, lm) = found[k].unwrap_or_else(|| (atlas.add_flat([1.0; 3]), [0.5, 0.5]));
+                let lm = lm.map(|x| x.clamp(0.0, 1.0));
+                // Shared only with the same lightmap place: one polygon's
+                // triangles can have theirs on different pages.
+                tri[k] = *shared.entry((i, rect, lm.map(f32::to_bits))).or_insert_with(|| {
+                    let c = Corner { lm, ..corners[k] };
                     push(mesh, rects, &c, rect)
                 });
             }
