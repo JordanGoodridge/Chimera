@@ -113,7 +113,7 @@ fn sprites_load_with_their_entity_and_follow_the_logic() {
 #[test]
 fn de_train_dust_clouds_load_and_turn_on() {
     let Some(map) = load("de_train") else { return };
-    let clouds: Vec<_> = map.dust.iter().filter(|d| d.world_size).collect();
+    let clouds: Vec<_> = map.source_fx().dust.iter().filter(|d| d.world_size).collect();
     assert_eq!(clouds.len(), 2, "de_train's dustclouda and dustcloudb");
     for c in &clouds {
         eprintln!("cloud of entity {:?}: {} to {} (engine)", c.entity, c.min, c.max);
@@ -289,7 +289,10 @@ fn de_aztec_soundscapes_follow_the_touch_code() {
 #[test]
 fn detail_props_load() {
     let Some(map) = load("cs_militia") else { return };
-    let d = map.detail_props.as_ref().expect("cs_militia detail sprites");
+    let d = map
+        .source_fx().detail_props
+        .as_ref()
+        .expect("cs_militia detail sprites");
     assert_eq!(d.quads.len(), 3025 * 2 + 8819 * 3);
     assert_eq!(d.fade, Some((800.0 * 0.0254, 1024.0 * 0.0254)));
     assert!(d.quads.iter().all(|q| q.billboard.is_none()), "shapes are fixed blades");
@@ -298,7 +301,7 @@ fn detail_props_load() {
     assert!(d.quads.iter().filter(|q| q.light.iter().any(|c| *c > 0.05)).count() * 2 > d.quads.len());
     assert!(!crate::stack::render::detail::cell_meshes(d).is_empty());
     let Some(map) = load("de_inferno") else { return };
-    assert!(map.detail_props.is_none(), "models only");
+    assert!(map.source_fx().detail_props.is_none(), "models only");
     let fade = Some((1024.0 * 0.0254, 1536.0 * 0.0254));
     let bushes = map
         .props

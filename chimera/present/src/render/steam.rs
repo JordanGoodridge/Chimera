@@ -126,7 +126,7 @@ impl SteamEmitter {
 /// Headless stand-ins (`MapDrawer::spawn_undrawn`): the jets still puff,
 /// undrawn, switched by the logic.
 pub fn spawn_undrawn(commands: &mut Commands, s: &MapSpawn) {
-    for (i, jet) in s.data.steam.iter().enumerate() {
+    for (i, jet) in s.data.source_fx().steam.iter().enumerate() {
         let mut e = commands.spawn((
             Name::new(format!("Steam {i}")),
             MapPart,

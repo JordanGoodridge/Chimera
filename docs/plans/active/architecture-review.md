@@ -1156,6 +1156,33 @@ after upload): dust2 1887 to 1817 MB, nuke 3040 to 3027, surf_demise 5821 to
 still holds `MapData` whole; X7 splits it), and the code-built Combat Arms
 and greybox unload cases.
 
+X7, done (2026-10-21), the smallest sound split. `MapData::kit: GameKit`
+holds what a map's game brings to every map (round sounds, radio, bot
+profiles, navigation mesh, character bodies, held and view models, decals,
+HUD look, muzzle flash, shells and their physics); `take_game_parts` and its
+hand-kept list are gone: `MapSources::dress` replaces the kit
+(`GameKit::stay(kept)`, which rebuilds it from `Default` keeping only the
+kept held and view models), so a field added to `GameKit` is stripped from a
+mashup's map with no line to add. Source's effect lists (`steam`, `teslas`,
+`strikes`, `embers`, `smokestacks`, `dust`, `detail_props`) moved to
+`SourceEffects` behind `MapData::extras` (`MapExtras`, one value per type in
+a `BTreeMap` keyed by `TypeId`; `source_fx()`/`source_fx_mut()`), filled by
+the CS:S loader and read by the renderer; `trails` and `muzzle_flashes` stay
+on `MapData`. `render::shadows::shed_unread` (was `shed_unread_textures`
+alone) now also drops the kit, the extensions, the world's meshes, lightmap,
+cubemaps, collision and entities from what `ShadowSource` keeps for the
+map's life. Spawn dumps on the five maps (and their system dumps) are
+byte-identical. Not done, and why: the kit's indices (muzzle flash, HUD
+sprites, character skins) point into `MapData::textures`, so the kit is not
+yet loaded apart from the map's file by the gameplay's game (A2's "loaded by
+the gameplay's game"): `MapLoader::load` still returns one `MapData` with
+the game's own kit in it, and a dressing still appends the gameplay's kit to
+that map's texture list. Skipping the map game's kit at load (a
+`MapLoadOptions` flag the CS:S and Combat Arms loaders honour) needs the
+kit's texture and material loading separated from the world's in
+`bsp.rs`/`world.rs`; that is the next step and `AppHooks::load_map` taking
+the options goes with it.
+
 N3 and N4 both reach `MapData`'s consumers but not the same files; if
 N3 changes the `MapLoader` signature, N4 rebases on it (one line).
 
@@ -1211,7 +1238,7 @@ by the same method but not those of the first two passes.
 | X4 **done** | (done 10-21, note below) `OwnState` parts; CS:S's money, kit and night vision and Combat Arms' armour as parts; `net_order` sorted once (A3, E6) | none | `chimera/net/src/net/{mod,server,client,predict}.rs`, `games/*/src/game/net.rs`, `chimera/core/src/core.rs` (predicted registry only) | S-M | both games' network suites; `NET_VERSION` bump |
 | X5 **done** | (done 10-21, note below) Named `Intent` actions; binds by action; `POLLED` from the game (A3) | none | `chimera/core/src/core.rs` (`Intent`), `chimera/client/src/client/{binds,input}.rs`, `chimera/net` command encoding | M | both suites; bind migration tests; `NET_VERSION` bump |
 | X6 | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
-| X7 | `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
+| X7 **done** | (done 2026-10-21, note below) `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
 | X8 | Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
 | X9 | BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
 | X10 | A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |

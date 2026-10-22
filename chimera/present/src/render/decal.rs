@@ -367,8 +367,8 @@ pub struct DecalAssets {
 /// `ImpactDecals` (`map::MapDrawer::insert_drawn`): only with textures
 /// (drawn) and decal groups.
 pub fn insert_assets(commands: &mut Commands, data: &MapData, textures: &[Handle<Image>]) {
-    if !textures.is_empty() && !data.decals.groups.is_empty() {
-        commands.insert_resource(DecalAssets::new(data.decals.clone(), textures.to_vec()));
+    if !textures.is_empty() && !data.kit.decals.groups.is_empty() {
+        commands.insert_resource(DecalAssets::new(data.kit.decals.clone(), textures.to_vec()));
         commands.insert_resource(ImpactDecals);
     }
 }

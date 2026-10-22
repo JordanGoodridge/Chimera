@@ -38,6 +38,8 @@ pub use crate::core::{
 pub mod anim;
 pub mod decal;
 pub mod emitters;
+pub mod extras;
+pub use extras::{MapExtras, SourceEffects};
 pub mod entities;
 pub mod fish;
 pub mod fire;

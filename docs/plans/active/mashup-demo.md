@@ -12,9 +12,10 @@ neither game knows the other (checks/tests/it/architecture.rs).
   maps as `MapSources`, each game's `MapLoader` (`game:name` to
   `MapData`), the gameplay's `MapDressing` (its parts on any map) and
   `SpawnTeams` (another game's spawn teams as the gameplay's).
-  `MapData::take_game_parts` takes off what a map's game brings to every
+  `MapData::kit` (a `GameKit`) holds what a map's game brings to every
   map (bodies, held and view models, HUD, radio, bot names, navigation,
-  round sounds, muzzle flash, shells, decals).
+  round sounds, muzzle flash, shells, decals); a mashup replaces it
+  (`GameKit::stay`; was `take_game_parts`, X7).
 - The games' sides: `cs_source::game::MAP_LOADER` (the CS:S app's
   `games::load_map_level` uses it too), `combat_arms::game::world::
   MAP_LOADER` and `DRESSING` (`world::dress`: effect looks, view models,

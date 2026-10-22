@@ -9,9 +9,10 @@
 //! - A map of the gameplay's own game loads as its loader makes it (the
 //!   loader already brings the game's parts).
 //! - A map of another game is the world only: what its game brings to
-//!   every map (`MapData::take_game_parts`: bodies, held and view models,
+//!   every map (`MapData::kit`, a `GameKit`: bodies, held and view models,
 //!   HUD, radio, bot names and navigation, round sounds, muzzle flash,
-//!   shells, decals) is taken off, its spawn points' teams become the
+//!   shells, decals) is replaced (`GameKit::stay`: only the kept parts
+//!   remain, so a field added to the kit needs no line here), its spawn points' teams become the
 //!   gameplay's (`SpawnTeams`; unlisted teams: any team), and the
 //!   gameplay's dressing is added.
 //! - Units: `MapData` is metres for every game (each loader applies its
@@ -91,7 +92,7 @@ pub struct MapLoader {
 
 /// What one game's gameplay brings to any map: its view models,
 /// character bodies and held models, effect looks (added to a map of
-/// another game after `MapData::take_game_parts`).
+/// another game after its own game's kit is replaced, `GameKit::stay`).
 #[derive(Debug)]
 pub struct MapDressing {
     /// The game's id (`combat_arms`).
@@ -254,7 +255,7 @@ impl MapSources {
         let Some(gameplay) = self.gameplay.filter(|g| !g.game.eq_ignore_ascii_case(game)) else {
             return;
         };
-        map.take_game_parts_but(self.kept);
+        map.kit = std::mem::take(&mut map.kit).stay(self.kept);
         if let Some(table) = self
             .surfaces
             .iter()
@@ -279,38 +280,9 @@ impl MapSources {
     }
 }
 
-impl MapData {
-    /// Take off what the map's game brings to every map rather than the
-    /// map itself: character bodies and held models, view models, the
-    /// HUD look, the radio, bot names and the navigation mesh, the round
-    /// sounds, the muzzle flash, spent shells and impact decals. The
-    /// world, its entities, sounds, particles and gibs stay.
-    pub fn take_game_parts(&mut self) {
-        self.take_game_parts_but(&[]);
-    }
-
-    /// `take_game_parts`, but the held and view models whose keys start
-    /// with one of `kept` stay.
-    pub fn take_game_parts_but(&mut self, kept: &[&str]) {
-        let keep = |key: &str| kept.iter().any(|k| key.starts_with(k));
-        self.characters.clear();
-        self.held.retain(|h| keep(&h.key));
-        self.view_models.retain(|v| keep(&v.key));
-        self.hud = None;
-        self.radio = None;
-        self.bot_profiles = None;
-        self.nav = None;
-        self.round_sounds = Default::default();
-        self.muzzle_flash = None;
-        self.shells.clear();
-        self.shell_physics = None;
-        self.decals = Default::default();
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use bevy::prelude::*;
+    use bevy::prelude::default;
 
     use super::*;
 
@@ -334,7 +306,7 @@ mod tests {
             ..default()
         });
         for key in ["a:gun", "a:knife"] {
-            map.held.push(crate::map::MapHeldModel {
+            map.kit.held.push(crate::map::MapHeldModel {
                 key: key.into(),
                 model: default(),
                 bone: String::new(),
@@ -343,7 +315,7 @@ mod tests {
                 own: None,
             });
         }
-        map.nav = Some(Default::default());
+        map.kit.nav = Some(Default::default());
         Ok(map)
     }
 
@@ -352,7 +324,7 @@ mod tests {
             name: format!("b:{name}"),
             ..default()
         };
-        map.nav = Some(Default::default());
+        map.kit.nav = Some(Default::default());
         Ok(map)
     }
 
@@ -380,12 +352,25 @@ mod tests {
     fn another_games_map_is_dressed_for_the_gameplay() {
         let map = SOURCES.load("a:x", 0).unwrap();
         assert_eq!(map.name, "a:x");
-        assert!(map.nav.is_none(), "a's navigation taken off");
+        assert!(map.kit.nav.is_none(), "a's navigation taken off");
         assert_eq!(map.warnings, ["b's parts"]);
         let teams: Vec<_> = map.spawns.iter().map(|(_, t)| t.map(|t| t.0)).collect();
         assert_eq!(teams, [Some(2), Some(1), None], "mapped; unlisted teams spawn anyone");
-        let kept: Vec<&str> = map.held.iter().map(|h| h.key.as_str()).collect();
+        let kept: Vec<&str> = map.kit.held.iter().map(|h| h.key.as_str()).collect();
         assert_eq!(kept, ["a:gun"], "the kept prefix stays");
+    }
+
+    #[test]
+    fn a_dressed_map_keeps_nothing_of_its_games_kit_but_the_kept() {
+        let mut map = a_map("x", &MapLoadOptions::default()).unwrap();
+        map.kit.round_sounds.draw = Some("a:draw".into());
+        map.kit.muzzle_flash = Some(default());
+        map.source_fx_mut().detail_props = None;
+        SOURCES.dress("a", &mut map);
+        let kit = &map.kit;
+        assert!(kit.round_sounds.draw.is_none() && kit.muzzle_flash.is_none());
+        assert_eq!(kit.held.len(), 1, "the kept prefix stays");
+        assert!(!map.extras.is_empty(), "the map's own extensions are not the kit");
     }
 
     #[test]
@@ -415,7 +400,7 @@ mod tests {
     #[test]
     fn the_gameplays_own_map_loads_as_its_loader_makes_it() {
         let map = SOURCES.load("b:y", 0).unwrap();
-        assert!(map.nav.is_some() && map.warnings.is_empty());
+        assert!(map.kit.nav.is_some() && map.warnings.is_empty());
         assert_eq!(SOURCES.load("x", 0).unwrap().name, "a:x", "a bare name is the first loader's");
         assert!(SOURCES.load("c:z", 0).unwrap_err().contains("no map loader for `c`"));
     }

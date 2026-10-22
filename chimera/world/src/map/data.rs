@@ -4,15 +4,20 @@
 //!
 //! Plain data: it uses `core` and the data types of `map`'s submodules
 //! (what a map holds of each feature), never their systems.
+//!
+//! `MapData` is the map's world plus two sub-structs for what is not the
+//! map's file: `kit` (`GameKit`: what the map's game brings to every map,
+//! which a mashup replaces with the gameplay's) and `extras` (`MapExtras`,
+//! typed extensions such as Source's effect lists, `SourceEffects`).
 
 use std::sync::Arc;
 
 use bevy::prelude::*;
 
 use super::{
-    DetailMode, MapEntity, MapRagdoll, MapSelfIllum, MapSounds, MapTextureAnim, MapUvTransform, MapViewModel, anim, beams,
+    DetailMode, MapEntity, MapExtras, MapRagdoll, MapSelfIllum, MapSounds, MapTextureAnim, MapUvTransform, MapViewModel, SourceEffects, anim, beams,
     bot_profiles, breakables, color_correction, decal, emitters, hud, lod, nav, particles, psys, radio, rope_sway,
-    shells, steam, vis, water,
+    shells, vis, water,
 };
 use crate::core::{MapBrush, MapBrushTree, MapWaterVolume, Team};
 
@@ -865,23 +870,10 @@ pub struct MapData {
     /// The world's fog (not the 3D skybox's, which `sky_camera` has).
     pub fog: Option<MapFog>,
     pub sprites: Vec<MapSprite>,
-    /// Detail props' sprites (grass, weeds): `detail`.
-    pub detail_props: Option<MapDetailProps>,
-    pub dust: Vec<MapDust>,
-    /// Steam jets (env_steam).
-    pub steam: Vec<steam::MapSteam>,
-    /// Sprite trails (env_spritetrail) and smoke stacks (env_smokestack):
-    /// `emitters`.
+    /// Sprite trails (env_spritetrail): `emitters`.
     pub trails: Vec<emitters::MapTrail>,
-    pub smokestacks: Vec<emitters::MapSmokeStack>,
-    /// point_tesla arcs (`emitters`).
-    pub teslas: Vec<emitters::MapTesla>,
-    /// Strike-generator env_beams' looks (`emitters::StrikeEmitter`).
-    pub strikes: Vec<emitters::MapStrike>,
     /// env_muzzleflash entities (`emitters::MuzzleFlashEmitter`).
     pub muzzle_flashes: Vec<emitters::MapMuzzleFlash>,
-    /// env_embers volumes (`emitters::EmbersEmitter`).
-    pub embers: Vec<emitters::MapEmbers>,
     /// color_correction entities (`color_correction`).
     pub color_corrections: Vec<color_correction::MapColorCorrection>,
     /// Screen overlay materials maps name (env_screenoverlay): lower-case
@@ -929,12 +921,6 @@ pub struct MapData {
     pub texture_anims: Vec<MapTextureAnim>,
     /// Dynamic prop shadows, when the game draws them.
     pub shadows: Option<MapShadows>,
-    /// The announcer's round sounds (sound entries), when the game has them.
-    pub round_sounds: RoundSounds,
-    /// The team radio (commands, menus, chat format), when the game has one.
-    pub radio: Option<radio::RadioCommands>,
-    /// The game's bot personalities (bots' names), when it has them.
-    pub bot_profiles: Option<bot_profiles::BotProfiles>,
     /// Gravity for physics bodies, m/s^2 (downward), when the game sets it.
     pub gravity: Option<f32>,
     /// The playable area (engine space, min and max), when the map has a 3D
@@ -947,6 +933,44 @@ pub struct MapData {
     /// surface property name to the gameplay's; empty when the map's
     /// names are the gameplay's. Spawned as `sources::SurfaceNames`.
     pub surface_names: std::collections::HashMap<String, String>,
+    /// A top-down picture of the map (radar), when the game has one.
+    pub overview: Option<hud::MapOverview>,
+    /// Materials for particle effects (impacts).
+    pub particles: particles::MapParticles,
+    /// Data-driven particle systems and where the map runs them
+    /// (info_particle_system): `psys`.
+    pub particle_systems: Arc<psys::MapParticleSystems>,
+    /// The light at any point, for moving models.
+    pub light_field: Option<MapLightField>,
+    /// Gib lists for breaking brushes, and how gibs move.
+    pub gibs: Vec<breakables::MapGibSet>,
+    pub gib_physics: Option<breakables::MapGibPhysics>,
+    /// What the map's game brings to every map, not the map itself (the
+    /// gameplay's kit): a mashup replaces it with the gameplay's own
+    /// (`GameKit::stay`, `sources::MapSources::dress`).
+    pub kit: GameKit,
+    /// Features only some games' maps have (`MapExtras`), such as Source's
+    /// effect lists (`MapData::source_fx`).
+    pub extras: MapExtras,
+    /// Seconds each loading stage took (`loading::LoadTimer`), in order.
+    pub load_times: Vec<(&'static str, f32)>,
+}
+
+/// What a game brings to every map rather than the map's file defines: the
+/// gameplay's kit. Character bodies and held models, view models, the HUD
+/// look, the radio, bot names and the navigation mesh, the round sounds,
+/// the muzzle flash, spent shells and impact decals. Its textures are in
+/// `MapData::textures` (the indices below point there). A mashup's map of
+/// another game has its own game's kit replaced (`GameKit::stay`) by the
+/// gameplay's; every field added here is replaced with it, none to list.
+#[derive(Clone, Debug, Default)]
+pub struct GameKit {
+    /// The announcer's round sounds (sound entries), when the game has them.
+    pub round_sounds: RoundSounds,
+    /// The team radio (commands, menus, chat format), when the game has one.
+    pub radio: Option<radio::RadioCommands>,
+    /// The game's bot personalities (bots' names), when it has them.
+    pub bot_profiles: Option<bot_profiles::BotProfiles>,
     /// The bots' navigation mesh, if the game ships one for the map.
     pub nav: Option<Arc<nav::NavMesh>>,
     /// How characters look and where they can be hit, per team.
@@ -957,27 +981,41 @@ pub struct MapData {
     pub decals: decal::MapDecals,
     /// The game's own HUD look, when it has one.
     pub hud: Option<Arc<hud::GameHud>>,
-    /// A top-down picture of the map (radar), when the game has one.
-    pub overview: Option<hud::MapOverview>,
-    /// Materials for particle effects (impacts).
-    pub particles: particles::MapParticles,
-    /// Data-driven particle systems and where the map runs them
-    /// (info_particle_system): `psys`.
-    pub particle_systems: Arc<psys::MapParticleSystems>,
     /// What characters see of what they hold (weapons' view models).
     pub view_models: Vec<MapViewModel>,
-    /// The light at any point, for moving models.
-    pub light_field: Option<MapLightField>,
     /// What shots look like at the muzzle (flash sprites and light).
     pub muzzle_flash: Option<MapMuzzleFlash>,
     /// Spent shell types and how they fly.
     pub shells: Vec<shells::MapShell>,
     pub shell_physics: Option<shells::MapShellPhysics>,
-    /// Gib lists for breaking brushes, and how gibs move.
-    pub gibs: Vec<breakables::MapGibSet>,
-    pub gib_physics: Option<breakables::MapGibPhysics>,
-    /// Seconds each loading stage took (`loading::LoadTimer`), in order.
-    pub load_times: Vec<(&'static str, f32)>,
+}
+
+impl GameKit {
+    /// The part of this kit that stays on a map of another game: the held
+    /// and view models whose keys start with one of `kept` (another game's
+    /// weapons an app offers in the gameplay's slots). Nothing else stays.
+    pub fn stay(self, kept: &[&str]) -> GameKit {
+        let keep = |key: &str| kept.iter().any(|k| key.starts_with(k));
+        let Self { held, view_models, .. } = self;
+        GameKit {
+            held: held.into_iter().filter(|h| keep(&h.key)).collect(),
+            view_models: view_models.into_iter().filter(|v| keep(&v.key)).collect(),
+            ..GameKit::default()
+        }
+    }
+}
+
+impl MapData {
+    /// Source's effect lists (empty on a map without them).
+    pub fn source_fx(&self) -> &SourceEffects {
+        static NONE: SourceEffects = SourceEffects::NONE;
+        self.extras.get().unwrap_or(&NONE)
+    }
+
+    /// Source's effect lists to fill or change (added when absent).
+    pub fn source_fx_mut(&mut self) -> &mut SourceEffects {
+        self.extras.entry()
+    }
 }
 
 /// Collision triangles that block only some things, for maps whose game

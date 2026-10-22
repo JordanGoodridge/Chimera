@@ -174,7 +174,7 @@ fn directions(n: usize) -> Vec<Vec3> {
 /// surface), at eye height.
 fn eyes(map: &MapData, full: bool) -> Vec<Vec3> {
     let mut out: Vec<Vec3> = map.spawns.iter().map(|(p, _)| *p + Vec3::Y * EYE).collect();
-    if let Some(nav) = &map.nav {
+    if let Some(nav) = &map.kit.nav {
         let step = if full { 1 } else { (nav.areas.len() / 250).max(1) };
         for a in nav.areas.iter().step_by(step) {
             let c = (a.min + a.max) / 2.0;

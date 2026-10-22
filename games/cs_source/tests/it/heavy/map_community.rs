@@ -740,12 +740,12 @@ fn visual_entities_load() {
         }
     }
     if let Some(map) = load("mg_jacks_multigames_v1") {
-        assert_eq!(map.embers.len(), 6);
-        assert_eq!(map.embers.iter().filter(|e| e.start_on).count(), 3, "flag 1 starts on");
+        assert_eq!(map.source_fx().embers.len(), 6);
+        assert_eq!(map.source_fx().embers.iter().filter(|e| e.start_on).count(), 3, "flag 1 starts on");
     }
     if let Some(map) = load("surf_stickybutt_alpha") {
-        assert_eq!(map.embers.len(), 1);
-        let e = &map.embers[0];
+        assert_eq!(map.source_fx().embers.len(), 1);
+        let e = &map.source_fx().embers[0];
         eprintln!("stickybutt embers {:?}..{:?}", e.min, e.max);
         // Pitch 90: down.
         assert!(e.velocity.y < 0.0 && e.velocity.x.abs() < 1e-4, "{}", e.velocity);
@@ -758,9 +758,9 @@ fn visual_entities_load() {
         assert!(map.trails.iter().all(|t| t.life == 10.0 && t.entity.is_some()));
     }
     if let Some(map) = load("gg_nukkon_hdr") {
-        assert_eq!(map.smokestacks.len(), 4);
+        assert_eq!(map.source_fx().smokestacks.len(), 4);
         assert!(
-            map.smokestacks
+            map.source_fx().smokestacks
                 .iter()
                 .all(|s| s.life().is_some_and(|l| (l - 10.0).abs() < 1e-3))
         );
@@ -813,13 +813,13 @@ fn visual_entities_load() {
 #[test]
 fn detail_sprites_on_community_maps() {
     if let Some(map) = load("kz_ancient_ruins") {
-        let d = map.detail_props.as_ref().expect("kz_ancient_ruins detail sprites");
+        let d = map.source_fx().detail_props.as_ref().expect("kz_ancient_ruins detail sprites");
         assert!(!d.quads.is_empty());
         assert_eq!(d.fade, Some((1648.0 * 0.0254, 2048.0 * 0.0254)));
         assert!(map.textures[d.texture].width > 1, "its packed sheet");
     }
     if let Some(map) = load("mg_kommando") {
-        let d = map.detail_props.as_ref().expect("mg_kommando detail sprites");
+        let d = map.source_fx().detail_props.as_ref().expect("mg_kommando detail sprites");
         assert_eq!(d.quads.len(), 846);
         assert!(d.quads.iter().all(|q| q.billboard.is_some_and(|b| b.vertical)));
         assert_eq!(d.fade, None, "no controller: cl_detaildist and cl_detailfade");
@@ -1138,8 +1138,8 @@ fn strike_beams_strike_and_kill() {
         map::BeamStrike,
     };
     let Some(map) = load("mg_n64_goldeneye_v2") else { return };
-    assert_eq!(map.strikes.len(), 14, "its strike generators' looks");
-    assert!(map.strikes.iter().all(|s| s.noise == 20.0 && (s.width / 0.0254 - 50.0).abs() < 1e-3));
+    assert_eq!(map.source_fx().strikes.len(), 14, "its strike generators' looks");
+    assert!(map.source_fx().strikes.iter().all(|s| s.noise == 20.0 && (s.width / 0.0254 - 50.0).abs() < 1e-3));
     let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
     sim.set_tick_interval(cs_source::TICK_INTERVAL);
     sim.ticks(2);

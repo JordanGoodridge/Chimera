@@ -58,12 +58,12 @@ fn loads_within(name: &str, next: &str, budget: Duration, peak_budget: u64) {
             peak_mb(),
             data.meshes.len(),
             data.textures.len(),
-            data.characters.len(),
-            data.held.len(),
-            data.view_models.len(),
+            data.kit.characters.len(),
+            data.kit.held.len(),
+            data.kit.view_models.len(),
         );
         // View models load on demand, not with the map.
-        assert!(data.view_models.is_empty(), "{map}");
+        assert!(data.kit.view_models.is_empty(), "{map}");
         assert!(took < budget, "{map}: {took:?} (budget {budget:?})");
         if k == 0 {
             spawn_and_navigate(map, data, budget);

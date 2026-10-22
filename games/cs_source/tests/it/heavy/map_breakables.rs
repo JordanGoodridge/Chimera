@@ -289,7 +289,7 @@ fn office_window_shots_leave_glass_break_decals() {
     use crate::stack::map::{DecalGroup, PlaceDecal};
     let Some(map) = load("cs_office") else { return };
     for group in ["glassbreak", "bulletproof"] {
-        let g = map.decals.groups.get(group);
+        let g = map.kit.decals.groups.get(group);
         assert!(g.is_some_and(|v| !v.is_empty()), "decals_subrect.txt has {group}");
     }
     let windows: Vec<usize> = map
