@@ -634,6 +634,98 @@ Only the HUD and scoreboard parts of this spec (S3's HUD timer sentence, S13), c
    - Reference: shown from the result until the next round's setup message, banner only in single-round modes, the mode panel hidden meanwhile (`ui_system.md` Corrections 1 to 3).
    - Ours: `games/combat_arms/src/ui/scoreboard.rs:47` 3000 ms; lists always drawn; panel kept.
 
+## Corrections (2026-10-22): match flow, scoring and leaving
+
+A second comparison of the reference's rule sets (match phases, death counting, leaving, joining, assists) with our implementation after the modes moved onto the shared runtime (`chimera/sim/src/mode/flow.rs`, `games/combat_arms/src/game/rules/`). Most-noticed first. Paths below are relative to `games/combat_arms/src/game/rules/` unless given in full. Where a correction changes a rule stated above, the rule above is the older reading; the correction wins.
+
+1. **The match-end test also runs after the warm-up.**
+   - Reference: at the end of the intermission that follows the warm-up, the round modes run the same "is the match over" test as after a real round, minus the round-win goal: Elimination Pro, S&D, Go4CA Cup, Bombing Run, Seize and Secure, Squad Match 2, VIP Escort and Hired Guns end the match when a team has no players (winner as each mode's match-end rule: Elimination Pro the non-empty team; S&D, Go4CA, VIP Escort, Hired Guns more round wins else Bravo; Bombing Run more round wins else none); Last Man Standing and Hunted end it when one player or fewer is left (that player wins); Quarantine ends it when one player or fewer is on a team (no winner). The same holds after every later warm-up (VIP Escort's and the clan modes' post-swap warm-ups).
+   - Ours: `chimera/sim/src/mode/flow.rs:302` never calls the mode's match end after a warm-up, so the first real round is played out with an empty team (Elimination Pro and S&D: nobody dies, the round runs its 180 s to the time-out; Last Man Standing: a lone player plays G rounds).
+   - Expect: Elimination Pro 1 v 1, the Bravo player leaves at t = 4 s of the warm-up → the warm-up ends at the next frame (correction 2), round over 3 s, intermission 3 s, then match over at t ≈ 10 s with Alpha the winner; no 180 s round is played. Last Man Standing with 2 players, one leaves in the warm-up → match over after round over + intermission, the remaining player the winner.
+
+2. **Leaving in Elimination Pro and S&D also counts in the warm-up; Elimination Pro ends the round when a team's last player leaves.**
+   - Reference: the leaving rule has no phase or warm-up test. Elimination Pro: the leaver being the only player of their team asks for the round's end at once, alive or dead (the time-out rule then picks the other team, which has living players); otherwise a living leaver who was their team's last living player gives the round to the other team. S&D and Go4CA: only the second part (alive, last living). A request made during the warm-up ends the warm-up early (no winner, as every warm-up); one made during setup or the intermission has no effect (the next live phase clears it).
+   - Ours: `elimination.rs:152` acts only when live, not in the warm-up, and only for a living leaver.
+   - Expect: S&D warm-up at t = 3 s, the only living Creed player leaves while a Creed teammate is dead awaiting the 5 s revive → warm-up over at the next frame; then the normal round over, intermission and round 1. Elimination Pro real round, the last Bravo player (dead) leaves → round over at the next frame, Alpha wins the round (more living players).
+
+3. **Late joiners: who counts, and which modes hold.**
+   - Reference: the hold test counts every player on the server **including the joiner** (and observers and game masters): the joiner is held when that count is 3 or more, the round is live, it is not the warm-up and at least one whole second of the live round has passed (the elapsed time is truncated to whole seconds and must be above 0). S&D and Go4CA also hold while a bomb ticks, but only past the same "3 or more" test. Modes that hold this way: Elimination Pro (and clan), S&D (and clan), Go4CA, Last Man Standing, Hunted, VIP Escort. Never held: TDM, VIP Elimination, CTF, One Man Army, Arms Race, Spy Hunt, Bombing Run, Seize and Secure, Squad Match 2, Hired Guns. Quarantine: correction 4.
+   - Ours: `flow.rs:327-331` counts the players already in the match without the joiner (`in_game >= late_join_wait`), holds from the first live instant, and the bomb hold (`search_destroy.rs:104`) skips the count.
+   - Expect: S&D round live for 30 s with 2 players in; a third joins → held until the next setup (3 counted). With 1 player in, a second joins → spawns at once. A joiner 0.6 s after the round went live → spawns at once. This replaces test case 33's second sentence ("With only 2 players in the game → spawns at once" is wrong: the joiner makes 3).
+
+4. **Quarantine holds joiners once the hosts are chosen, whatever the player count.**
+   - Reference: in a real round a joiner is held unless the 20 s host-selection wait is running; the player count does not matter. So joiners during the first 20 s of a live round play at once (as humans); afterwards they wait for the next round. The warm-up never holds.
+   - Ours: `quarantine.rs` has no hold hook, so the generic rule of correction 3 applies (held from 3 players, in the first 20 s too; never with fewer).
+   - Expect: Quarantine, 2 players, a real round live for 40 s; a third joins → held until the next round. 10 players, round live for 10 s; an 11th joins → spawns at once, human.
+
+5. **Assist sums are cleared between rounds, and only an enemy's or teammate's killing blow clears a victim's sums.**
+   - Reference: the damage sums are dropped when TDM's (and VIP Elimination's) round goes live, and after every real round of the round modes (Elimination Pro, S&D, VIP Escort, clan modes: at the intermission's end, in the branch that also pays the round's rewards, which live servers take), so damage from an earlier round never earns an assist. A death clears the victim's sums only when the killing damage came from another player (enemy or teammate); a suicide (own grenade) or a death with no player damager (fall, world) leaves them, so in a respawn mode they still count toward an assist in the victim's next life. Only health actually lost is summed (armour-absorbed damage is not).
+   - Ours: `scoring.rs:177` (and 143, 153) clears the victim's sums on every death; `CaDamageLog` is otherwise cleared only at a match reset (`flow.rs:267`), so a survivor's round-1 damage carries into round 2.
+   - Expect: Elimination Pro, A deals 60 to B (100 HP) in round 1; both survive to the time-out. Round 2: C kills B with no further damage from A → no assist for A. TDM: A deals 60 to B, B kills himself with a grenade, respawns, C kills B → A gets the assist.
+
+6. **Bombing Run and Seize and Secure count deaths as S&D does, not as TDM.**
+   - Reference: in these modes (and Squad Match 2) an enemy kill gives killer kills +1 and victim deaths +1; a team kill gives the killer a friendly kill and the victim **no** death; a suicide gives the victim a death and a suicide and **no** friendly kill; a death with no killer gives a death and **no** suicide.
+   - Ours: `bombing_run.rs:57` and `seize.rs:63` use `scoring::personal` (TDM's column: team-kill victim death +1, suicide friendly kill +1, fall suicide +1).
+   - Expect: Bombing Run, an Alpha player's grenade kills himself and a teammate → victim teammate deaths +0, thrower friendly kills +1, deaths +1, suicides +1, friendly kills not +2. A fall → deaths +1, suicides +0.
+
+7. **Bombing Run: leaving gives the round away.**
+   - Reference: when a player leaves and either was the only player of their team, or no player of their team other than the leaver is alive at that moment (the others dead and waiting to respawn; the leaver may be alive or dead), the other team wins the round at once (if no winner was set).
+   - Ours: `bombing_run.rs:83` has no leaving rule.
+   - Expect: Bombing Run 3 v 3, two Bravo players dead (respawn countdown), the living Bravo player leaves → Alpha wins the round at the next frame.
+
+8. **Seize and Secure (and Squad Match 2): the last player of a team leaving ends the match.**
+   - Reference: the leaver being the only player of their team gives the other team the win at once (the flag stops rising, round over at the next frame); the match ends with it (one round).
+   - Ours: `seize.rs:91` has no leaving rule: the round runs its G minutes.
+   - Expect: Seize and Secure 1 v 2 at t = 100 s, the Alpha player leaves → Bravo wins at the next frame, whatever the points.
+
+9. **Last Man Standing and Hunted: leaving.**
+   - Reference: when 2 or fewer players remain (leaver counted), the round ends at once; and when the leaver's going leaves one living player or none (and no winner is set), the round ends at once with that living player (the first in the server's list, if any) the round winner (round wins +1). With one player or fewer left, the match ends at the next match-end test (correction 1), that player the winner.
+   - Ours: `last_man.rs:57` has no leaving rule; `last_man.rs:82` ends the match only on rounds played.
+   - Expect: LMS, 4 players, A and B alive, C and D dead; A leaves → B wins the round at the next frame. 2 players, one leaves → round over, then match over, the other the winner.
+
+10. **Quarantine: one player left ends the round and the match.**
+    - Reference: a leaver who leaves one player or fewer on the server ends the round at once (no side wins), and the match ends after it (no winner). The match also ends after any round (or the warm-up, correction 1) when one player or fewer is on a team.
+    - Ours: `quarantine.rs:88` (no leaving rule) and `quarantine.rs:66` (match end on rounds only).
+    - Expect: Quarantine with 2 players in a real round, one leaves → round over at the next frame, match over after the intermission.
+
+11. **Spy Hunt stage 2: kills don't count; killing the final spy sets the intel score.**
+    - Reference: in stage 2 an enemy kill adds no kill and no death to anyone (team kills, suicides and falls still count as in stage 1). When the final spy dies with a hunter's damage, that hunter's mission (intel) points are **set** to the total intel count (stock 5), and the final spy's are set to 0; the hunters win.
+    - Ours: `spy_hunt.rs:217` counts every enemy kill (`scoring::free_for_all`) and changes no mission points.
+    - Expect: stage 2, the final spy (5 intel points) kills two hunters then hunter H (2 intel points) kills the spy → the spy's kills unchanged by the two kills, the hunters' deaths unchanged; H's mission points 5, the spy's 0; Alpha wins.
+
+12. **Spy Hunt leaving: the hunters win.**
+    - Reference: in stage 2, the last player of either side leaving ends the round with no winner set, so the time-out rule gives it to the hunters (Alpha) and clears the final spy's points, even when the last hunter left. In stage 1, a leaver who leaves one player or fewer ends the round the same way (hunters win).
+    - Ours: `spy_hunt.rs:230` gives the round to the side that did not leave in stage 2 (the spy wins when the last hunter leaves) and ends stage 1 without a winner.
+    - Expect: stage 2, final spy against one hunter; the hunter leaves → round over, winner Alpha, the spy's mission points 0.
+
+13. **S&D and Bombing Run: the "Explode / Defuse" column and the planter's credit.**
+    - Reference: S&D keeps no plant statistic; its scoreboard column shows detonations and defuses. The planter is credited one detonation at the round's result when the bomb exploded, **and also** when the bomb was planted and the round was then decided any other way than a defuse (defenders eliminated, attackers' last player leaving); the defuser one defuse after a defuse. Never in the warm-up; a planter or defuser who left is not credited. Bombing Run credits the same way and also counts plants.
+    - Ours: `bomb.rs:147` credits a detonation only when the bomb explodes; `bomb.rs:108` counts S&D plants; `scoreboard.rs:52` shows no value for S&D's column.
+    - Expect: S&D, P plants at t = 100 s, the last Creed player dies at t = 110 s → JSF wins; at the round result P's detonations +1. A defuse round: the planter gets nothing, the defuser +1 defuse. The S&D row shows P's detonations and defuses.
+
+14. **One Man Army and Arms Race: every kill that reaches G names the winner; the leave share counts every kill.**
+    - Reference: each kill that brings its killer to G or more kills (re)sets the winner to that killer, so of two such kills in one frame the later wins. The "kills made" of the leaving rule (M5) counts every enemy kill of the round, including those of players who already left.
+    - Ours: `free_for_all.rs:84` keeps the first; the leaving rule sums the kills of the players still in (`rules.rs:538`).
+    - Expect: G = 30, A and B both at 29; in one frame A kills C, then B kills D → winner B. 3 players, a fourth who made 5 kills left earlier; 2 remain with 0 kills between them and one leaves → the kills made are 5 > round(0.1 × 30) = 3 → the remaining player wins.
+
+15. **Capture the Flag: a later capture can change the winner.**
+    - Reference: every capture that leaves a team at G or more re-picks the winner as the team with more captures (equal keeps the old one), in any phase where captures count (M4, Quirk 13).
+    - Ours: `ctf.rs:306` sets the winner only when none is set.
+    - Expect: rare; G = 5, a time-out with Alpha 4, Bravo 4 decided Alpha on returns; during the 3 s hold Bravo captures (5) → winner Bravo.
+
+16. **Quarantine's round setup is always one frame.**
+    - Reference: like TDM, Quarantine goes live at the frame after the setup whatever the server file's `ObjectStart`.
+    - Ours: `quarantine.rs:62` has no forced setup (uses `object_start`, 0 by default, so only a non-zero `ObjectStart` shows the difference).
+    - Expect: `ca_object_start 5`, Quarantine → setup lasts one frame; S&D → 5 s.
+
+Could not determine (left open):
+
+- Quarantine: whether a player joining during a real round's setup, round over or intermission is held through the whole next round (the hold test answers "hold" there, but the release and the next setup's respawn of a held player were not traced together).
+- Seize and Secure's kill and death tie-breaks sum the players' statistics from wherever the server's player-list walk last stopped, not from a fresh start; in practice this may skip more than the first player (Quirk 6) or everyone (a draw). Measure: a Seize and Secure time-out with equal points.
+- TDM, CTF and Seize and Secure: a last player of a team leaving during the round-over hold overwrites the winner the match reports; whether players ever saw this (the result screen was already sent) was not settled.
+
+Test cases 92 to 103 below cover these corrections.
+
 ## Test cases
 
 Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Team Death Match` points (P0..P11 in map order per team), fallback hull (15, 50, 15), server 20 Hz, `ObjectEnd` 3 s, `MissionEnd` 3 s, `ObjectStart` 0 s, friendly fire off, spawn protection 3.0 / 4.0 s, respawn waits 7.0 / 5.0 s.
@@ -761,6 +853,18 @@ Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Tea
 89. **Living players on the panel (HUD, Corrections 3).** Elimination Pro 4 v 4, one Bravo player dies -> row titles "4" (Alpha) and "3" (Bravo); next round's start -> "4" and "4".
 90. **Indicator panel per mode (HUD, Corrections 4).** Bombing Run -> `s&d`; VIP Escort -> `VIP_Esct`; Squad Match 2 -> `HG2`; Hired Guns -> `Squad`.
 91. **Round result (HUD, Corrections 5).** TDM: the deciding kill at t = 0 -> from the round result the banner alone (no lists) and no mode panel, until the match result screen. Elimination Pro: the round result at t = 0 -> banner over the lists until the next round's setup message (about t = 6 s with stock times).
+92. **Empty team after the warm-up (Corrections 2026-10-22, 1).** Elimination Pro 1 v 1; the Bravo player leaves at t = 4 s of the warm-up → warm-up over at the next frame, round over until ≈ 7 s, intermission until ≈ 10 s, then match over, winner Alpha; round 1 never starts. S&D in the same case → match over, winner Bravo if round wins are 0–0 (more wins, else Bravo).
+93. **Warm-up leaving (Corrections 2).** S&D warm-up, Creed has 2 players, one dead (revive pending), the living one leaves at t = 3 s → warm-up ends at the next frame (no winner).
+94. **Late-join count (Corrections 3).** S&D live 30 s, 2 players in, a third joins → held. 1 player in, a second joins → spawns at once. 5 players in, a joiner 0.6 s after going live → spawns at once; 1.2 s after → held. TDM, CTF, Bombing Run, Seize and Secure, Spy Hunt, One Man Army → never held.
+95. **Quarantine joiners (Corrections 4).** Real round live 10 s, 10 players → the joiner plays at once as a human; live 25 s, 2 players → held until the next round.
+96. **Assists across rounds (Corrections 5).** Elimination Pro, A deals 60 to B (max 100) in round 1, both survive; round 2, C kills B untouched by A → no assist. TDM, A deals 60 to B, B dies by his own grenade, respawns, C kills him → A assist +1.
+97. **Bombing Run counts (Corrections 6).** A team kill → victim deaths +0, killer friendly kills +1. A fall → deaths +1, suicides +0. Own grenade → deaths +1, suicides +1, friendly kills +0.
+98. **Bombing Run leaving (Corrections 7).** 3 v 3, two Bravo dead awaiting respawn, the third Bravo leaves → Alpha round win at the next frame.
+99. **Seize and Secure leaving (Corrections 8).** 1 v 2, the Alpha player leaves at t = 100 s → Bravo wins at once.
+100. **Last Man Standing leaving (Corrections 9).** 4 players, A and B alive; A leaves → B round wins +1, round over at the next frame. 2 players, one leaves → match over after round over and intermission, the other the winner.
+101. **Spy Hunt stage 2 (Corrections 11, 12).** The final spy kills two hunters (no kills or deaths added), hunter H kills the spy → H's mission points = 5, the spy's = 0, Alpha wins. Final spy against one hunter, the hunter leaves → Alpha wins, the spy's points 0.
+102. **S&D credit (Corrections 13).** Plant at t = 100 s by P, last Creed dies at t = 110 s → JSF wins, P's detonations +1 at the round result. Warm-up: nothing credited.
+103. **Two kills at G in a frame (Corrections 14).** One Man Army G = 30, A and B on 29; A's kill then B's kill in one frame → winner B.
 
 ## Open questions
 
