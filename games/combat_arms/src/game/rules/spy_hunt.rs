@@ -51,19 +51,32 @@ pub const FAMILY: &str = "BountyHunter";
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: SPY_HUNT,
-    key: "BNT",
-    shown_as: "Spy Hunt",
-    description: "Spy Hunt: pick up intel to become a spy; whoever holds it all is the final spy, hunted by everyone \
-                  else",
-    respawns: true,
-    warmup: true,
-    warmup_revives: false,
+    rules: super::Mode {
+        id: SPY_HUNT,
+        key: "BNT",
+        shown_as: "Spy Hunt",
+        description: "Spy Hunt: pick up intel to become a spy; whoever holds it all is the final spy, hunted by everyone \
+                      else",
+        respawns: true,
+        warmup: true,
+        warmup_revives: false,
+        forced_setup: None,
+        teams: Teams::AllAlpha,
+        on_death,
+        // Open question 10, answered: the hunters (Alpha) in both stages.
+        time_out: |w| w.resource_mut::<CaMatch>().winner = Some(ALPHA),
+        match_end: |w| Some(w.resource::<CaMatch>().winner),
+        hooks: Hooks {
+            setup,
+            update,
+            died,
+            may_respawn: |w, _| w.resource::<CaObjectives>().stage != 2,
+            ..NO_HOOKS
+        },
+    },
     ff_scaled: false,
     assists: false,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::AllAlpha,
     spawns: Spawns {
         family: Some(FAMILY),
         one_list: true,
@@ -75,18 +88,8 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::Kills,
     order: ScoreOrder::MissionPoints,
-    on_death,
-    // Open question 10, answered: the hunters (Alpha) in both stages.
-    time_out: |w| w.resource_mut::<CaMatch>().winner = Some(ALPHA),
-    match_end: |w| Some(w.resource::<CaMatch>().winner),
     leaving,
-    hooks: Hooks {
-        setup,
-        update,
-        died,
-        may_respawn: |w, _| w.resource::<CaObjectives>().stage != 2,
-        ..NO_HOOKS
-    },
+    left: super::NO_LEFT,
 };
 
 /// The intel at the round's start (stage 1).

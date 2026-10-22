@@ -16,11 +16,14 @@ use super::{
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: GO4CA_CUP,
-    key: "ESL",
-    shown_as: "S&D for Go4CA Cup",
-    description: "S&D for the Go4CA Cup: Search & Destroy over a fixed number of rounds (both teams' wins reach G)",
-    match_end,
+    rules: super::Mode {
+        id: GO4CA_CUP,
+        key: "ESL",
+        shown_as: "S&D for Go4CA Cup",
+        description: "S&D for the Go4CA Cup: Search & Destroy over a fixed number of rounds (both teams' wins reach G)",
+        match_end,
+        ..search_destroy::MODE.rules
+    },
     ..search_destroy::MODE
 };
 

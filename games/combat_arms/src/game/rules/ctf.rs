@@ -62,19 +62,39 @@ pub const FAMILY: &str = "Capturetheflag";
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: CAPTURE_THE_FLAG,
-    key: "CTF",
-    shown_as: "Capture the Flag",
-    description: "Capture the Flag: Alpha against Bravo, respawning; take the enemy flag to your zone while yours is \
-                  home, the first team to G captures wins",
-    respawns: true,
-    warmup: false,
-    warmup_revives: false,
+    rules: super::Mode {
+        id: CAPTURE_THE_FLAG,
+        key: "CTF",
+        shown_as: "Capture the Flag",
+        description: "Capture the Flag: Alpha against Bravo, respawning; take the enemy flag to your zone while yours is \
+                      home, the first team to G captures wins",
+        respawns: true,
+        warmup: false,
+        warmup_revives: false,
+        forced_setup: None,
+        teams: Teams::Two,
+        on_death,
+        time_out,
+        match_end: |w| Some(w.resource::<CaMatch>().winner),
+        hooks: Hooks {
+            setup,
+            update,
+            died,
+            round_end: |w| {
+                let carriers = w.resource::<CaFlagCarriers>().0;
+                for (e, _) in carriers.into_iter().flatten() {
+                    let mut c = objectives::carry(w, e);
+                    c.flag = None;
+                    objectives::set_carry(w, e, c);
+                }
+                *w.resource_mut::<CaFlagCarriers>() = CaFlagCarriers::default();
+            },
+            ..NO_HOOKS
+        },
+    },
     ff_scaled: true,
     assists: false,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::Two,
     spawns: Spawns {
         family: Some(FAMILY),
         one_list: false,
@@ -86,25 +106,8 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::TeamScore,
     order: ScoreOrder::Captures,
-    on_death,
-    time_out,
-    match_end: |w| Some(w.resource::<CaMatch>().winner),
     leaving: super::tdm::leaving,
-    hooks: Hooks {
-        setup,
-        update,
-        died,
-        round_end: |w| {
-            let carriers = w.resource::<CaFlagCarriers>().0;
-            for (e, _) in carriers.into_iter().flatten() {
-                let mut c = objectives::carry(w, e);
-                c.flag = None;
-                objectives::set_carry(w, e, c);
-            }
-            *w.resource_mut::<CaFlagCarriers>() = CaFlagCarriers::default();
-        },
-        ..NO_HOOKS
-    },
+    left: super::NO_LEFT,
 };
 
 /// Who carries each team's flag (Alpha's, Bravo's) and where they last
