@@ -513,6 +513,7 @@ pub fn new_game(world: &mut World) {
     if let Some(mut state) = world.get_resource_mut::<rounds::RoundState>() {
         *state = rounds::RoundState::default();
     }
+    rounds::reset_match(world);
     respawn_everyone(world);
     let remote: Vec<Entity> = world
         .query_filtered::<Entity, With<crate::core::RemotePlayer>>()

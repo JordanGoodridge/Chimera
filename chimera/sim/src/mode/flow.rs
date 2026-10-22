@@ -3,7 +3,8 @@
 //! game's frame (`Flow::frame`: the first tick at or after each frame's
 //! time), at most one phase on, except where a phase starts the next
 //! directly. The game's work at each step is its `Flow::event`
-//! (`FlowEvent`), the mode's its `Hooks`.
+//! (`FlowEvent`), the mode's its `Hooks`; how the phases step, its
+//! `FlowOptions` (below, Combat Arms' `MISSIONS` first).
 //!
 //! - Waiting → Starting (the first player in) → mission start the next
 //!   frame (`Prepare`; the match's counters reset on the first,
@@ -30,13 +31,26 @@
 //!   the match's first round, nothing counts, no winner; the dead revived
 //!   every `Span::Revive` in the modes that do (`Mode::warmup_revives`).
 //!
+//! The options (`FlowOptions`, CS:S's rounds the other way from Combat
+//! Arms' on each): the phases' end times compared with a slack (`now +
+//! slack >= until`; 0: exactly); the first step starting the match
+//! without waiting for a player (no `Starting`: the mission start in the
+//! same step); the round timer only telling the mode's `decide` hook
+//! (every live step, before the end test: a round it decides is over in
+//! the same step) instead of ending the round; round over's end going
+//! straight into the next mission start in the same step (`direct`: the
+//! round end's steps, `match_end`, `after_round`, no intermission); the
+//! round number counted as rounds start (`count_at_start`: at the
+//! mission start, before `MissionStart`).
+//!
 //! The systems a game chains into its rules: `mission_update`, `update`
 //! (the mode's objects, before it) and `touches` (after the tick's
-//! deaths).
+//! deaths); a game that does its own work around the step calls
+//! `step_game` from its rules' system instead.
 
 use bevy::prelude::*;
 
-use super::{Flow, FlowEvent, Mode, Span, assign_team, current, current_mode, state::*};
+use super::{Flow, FlowEvent, Mode, Span, assign_team_in, current, current_mode, current_of, state::*};
 use crate::core::{Dead, FreezeTime, SimClock};
 
 /// The phases' frame counter (one step per `Flow::frame`).
@@ -48,15 +62,34 @@ pub struct MissionFrames(pub u64);
 pub fn mission_update(world: &mut World) {
     let Some((mode, flow)) = current(world) else { return };
     let now = world.resource::<SimClock>().now;
-    if flow.frame > 0.0 {
-        let due = ((now + 1e-9) / flow.frame).floor() as u64;
-        let mut frames = world.get_resource_or_init::<MissionFrames>();
-        if frames.0 >= due {
-            return;
-        }
-        frames.0 = due;
+    if due(world, now, flow) {
+        step(world, now, mode, flow);
     }
-    step(world, now, mode, flow);
+}
+
+/// One step of `game`'s chosen mode at `now`, once per its frame, from a
+/// game's own rules' system (whichever game the gameplay names: the
+/// caller gates it). False: `game` has no mode chosen (nothing stepped).
+pub fn step_game(world: &mut World, game: &str, now: f64) -> bool {
+    let Some((mode, flow)) = current_of(world, game) else { return false };
+    if due(world, now, flow) {
+        step(world, now, mode, flow);
+    }
+    true
+}
+
+/// Whether a frame is due at `now` (every tick with no frame).
+fn due(world: &mut World, now: f64, flow: Flow) -> bool {
+    if flow.frame <= 0.0 {
+        return true;
+    }
+    let due = ((now + 1e-9) / flow.frame).floor() as u64;
+    let mut frames = world.get_resource_or_init::<MissionFrames>();
+    if frames.0 >= due {
+        return false;
+    }
+    frames.0 = due;
+    true
 }
 
 /// The mode's own update (its objects), every server tick before the
@@ -77,43 +110,54 @@ pub fn touches(world: &mut World) {
 /// One step: at most one phase on, except where a phase starts the next
 /// directly.
 fn step(world: &mut World, now: f64, mode: &'static Mode, flow: Flow) {
+    let at = now + flow.options.slack;
     let phase = world.resource::<Match>().phase;
     match phase {
         Phase::Waiting => {
-            if !(flow.players)(world).is_empty() {
+            if !flow.options.wait_for_players {
+                mission_start(world, now, true, mode, flow);
+            } else if !(flow.players)(world).is_empty() {
                 world.resource_mut::<Match>().phase = Phase::Starting;
             }
         }
         Phase::Starting => mission_start(world, now, true, mode, flow),
         Phase::Setup { until } => {
-            if now + 1e-9 >= until {
+            if at >= until {
                 go_live(world, now, flow);
             }
         }
         Phase::Live => {
+            let (hold, requested, ends) = {
+                let m = world.resource::<Match>();
+                (m.hold_until, m.end_requested, m.round_ends)
+            };
+            if hold.is_none() && !requested {
+                (mode.hooks.decide)(world, ends.is_some_and(|e| at >= e));
+            }
             let (requested, ends, warmup, hold, next_revive) = {
                 let m = world.resource::<Match>();
                 (m.end_requested, m.round_ends, m.warmup, m.hold_until, m.next_revive)
             };
+            let time_up = flow.options.timer_ends_round && ends.is_some_and(|e| at >= e);
             if let Some(h) = hold {
-                if now + 1e-9 >= h {
+                if at >= h {
                     round_over(world, now, mode, flow);
                 }
-            } else if requested || ends.is_some_and(|e| now + 1e-9 >= e) {
+            } else if requested || time_up {
                 round_over(world, now, mode, flow);
-            } else if warmup && mode.warmup_revives && now + 1e-9 >= next_revive {
-                let period = (flow.length)(world, Span::Revive).unwrap_or(0.0) as f64;
+            } else if warmup && mode.warmup_revives && at >= next_revive {
+                let period = (flow.length)(world, Span::Revive).unwrap_or(0.0);
                 world.resource_mut::<Match>().next_revive = now + period;
                 revive_the_dead(world, flow);
             }
         }
         Phase::RoundOver { until } => {
-            if now + 1e-9 >= until {
+            if at >= until {
                 round_end(world, now, mode, flow);
             }
         }
         Phase::Intermission { until } => {
-            if now + 1e-9 >= until {
+            if at >= until {
                 if world.resource::<Match>().result.is_some() {
                     world.resource_mut::<Match>().phase = Phase::MatchOver;
                 } else {
@@ -122,6 +166,14 @@ fn step(world: &mut World, now: f64, mode: &'static Mode, flow: Flow) {
             }
         }
         Phase::MatchOver => {}
+    }
+}
+
+/// The freeze on or off (`core::FreezeTime`, put in when missing).
+fn freeze(world: &mut World, on: bool) {
+    match world.get_resource_mut::<FreezeTime>() {
+        Some(mut f) => f.0 = on,
+        None => world.insert_resource(FreezeTime(on)),
     }
 }
 
@@ -149,14 +201,19 @@ fn mission_start(world: &mut World, now: f64, first: bool, mode: &'static Mode, 
         m.end_requested = false;
         m.void = false;
         m.round_ends = None;
+        if flow.options.count_at_start && !m.warmup {
+            m.round += 1;
+        }
     }
     if first {
         (flow.event)(world, FlowEvent::ResetStats);
     }
     (flow.event)(world, FlowEvent::MissionStart);
     // Everyone in the match respawned, on the team the mode gives.
-    for (e, _) in (flow.players)(world) {
-        assign_team(world, e, true);
+    if mode.teams != super::Teams::AsJoined {
+        for (e, _) in (flow.players)(world) {
+            assign_team_in(world, e, true, mode, flow);
+        }
     }
     (mode.hooks.before_spawns)(world);
     for (e, _) in (flow.players)(world) {
@@ -165,22 +222,24 @@ fn mission_start(world: &mut World, now: f64, first: bool, mode: &'static Mode, 
     (mode.hooks.setup)(world);
     let setup = mode
         .forced_setup
-        .unwrap_or_else(|| (flow.length)(world, Span::Setup).unwrap_or(0.0)) as f64;
+        .map(f64::from)
+        .unwrap_or_else(|| (flow.length)(world, Span::Setup).unwrap_or(0.0));
     world.resource_mut::<Match>().phase = Phase::Setup { until: now + setup };
-    world.resource_mut::<FreezeTime>().0 = true;
+    freeze(world, true);
 }
 
 /// Live.
 fn go_live(world: &mut World, now: f64, flow: Flow) {
     let warmup = world.resource::<Match>().warmup;
     let length = (flow.length)(world, if warmup { Span::Warmup } else { Span::Round });
-    let revive = (flow.length)(world, Span::Revive).unwrap_or(0.0) as f64;
-    world.resource_mut::<FreezeTime>().0 = false;
+    let revive = (flow.length)(world, Span::Revive).unwrap_or(0.0);
+    freeze(world, false);
     let mut m = world.resource_mut::<Match>();
     m.phase = Phase::Live;
     m.winner = None;
     m.end_requested = false;
-    m.round_ends = length.map(|l| now + l as f64);
+    m.round_ends = length.map(|l| now + l);
+    m.live_since = now;
     m.next_revive = now + revive;
 }
 
@@ -202,7 +261,7 @@ fn round_over(world: &mut World, now: f64, mode: &'static Mode, flow: Flow) {
     {
         (flow.event)(world, FlowEvent::RoundWonBy(p));
     }
-    let over = (flow.length)(world, Span::RoundOver).unwrap_or(0.0) as f64;
+    let over = (flow.length)(world, Span::RoundOver).unwrap_or(0.0);
     let mut m = world.resource_mut::<Match>();
     if !warmup && let Some(i) = m.winner.and_then(side) {
         m.round_wins[i] += 1;
@@ -221,18 +280,19 @@ fn round_over(world: &mut World, now: f64, mode: &'static Mode, flow: Flow) {
     (flow.event)(world, FlowEvent::RoundOver);
 }
 
-/// Round end, then the intermission.
+/// Round end, then the intermission (`direct`: the next mission start or
+/// the match over, now).
 fn round_end(world: &mut World, now: f64, mode: &'static Mode, flow: Flow) {
     (mode.hooks.round_end)(world);
     (flow.event)(world, FlowEvent::RoundEnd);
-    world.resource_mut::<FreezeTime>().0 = false;
+    freeze(world, false);
     world.resource_mut::<Match>().immune = false;
     let warmup = {
         let mut m = world.resource_mut::<Match>();
         m.round_kills = [0; 2];
         m.round_deaths = [0; 2];
         let warmup = m.warmup;
-        if !warmup {
+        if !warmup && !flow.options.count_at_start {
             m.round += 1;
         }
         m.warmup = false;
@@ -242,7 +302,16 @@ fn round_end(world: &mut World, now: f64, mode: &'static Mode, flow: Flow) {
     if !warmup && let Some(result) = (mode.match_end)(world) {
         world.resource_mut::<Match>().result = Some(result);
     }
-    let intermission = (flow.length)(world, Span::Intermission).unwrap_or(0.0) as f64;
+    if flow.options.direct {
+        (mode.hooks.after_round)(world);
+        if world.resource::<Match>().result.is_some() {
+            world.resource_mut::<Match>().phase = Phase::MatchOver;
+        } else {
+            mission_start(world, now, false, mode, flow);
+        }
+        return;
+    }
+    let intermission = (flow.length)(world, Span::Intermission).unwrap_or(0.0);
     world.resource_mut::<Match>().phase = Phase::Intermission { until: now + intermission };
     (mode.hooks.after_round)(world);
 }
