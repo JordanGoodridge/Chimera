@@ -700,7 +700,8 @@ pub fn spawn_surfaces(
                 let layers: Vec<Image> = w
                     .normal_frames
                     .iter()
-                    .map(|&i| crate::render::to_image(&data.textures[i], &data.look))
+                    // Layers of one array texture: kept decoded.
+                    .map(|&i| crate::render::to_image(&data.textures[i], &data.look, false))
                     .collect();
                 let h = frames_image(&layers).map(|i| images.add(i));
                 if let Some(h) = &h {
@@ -781,7 +782,7 @@ pub fn spawn_surfaces(
         let layers: Vec<Image> = warp
             .normal_frames
             .iter()
-            .map(|&t| crate::render::to_image(&data.textures[t], &data.look))
+            .map(|&t| crate::render::to_image(&data.textures[t], &data.look, false))
             .collect();
         if let Some(image) = frames_image(&layers) {
             info!(

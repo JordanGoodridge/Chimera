@@ -42,7 +42,8 @@
 //!   as the game's output).
 //! - Textures come from the install's `.dtx` files (`lithtech_formats::
 //!   dtx`, the level the shipped "DetailLevel" loads: `skipped_levels`;
-//!   `alpharef` cuts out); the plain maps' world textures are in unkeyed
+//!   `alpharef` cuts out; DXT files also keep their blocks, mip levels
+//!   included, which the GPU takes as BC: `dtx_bc`); the plain maps' world textures are in unkeyed
 //!   archives. A sprite (`.spr`) draws its first frame's texture
 //!   (`effects::library::sprite_texture`). A texture that doesn't resolve
 //!   (keyed archives without the V2 key; with it, a few files the install
@@ -1046,6 +1047,7 @@ fn decode_all(files: Vec<(String, Vec<u8>)>, decode: bool) -> Vec<Result<(MapTex
             width,
             height,
             rgba8: if decode { dtx.rgba(level) } else { Vec::new() },
+            bc: if decode { dtx_bc(&dtx, level) } else { None },
         };
         // The mip chain here, on these threads, not on the main thread when
         // the map spawns (the drawing's own box filter).
@@ -1054,6 +1056,29 @@ fn decode_all(files: Vec<(String, Vec<u8>)>, decode: bool) -> Vec<Result<(MapTex
         }
         Ok((texture, dtx.alpha_ref()))
     })
+}
+
+/// The file's blocks from `level` down (`MapTexture::bc`): DXT1/3/5 as
+/// stored, its own mip levels (the files stop at 4 x 4). None for BGRA
+/// ones and for sizes that are not whole blocks.
+fn dtx_bc(dtx: &Dtx, level: u32) -> Option<crate::map::MapBc> {
+    use crate::map::{MapBc, MapBcFormat};
+    use lithtech_formats::dtx::Format;
+
+    let format = match dtx.format {
+        Format::Dxt1 => MapBcFormat::Bc1,
+        Format::Dxt3 => MapBcFormat::Bc2,
+        Format::Dxt5 => MapBcFormat::Bc3,
+        Format::Bgra32 => return None,
+    };
+    let levels = (level..dtx.mip_count)
+        .map(|i| {
+            let (w, h) = dtx.level_dims(i);
+            let bytes = dtx.level_bytes(i);
+            (w % 4 == 0 && h % 4 == 0 && bytes.len() == MapBc::level_bytes(format, w, h)).then(|| bytes.to_vec())
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(MapBc { format, levels })
 }
 
 /// A mesh being built from the sections: its vertices' lightmap
@@ -1110,6 +1135,7 @@ pub(crate) fn second_layers(
                     width,
                     height,
                     rgba8: if decode { dtx.rgba(level) } else { Vec::new() },
+                    bc: None,
                 });
                 Some(Loaded {
                     index: map.textures.len() - 1,

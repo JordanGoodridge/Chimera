@@ -231,6 +231,7 @@ pub fn build_late(
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Option<ResMut<Assets<PropMaterial>>>,
     mut bindposes: ResMut<Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>,
+    compressed: Option<Res<bevy::image::CompressedImageFormatSupport>>,
 ) {
     let (Some(models), Some(late), Some(mut materials)) = (models, late, materials) else {
         return;
@@ -241,9 +242,10 @@ pub fn build_late(
         };
         let base = assets.textures.len();
         let look = assets.late_base.look.clone();
+        let bc = super::images::bc_wanted(compressed.as_deref());
         assets
             .textures
-            .extend(own.iter().map(|t| images.add(super::images::to_image(t, &look))));
+            .extend(own.iter().map(|t| images.add(super::images::to_image(t, &look, bc))));
         let mut moved = v.clone();
         for m in &mut moved.model.meshes {
             m.texture = m.texture.map(|t| t + base);

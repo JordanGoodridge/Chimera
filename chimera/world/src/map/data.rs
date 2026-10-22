@@ -34,6 +34,41 @@ pub struct MapTexture {
     pub width: u32,
     pub height: u32,
     pub rgba8: Vec<u8>,
+    /// The same image as the source file stores it, when that is block
+    /// compressed (DXT1/3/5): uploaded as is where the GPU takes BC
+    /// (`render::to_image`), `rgba8` and `mips` being what the CPU reads
+    /// and the fallback. None: no compressed copy (lean loads, other formats).
+    pub bc: Option<MapBc>,
+}
+
+/// BC1/2/3 blocks (DXT1/3/5) of a texture, each level's rows from the top.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapBc {
+    pub format: MapBcFormat,
+    /// Level 0 is the texture's size; each next one halves it (at least
+    /// 1 x 1, one block for anything under 4 x 4). The chain may stop above
+    /// 1 x 1 (Lithtech's files stop at 4 x 4).
+    pub levels: Vec<Vec<u8>>,
+}
+
+/// A block compression format (`MapTexture::srgb` chooses the colour
+/// space).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MapBcFormat {
+    /// DXT1: 8 bytes a block, colour and a one-bit alpha.
+    Bc1,
+    /// DXT3: 16 bytes, explicit 4-bit alpha.
+    Bc2,
+    /// DXT5: 16 bytes, interpolated alpha.
+    Bc3,
+}
+
+impl MapBc {
+    /// The bytes of a level `w` x `h` texels in `format`.
+    pub fn level_bytes(format: MapBcFormat, w: u32, h: u32) -> usize {
+        let block = if format == MapBcFormat::Bc1 { 8 } else { 16 };
+        w.div_ceil(4) as usize * h.div_ceil(4) as usize * block
+    }
 }
 
 impl MapTexture {
