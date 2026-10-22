@@ -62,6 +62,54 @@ fn dust2_is_dressed_for_combat_arms() {
     assert_eq!(teams, HashSet::from([Some(ALPHA), Some(BRAVO)]), "T and CT spawns as Alpha and Bravo");
 }
 
+/// This process's resident memory in MB (Linux; 0 elsewhere).
+fn rss_mb() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("VmRSS:"))
+                .and_then(|l| l.split_whitespace().next()?.parse::<u64>().ok())
+        })
+        .map_or(0, |kb| kb / 1024)
+}
+
+/// A mashup's CS:S map is loaded as its world only (`MapLoadOptions::kit`):
+/// CS:S's character bodies, HUD, radio, bot names, decals, sounds, muzzle
+/// flash, shells and navigation are never read from the install, and the
+/// guns the app keeps are the ones a whole load has. Run alone with
+/// `--nocapture` it prints the time and the process's resident memory.
+#[test]
+fn a_mashup_map_loads_only_its_world() {
+    use chimera_world::map::{KitLoad, MapLoadOptions};
+    let started = std::time::Instant::now();
+    let Some(map) = dust2() else { return };
+    eprintln!(
+        "mashup de_dust2: {:.1} s, {} textures, resident {} MB",
+        started.elapsed().as_secs_f32(),
+        map.textures.len(),
+        rss_mb()
+    );
+    // The world as CS:S's loader makes it with the kit asked for no part.
+    let kept = mashup_demo::KEPT;
+    let world = (cs_source::game::MAP_LOADER.load)("de_dust2", &MapLoadOptions { kit: KitLoad::Only(kept), ..default() }).unwrap();
+    let kit = &world.kit;
+    assert!(kit.characters.is_empty() && kit.decals.groups.is_empty(), "no bodies, no decals");
+    assert!(kit.hud.is_none() && kit.radio.is_none() && kit.bot_profiles.is_none() && kit.nav.is_none());
+    assert!(kit.muzzle_flash.is_none() && kit.shells.is_empty() && kit.shell_physics.is_none());
+    let held = |m: &MapData| -> Vec<String> { m.kit.held.iter().map(|h| h.key.clone()).filter(|k| k.starts_with("cs_source:weapon_")).collect() };
+    let whole = (cs_source::game::MAP_LOADER.load)("de_dust2", &MapLoadOptions::default()).unwrap();
+    assert!(!held(&world).is_empty(), "the kept guns' world models load");
+    assert_eq!(held(&world), held(&whole), "the same kept guns as a whole load's");
+    assert!(
+        world.textures.len() < whole.textures.len(),
+        "fewer textures: {} against {}",
+        world.textures.len(),
+        whole.textures.len()
+    );
+    assert_eq!(world.meshes.len(), whole.meshes.len(), "the same world");
+}
+
 fn clip(sim: &Sim, p: Entity) -> u32 {
     let w = sim.app.world().get::<Inventory>(p).unwrap().active.unwrap();
     sim.app.world().get::<Magazine>(w).unwrap().clip

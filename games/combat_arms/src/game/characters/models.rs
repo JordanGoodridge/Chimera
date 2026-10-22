@@ -259,7 +259,7 @@ pub fn shared_character_models(file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Arc<Sh
 /// the map's (the meshes' and skins' indices moved past the map's own),
 /// their rigs and body groups registered again (a test may have replaced
 /// one).
-pub fn append_shared(map: &mut MapData, models: &SharedModels) {
+pub fn append_shared(map: &mut MapData, models: &SharedModels, kit: &crate::map::KitLoad) {
     for (path, r) in &models.rigs {
         register(path, r.clone());
     }
@@ -276,11 +276,13 @@ pub fn append_shared(map: &mut MapData, models: &SharedModels) {
         }
     };
     map.textures.extend(models.data.textures.iter().cloned());
-    map.kit.characters.extend(models.data.kit.characters.iter().cloned().map(|mut c| {
+    let bodies = models.data.kit.characters.iter().filter(|_| kit.parts());
+    map.kit.characters.extend(bodies.cloned().map(|mut c| {
         shift(&mut c.model);
         c
     }));
-    map.kit.held.extend(models.data.kit.held.iter().cloned().map(|mut h| {
+    let held = models.data.kit.held.iter().filter(|h| kit.wants(&h.key));
+    map.kit.held.extend(held.cloned().map(|mut h| {
         shift(&mut h.model);
         h
     }));

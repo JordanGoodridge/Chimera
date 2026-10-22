@@ -122,6 +122,8 @@
 //! - Other apps: `MAP_LOADER` is these maps for an app's
 //!   `map::MapSources`; `DRESSING` (`dress`) is Combat Arms' parts on
 //!   another game's map (a mashup: a CS:S map played as Combat Arms).
+//!   `MapLoadOptions::kit` limits the character models every map carries
+//!   (`MapData::kit`): none for an app whose gameplay is another game's.
 //! - No map file hash (Q15): the game checks none, a client loads its own
 //!   copy by name, so the network handshake compares only the name.
 //!
@@ -324,6 +326,11 @@ pub fn load_from(mount: &Mount, name: &str) -> Result<MapData, String> {
 /// `load_from` with `options`.
 pub fn load_from_with(mount: &Mount, name: &str, options: &MapLoadOptions) -> Result<MapData, String> {
     let file = |path: &str| mount.read(path).ok();
+    // The character models are the kit (`MapData::kit`): not read for a
+    // map whose kit isn't wanted (another game's gameplay on it).
+    if !options.kit.parts() && !options.kit.any_models() {
+        return load_world_with(mount, name, options);
+    }
     let (map, models) = std::thread::scope(|s| {
         let models = s.spawn(|| {
             super::data::CaData::install().weapon_set();
@@ -333,7 +340,7 @@ pub fn load_from_with(mount: &Mount, name: &str, options: &MapLoadOptions) -> Re
         (map, models.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
     });
     let mut map = map?;
-    super::characters::models::append_shared(&mut map, &models);
+    super::characters::models::append_shared(&mut map, &models, &options.kit);
     Ok(map)
 }
 

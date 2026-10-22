@@ -10,6 +10,12 @@
 //! a displacement was built from included, as in CS:S: `brush_kept`), plus
 //! the displacement surfaces as triangles.
 //!
+//! The game's kit (`MapData::kit`: character bodies, HUD, radio, bot names,
+//! decals, round sounds, held and view models, muzzle flash, shells, the
+//! navigation mesh) is read as far as `MapLoadOptions::kit` says: all of it
+//! by default, and for a mashup's map (`map::KitLoad::Only`) none but the
+//! kept guns' models, so its textures and materials aren't loaded.
+//!
 //! Known shortcuts (docs/tech-debt.md): Non-mover brush entities (other than breakables) are static where they spawn
 //! and ignore render modes other than 10. Overlays and infodecals on movers go
 //! with them (infodecals whose probe hits the mover's bounding box, overlays
@@ -295,47 +301,52 @@ pub fn load_level_bytes_with(
     // Character bodies: a terrorist and a counter-terrorist model (CS:S
     // teams 2 and 3; ours are 1 and 2), the CT one for anyone else; then
     // the other classes' (`core::PlayerClass`, the class menu).
-    for (path, team) in [
-        (CLASS_MODELS[0], Some(crate::core::Team(1))),
-        (CLASS_MODELS[4], None),
-    ] {
-        match super::props::load_character(&mut materials, &surfaces, path, team) {
-            Ok(c) => data.kit.characters.push(c),
-            Err(e) => data.warnings.push(e),
-        }
-    }
-    for (i, path) in CLASS_MODELS.iter().enumerate().filter(|(i, _)| i % 4 != 0) {
-        let team = crate::core::Team(1 + i as u8 / 4);
-        match super::props::load_character(&mut materials, &surfaces, path, Some(team)) {
-            Ok(mut c) => {
-                c.class = Some(i as u8 + 1);
-                data.kit.characters.push(c);
+    // The kit (`MapData::kit`) is read only as far as `options.kit` says:
+    // a mashup's map takes none of it but the kept weapons' models.
+    let kit = options.kit;
+    if kit.parts() {
+        for (path, team) in [
+            (CLASS_MODELS[0], Some(crate::core::Team(1))),
+            (CLASS_MODELS[4], None),
+        ] {
+            match super::props::load_character(&mut materials, &surfaces, path, team) {
+                Ok(c) => data.kit.characters.push(c),
+                Err(e) => data.warnings.push(e),
             }
-            Err(e) => data.warnings.push(e),
         }
-    }
-    // Hostages' bodies, on maps with hostages (picked by name).
-    if data.entities.iter().any(|e| e.classname().eq_ignore_ascii_case("hostage_entity")) {
-        for path in super::objectives::HOSTAGE_MODELS {
-            match super::props::load_character(&mut materials, &surfaces, path, None) {
+        for (i, path) in CLASS_MODELS.iter().enumerate().filter(|(i, _)| i % 4 != 0) {
+            let team = crate::core::Team(1 + i as u8 / 4);
+            match super::props::load_character(&mut materials, &surfaces, path, Some(team)) {
                 Ok(mut c) => {
-                    c.name = Some(path.to_string());
+                    c.class = Some(i as u8 + 1);
                     data.kit.characters.push(c);
                 }
                 Err(e) => data.warnings.push(e),
             }
         }
+        // Hostages' bodies, on maps with hostages (picked by name).
+        if data.entities.iter().any(|e| e.classname().eq_ignore_ascii_case("hostage_entity")) {
+            for path in super::objectives::HOSTAGE_MODELS {
+                match super::props::load_character(&mut materials, &surfaces, path, None) {
+                    Ok(mut c) => {
+                        c.name = Some(path.to_string());
+                        data.kit.characters.push(c);
+                    }
+                    Err(e) => data.warnings.push(e),
+                }
+            }
+        }
+        data.kit.decals = super::decals::impact_decals(&mut materials);
+        super::decals::spray_logos(&mut materials, &mut data.kit.decals);
+        data.kit.hud = super::hud::load(&mut materials, name).map(std::sync::Arc::new);
+        data.kit.round_sounds = super::sound::round_sounds();
+        data.kit.radio = super::radio::load(&materials);
+        // Bots' names (the install's botprofile.db).
+        data.kit.bot_profiles = materials
+            .read("botprofile.db")
+            .map(|b| crate::map::bot_profiles::BotProfiles::parse(&String::from_utf8_lossy(&b)))
+            .filter(|p| !p.0.is_empty());
     }
-    data.kit.decals = super::decals::impact_decals(&mut materials);
-    super::decals::spray_logos(&mut materials, &mut data.kit.decals);
-    data.kit.hud = super::hud::load(&mut materials, name).map(std::sync::Arc::new);
-    data.kit.round_sounds = super::sound::round_sounds();
-    data.kit.radio = super::radio::load(&materials);
-    // Bots' names (the install's botprofile.db).
-    data.kit.bot_profiles = materials
-        .read("botprofile.db")
-        .map(|b| crate::map::bot_profiles::BotProfiles::parse(&String::from_utf8_lossy(&b)))
-        .filter(|p| !p.0.is_empty());
     data.overview = super::hud::overview(&mut materials, name);
     data.particles = super::impact_effects::load_materials(&mut materials);
     super::trails::add_trails_and_stacks(&bsp, &mut materials, &mut data);
@@ -354,10 +365,22 @@ pub fn load_level_bytes_with(
     data.camera_texture = materials.camera_texture;
     timer.lap("characters, hud, particles");
     // What characters hold: the weapons' world models.
-    if let Some(skeleton) = data.kit.characters.first().map(|c| c.bones.clone()) {
+    // (They are held on the player skeleton; a mashup's kept ones take
+    // the body's bones without keeping the body.)
+    let skeleton = match data.kit.characters.first() {
+        Some(c) => Some(c.bones.clone()),
+        None if !kit.parts() && kit.any_models() => {
+            super::props::load_character(&mut materials, &surfaces, CLASS_MODELS[0], None)
+                .ok()
+                .map(|c| c.bones)
+        }
+        None => None,
+    };
+    if let Some(skeleton) = skeleton {
         for (weapon, path) in super::weapons::world_models()
             .iter()
             .chain(super::objectives::WORLD_MODELS)
+            .filter(|(weapon, _)| kit.wants(weapon))
         {
             match super::props::load_held(&mut materials, path, weapon, &skeleton) {
                 Ok(h) => data.kit.held.push(h),
@@ -366,6 +389,9 @@ pub fn load_level_bytes_with(
         }
         for (weapon, path) in super::weapons::silenced_world_models() {
             let key = super::weapons::silenced_key(weapon);
+            if !kit.wants(&key) {
+                continue;
+            }
             match super::props::load_held(&mut materials, path, &key, &skeleton) {
                 Ok(h) => data.kit.held.push(h),
                 Err(e) => data.warnings.push(e),
@@ -374,23 +400,28 @@ pub fn load_level_bytes_with(
     }
     // What the local player sees of them: the view models.
     for (weapon, path, right_handed) in super::weapons::view_models() {
+        if !kit.wants(weapon) {
+            continue;
+        }
         match super::props::load_view_model(&mut materials, path, weapon, right_handed) {
             Ok(v) => data.kit.view_models.push(v),
             Err(e) => data.warnings.push(e),
         }
     }
-    data.kit.muzzle_flash = Some(super::view_anim::muzzle_flash(&mut materials));
-    for (key, path, bounce) in super::view_anim::SHELLS {
-        match super::props::load_shell(&mut materials, path) {
-            Ok(model) => data.kit.shells.push(crate::map::shells::MapShell {
-                key: key.to_string(),
-                model,
-                bounce: Some(bounce.to_string()),
-            }),
-            Err(e) => data.warnings.push(e),
+    if kit.parts() {
+        data.kit.muzzle_flash = Some(super::view_anim::muzzle_flash(&mut materials));
+        for (key, path, bounce) in super::view_anim::SHELLS {
+            match super::props::load_shell(&mut materials, path) {
+                Ok(model) => data.kit.shells.push(crate::map::shells::MapShell {
+                    key: key.to_string(),
+                    model,
+                    bounce: Some(bounce.to_string()),
+                }),
+                Err(e) => data.warnings.push(e),
+            }
         }
+        data.kit.shell_physics = Some(super::view_anim::shell_physics());
     }
-    data.kit.shell_physics = Some(super::view_anim::shell_physics());
     // Props' break pieces are in already (`props::add_static_props`).
     // Breakable brushes' propdata templates first: one may name a gib
     // list.
@@ -429,7 +460,9 @@ pub fn load_level_bytes_with(
     super::soundscape::load(&mut materials, &bsp, name, &mut sounds);
     data.sounds = std::sync::Arc::new(sounds);
     timer.lap("sounds");
-    if let Some(bytes) = materials.read(&format!("maps/{}.nav", name.to_lowercase())) {
+    if kit.parts()
+        && let Some(bytes) = materials.read(&format!("maps/{}.nav", name.to_lowercase()))
+    {
         match super::nav::parse(&bytes) {
             Ok((nav, _)) => data.kit.nav = Some(std::sync::Arc::new(nav)),
             Err(e) => data.warnings.push(e),
