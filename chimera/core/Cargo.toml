@@ -49,3 +49,10 @@ libc.workspace = true
 dev = ["dep:chimera_dev", "chimera_dev/dev"]
 # Every system as a span in a Chrome trace (the game's `profile`).
 profile = ["dep:chimera_dev", "chimera_dev/profile"]
+
+[dev-dependencies]
+# The presentation's Bevy and Avian features, for this crate's own tests only
+# (the dedicated servers build without them): `cargo test -p <crate>` shares
+# the clients' builds of Bevy instead of building its own (hakari.toml).
+bevy = { workspace = true, features = ["default", "wav"] }
+avian3d = { workspace = true, features = ["debug-plugin", "bevy_picking", "bevy_scene"] }

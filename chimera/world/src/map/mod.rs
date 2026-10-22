@@ -22,12 +22,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use avian3d::prelude::*;
-use bevy::{
-    asset::RenderAssetUsages,
-    image::ImageSampler,
-    prelude::*,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
-};
+use bevy::{asset::RenderAssetUsages, image::ImageSampler, prelude::*};
+// Not `bevy::render::render_resource`: its re-exports need the render crates.
+use wgpu_types::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::core::{MovingSolid, SpawnPoint, Team};
 // Collision-world types live in `core` (the greybox map uses them too).

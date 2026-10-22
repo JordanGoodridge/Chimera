@@ -1611,3 +1611,75 @@ dev` after a warm `cargo test --workspace --features dev --no-run`:
 Then `-p cs_source --features dev` 15 s (4 crates), `-p chimera_client
 --features dev` 7 s (2), `-p source_formats` 5 s. The workspace's own
 build after the change: one full rebuild (16 min here).
+
+### Dedicated servers without Bevy's default features (2026-10-22)
+
+The workspace's `bevy` has no default features (Cargo.toml lists the
+simulation's: `bevy_asset`, `bevy_log`, `bevy_state`, `bevy_image`,
+`bevy_mesh`, `bevy_camera`, `bevy_light`, `bevy_window`, ...), so
+`cargo build --release -p cs_source_server` (or `-p combat_arms_server`)
+compiles no `bevy_render`, `wgpu`, `naga`, `winit`, `bevy_pbr`, `bevy_ui`,
+`bevy_audio` or `rodio`. What the clients need they ask for: `chimera_present`
+and `chimera_client` take `bevy` with `default` and `wav` and `avian3d` with
+`debug-plugin`, `bevy_picking` and `bevy_scene` (its default features minus
+the solver's, which every build keeps); every simulation crate takes the same
+two as dev-dependencies, so its own tests still share the clients' builds.
+`chimera_world`'s `render` feature (turned on by `chimera_present` and by its
+own dev-dependency) holds the three things that need `bevy_pbr`/`bevy_render`:
+the greybox's `StandardMaterial`s, `MapAlpha::shader_alpha_mode` and
+`MonitorFog::distance_fog`; the texture types come from `wgpu-types`
+directly. Hakari leaves `bevy`, `bevy_internal`, `bevy_render`, `bevy_winit`,
+`bevy_window`, `bevy_input`, `bevy_light`, `bevy_picking`, `wgpu`, `wgpu-core`
+and `avian3d` out of the hack (a hack entry is a normal dependency of every
+member: with them the servers compiled them all). `architecture::
+server_builds_without_presentation` fails if a server's tree has Bevy's render,
+window or audio crates again.
+
+Measured (this box, `cargo build --release`, `-j 4`, load 19-28 from other
+builds, sccache), before and after:
+
+| | before | after |
+|---|---|---|
+| `cs_source_server` packages in `cargo tree` | 689 | 495 |
+| `combat_arms_server` packages in `cargo tree` | 647 | 447 |
+| `cs_source_server` binary | 115.3 MB (76.3 stripped) | 86.9 MB (58.9 stripped) |
+| `combat_arms_server` binary | 117.4 MB | 89.0 MB |
+| `cs_source_server` RSS after loading de_dust2 (8 players, idle) | 441 MB | 427 MB |
+| both servers, release build from an empty target | 38.5 min, 502 crates compiled (cold sccache) | 32.3 min, 185 compiled and 294 from sccache (warm from the first build): not a like-for-like time, the crates removed are the render stack (about 190 of the 689) |
+
+### Bots' sight in parallel (2026-10-22)
+
+`bot::think` (games/cs_source/src/bot/mod.rs) starts with a pass that
+finds each living bot's nearest living enemy in sight (nearest first, PVS
+first, then a ray and the smoke test) on the compute task pool:
+`par_iter_mut` over the bots, each writing only its own `Bot::sighted`,
+which the loop after it takes. A bot's result depends on no other bot's,
+and the sight used state nothing in `think` changes, so the
+pick is what the serial loop gave, in any thread order (X2): the test
+`bot_sight::a_crowd_sees_the_same_on_any_executor` runs twelve bots twice on
+the single-threaded executor and once on Bevy's multi-threaded one and
+compares targets and aim bit for bit. Combat Arms' bots (`bots::brain`) are
+one exclusive system with state shared between bots' decisions; they stay
+serial.
+
+Measured on `heavy::net_capacity` (de_dust2, 4 clients, the rest bots in
+deathmatch, a timer around the sight code alone; this box at load 7-34
+from other builds, so only the sight timer, which counts its own wall time,
+is read, not the tick's):
+
+| characters | sight, serial | sight, parallel | tick instructions p50 (all threads) |
+|---|---|---|---|
+| 32 | 164 us a tick | 256 us (load 2x the serial run's) | 28.4 M, 26.6 M |
+| 64 | 186 us | 121 us | 36.5 M, 38.2 M |
+| 128 | | 216 us | 82 M, 82 M |
+| 256 | 1,842 us | 1,019 us | 209 M, 201 M |
+
+The sight is 3-5% of a 32-64 character tick (the PVS and the nearest-first
+order keep it light on de_dust2: most bots have an enemy in view after a
+trace or two), so the tick's median does not show it under load; at 256 the
+server's main-thread tick p50 was 16.7 and 23.6 ms serial against 13.3 and
+13.9 ms parallel in two runs each. The instruction count (the stable
+figure) is the same to within 1-3%: the pool adds almost no work. The case
+that motivated it (a minigame lobby, 64 bots in each other's PVS and in the
+way of each other's rays, ~25 ms a tick) is not measurable here, its map
+(mg_jacks_multigames_v1) not being on this box.

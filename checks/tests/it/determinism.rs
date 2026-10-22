@@ -25,7 +25,7 @@ const BASELINE: &[(&str, usize, usize)] = &[
     ("chimera/world/src", 24, 1),
     ("chimera/net/src", 27, 0),
     ("source/logic/src", 9, 0),
-    ("games/cs_source/src", 141, 6),
+    ("games/cs_source/src", 140, 6),
     ("games/combat_arms/src", 108, 22),
 ];
 

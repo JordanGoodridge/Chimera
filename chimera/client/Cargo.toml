@@ -23,8 +23,8 @@ chimera_world.workspace = true
 chimera_sim.workspace = true
 chimera_present.workspace = true
 chimera_net.workspace = true
-avian3d.workspace = true
-bevy.workspace = true
+avian3d = { workspace = true, features = ["debug-plugin", "bevy_picking", "bevy_scene"] }
+bevy = { workspace = true, features = ["default", "wav"] }
 # HUD glyphs rasterized and placed as Source's HUD does (`hud_text`).
 ab_glyph.workspace = true
 # The debug UI and the inspector (`debug_ui`, `debug`).

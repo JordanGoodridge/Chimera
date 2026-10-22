@@ -205,7 +205,9 @@
 //! in a minigame map's lobby, everyone in each other's PVS and in the way
 //! of each other's rays, a bot traces to many and each ray tests many
 //! capsules: mg_jacks_multigames_v1 with 64 bots in deathmatch ~25 ms a
-//! tick (32: ~10 ms). CS:S's vision update rate and whether players block
+//! tick (32: ~10 ms; measured before `think` spread the traces over the task
+//! pool, which took a bot-full de_dust2's sight from 1.84 to 1.02 ms a tick at
+//! 256 characters). CS:S's vision update rate and whether players block
 //! bots' sight lines need a spec. Why it's OK for now: Humans don't cost it;
 //! 32 bots fit.
 
@@ -743,6 +745,9 @@ pub struct Bot {
     look_at: Option<Vec3>,
     activity: Activity,
     dead: bool,
+    /// The nearest living enemy in sight this tick (who, aim point, distance):
+    /// `think`'s sight pass writes it, its loop takes it.
+    sighted: Option<(Entity, Vec3, f32)>,
     /// Where its objective is (feet; a bomb target to plant at, the
     /// planted bomb to defuse): walked to before anything else
     /// (`objectives`).
@@ -1223,13 +1228,25 @@ fn think(
                 .map(|(e, t, team, _, intent, state, v)| view(e, t, team, intent, state, v.map_or(Vec3::ZERO, |v| v.0), 0)),
         )
         .collect();
-    // Each living character's visibility cluster (where it is aimed at):
-    // an enemy whose cluster the bot's can't see (the map's PVS, which is
-    // conservative) is hidden by the world without a trace. A full server
-    // traced every bot to every enemy each tick (multiplayer.md,
-    // "Capacity").
+    // What every living bot sees: the nearest living enemy in sight, into
+    // `Bot::sighted` (taken in the loop below).
+    //
+    // Nearest first, so the first one in sight is the one: a bot in a crowd
+    // traced to every enemy each tick (a full server's lobby on a minigame
+    // map, all in each other's PVS: multiplayer.md "Capacity"). The same pick
+    // as testing them all (ties in the query's order). An enemy whose
+    // visibility cluster the bot's can't see (the map's PVS, which is
+    // conservative) is hidden by the world without a trace.
+    //
+    // The traces are the server's capacity limit; each bot's are read-only
+    // and independent of the others' results, so the bots spread over the
+    // compute task pool (`par_iter_mut`; docs/performance.md, "Bots' sight
+    // in parallel"). Each writes only its own `sighted`, from state nothing
+    // in this system changes, so the result is what a serial loop gives
+    // whatever the order the threads run in. (Part of `think`, not a system
+    // of its own: another system would reorder the unordered ones around it.)
     let vis = vis.as_deref().map(|v| &*v.0);
-    let clusters: std::collections::HashMap<Entity, u32> = vis
+    let clusters: bevy::ecs::entity::EntityHashMap<u32> = vis
         .map(|v| {
             others
                 .iter()
@@ -1238,6 +1255,41 @@ fn think(
                 .collect()
         })
         .unwrap_or_default();
+    bots.par_iter_mut().for_each(|(me, mut bot, _, t, state, team, health, blinded, _, _, _)| {
+        bot.sighted = None;
+        if health.current <= 0.0 || blinded.is_some_and(|b| b.alpha_at(now) > BLIND_ALPHA) {
+            return;
+        }
+        let eye = t.translation + state.eye_offset;
+        let eye_cluster = vis.and_then(|v| v.cluster_at(eye));
+        let mut candidates: Vec<(Entity, Vec3, f32)> = Vec::new();
+        for (e, ot, oteam, oh) in &others {
+            if e == me || oteam == team || oh.current <= 0.0 {
+                continue;
+            }
+            if let (Some(v), Some(a), Some(b)) = (vis, eye_cluster, clusters.get(&e))
+                && v.visible.get(a as usize).is_some_and(|row| !row.is_empty())
+                && !v.sees(a, *b)
+            {
+                continue;
+            }
+            let aim = ot.translation + Vec3::Y * AIM_HEIGHT;
+            candidates.push((e, aim, (aim - eye).length()));
+        }
+        candidates.sort_by(|a, b| a.2.total_cmp(&b.2));
+        let filter = SpatialQueryFilter::from_excluded_entities([me]).with_mask(crate::core::SOLID_LAYERS);
+        for (e, aim, dist) in candidates {
+            let Ok(dir) = Dir3::new(aim - eye) else { continue };
+            let visible = spatial
+                .cast_ray(eye, dir, dist, true, &filter)
+                .is_none_or(|h| h.entity == e || h.distance >= dist - 0.05);
+            // Nor through smoke (specs/cs_source/grenades.md Q16).
+            if visible && !smoke.iter().any(|s| s.blocks(eye, aim)) {
+                bot.sighted = Some((e, aim, dist));
+                break;
+            }
+        }
+    });
     for (me, mut bot, mut intent, t, state, team, health, blinded, mut inv, velocity, punch) in &mut bots {
         if health.current <= 0.0 {
             bot.target = None;
@@ -1261,45 +1313,12 @@ fn think(
             bot.lead_who = None;
         }
         let eye = t.translation + state.eye_offset;
-        let eye_cluster = vis.and_then(|v| v.cluster_at(eye));
         // A flashed bot sees nothing until the white is mostly gone, and
         // aims worse while it fades.
         let white = blinded.map_or(0.0, |b| b.alpha_at(now));
         let blind = white > BLIND_ALPHA;
-        // The nearest living enemy in sight.
-        // Nearest first, so the first one in sight is the one: a bot in a
-        // crowd traced to every enemy each tick (a full server's lobby on a
-        // minigame map, all in each other's PVS: multiplayer.md
-        // "Capacity"). The same pick as testing them all (ties in the
-        // query's order).
-        let mut candidates: Vec<(Entity, Vec3, f32)> = Vec::new();
-        for (e, ot, oteam, oh) in &others {
-            if blind || e == me || oteam == team || oh.current <= 0.0 {
-                continue;
-            }
-            if let (Some(v), Some(a), Some(b)) = (vis, eye_cluster, clusters.get(&e))
-                && v.visible.get(a as usize).is_some_and(|row| !row.is_empty())
-                && !v.sees(a, *b)
-            {
-                continue;
-            }
-            let aim = ot.translation + Vec3::Y * AIM_HEIGHT;
-            candidates.push((e, aim, (aim - eye).length()));
-        }
-        candidates.sort_by(|a, b| a.2.total_cmp(&b.2));
-        let mut best: Option<(Entity, Vec3, f32)> = None;
-        for (e, aim, dist) in candidates {
-            let Ok(dir) = Dir3::new(aim - eye) else { continue };
-            let filter = SpatialQueryFilter::from_excluded_entities([me]).with_mask(crate::core::SOLID_LAYERS);
-            let visible = spatial
-                .cast_ray(eye, dir, dist, true, &filter)
-                .is_none_or(|h| h.entity == e || h.distance >= dist - 0.05);
-            // Nor through smoke (specs/cs_source/grenades.md Q16).
-            if visible && !smoke.iter().any(|s| s.blocks(eye, aim)) {
-                best = Some((e, aim, dist));
-                break;
-            }
-        }
+        // The nearest living enemy in sight (the pass above).
+        let best = bot.sighted.take();
 
         // Flashes in flight it sees: now and then look away until they pop.
         bot.watched.retain(|g| projectiles.contains(*g));

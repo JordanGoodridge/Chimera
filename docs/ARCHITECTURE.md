@@ -272,6 +272,13 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   (`dev`: dynamic linking, the remote protocol; `profile`: Chrome traces),
   which every crate's `dev`/`profile` reaches through `chimera_core`'s;
   hakari leaves it out, so the hack never turns them on for release.
+  The workspace's `bevy` and `avian3d` have no default features: the
+  dedicated servers build without Bevy's render, window and audio crates,
+  which `chimera_present` and `chimera_client` ask for (`default`, `wav`;
+  avian's `debug-plugin`) and every simulation crate takes as
+  dev-dependencies for its own tests; hakari leaves those crates out of the
+  hack (`.config/hakari.toml`; docs/performance.md, "Dedicated servers
+  without Bevy's default features").
 
 ## Layers
 

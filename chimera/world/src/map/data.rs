@@ -129,6 +129,7 @@ impl MapAlpha {
 
     /// Blend state for the material shaders (they output alpha 0 when
     /// additive, so premultiplied blending adds).
+    #[cfg(feature = "render")]
     pub fn shader_alpha_mode(self) -> AlphaMode {
         match self {
             MapAlpha::Opaque | MapAlpha::Mask(_) => AlphaMode::Opaque,

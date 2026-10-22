@@ -189,8 +189,8 @@ pub fn sky_cube_image(size: u32, data: Vec<u8>, format: TextureFormat) -> Image 
         format,
         RenderAssetUsages::RENDER_WORLD,
     );
-    image.texture_view_descriptor = Some(bevy::render::render_resource::TextureViewDescriptor {
-        dimension: Some(bevy::render::render_resource::TextureViewDimension::Cube),
+    image.texture_view_descriptor = Some(wgpu_types::TextureViewDescriptor {
+        dimension: Some(wgpu_types::TextureViewDimension::Cube),
         ..default()
     });
     image.sampler = ImageSampler::linear();

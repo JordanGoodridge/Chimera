@@ -135,6 +135,8 @@ From `cargo metadata` (23 members, 790 packages in Cargo.lock):
   (631 crates for `chimera_core` alone): the workspace's `bevy` has its
   default features, so the dedicated servers still compile Bevy's
   render, window and audio crates (engine-split.md lists the blockers).
+  (Done 10-22, L6: the servers' trees have none of them; 689 to 495
+  packages for `cs_source_server`.)
 - `chimera_core` depends on `source_formats` (the VFS and KeyValues
   for `mount`), and `lithtech_formats` on `source_formats` for the VFS:
   the engine's base and the LithTech loader both sit on a Source crate.
@@ -427,6 +429,7 @@ urgent:
   for what it uses (engine-split.md has the blockers): the dedicated
   servers would stop compiling `bevy_render`/`wgpu`. Worth it when a
   server build's time or size matters (Lucker Party's hosted servers).
+  **Done 10-22** (L6, note below).
 
 The layering is missing two planned layers: `games/originals` (Lucker
 Party's own parts and minigames' rule code) and `minigames/` (data).
@@ -789,8 +792,8 @@ time) before and after; keep a change only if wall time drops at load.
 | F2: drop the texture bytes after spawning | F3: BC textures |
 | F1: no textures for servers and collision tests; CS:S decode on threads | F6: the asset pipeline (L4) |
 | `net_order` sorted once (E6) | relevance culling (M5) |
-| E1's executor in tests (also faster tests) | bots' sight in parallel (F4) |
-| a per-tick allocation counter in `perfgate` | `bevy` without default features for servers (A5) |
+| E1's executor in tests (also faster tests) | bots' sight in parallel (F4) (done 10-22) |
+| a per-tick allocation counter in `perfgate` | `bevy` without default features for servers (A5) (done 10-22) |
 
 ## 6. Data-driven design and a minigame API
 
@@ -1404,7 +1407,50 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
-| L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4), `bevy` without default features for servers (A5) | none | S each |
+| L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4) **done**, `bevy` without default features for servers (A5) **done** | none | S each (two done 10-22, note below) |
+
+L6, two items done (10-22): `bevy` without default features for the
+servers (A5) and bots' sight in parallel (F4).
+
+- A5: the workspace's `bevy` and `avian3d` have no default features
+  (Cargo.toml lists the simulation's); `chimera_present` and
+  `chimera_client` ask for `bevy/default`, `wav` and avian's `debug-plugin`,
+  `bevy_picking` and `bevy_scene`, so the clients' features are what they
+  were; every simulation crate takes the same as dev-dependencies, so
+  `cargo test -p <crate>` still shares the clients' builds;
+  `chimera_world` got a `render` feature (the greybox's materials,
+  `MapAlpha::shader_alpha_mode`, `MonitorFog::distance_fog`) and a direct
+  `wgpu-types` dependency (the texture types the loaders' images use);
+  hakari leaves `bevy`, `bevy_internal`, `bevy_render`, `bevy_winit`,
+  `bevy_window`, `bevy_input`, `bevy_light`, `bevy_picking`, `wgpu`,
+  `wgpu-core` and `avian3d` out of the hack (a hack entry is a normal
+  dependency, so the servers compiled them through it).
+  `server_builds_without_presentation` now also refuses Bevy's render,
+  window and audio crates in a server's tree. Measured (release, `-j 4`):
+  `cs_source_server` 689 to 495 packages, 115.3 to 86.9 MB (76.3 to 58.9
+  stripped), RSS on de_dust2 after the load 441 to 427 MB;
+  `combat_arms_server` 647 to 447 packages, 117.4 to 89.0 MB; a release
+  build of both from an empty target 38.5 min (502 crates compiled) to
+  32.3 min (185 compiled, 294 from sccache: the times are not like for
+  like). The clients' `CHIMERA_SYSTEM_DUMP`s and the two servers' dumps
+  (a temporary patch) are identical to before. docs/performance.md,
+  "Dedicated servers without Bevy's default features".
+- F4: `think` starts with a pass that finds each bot's nearest enemy in
+  sight with `par_iter_mut` on the compute task pool, into
+  `Bot::sighted` (the loop after it takes it); each bot's result is its own, so the pick is the serial
+  loop's in any thread order (`bot_sight::a_crowd_sees_the_same_on_any_executor`
+  checks it bit for bit against the single- and multi-threaded executors).
+  No system added (a first version as a system of its own reordered the
+  unordered ones around it in the CS:S dumps), so the five apps' dumps are
+  identical to before. Combat Arms' bots are one
+  exclusive system with shared state and stay serial. Measured with
+  `heavy::net_capacity` (a timer around the sight code, de_dust2, 4
+  clients): 64 characters 186 to 121 us a tick, 256 characters 1,842 to
+  1,019 us (-45%); at 32 characters the sight is 3-5% of the tick and the
+  run to run noise at load is bigger than the change; tick instructions
+  (all threads) equal to within 1-3%. The minigame lobby case (the 25 ms
+  tick) is not measurable here (its map is not on this box).
+  docs/performance.md, "Bots' sight in parallel".
 
 L1, done: stages 1 and 2 (10-21), stage 3 (10-22, below).
 `chimera_sim::mode` is the runtime: `Mode` (id, key, name, respawns,

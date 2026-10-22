@@ -42,3 +42,25 @@ workspace-members = ["chimera_dev"]
 # `chimera_dev` isn't managed.
 [final-excludes]
 workspace-members = ["chimera_vfs", "source_formats", "lithtech_formats", "source_tools", "chimera_dev", "repo_checks"]
+# Also not given the hack: the crates only the presentation (render, window,
+# input devices, audio) builds. A hack entry is a normal dependency of every
+# member, so listing them made the dedicated servers compile them (A5):
+# `bevy` (its `wav` is audio), `bevy_internal`, `bevy_render`, `bevy_winit`,
+# `bevy_window`, `bevy_input`, `bevy_light` (webgl), `bevy_picking`, wgpu, `avian3d` (debug plugin).
+# A build of the clients unifies their features by itself; the simulation
+# crates take the presentation's Bevy as a dev-dependency, so their own
+# tests still share the clients' builds (docs/performance.md,
+# "Workspace-hack").
+third-party = [
+    { name = "avian3d" },
+    { name = "bevy" },
+    { name = "bevy_internal" },
+    { name = "bevy_render" },
+    { name = "bevy_winit" },
+    { name = "bevy_window" },
+    { name = "bevy_input" },
+    { name = "bevy_light" },
+    { name = "bevy_picking" },
+    { name = "wgpu" },
+    { name = "wgpu-core" },
+]
