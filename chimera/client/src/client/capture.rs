@@ -158,11 +158,39 @@ struct BenchRow {
 #[derive(Component)]
 struct ViewShot;
 
+/// Makes Bevy re-measure every camera whose render target is an image of a
+/// size other than the one it last measured.
+///
+/// Bevy's `camera_system` measures a camera's target again only when the
+/// window or image asset changed, or the camera was added or got a new
+/// projection, never when its `RenderTarget` component is swapped. A camera
+/// moved to an image after its first frame (the `--views` capture, the sky
+/// and view model cameras following it) kept the window's size as its
+/// target size, so its depth texture came out window-sized (shared by all
+/// cameras of that target) while the colour attachment was the image's, and
+/// wgpu rejected the pass whenever the window and the image differed.
+fn resync_image_targets(
+    images: Res<Assets<Image>>,
+    mut cameras: Query<(&Camera, &RenderTarget, &mut Projection)>,
+) {
+    for (camera, target, mut projection) in &mut cameras {
+        let RenderTarget::Image(image) = target else { continue };
+        let Some(image) = images.get(&image.handle) else { continue };
+        if camera.computed.target_info.as_ref().map(|i| i.physical_size) != Some(image.size()) {
+            projection.set_changed();
+        }
+    }
+}
+
 pub struct CapturePlugin;
 
 impl Plugin for CapturePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (countdown, start_views, run_views.after(start_views)));
+        app.add_systems(
+            PostUpdate,
+            resync_image_targets.before(bevy::camera::CameraUpdateSystems),
+        );
         app.console_command(
             "bugreport",
             "bugreport [note]: save a screenshot, your setpos/setang, map, weapon, build and recent console lines to a folder to send with a bug.",
@@ -690,5 +718,53 @@ mod tests {
         std::fs::write(dir.join("de_dust20000.png"), b"").unwrap();
         assert_eq!(super::numbered_shot(&dir, "de_dust2"), dir.join("de_dust20001.png"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod retarget_tests {
+    use bevy::{
+        camera::RenderTarget,
+        prelude::*,
+        render::{camera::camera_system, render_resource::TextureFormat, texture::ManualTextureViews},
+        window::{WindowCreated, WindowResized, WindowScaleFactorChanged},
+    };
+
+    use super::resync_image_targets;
+
+    /// A camera moved to an image of another size is measured as that image
+    /// (not as its first target, the window's size), the regression behind
+    /// `refcmp capture-ours` failing with a window-sized depth texture.
+    #[test]
+    fn retargeted_camera_takes_the_new_image_size() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.init_asset::<Image>();
+        app.init_resource::<ManualTextureViews>();
+        app.add_message::<WindowResized>()
+            .add_message::<WindowCreated>()
+            .add_message::<WindowScaleFactorChanged>();
+        app.add_systems(PostUpdate, (resync_image_targets, camera_system).chain());
+        let add = |app: &mut App, w, h| {
+            app.world_mut()
+                .resource_mut::<Assets<Image>>()
+                .add(Image::new_target_texture(w, h, TextureFormat::Rgba8Unorm, None))
+        };
+        let window_sized = add(&mut app, 1920, 1080);
+        let camera = app
+            .world_mut()
+            .spawn((Camera3d::default(), RenderTarget::Image(window_sized.into())))
+            .id();
+        app.update();
+        let size = |app: &App| app.world().get::<Camera>(camera).unwrap().physical_target_size();
+        assert_eq!(size(&app), Some(UVec2::new(1920, 1080)));
+        let view_sized = add(&mut app, 1280, 720);
+        // The new image's Added event is gone by the swap (as for the sky
+        // and view model cameras, which follow the main one a frame later).
+        app.update();
+        app.update();
+        app.world_mut().entity_mut(camera).insert(RenderTarget::Image(view_sized.into()));
+        app.update();
+        assert_eq!(size(&app), Some(UVec2::new(1280, 720)));
     }
 }
