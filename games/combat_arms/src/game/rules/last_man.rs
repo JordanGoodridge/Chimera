@@ -29,30 +29,33 @@ use super::{
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: LAST_MAN_STANDING,
-    key: "LMS",
-    shown_as: "Last Man Standing",
-    description: "Last Man Standing: free-for-all rounds without respawn; the last player alive wins the round, G rounds \
-                  are played",
-    respawns: false,
-    warmup: true,
-    warmup_revives: true,
+    rules: super::Mode {
+        id: LAST_MAN_STANDING,
+        key: "LMS",
+        shown_as: "Last Man Standing",
+        description: "Last Man Standing: free-for-all rounds without respawn; the last player alive wins the round, G rounds \
+                      are played",
+        respawns: false,
+        warmup: true,
+        warmup_revives: true,
+        forced_setup: None,
+        teams: Teams::FreeForAll,
+        on_death,
+        time_out: |_| {},
+        match_end,
+        hooks: NO_HOOKS,
+    },
     ff_scaled: false,
     assists: false,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::FreeForAll,
     spawns: FFA_POINTS,
     round_time: RoundTime::Mission,
     fire_ends_protection: true,
     death_drops: true,
     panel: Panel::PlayerRoundWins,
     order: ScoreOrder::MissionPoints,
-    on_death,
-    time_out: |_| {},
-    match_end,
     leaving: |_: &mut CaMatch, _: &Leaver| {},
-    hooks: NO_HOOKS,
+    left: super::NO_LEFT,
 };
 
 /// A death leaving at most one player alive ends the round, that player

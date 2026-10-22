@@ -1,7 +1,12 @@
 //! The match's phases (specs/combat_arms/game_modes.md S3, S9, S10, S11):
 //! the mission update the server runs once per server frame
 //! (`grenades::SERVER_FRAME`, 20 Hz: the first tick at or after each
-//! frame's time), joining, leaving, and a fresh match.
+//! frame's time), joining, leaving, and a fresh match. The phases are
+//! stepped by Chimera's mode runtime (`chimera_sim::mode::flow`, lifted
+//! from here); Combat Arms' side of it is `FLOW` (the frame, the players
+//! in join order, the respawn, the lengths below, and the work at each
+//! step: the mission resolved, statistics reset, death drops, the map's
+//! messages, the clean-up, the team counts).
 //!
 //! - Waiting → Starting (the first player in a team) → mission start the
 //!   next frame (the counters reset), which sets the round up at once:
@@ -57,19 +62,20 @@ use bevy::prelude::*;
 
 use super::{
     super::{grenades::SERVER_FRAME, inventory::Dropped, missions, objects::CaObjectMessage},
-    CaRuleSettings, Teams, current_mode, objectives,
+    CaRuleSettings, current_mode, objectives,
     scoring::{CaDamageLog, sync_score},
     spawns::{self, CaHeld, CaSpawnCursors},
-    state::{ALPHA, BRAVO, CaMatch, CaStats, FFA_FIRST, FFA_LAST, Phase, RoundResult, plays, side},
+    state::{CaMatch, CaStats, Phase, plays},
 };
 use crate::{
-    core::{Connecting, Dead, FreezeTime, Health, Intent, MapLoads, Npc, SimClock, Spectating, Team},
+    core::{Connecting, Dead, FreezeTime, Health, Intent, MapLoads, Npc, Spectating, Team},
+    mode::{Flow, FlowEvent, Span},
     map::ragdoll::{Ragdoll, Ragdolled},
 };
 
-/// The mission update's frame counter (one update per server frame).
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct CaMissionFrames(pub u64);
+/// The mission update's frame counter (one update per server frame): the
+/// runtime's.
+pub type CaMissionFrames = crate::mode::flow::MissionFrames;
 
 /// The players in the match: on Alpha or Bravo, in the game (not
 /// connecting, spectating or an NPC), in the order they came in
@@ -129,255 +135,71 @@ pub fn alive_players(world: &mut World) -> Vec<(Entity, u8)> {
     players(world).into_iter().filter(|(e, _)| living.contains(e)).collect()
 }
 
-/// S1: `e`'s team as the mode makes teams: Alpha or Bravo (a player
-/// without one goes on the smaller team, Alpha on a tie); every player a
-/// team of their own in a free-for-all mode (the lowest free id from
-/// `FFA_FIRST`); Alpha for everyone at a round's setup in Spy Hunt and
-/// Quarantine (`reset`). Observers and players without a team are left
-/// alone.
+/// S1: `e`'s team as the mode makes teams (`mode::assign_team`): Alpha or
+/// Bravo (a player without one goes on the smaller team, Alpha on a tie);
+/// every player a team of their own in a free-for-all mode (the lowest
+/// free id from `FFA_FIRST`); Alpha for everyone at a round's setup in Spy
+/// Hunt and Quarantine (`reset`). Observers and players without a team
+/// are left alone.
 pub fn assign_team(world: &mut World, e: Entity, reset: bool) {
-    let Some(mode) = current_mode(world) else { return };
-    let Some(team) = world.get::<crate::core::Team>(e).map(|t| t.0) else { return };
-    if !plays(team) {
-        return;
-    }
-    let others: Vec<u8> = players(world).into_iter().filter(|(p, _)| *p != e).map(|(_, t)| t).collect();
-    let want = match mode.teams {
-        Teams::Two => {
-            if side(team).is_some() {
-                return;
-            }
-            let count = |t: u8| others.iter().filter(|o| **o == t).count();
-            if count(BRAVO) < count(ALPHA) { BRAVO } else { ALPHA }
-        }
-        Teams::AllAlpha => {
-            if !reset && side(team).is_some() {
-                return;
-            }
-            ALPHA
-        }
-        Teams::FreeForAll => {
-            if team >= FFA_FIRST && !others.contains(&team) {
-                return;
-            }
-            let Some(free) = (FFA_FIRST..=FFA_LAST).find(|t| !others.contains(t)) else { return };
-            free
-        }
-    };
-    if want != team {
-        world.entity_mut(e).insert(crate::core::Team(want));
+    crate::mode::assign_team(world, e, reset);
+}
+
+/// Combat Arms' side of the mode runtime (`mode::Flow`): the mission
+/// update once per server frame (`SERVER_FRAME`), the players in join
+/// order, the respawn (S4, S5), the phases' lengths (the mission's and the
+/// room's) and its own work at each step (`event`).
+pub const FLOW: Flow = Flow {
+    frame: SERVER_FRAME,
+    players,
+    respawn: spawns::respawn,
+    length,
+    event,
+};
+
+/// A phase's length: the setup (`object_start`, 0 in the modes that force
+/// it), the round and the warm-up (missions.md "Timers per mode"), round
+/// over (`object_end`), the intermission (`mission_end`), the warm-up's
+/// revives (`warmup_revive`).
+fn length(world: &mut World, span: Span) -> Option<f32> {
+    let settings = world.resource::<CaRuleSettings>();
+    match span {
+        Span::Setup => Some(missions::setup_length(world)),
+        Span::Round => missions::real_round(world),
+        Span::Warmup => missions::warmup(world),
+        Span::RoundOver => Some(settings.object_end),
+        Span::Intermission => Some(settings.mission_end),
+        Span::Revive => Some(settings.warmup_revive),
     }
 }
 
-/// The mission update, once per server frame (the server's, with a mode).
-pub(super) fn mission_update(world: &mut World) {
-    if current_mode(world).is_none() {
-        return;
-    }
-    let now = world.resource::<SimClock>().now;
-    let due = ((now + 1e-9) / SERVER_FRAME).floor() as u64;
-    {
-        let mut frames = world.resource_mut::<CaMissionFrames>();
-        if frames.0 >= due {
-            return;
+/// Combat Arms' work at the runtime's steps (S3, S11, S15).
+fn event(world: &mut World, event: FlowEvent) {
+    match event {
+        // A map started without a mission finds it now.
+        FlowEvent::Prepare { first: true } => missions::ensure_resolved(world),
+        FlowEvent::Prepare { first: false } => {}
+        FlowEvent::ResetStats => reset_stats(world),
+        FlowEvent::MissionStart => {
+            let drops = current_mode(world).is_some_and(|m| m.death_drops);
+            world.resource_mut::<super::super::inventory::CaDeathDrops>().0 = drops;
+            objectives::clear_players(world);
+            // The map's mode objects: the mission's controllers and start
+            // triggers, then the round's (S3 steps 2 and 3, S15).
+            map_step(world, missions::MapStep::MissionStart);
+            map_step(world, missions::MapStep::RoundSetup);
         }
-        frames.0 = due;
-    }
-    step(world, now);
-}
-
-/// One mission update: at most one phase on, except where a phase starts
-/// the next directly.
-fn step(world: &mut World, now: f64) {
-    let Some(mode) = current_mode(world) else { return };
-    let phase = world.resource::<CaMatch>().phase;
-    match phase {
-        Phase::Waiting => {
-            if !players(world).is_empty() {
-                world.resource_mut::<CaMatch>().phase = Phase::Starting;
-            }
+        // A free-for-all round's winner is a player.
+        FlowEvent::RoundWonBy(p) => super::scoring::stats(world, p).round_wins += 1,
+        // The round's end triggers (S3 step 5).
+        FlowEvent::RoundOver => map_step(world, missions::MapStep::RoundOver),
+        FlowEvent::RoundEnd => {
+            clean_up(world);
+            // Every round ends its mission: the mission's end triggers.
+            map_step(world, missions::MapStep::MissionEnd);
         }
-        Phase::Starting => mission_start(world, now, true),
-        Phase::Setup { until } => {
-            if now + 1e-9 >= until {
-                go_live(world, now);
-            }
-        }
-        Phase::Live => {
-            let (requested, ends, warmup) = {
-                let m = world.resource::<CaMatch>();
-                (m.end_requested, m.round_ends, m.warmup)
-            };
-            let hold = world.resource::<CaMatch>().hold_until;
-            if let Some(h) = hold {
-                if now + 1e-9 >= h {
-                    round_over(world, now);
-                }
-            } else if requested || ends.is_some_and(|e| now + 1e-9 >= e) {
-                round_over(world, now);
-            } else if warmup && mode.warmup_revives && now + 1e-9 >= world.resource::<CaMatch>().next_revive {
-                let period = world.resource::<CaRuleSettings>().warmup_revive as f64;
-                world.resource_mut::<CaMatch>().next_revive = now + period;
-                revive_the_dead(world);
-            }
-        }
-        Phase::RoundOver { until } => {
-            if now + 1e-9 >= until {
-                round_end(world, now);
-            }
-        }
-        Phase::Intermission { until } => {
-            if now + 1e-9 >= until {
-                if world.resource::<CaMatch>().result.is_some() {
-                    world.resource_mut::<CaMatch>().phase = Phase::MatchOver;
-                } else {
-                    mission_start(world, now, false);
-                }
-            }
-        }
-        Phase::MatchOver => {}
+        FlowEvent::RoundEnded => super::update_team_counts(world),
     }
-}
-
-/// Mission start (S3 steps 2 and 3): `first`, the match's counters reset;
-/// then the round's setup.
-fn mission_start(world: &mut World, now: f64, first: bool) {
-    let Some(mode) = current_mode(world) else { return };
-    if first {
-        missions::ensure_resolved(world);
-    }
-    let has_warmup = missions::warmup(world).is_some();
-    {
-        let mut m = world.resource_mut::<CaMatch>();
-        if first {
-            let warmup = mode.warmup && has_warmup;
-            *m = CaMatch {
-                warmup,
-                ..default()
-            };
-        } else if std::mem::take(&mut m.warmup_next) {
-            m.warmup = has_warmup;
-        }
-        m.hold_until = None;
-        m.immune = false;
-        m.round_kills = [0; 2];
-        m.round_deaths = [0; 2];
-        m.winner = None;
-        m.end_requested = false;
-        m.void = false;
-        m.round_ends = None;
-    }
-    if first {
-        reset_stats(world);
-    }
-    world.resource_mut::<super::super::inventory::CaDeathDrops>().0 = mode.death_drops;
-    objectives::clear_players(world);
-    // The map's mode objects: the mission's controllers and start
-    // triggers, then the round's (S3 steps 2 and 3, S15).
-    map_step(world, missions::MapStep::MissionStart);
-    map_step(world, missions::MapStep::RoundSetup);
-    // Everyone on a team respawned, held players with them, on the team
-    // the mode gives.
-    for (e, _) in players(world) {
-        assign_team(world, e, true);
-    }
-    (mode.hooks.before_spawns)(world);
-    for (e, _) in players(world) {
-        spawns::respawn(world, e);
-    }
-    (mode.hooks.setup)(world);
-    let setup = mode.forced_setup.unwrap_or_else(|| missions::setup_length(world)) as f64;
-    world.resource_mut::<CaMatch>().phase = Phase::Setup { until: now + setup };
-    world.resource_mut::<FreezeTime>().0 = true;
-}
-
-/// S3 step 4: live.
-fn go_live(world: &mut World, now: f64) {
-    if current_mode(world).is_none() {
-        return;
-    }
-    let settings = world.resource::<CaRuleSettings>().clone();
-    let length = if world.resource::<CaMatch>().warmup {
-        missions::warmup(world)
-    } else {
-        missions::real_round(world)
-    };
-    world.resource_mut::<FreezeTime>().0 = false;
-    let revive = settings.warmup_revive as f64;
-    let mut m = world.resource_mut::<CaMatch>();
-    m.phase = Phase::Live;
-    m.winner = None;
-    m.end_requested = false;
-    m.round_ends = length.map(|l| now + l as f64);
-    m.next_revive = now + revive;
-}
-
-/// S3 step 5: round over.
-fn round_over(world: &mut World, now: f64) {
-    let Some(mode) = current_mode(world) else { return };
-    let (warmup, void) = {
-        let m = world.resource::<CaMatch>();
-        (m.warmup, m.void)
-    };
-    if warmup || void {
-        world.resource_mut::<CaMatch>().winner = None;
-    } else if world.resource::<CaMatch>().winner.is_none() {
-        (mode.time_out)(world);
-    }
-    // A free-for-all round's winner is a player (its own team id).
-    if !warmup
-        && let Some(w) = world.resource::<CaMatch>().winner.filter(|w| side(*w).is_none())
-        && let Some((p, _)) = players(world).into_iter().find(|(_, t)| *t == w)
-    {
-        super::scoring::stats(world, p).round_wins += 1;
-    }
-    let object_end = world.resource::<CaRuleSettings>().object_end as f64;
-    let mut m = world.resource_mut::<CaMatch>();
-    if !warmup && let Some(i) = m.winner.and_then(side) {
-        m.round_wins[i] += 1;
-    }
-    let result = RoundResult {
-        round: m.round,
-        warmup,
-        winner: m.winner,
-        score: m.score,
-    };
-    m.results.push(result);
-    m.phase = Phase::RoundOver { until: now + object_end };
-    m.round_ends = None;
-    m.hold_until = None;
-    (mode.hooks.round_over)(world);
-    // The round's end triggers (S3 step 5).
-    map_step(world, missions::MapStep::RoundOver);
-}
-
-/// S3 step 6: round end, then the intermission.
-fn round_end(world: &mut World, now: f64) {
-    let Some(mode) = current_mode(world) else { return };
-    (mode.hooks.round_end)(world);
-    clean_up(world);
-    // Every round ends its mission: the mission's end triggers.
-    map_step(world, missions::MapStep::MissionEnd);
-    world.resource_mut::<FreezeTime>().0 = false;
-    world.resource_mut::<CaMatch>().immune = false;
-    let warmup = {
-        let mut m = world.resource_mut::<CaMatch>();
-        m.round_kills = [0; 2];
-        m.round_deaths = [0; 2];
-        let warmup = m.warmup;
-        if !warmup {
-            m.round += 1;
-        }
-        m.warmup = false;
-        warmup
-    };
-    super::update_team_counts(world);
-    if !warmup && let Some(result) = (mode.match_end)(world) {
-        world.resource_mut::<CaMatch>().result = Some(result);
-    }
-    let mission_end = world.resource::<CaRuleSettings>().mission_end as f64;
-    world.resource_mut::<CaMatch>().phase = Phase::Intermission { until: now + mission_end };
-    (mode.hooks.after_round)(world);
 }
 
 /// The playing mission's messages of `step` to the map's objects
@@ -429,16 +251,6 @@ pub fn clean_up(world: &mut World) {
         world.despawn(e);
         if let Ok(mut owner) = world.get_entity_mut(r.owner) {
             owner.remove::<Ragdolled>();
-        }
-    }
-}
-
-/// S9: every dead player in the match revived.
-fn revive_the_dead(world: &mut World) {
-    let dead: Vec<Entity> = world.query_filtered::<Entity, With<Dead>>().iter(world).collect();
-    for (e, _) in players(world) {
-        if dead.contains(&e) {
-            spawns::respawn(world, e);
         }
     }
 }

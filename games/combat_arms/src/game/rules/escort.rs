@@ -89,19 +89,36 @@ pub const NO_SWAP: u8 = 255;
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: VIP_ESCORT,
-    key: "ESC",
-    shown_as: "VIP Escort",
-    description: "VIP Escort: the escort team brings its VIP to the exit, the elimination team stops it; rounds without \
-                  respawn, roles swapping every R/2 rounds; R round wins take the match",
-    respawns: false,
-    warmup: true,
-    warmup_revives: true,
+    rules: super::Mode {
+        id: VIP_ESCORT,
+        key: "ESC",
+        shown_as: "VIP Escort",
+        description: "VIP Escort: the escort team brings its VIP to the exit, the elimination team stops it; rounds without \
+                      respawn, roles swapping every R/2 rounds; R round wins take the match",
+        respawns: false,
+        warmup: true,
+        warmup_revives: true,
+        forced_setup: None,
+        teams: Teams::Two,
+        on_death,
+        time_out: |w| {
+            let e = elimination_team(w);
+            w.resource_mut::<CaMatch>().winner = Some(e);
+        },
+        match_end,
+        hooks: Hooks {
+            before_spawns,
+            setup,
+            update,
+            touches,
+            round_over,
+            after_round,
+            ..NO_HOOKS
+        },
+    },
     ff_scaled: true,
     assists: true,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::Two,
     spawns: Spawns {
         family: Some(FAMILY),
         ..TEAM_POINTS
@@ -111,31 +128,20 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::RoundWins,
     order: ScoreOrder::Kills,
-    on_death,
-    time_out: |w| {
-        let e = elimination_team(w);
-        w.resource_mut::<CaMatch>().winner = Some(e);
-    },
-    match_end,
     leaving,
-    hooks: Hooks {
-        before_spawns,
-        setup,
-        update,
-        touches,
-        round_over,
-        after_round,
-        ..NO_HOOKS
-    },
+    left: super::NO_LEFT,
 };
 
 /// Clan VIP Escort (M13.8): the public rules, R rounds in all.
 pub const CLAN: CaMode = CaMode {
-    module: CLAN_VIP_ESCORT,
-    key: "CESC",
-    shown_as: "Clan VIP Escort",
-    description: "Clan VIP Escort: VIP Escort's rules, R rounds in all (not enabled in any room data)",
-    match_end: clan_match_end,
+    rules: super::Mode {
+        id: CLAN_VIP_ESCORT,
+        key: "CESC",
+        shown_as: "Clan VIP Escort",
+        description: "Clan VIP Escort: VIP Escort's rules, R rounds in all (not enabled in any room data)",
+        match_end: clan_match_end,
+        ..MODE.rules
+    },
     ..MODE
 };
 

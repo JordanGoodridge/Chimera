@@ -969,7 +969,7 @@ fn bodies(
     *round = Some(restarts.0);
     let delay = settings
         .and_then(|s| super::rules::mode_by_key(&s.mode))
-        .and_then(|m| records::builtin().body_removal(m.module));
+        .and_then(|m| records::builtin().body_removal(m.id));
     for (e, mut b) in &mut bodies {
         if new_round {
             commands.entity(e).despawn();

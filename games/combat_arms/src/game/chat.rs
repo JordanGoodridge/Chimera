@@ -372,7 +372,7 @@ fn is_hunted(world: &World) -> bool {
 fn is_lms(world: &World) -> bool {
     current_mode(world)
         .or_else(|| world.get_resource::<CaMatchView>().and_then(|v| v.mode()))
-        .is_some_and(|m| m.module == LAST_MAN_STANDING)
+        .is_some_and(|m| m.id == LAST_MAN_STANDING)
 }
 
 /// The chat's view of the world for the local player.

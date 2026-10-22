@@ -48,19 +48,37 @@ use crate::core::SimClock;
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: SEIZE_AND_SECURE,
-    key: "HQM",
-    shown_as: "Seize and Secure",
-    description: "Seize and Secure: raise your team's flag on the pole (a point a second), 120 s of holding wins; one \
-                  round of G minutes",
-    respawns: true,
-    warmup: true,
-    warmup_revives: false,
+    rules: super::Mode {
+        id: SEIZE_AND_SECURE,
+        key: "HQM",
+        shown_as: "Seize and Secure",
+        description: "Seize and Secure: raise your team's flag on the pole (a point a second), 120 s of holding wins; one \
+                      round of G minutes",
+        respawns: true,
+        warmup: true,
+        warmup_revives: false,
+        forced_setup: None,
+        teams: Teams::Two,
+        on_death: |w, d| {
+            personal(w, d);
+            if let Some(i) = side(d.victim_team) {
+                w.resource_mut::<CaMatch>().deaths[i] += 1;
+            }
+        },
+        time_out,
+        match_end: |w| Some(w.resource::<CaMatch>().winner),
+        hooks: Hooks {
+            setup: |w| {
+                let real = !w.resource::<CaMatch>().warmup;
+                w.resource_mut::<CaObjectives>().pole = real.then(Pole::default);
+            },
+            update,
+            ..NO_HOOKS
+        },
+    },
     ff_scaled: false,
     assists: false,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::Two,
     spawns: Spawns {
         family: Some(FAMILY),
         ..TEAM_POINTS
@@ -70,31 +88,19 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::TeamScore,
     order: ScoreOrder::MissionPoints,
-    on_death: |w, d| {
-        personal(w, d);
-        if let Some(i) = side(d.victim_team) {
-            w.resource_mut::<CaMatch>().deaths[i] += 1;
-        }
-    },
-    time_out,
-    match_end: |w| Some(w.resource::<CaMatch>().winner),
     leaving: |_, _| {},
-    hooks: Hooks {
-        setup: |w| {
-            let real = !w.resource::<CaMatch>().warmup;
-            w.resource_mut::<CaObjectives>().pole = real.then(Pole::default);
-        },
-        update,
-        ..NO_HOOKS
-    },
+    left: super::NO_LEFT,
 };
 
 /// Squad Match 2 (M11): Seize and Secure's rules on its own points.
 pub const SQUAD_MATCH: CaMode = CaMode {
-    module: SQUAD_MATCH_2,
-    key: "SQM2",
-    shown_as: "Squad Match 2",
-    description: "Squad Match 2: Seize and Secure's rules (reached through Hired Guns 2's mission file)",
+    rules: super::Mode {
+        id: SQUAD_MATCH_2,
+        key: "SQM2",
+        shown_as: "Squad Match 2",
+        description: "Squad Match 2: Seize and Secure's rules (reached through Hired Guns 2's mission file)",
+        ..MODE.rules
+    },
     spawns: Spawns {
         family: Some("SquadMatch2"),
         ..TEAM_POINTS

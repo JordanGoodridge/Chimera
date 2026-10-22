@@ -51,18 +51,29 @@ use crate::core::{Health, SimClock, Team};
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: QUARANTINE,
-    key: "QRT",
-    shown_as: "Quarantine Regen",
-    description: "Quarantine Regen: humans against the infected they become; hosts picked 20 s in, G rounds played",
-    respawns: false,
-    warmup: true,
-    warmup_revives: false,
+    rules: super::Mode {
+        id: QUARANTINE,
+        key: "QRT",
+        shown_as: "Quarantine Regen",
+        description: "Quarantine Regen: humans against the infected they become; hosts picked 20 s in, G rounds played",
+        respawns: false,
+        warmup: true,
+        warmup_revives: false,
+        forced_setup: None,
+        teams: Teams::AllAlpha,
+        on_death,
+        time_out: |w| w.resource_mut::<CaMatch>().winner = Some(ALPHA),
+        match_end: |w| (w.resource::<CaMatch>().round >= w.resource::<CaRuleSettings>().goal()).then_some(None),
+        hooks: Hooks {
+            setup,
+            update,
+            round_over,
+            ..NO_HOOKS
+        },
+    },
     ff_scaled: false,
     assists: false,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::AllAlpha,
     spawns: Spawns {
         family: Some("Quarantine"),
         one_list: true,
@@ -74,16 +85,8 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::RoundWins,
     order: ScoreOrder::MissionOnly,
-    on_death,
-    time_out: |w| w.resource_mut::<CaMatch>().winner = Some(ALPHA),
-    match_end: |w| (w.resource::<CaMatch>().round >= w.resource::<CaRuleSettings>().goal()).then_some(None),
     leaving: |_, _| {},
-    hooks: Hooks {
-        setup,
-        update,
-        round_over,
-        ..NO_HOOKS
-    },
+    left: super::NO_LEFT,
 };
 
 /// The round's infection state (the server's).

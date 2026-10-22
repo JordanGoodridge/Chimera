@@ -454,7 +454,7 @@ fn eligibility(world: &mut World) {
     let mut room = screen::RoomFacts::default();
     if let Some(mode) = mode {
         rules.hunted = mode.key == "HG";
-        rules.any_team = rules.hunted || mode.module == LAST_MAN_STANDING;
+        rules.any_team = rules.hunted || mode.id == LAST_MAN_STANDING;
         rules.counts = mode.respawns && me.is_none_or(|e| (mode.hooks.may_respawn)(world, e));
         rules.fast_mode = FAST_MODES.contains(&mode.key);
         room = screen::RoomFacts {
