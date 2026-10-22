@@ -111,6 +111,7 @@ pub struct TemplateTable {
     pub safe_device: PerTemplate,
     pub mine_min: PerTemplate,
     pub mine_max: PerTemplate,
+    pub stop_look_around_percent: PerTemplate,
 }
 
 /// One gun type's AI row (`[guns.<type>]`).
@@ -269,6 +270,52 @@ impl Profiles {
     }
 }
 
+/// The alarm levels (`[alarm]`, 5.3 Corrections 2 and 3).
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+pub struct Alarm {
+    /// The running total at which a bot is majorly alarmed.
+    pub major: f32,
+    pub gunfire: f32,
+    pub footstep: f32,
+    pub ally_call: f32,
+}
+
+impl Default for Alarm {
+    fn default() -> Self {
+        Self {
+            major: 50.0,
+            gunfire: 75.0,
+            footstep: 20.0,
+            ally_call: 1.0,
+        }
+    }
+}
+
+/// A profile's own chat cooldown (`NextChatTime`).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct ProfileChat {
+    pub level: String,
+    pub profile: usize,
+    pub cooldown: f64,
+}
+
+/// The chat table (`[chat]`, 10 Correction 6).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct ChatTable {
+    pub default_cooldown: f64,
+    #[serde(default)]
+    pub profiles: Vec<ProfileChat>,
+}
+
+impl Default for ChatTable {
+    fn default() -> Self {
+        Self {
+            default_cooldown: 10.0,
+            profiles: Vec::new(),
+        }
+    }
+}
+
 /// The bots' data.
 #[derive(Resource, Clone, Debug, Deserialize)]
 pub struct BotData {
@@ -277,6 +324,10 @@ pub struct BotData {
     pub gun_types: HashMap<String, String>,
     pub profiles: Profiles,
     pub item_sets: Vec<ItemSet>,
+    #[serde(default)]
+    pub alarm: Alarm,
+    #[serde(default)]
+    pub chat: ChatTable,
 }
 
 impl BotData {
@@ -300,6 +351,16 @@ impl BotData {
     /// Weapon `id`'s AI row for template `t`.
     pub fn gun(&self, id: &str, t: Template) -> Option<GunAi> {
         Some(self.guns.get(self.gun_type(id)?)?.at(t))
+    }
+
+    /// Profile `profile` of `level`'s chat cooldown (s): its own
+    /// `NextChatTime`, else the default.
+    pub fn chat_cooldown(&self, level: Level, profile: usize) -> f64 {
+        self.chat
+            .profiles
+            .iter()
+            .find(|p| p.level == level.key() && p.profile == profile)
+            .map_or(self.chat.default_cooldown, |p| p.cooldown)
     }
 
     /// The item sets of `level`.

@@ -33,9 +33,9 @@
 //! (every bot map's volumes have the default weight and `PreferredPath`
 //! off, Open question 16); nothing keeps a bot
 //! inside the volumes (it moves as a player, bots.md Open question 6);
-//! the patrol start nodes of the bot game-mode file (`PatrolNode_Alpha0`
-//! ...) aren't read, so a bot starts at the node nearest it; node actions
-//! (waits, look-arounds) and guard nodes aren't played; `AIRegion`,
+//! the bot game-mode file isn't read: the patrol start nodes are the maps'
+//! `AI_Node_A_01..08`/`AI_Node_B_01..08` (bots.md 4, `brain::start_node`);
+//! the look-arounds while running and guard nodes aren't played; `AIRegion`,
 //! `AINodeGoto` and `AINodeUseObject` are passed through but unused.
 
 use bevy::prelude::*;
@@ -272,6 +272,7 @@ impl MapAi {
                 a.closest_point(n.pos)
             });
         }
-        Some(PatrolGraph { nodes, points, links })
+        let names = self.patrol.iter().map(|n| n.name.clone()).collect();
+        Some(PatrolGraph { nodes, points, links, names })
     }
 }
