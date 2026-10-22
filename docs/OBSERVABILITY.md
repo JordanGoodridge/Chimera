@@ -325,6 +325,14 @@ Only `Reflect`-registered types are visible; register new core components in
   action from the start, e.g. to fire in a `--screenshot` run; held
   console actions work without mouse capture. Automated runs never write
   config.cfg, and only archived cvars are saved there.
+- What a client's console commands print (results, errors) goes to the
+  log too, as `INFO console: <command>: <output>` (errors as `<command>:
+  error: <text>`; `Console::log_output`, set by the client shell). Before
+  that only the in-game console showed it, so a `+minigame x` that failed
+  left nothing for an agent to read. `grep 'console:'` the run's output
+  for a `+command`'s result. The dedicated servers print it on stdout.
+  A startup test of an app's command line: `apps/lucker_party/tests/it/
+  startup.rs` (parse, `with_defaults`, the lines on the simulation).
 - As CS:S's (checked against reference captures), `getpos` prints the
   view's origin (the eye: standing on a floor at z it prints z + 64,
   ducked z + 47; noclip keeps the offset) and `setpos` takes the player's

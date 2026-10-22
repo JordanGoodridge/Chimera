@@ -665,6 +665,10 @@ fn bloodmoney_unit_opens_the_truck_doors() {
     with_mode(sim.app.world_mut(), "SQM");
     let a = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), movement::ID);
     sim.app.world_mut().entity_mut(a).insert(Team(1));
+    // An opponent far away: an empty team ends the match after the
+    // warm-up (game_modes.md correction 1).
+    let b = sim.spawn_character(Vec3::new(0.0, 1.0, 60.0), movement::ID);
+    sim.app.world_mut().entity_mut(b).insert(Team(2));
     // Past the warm-up to the first real round.
     for _ in 0..(40.0 / 0.015) as usize {
         let m = sim.app.world().resource::<combat_arms::game::rules::CaMatch>();

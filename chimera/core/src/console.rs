@@ -176,6 +176,10 @@ pub struct Console {
     /// Lines a network client sends its server to run for its player
     /// (cheats: `net::cheats` takes them).
     pub to_server: Vec<String>,
+    /// Also log what commands print (info, errors as `error: ...`, target
+    /// `console`): the client sets it, so a run's log holds the results of
+    /// its `+commands` (the dedicated servers print them on stdout).
+    pub log_output: bool,
 }
 
 /// The prefix of our own cvars and commands (`chimera_noblock`, ...).
@@ -559,10 +563,23 @@ pub fn execute(world: &mut World, words: &[String], depth: usize) {
         Err(format!("Unknown command \"{typed}\""))
     };
     let mut c = world.resource_mut::<Console>();
+    let log = c.log_output;
     match result {
-        Ok(Some(out)) => c.print(Level::Info, out),
+        Ok(Some(out)) => {
+            if log {
+                bevy::log::info!(target: "console", "{typed}: {out}");
+            }
+            c.print(Level::Info, out)
+        }
         Ok(None) => {}
-        Err(e) => c.print(Level::Error, e),
+        Err(e) => {
+            if log {
+                // Not `warn!`/`error!`: the client's log layer copies those
+                // back into the console.
+                bevy::log::info!(target: "console", "{typed}: error: {e}");
+            }
+            c.print(Level::Error, e)
+        }
     }
 }
 
