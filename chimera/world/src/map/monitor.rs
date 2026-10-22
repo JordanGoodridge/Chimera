@@ -26,6 +26,7 @@ pub const SOURCE_VIEW_FOG: f32 = -7.0;
 impl MonitorFog {
     /// The fog as the screen camera's `DistanceFog` (`SOURCE_VIEW_FOG`),
     /// distances scaled to meters by `scale`.
+    #[cfg(feature = "render")]
     pub fn distance_fog(&self, scale: f32) -> bevy::pbr::DistanceFog {
         let [r, g, b] = self.color;
         bevy::pbr::DistanceFog {

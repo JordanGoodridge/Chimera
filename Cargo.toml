@@ -97,13 +97,27 @@ source_tools = { path = "source/tools" }
 # server can leave the presentation out (members that want it turn on
 # `present`).
 cs_source_app = { path = "apps/cs_source", default-features = false }
-avian3d = "0.7"
+# Avian's default features minus the three that pull Bevy's render crates
+# (`debug-plugin`, `bevy_picking`, `bevy_scene`): `chimera_present` and
+# `chimera_client` turn them back on for the clients (the dedicated servers
+# don't build them).
+avian3d = { version = "0.7", default-features = false, features = [
+    "3d", "f32", "parry-f32", "xpbd_joints", "parallel", "collider-from-mesh",
+] }
 # serialize: predicted components (Transform among them) travel as serde
 # (`core::PredictedAppExt::predicted_net`); `dev` got it through
 # bevy_remote, so builds without `dev` (playtest, release) failed.
-bevy = { version = "0.19.1", features = ["wav", "serialize"] }
+bevy = { version = "0.19.1", default-features = false, features = [
+    "serialize", "std", "async_executor", "multi_threaded", "bevy_asset", "bevy_log",
+    "bevy_state", "reflect_auto_register", "bevy_color", "bevy_image", "bevy_mesh",
+    "bevy_camera", "bevy_light", "bevy_window",
+] }
 # The server's state of a client's own player, compared with its prediction
 # byte for byte (core::PredictedComponents::encode); replicon's format.
+# The texture types (`Extent3d`, `TextureFormat`) of the images the loaders
+# build; Bevy re-exports them only from `bevy_render`. The version
+# bevy_image uses.
+wgpu-types = { version = "29", default-features = false }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0.229", features = ["derive"] }
 # Per-thread hardware counters (instructions, cycles, cache and branch

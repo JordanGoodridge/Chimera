@@ -269,22 +269,15 @@ measurements):
     binary 117.3 MB (77.6 stripped) before, 106.3 (69.4) after; no
     `chimera_present`, egui, client or cpal/rodio symbols left, wgpu's
     halved (Bevy's own); a rebuild after a game file's edit 255 s
-    before, 204 s after; 548 crates compiled before, 518 after. Left: Bevy's
-    own render, window, audio and gamepad crates (bevy_render/wgpu,
-    bevy_winit/winit, bevy_audio/cpal, gilrs) still build into the
-    server: the workspace's `bevy` has its default features. Feasible
-    next: `bevy` without default features in the workspace (the
-    simulation needs bevy_asset, bevy_image, bevy_mesh, bevy_camera,
-    bevy_light, none of which needs bevy_render in 0.19), `present`
-    adding `bevy/default` (the client's features unchanged) and
-    `chimera_world`/`chimera_core` taking it as a dev-dependency (their
-    own tests keep sharing the game's Bevy build); what stands in the
-    way: avian3d's default features (`debug-plugin`, `bevy_picking`,
-    `bevy_scene` pull the render crates; the solver's features must
-    stay the client's), the greybox's visuals (`StandardMaterial`,
-    `Face`), `map::monitor`'s `bevy::pbr::DistanceFog`, `map::sky`'s
-    `bevy::render::render_resource` types, and the headless harness's
-    plugins.
+    before, 204 s after; 548 crates compiled before, 518 after. Done after
+    (2026-10-22, architecture-review.md A5/L6): the workspace's `bevy` and
+    `avian3d` have no default features, so the servers build none of Bevy's
+    render, window, audio and gamepad crates (689 to 495 packages for
+    `cs_source_server`, 115.3 to 86.9 MB); `present` and `client` ask for
+    `bevy/default` and avian's `debug-plugin`/`bevy_picking`/`bevy_scene`,
+    the simulation crates take them as dev-dependencies, and
+    `chimera_world`'s `render` feature holds the greybox's materials and
+    the two `bevy_pbr` helpers (docs/performance.md).
   - [x] Cutting the crates (`map` to `chimera/world`, `render` to
     `chimera/present`). Done (2026-10-14): `chimera/world` (package
     `chimera_world`, module `map`): `MapPlugin`'s type moved up into

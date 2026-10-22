@@ -17,9 +17,9 @@ doctest = false
 # `cargo test -p chimera_present` reuses the game's builds.
 [dependencies]
 chimera_core.workspace = true
-chimera_world.workspace = true
-avian3d.workspace = true
-bevy.workspace = true
+chimera_world = { workspace = true, features = ["render"] }
+avian3d = { workspace = true, features = ["debug-plugin", "bevy_picking", "bevy_scene"] }
+bevy = { workspace = true, features = ["default", "wav"] }
 half.workspace = true
 image.workspace = true
 workspace-hack.workspace = true

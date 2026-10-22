@@ -66,6 +66,7 @@ struct Block {
     name: String,
     size: Vec3,
     transform: Transform,
+    #[cfg_attr(not(feature = "render"), allow(dead_code))]
     color: Color,
     kind: Kind,
 }
@@ -79,12 +80,13 @@ enum Kind {
     Water,
 }
 
-/// Collision always; meshes and materials only when rendering is present, so
-/// the same map runs in headless tests.
+/// Collision always; meshes and materials only when rendering is present
+/// (the `render` feature, and then the assets), so the same map runs in
+/// headless tests and the dedicated servers.
 fn spawn(
     mut commands: Commands,
-    mut meshes: Option<ResMut<Assets<Mesh>>>,
-    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
+    #[cfg(feature = "render")] mut meshes: Option<ResMut<Assets<Mesh>>>,
+    #[cfg(feature = "render")] mut materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
     let (mut ladders, mut water) = (Vec::new(), Vec::new());
     for b in blocks() {
@@ -115,6 +117,7 @@ fn spawn(
                 slime: false,
             }),
         }
+        #[cfg(feature = "render")]
         if let (Some(meshes), Some(materials)) = (meshes.as_mut(), materials.as_mut()) {
             e.insert((
                 Mesh3d(meshes.add(Cuboid::from_size(b.size))),

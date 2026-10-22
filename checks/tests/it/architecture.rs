@@ -1254,14 +1254,26 @@ fn game_ui_only_with_its_feature() {
 /// `cargo check -p cs_source_server`, `-p combat_arms_server`.)
 #[test]
 fn server_builds_without_presentation() {
-    // The presentation and crates only the client shell uses (not those
-    // Bevy itself pulls in: ab_glyph, winit).
+    // The presentation, crates only the client shell uses, and Bevy's own
+    // render, window and audio crates (the workspace's `bevy` has no default
+    // features; `chimera_present` and `chimera_client` ask for them, A5).
     const CLIENT_ONLY: &[&str] = &[
         "chimera_present",
         "chimera_client",
         "bevy_egui",
         "bevy-inspector-egui",
         "arboard",
+        "bevy_render",
+        "bevy_pbr",
+        "bevy_core_pipeline",
+        "bevy_ui",
+        "bevy_winit",
+        "bevy_audio",
+        "bevy_gltf",
+        "wgpu",
+        "wgpu-core",
+        "winit",
+        "rodio",
     ];
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let tree = |package: &str| -> String {
