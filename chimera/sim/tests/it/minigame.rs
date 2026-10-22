@@ -195,3 +195,51 @@ fn at_the_time_limit_the_highest_rung_wins() {
     assert!(matches!(phase(&sim), Phase::RoundOver { .. } | Phase::Intermission { .. }), "{:?}", phase(&sim));
     assert_eq!(sim.app.world().resource::<Match>().winner, Some(team_b));
 }
+
+#[test]
+fn the_hud_data_shows_the_rung_the_leader_and_the_events() {
+    use chimera_core::core::LocalPlayer;
+    use chimera_sim::minigame::hud::MinigameHud;
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
+    settle(&mut sim);
+    let text = |h: &MinigameHud| h.lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>();
+    let hud = sim.app.world().resource::<MinigameHud>().clone();
+    assert_eq!(hud.title, "Kit gun game");
+    assert_eq!(text(&hud)[0], "Rung 1/3: {weapon}");
+    assert_eq!(hud.lines[0].weapon, Some(PISTOL));
+    assert_eq!(text(&hud)[1], "Next: {weapon}");
+    assert_eq!(hud.lines[1].weapon, Some(RIFLE));
+    assert!(text(&hud).contains(&"Tied for the lead".to_string()), "{:?}", text(&hud));
+    assert!(text(&hud).iter().any(|t| t.starts_with("Time ")), "{:?}", text(&hud));
+
+    // A kill: a rung up and the lead, with a notice.
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    let hud = sim.app.world().resource::<MinigameHud>().clone();
+    assert_eq!(text(&hud)[0], "Rung 2/3: {weapon}");
+    assert!(text(&hud).contains(&"You lead".to_string()), "{:?}", text(&hud));
+    assert_eq!(hud.notices.len(), 1, "{:?}", hud.notices);
+    assert_eq!(hud.notices[0].0.text, "Rung up! 2/3: {weapon}");
+    assert_eq!(hud.notices[0].0.weapon, Some(RIFLE));
+
+    // The other player leads after two kills to a's one.
+    settle(&mut sim);
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    sim.seconds(1.2);
+    settle(&mut sim);
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    sim.ticks(2);
+    let hud = sim.app.world().resource::<MinigameHud>().clone();
+    let leader = hud.lines.iter().find(|l| l.text.starts_with("Leader:")).expect("b leads");
+    assert_eq!(leader.player, Some(b));
+
+    // Notices go after their seconds; none of it without a minigame.
+    sim.seconds(chimera_sim::minigame::hud::NOTICE_SECONDS + 1.0);
+    assert!(sim.app.world().resource::<MinigameHud>().notices.is_empty());
+    sim.app.world_mut().remove_resource::<chimera_sim::minigame::ActiveMinigame>();
+    sim.ticks(2);
+    assert!(!sim.app.world().resource::<MinigameHud>().playing());
+}

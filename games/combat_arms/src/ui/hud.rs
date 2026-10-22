@@ -157,6 +157,7 @@ use crate::{
         weapons::{CaArmor, CaSpread},
     },
     map::interp::RenderedView,
+    net::{NetCharacter, NetSettings},
     weapon::{
         AltModes, Armor, Burst, Hitscan, Inventory, Magazine, SpreadShape, Trigger, Weapon, WeaponEvent, WeaponEventKind,
         Zoomed, grenade::Throwable,
@@ -277,6 +278,15 @@ pub struct FeedLineView {
     pub items: Vec<FeedItem>,
 }
 
+/// A playing minigame's state as the HUD words it: the minigame's name,
+/// its status lines (top to bottom) and its notices (`minigame_view`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MinigameView {
+    pub title: String,
+    pub lines: Vec<String>,
+    pub notices: Vec<String>,
+}
+
 /// What Combat Arms' HUD shows this frame.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct CaHud {
@@ -286,6 +296,9 @@ pub struct CaHud {
     pub status: Option<StatusView>,
     pub weapon: Option<WeaponPanel>,
     pub feed: Vec<FeedLineView>,
+    /// The playing minigame's state (its rung, the leader, brief
+    /// notices), only while one plays.
+    pub minigame: Option<MinigameView>,
     pub tags: Vec<TagView>,
     /// The local player's aim target (A11).
     pub aim_target: Option<Entity>,
@@ -354,7 +367,7 @@ impl Plugin for CaHudStatePlugin {
             .add_plugins(radar::CaRadarStatePlugin)
             .add_systems(
                 Update,
-                (track, update, action::prompts, score::update_score, hide_panels)
+                (track, update, action::prompts, minigame_view, score::update_score, hide_panels)
                     .chain()
                     .in_set(HudUpdate),
             );
@@ -372,7 +385,13 @@ fn hide_panels(
     if switch.is_none_or(|s| s.panels()) {
         return;
     }
-    if hud.status.is_some() || hud.weapon.is_some() || !hud.feed.is_empty() || hud.action.is_some() {
+    if hud.status.is_some()
+        || hud.weapon.is_some()
+        || !hud.feed.is_empty()
+        || hud.action.is_some()
+        || hud.minigame.is_some()
+    {
+        hud.minigame = None;
         hud.status = None;
         hud.weapon = None;
         hud.feed.clear();
@@ -393,9 +412,64 @@ fn enemies(a: Option<&Team>, b: Option<&Team>) -> bool {
     !matches!((a, b), (Some(a), Some(b)) if a == b)
 }
 
-fn name_of(names: &Query<Option<&Name>>, e: Entity) -> String {
-    names.get(e).ok().flatten().map_or_else(|| "Player".to_string(), |n| n.to_string())
+/// What the kill feed calls character `e`: the shell's `shown_name` (the
+/// server's name in a network game, the `name` cvar for the local player,
+/// a bot's own name), never the character's default entity name.
+fn name_of(names: &Query<NameParts>, settings: Option<&NetSettings>, e: Entity) -> String {
+    match names.get(e) {
+        // A name the character was given (a test's, a game's) stands; the
+        // default entity name ("Character") is no player's.
+        Ok((Some(name), true, None)) if name.as_str() != "Character" => name.to_string(),
+        Ok((name, local, net)) => crate::client::shown_name(e, local, net, name, settings),
+        Err(_) => "Player".to_string(),
+    }
 }
+
+/// What the HUD calls weapon `id`: the item table's name (an app may add
+/// another game's guns' names to it: CS:S's from its strings), else its
+/// data's `hud.name`, else its id.
+fn weapon_name(items: &ItemNames, catalog: &crate::weapon::data::WeaponCatalog, id: &str) -> String {
+    items.0.get(id).cloned().unwrap_or_else(|| {
+        catalog
+            .get(id)
+            .and_then(|d| d.hud.name.clone())
+            .unwrap_or_else(|| id.rsplit(':').next().unwrap_or(id).to_uppercase())
+    })
+}
+
+/// `CaHud::minigame` from the playing minigame's `MinigameHud`: its lines'
+/// `{player}` and `{weapon}` filled in (the kill feed's names, the weapon
+/// panel's names).
+fn minigame_view(
+    minigame: Option<Res<chimera_sim::minigame::hud::MinigameHud>>,
+    items: Res<ItemNames>,
+    catalog: Res<crate::weapon::data::WeaponCatalog>,
+    (names, settings): (Query<NameParts>, Option<Res<NetSettings>>),
+    mut hud: ResMut<CaHud>,
+) {
+    let Some(m) = minigame.filter(|m| m.playing()) else {
+        hud.minigame = None;
+        return;
+    };
+    let word = |l: &chimera_sim::minigame::hud::HudLine| {
+        let mut text = l.text.clone();
+        if let Some(p) = l.player {
+            text = text.replace("{player}", &name_of(&names, settings.as_deref(), p));
+        }
+        if let Some(w) = l.weapon {
+            text = text.replace("{weapon}", &weapon_name(&items, &catalog, w));
+        }
+        text
+    };
+    hud.minigame = Some(MinigameView {
+        title: m.title.clone(),
+        lines: m.lines.iter().map(word).collect(),
+        notices: m.notices.iter().map(|(l, _)| word(l)).collect(),
+    });
+}
+
+/// What `name_of` reads of a character.
+type NameParts<'a> = (Option<&'a Name>, Has<LocalPlayer>, Option<&'a NetCharacter>);
 
 /// The HUD's two clocks (Units and conventions, "Time"): the OS
 /// millisecond clock (real time, whole ms) for the hit indicator, the
@@ -418,7 +492,7 @@ fn track(
     mut died: MessageReader<Died>,
     local: Option<Single<(Entity, &Intent, Option<&Team>), With<LocalPlayer>>>,
     characters: Query<(Entity, &Health, Option<&Team>, Has<Dead>), With<Intent>>,
-    names: Query<Option<&Name>>,
+    (names, settings): (Query<NameParts>, Option<Res<NetSettings>>),
     (held, ids, carry, npcs): (Query<&Inventory>, Query<&Weapon>, Query<&CaCarry>, Query<(), With<CaNpc>>),
     (rounds, role, view): (Option<Res<RoundRestarts>>, Option<Res<NetRole>>, Option<Res<CaMatchView>>),
 ) {
@@ -530,8 +604,8 @@ fn track(
         memory.feed.push(
             ms,
             Kill {
-                killer: killer.map(|k| (name_of(&names, k), mate(k))),
-                victim: (name_of(&names, d.entity), mate(d.entity)),
+                killer: killer.map(|k| (name_of(&names, settings.as_deref(), k), mate(k))),
+                victim: (name_of(&names, settings.as_deref(), d.entity), mate(d.entity)),
                 icon: kill_icon(killer.is_some(), npc, kind, weapon),
                 badges,
             },
@@ -889,7 +963,6 @@ fn update(
 
     // The weapon panel (D4).
     if let Some((_, (id, _, hud_data, modes, burst, mag, item, _, (trigger, throw, _)))) = weapon {
-        let data = world.catalog.get(id.id);
         let bursting = match (modes, burst) {
             (Some(m), Some(b)) if b.mode == m.current && b.count > 0 => Some(b.count),
             _ => None,
@@ -901,10 +974,7 @@ fn update(
             _ => (0, 0),
         };
         let inputs = PanelInputs {
-            name: world.items.0.get(id.id).cloned().unwrap_or_else(|| {
-                data.and_then(|d| d.hud.name.clone())
-                    .unwrap_or_else(|| id.id.rsplit(':').next().unwrap_or(id.id).to_uppercase())
-            }),
+            name: weapon_name(&world.items, &world.catalog, id.id),
             class: inventory::class_of(id.slot),
             bomb: hud_data.is_some_and(|h| h.bomb),
             infinite: item.is_some_and(|i| i.infinite) || (mag.is_none() && throw.is_none()),
@@ -1091,6 +1161,7 @@ impl Plugin for CaHudPlugin {
                     draw_action,
                     draw_feed,
                     draw_tags,
+                    draw_minigame,
                     score::draw_score,
                 )
                     .after(HudUpdate)
@@ -1140,6 +1211,8 @@ struct FeedRoot;
 struct TagRoot;
 #[derive(Component)]
 struct InstallRoot;
+#[derive(Component)]
+struct MinigameRoot;
 #[derive(Component)]
 struct ActionRoot;
 
@@ -1242,6 +1315,7 @@ fn spawn(mut commands: Commands) {
     commands.spawn((FeedRoot, layer(HUD_Z)));
     commands.spawn((TagRoot, layer(HUD_Z - 2)));
     commands.spawn((InstallRoot, layer(HUD_Z)));
+    commands.spawn((MinigameRoot, layer(HUD_Z)));
 }
 
 /// The game's panels (`InstallHud`) with this frame's values.
@@ -1626,6 +1700,10 @@ mod looks {
     /// Ours: placeholder words for icons, and the pickup prompt.
     pub const ICON_WORD: &str = "bold 11";
     pub const PROMPT: &str = "bold 14";
+    /// Ours: a minigame's panel (name, status lines, notices).
+    pub const MINIGAME_TITLE: &str = "bold 16";
+    pub const MINIGAME: &str = "bold 14";
+    pub const NOTICE: &str = "bold 20";
 }
 
 pub(crate) type PenParams<'a> = (Res<'a, CaUi>, Option<Res<'a, UiFonts>>, Option<Res<'a, CaFaces>>);
@@ -1942,6 +2020,45 @@ fn draw_tags(
                     ));
                 }
             });
+        }
+    });
+}
+
+/// The minigame's panel: its name and status lines at the top centre, the
+/// notices (a rung up, the match won) under the middle of the view.
+/// Ours (the install's HUD has no such panel), drawn in the HUD's own text
+/// looks.
+fn draw_minigame(
+    hud: Res<CaHud>,
+    params: PenParams,
+    root: Single<Entity, With<MinigameRoot>>,
+    mut last: Local<Option<(Option<MinigameView>, Screen)>>,
+    mut commands: Commands,
+) {
+    if !rebuild(&mut last, (hud.minigame.clone(), hud.screen), *root, &mut commands) {
+        return;
+    }
+    let Some(m) = &hud.minigame else { return };
+    let pen = pen(&params, hud.screen);
+    commands.entity(*root).with_children(|p| {
+        let centred = |p: &mut ChildSpawnerCommands, y: f32, h: f32, text: &str, font: &str, colour: Rgba| {
+            hud_text(
+                p,
+                pen,
+                (Vec2::new(262.0, y), Vec2::new(500.0, h), Vec2::ZERO),
+                text,
+                font,
+                (HAlign::Centre, VAlign::Centre),
+                Effect::Stroke,
+                colour,
+            );
+        };
+        centred(p, 8.0, 20.0, &m.title, looks::MINIGAME_TITLE, [255, 200, 60, 255]);
+        for (i, line) in m.lines.iter().enumerate() {
+            centred(p, 30.0 + 18.0 * i as f32, 18.0, line, looks::MINIGAME, [255, 255, 255, 255]);
+        }
+        for (i, notice) in m.notices.iter().enumerate() {
+            centred(p, 250.0 + 30.0 * i as f32, 28.0, notice, looks::NOTICE, [255, 230, 120, 255]);
         }
     });
 }

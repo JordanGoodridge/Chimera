@@ -231,3 +231,27 @@ fn combat_arms_bots_play_the_gun_game() {
     assert!(kills >= 2, "the bots kill each other ({kills} kills in 90 s)");
     assert!(bots.iter().any(|b| rung(&sim, *b) > 0), "and climb");
 }
+
+/// A soldier holding CS:S's gun has its view model driven by Chimera's
+/// generic driver (CS:S's rules, the party's `ViewAnimRules`); Combat
+/// Arms' lets go of it, and takes it back with a Combat Arms gun.
+#[test]
+fn a_cs_source_guns_view_model_is_driven_by_chimera_and_ours_by_combat_arms() {
+    use chimera_sim::weapon::view_anim::{OwnViewAnim, ViewModelPlay};
+    let mut sim = party();
+    assert!(sim.app.world().contains_resource::<chimera_sim::weapon::view_anim::ViewAnimRules>());
+    let a = soldier(&mut sim);
+    let _b = soldier(&mut sim);
+    sim.seconds(1.5);
+    assert_eq!(held(&sim, a), Some(cs_source::game::weapons::GLOCK));
+    sim.seconds(0.5);
+    let w = sim.app.world();
+    assert!(w.get::<OwnViewAnim>(a).is_none(), "CS:S's gun: not Combat Arms' driver's");
+    assert!(w.get::<ViewModelPlay>(a).is_some(), "Chimera's driver has it");
+    // The ladder's second rung: Combat Arms' Beretta.
+    sim.app.world_mut().entity_mut(a).insert(Rung(1));
+    chimera_sim::weapon::give(sim.app.world_mut(), a, "combat_arms:beretta_m92fs");
+    sim.seconds(1.0);
+    assert_eq!(held(&sim, a), Some("combat_arms:beretta_m92fs"));
+    assert!(sim.app.world().get::<OwnViewAnim>(a).is_some(), "ours again");
+}

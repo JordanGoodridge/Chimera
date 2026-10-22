@@ -2068,3 +2068,55 @@ fn grenades_t55_flash_over_the_hud() {
     // The chat's lowest layer (41) and the in-game menu's (60).
     assert!(FLASH_OVERLAY_Z < 41);
 }
+
+/// 101. The kill feed names the local player by the `name` setting (the
+/// profile's), never by the character's entity name, and a bot by its own.
+#[test]
+fn t101_feed_names_players_not_characters() {
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.app.world_mut().entity_mut(me).insert(Name::new("Character"));
+    sim.app.world_mut().insert_resource(chimera_net::net::NetSettings {
+        name: "Ace".into(),
+        ..default()
+    });
+    let bot = other(&mut sim, me, 5.0, 2, "AI_Bravo_7");
+    died(&mut sim, bot, Some(me), DamageKind::Bullet, None, Hitgroup::Chest);
+    let k = last_kill(&sim);
+    assert_eq!(k.killer, Some(("Ace".into(), true)));
+    assert_eq!(k.victim, ("AI_Bravo_7".into(), false));
+    died(&mut sim, me, Some(bot), DamageKind::Bullet, None, Hitgroup::Chest);
+    let k = last_kill(&sim);
+    assert_eq!(k.killer, Some(("AI_Bravo_7".into(), false)));
+    assert_eq!(k.victim, ("Ace".into(), true));
+}
+
+/// 102. A playing minigame's state words its lines with the players' and
+/// the weapons' names, and shows only while one plays.
+#[test]
+fn t102_minigame_state_on_the_hud() {
+    use chimera_sim::minigame::hud::{HudLine, MinigameHud};
+    let (mut sim, me) = setup(&[RIFLE]);
+    let foe = other(&mut sim, me, 5.0, 2, "AI_Bravo_7");
+    assert_eq!(hud(&sim).minigame, None, "no minigame, nothing shown");
+    sim.app
+        .world_mut()
+        .resource_mut::<combat_arms::ui::hud::ItemNames>()
+        .0
+        .insert(RIFLE.into(), "Rifle One".into());
+    sim.app.world_mut().insert_resource(MinigameHud {
+        title: "Gun Game".into(),
+        lines: vec![
+            HudLine::new("Rung 3/10: {weapon}").weapon(RIFLE),
+            HudLine::new("Leader: {player}").player(foe),
+        ],
+        notices: vec![(HudLine::new("Rung up! {weapon}").weapon(RIFLE), 1e9)],
+    });
+    sim.ticks(1);
+    let m = hud(&sim).minigame.expect("shown while one plays");
+    assert_eq!(m.title, "Gun Game");
+    assert_eq!(m.lines, ["Rung 3/10: Rifle One", "Leader: AI_Bravo_7"]);
+    assert_eq!(m.notices, ["Rung up! Rifle One"]);
+    sim.app.world_mut().insert_resource(MinigameHud::default());
+    sim.ticks(1);
+    assert_eq!(hud(&sim).minigame, None);
+}

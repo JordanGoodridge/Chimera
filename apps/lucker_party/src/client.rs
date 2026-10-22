@@ -5,6 +5,8 @@
 
 use bevy::prelude::*;
 use chimera_client::client::{AppHooks, Args, ClientPlugins};
+use chimera_core::game_registry::Games;
+use combat_arms::ui::hud::ItemNames;
 use chimera_world::greybox;
 
 /// What this app tells the client shell: its commit, its maps
@@ -34,8 +36,21 @@ impl Plugin for ClientPlugin {
                 hooks: client_hooks(),
             }
             .build(),
-        ));
+        ))
+        .add_systems(Startup, cs_source_names);
     }
+}
+
+/// CS:S's guns' names for Combat Arms' HUD: its weapon panel and kill feed
+/// call a weapon by `ItemNames` (else its data's `hud.name`, which for CS:S
+/// is a string token), so the names come from CS:S's own strings in its
+/// install (`weapons::display_names`; none without the install, the guns
+/// then show their ids).
+fn cs_source_names(games: Res<Games>, mut names: ResMut<ItemNames>) {
+    let Some(mount) = games.get(cs_source::game::GAME).and_then(|g| g.mount()) else {
+        return;
+    };
+    names.0.extend(cs_source::game::weapons::display_names(&mount));
 }
 
 /// The command line as the app plays it: `DEFAULT_MINIGAME` without

@@ -154,6 +154,37 @@ pub fn guns() -> impl Iterator<Item = &'static WeaponData> {
     cs_weapons().weapons.iter().filter(|w| w.hitscan.is_some())
 }
 
+/// Every CS:S weapon's display name by weapon id, from a localisation
+/// table (lower-case keys, `radio::localization`): the text of its data's
+/// `hud.name` token (`Cstrike_WPNHUD_Glock18`). A weapon whose token the
+/// table lacks is left out.
+pub fn names_in(strings: &std::collections::BTreeMap<String, String>) -> Vec<(String, String)> {
+    cs_weapons()
+        .weapons
+        .iter()
+        .filter_map(|w| {
+            let token = w.hud.name.as_deref()?.trim_start_matches('#').to_lowercase();
+            let text = strings.get(&token)?.trim();
+            (!text.is_empty()).then(|| (w.id.clone(), text.to_string()))
+        })
+        .collect()
+}
+
+/// `names_in` for the install's own strings (`resource/cstrike_english.txt`
+/// on the mount): what an app showing CS:S's guns under another game's
+/// HUD calls them. Empty without the file.
+pub fn display_names(mount: &crate::mount::Mount) -> Vec<(String, String)> {
+    use super::radio::{decode, localization};
+    let path = crate::mount::normalize("resource/cstrike_english.txt");
+    let mut strings = std::collections::BTreeMap::new();
+    for bytes in mount.layers().filter_map(|l| l.read(&path)?.ok()) {
+        for (k, v) in localization(&decode(&bytes)) {
+            strings.entry(k).or_insert(v);
+        }
+    }
+    names_in(&strings)
+}
+
 /// The hooks CS:S's weapon data names (`[hooks."<name>"]`).
 pub const ACCURACY: &str = "cs_source:accuracy";
 pub const RECOIL: &str = "cs_source:recoil";
@@ -854,5 +885,15 @@ mod tests {
         let knife = data(KNIFE).unwrap();
         assert_eq!(knife.anim.idle_after, super::super::view_anim::KNIFE_IDLE);
         assert!(alternate_hands(ELITE) && !alternate_hands(USP));
+    }
+
+    #[test]
+    fn display_names_come_from_the_strings_by_the_datas_token() {
+        let strings = std::collections::BTreeMap::from([
+            ("cstrike_wpnhud_glock18".to_string(), "GLOCK 18".to_string()),
+            ("cstrike_wpnhud_awp".to_string(), " ".to_string()),
+        ]);
+        let names = names_in(&strings);
+        assert_eq!(names, [(GLOCK.to_string(), "GLOCK 18".to_string())], "the AWP's blank text and the rest's missing ones are left out");
     }
 }
