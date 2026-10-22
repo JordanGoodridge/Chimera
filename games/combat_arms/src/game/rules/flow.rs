@@ -155,13 +155,14 @@ pub const FLOW: Flow = Flow {
     respawn: spawns::respawn,
     length,
     event,
+    options: crate::mode::FlowOptions::MISSIONS,
 };
 
 /// A phase's length: the setup (`object_start`, 0 in the modes that force
 /// it), the round and the warm-up (missions.md "Timers per mode"), round
 /// over (`object_end`), the intermission (`mission_end`), the warm-up's
 /// revives (`warmup_revive`).
-fn length(world: &mut World, span: Span) -> Option<f32> {
+fn length(world: &mut World, span: Span) -> Option<f64> {
     let settings = world.resource::<CaRuleSettings>();
     match span {
         Span::Setup => Some(missions::setup_length(world)),
@@ -171,6 +172,7 @@ fn length(world: &mut World, span: Span) -> Option<f32> {
         Span::Intermission => Some(settings.mission_end),
         Span::Revive => Some(settings.warmup_revive),
     }
+    .map(f64::from)
 }
 
 /// Combat Arms' work at the runtime's steps (S3, S11, S15).

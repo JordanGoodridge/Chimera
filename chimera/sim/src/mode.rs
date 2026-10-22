@@ -12,24 +12,31 @@
 //!   (`Teams`), what a counted death does (`on_death`), its time-out rule,
 //!   when the match ends, and `Hooks` on the steps: a round's setup, a
 //!   per-tick update and touches, the round over and its end, any death,
-//!   respawning, holding joiners, before the spawns, after a round.
+//!   respawning, holding joiners, before the spawns, after a round, and
+//!   a live round's decision (`decide`).
 //! - `Flow`: a game's side of the runtime, the same for all its modes:
 //!   how often the phases step (`frame`), who plays (`players`, in join
-//!   order) and how they respawn, the phases' lengths (`Span`) and the
+//!   order) and how they respawn, the phases' lengths (`Span`), the
 //!   game's own work at each step (`FlowEvent`: its missions, map
-//!   messages, statistics, clean-up).
+//!   messages, statistics, clean-up) and how the phases step
+//!   (`FlowOptions`: Combat Arms' missions, once per its frame, waiting
+//!   for players, an intermission after each round; CS:S's rounds, every
+//!   tick with exact comparisons, started at once, decided by the mode
+//!   each tick, back to back, numbered as they start).
 //! - Which mode plays: the gameplay's rules game's (`chimera_core::
 //!   gameplay`; without one, the first game registered), the one its
 //!   `ModeGame::chosen` names (Combat Arms: the `ca_mode` cvar). A game
 //!   chains the runtime's systems (`flow::mission_update`, `flow::update`,
-//!   `flow::touches`) into its own rules' set, gated as its rules are.
+//!   `flow::touches`) into its own rules' set, gated as its rules are, or
+//!   steps its own match from its rules' system (`flow::step_game`, with
+//!   `current_of`: CS:S, whose rules' system does its own work around the
+//!   step).
 //! - `assign_team`: a player's team as the mode makes teams (two sides,
-//!   free-for-all, everyone on the first side).
+//!   free-for-all, everyone on the first side, or the game's as joined).
 //! - `chimera_modes` lists the registered modes, the one playing marked.
 //!
 //! Not here yet (L2): definitions as data files, the objective
-//! primitives, scoring tables, the HUD's named events and modifiers; CS:S's
-//! rounds keep their own loop (L1's remaining stage, the review).
+//! primitives, scoring tables, the HUD's named events and modifiers.
 
 pub mod flow;
 pub mod state;
@@ -54,6 +61,10 @@ pub enum Teams {
     /// Everyone starts on `ALPHA` at a round's setup; the mode moves
     /// players.
     AllAlpha,
+    /// The game's own teams, as the players joined them: the runtime
+    /// moves nobody (CS:S's, picked in its menus and balanced by its
+    /// rules).
+    AsJoined,
 }
 
 /// A mode's hooks on the runtime's steps (`NO_HOOKS` do nothing).
@@ -84,6 +95,11 @@ pub struct Hooks {
     /// Every server tick after the tick's damage and deaths: touches of
     /// the mode's objects.
     pub touches: fn(&mut World),
+    /// Every live step before the round's end is tested (`time_up`: the
+    /// round timer is at 0): the mode may decide the round now
+    /// (`Match::win`, `Match::end_without_winner`), which ends it in the
+    /// same step.
+    pub decide: fn(&mut World, bool),
 }
 
 /// No hooks.
@@ -98,6 +114,7 @@ pub const NO_HOOKS: Hooks = Hooks {
     before_spawns: |_| {},
     after_round: |_| {},
     touches: |_| {},
+    decide: |_, _| {},
 };
 
 /// A game mode: its data and hooks.
@@ -131,8 +148,8 @@ pub struct Mode {
     pub hooks: Hooks,
 }
 
-/// A length the runtime asks its game for (`Flow::length`; None: none,
-/// for `Round` and `Warmup` no timer and no warm-up).
+/// A length the runtime asks its game for, in seconds (`Flow::length`;
+/// None: none, for `Round` and `Warmup` no timer and no warm-up).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Span {
     /// The round's setup (unless the mode forces one).
@@ -182,10 +199,50 @@ pub struct Flow {
     pub players: fn(&mut World) -> Vec<(Entity, u8)>,
     /// Respawn `e` (at a mission start, a warm-up's revive).
     pub respawn: fn(&mut World, Entity),
-    /// A phase's length.
-    pub length: fn(&mut World, Span) -> Option<f32>,
+    /// A phase's length (s).
+    pub length: fn(&mut World, Span) -> Option<f64>,
     /// The game's work at a step.
     pub event: fn(&mut World, FlowEvent),
+    /// How the phases step (`FlowOptions::MISSIONS`: Combat Arms').
+    pub options: FlowOptions,
+}
+
+/// How a game's phases step: Combat Arms' missions (`MISSIONS`) or a
+/// game whose rounds run back to back, decided and stepped every tick
+/// (CS:S's rounds).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlowOptions {
+    /// Added to the clock when a phase's end time is compared (`now +
+    /// slack >= until`): 1e-9 for frames whose times are sums of a float
+    /// step, 0 for exact comparisons.
+    pub slack: f64,
+    /// The match waits for a player (`Phase::Waiting`, then `Starting`
+    /// and its first mission at the next frame); false: the first step
+    /// starts it, players or not.
+    pub wait_for_players: bool,
+    /// The round timer at 0 ends the round (the mode's `time_out` picks
+    /// the winner); false: it only tells the mode's `decide` hook
+    /// (`time_up`), and the round goes on until the mode ends it.
+    pub timer_ends_round: bool,
+    /// Round over's end goes straight into the next mission start in the
+    /// same step (no round-end frame, no intermission): the round's end
+    /// steps, the match's end test, the mode's `after_round`, then the
+    /// next round's setup or the match over.
+    pub direct: bool,
+    /// `Match::round` counts rounds started (1 in the first, from its
+    /// mission start) instead of rounds played.
+    pub count_at_start: bool,
+}
+
+impl FlowOptions {
+    /// Combat Arms' missions (the runtime's first game).
+    pub const MISSIONS: FlowOptions = FlowOptions {
+        slack: 1e-9,
+        wait_for_players: true,
+        timer_ends_round: true,
+        direct: false,
+        count_at_start: false,
+    };
 }
 
 /// A game's modes as the runtime sees them.
@@ -237,6 +294,15 @@ pub fn current(world: &World) -> Option<(&'static Mode, Flow)> {
     let game = modes.playing_game(world)?;
     let key = (game.chosen)(world)?;
     Some((modes.by_key(game.game, key)?, game.flow))
+}
+
+/// `game`'s chosen mode and its flow, whichever game plays (a game that
+/// steps its own match: `flow::step_game`).
+pub fn current_of(world: &World, game: &str) -> Option<(&'static Mode, Flow)> {
+    let modes = world.get_resource::<Modes>()?;
+    let g = modes.games.iter().find(|g| g.game == game)?;
+    let key = (g.chosen)(world)?;
+    Some((modes.by_key(g.game, key)?, g.flow))
 }
 
 /// The mode playing, if any.
@@ -299,6 +365,14 @@ impl ModeAppExt for App {
 /// Observers and players without a team are left alone.
 pub fn assign_team(world: &mut World, e: Entity, reset: bool) {
     let Some((mode, flow)) = current(world) else { return };
+    assign_team_in(world, e, reset, mode, flow);
+}
+
+/// `assign_team` as `mode` makes teams, among `flow`'s players.
+pub(crate) fn assign_team_in(world: &mut World, e: Entity, reset: bool, mode: &Mode, flow: Flow) {
+    if mode.teams == Teams::AsJoined {
+        return;
+    }
     let Some(team) = world.get::<crate::core::Team>(e).map(|t| t.0) else { return };
     if !plays(team) {
         return;
@@ -338,6 +412,7 @@ pub fn team_for(teams: Teams, team: u8, others: &[u8], reset: bool) -> Option<u8
             }
             (FFA_FIRST..=FFA_LAST).find(|t| !others.contains(t))
         }
+        Teams::AsJoined => None,
     }
 }
 
@@ -361,6 +436,8 @@ mod tests {
         assert_eq!(team_for(Teams::AllAlpha, BRAVO, &[], false), None);
         assert_eq!(team_for(Teams::AllAlpha, BRAVO, &[], true), Some(ALPHA));
         assert_eq!(team_for(Teams::AllAlpha, 9, &[], false), Some(ALPHA));
+        // As joined: nobody moves.
+        assert_eq!(team_for(Teams::AsJoined, 9, &[9], true), None);
     }
 
     #[test]
@@ -388,6 +465,7 @@ mod tests {
             respawn: |_, _| {},
             length: |_, _| None,
             event: |_, _| {},
+            options: FlowOptions::MISSIONS,
         };
         let game = ModeGame {
             game: "t",

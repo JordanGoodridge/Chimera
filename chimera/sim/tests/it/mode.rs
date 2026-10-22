@@ -3,7 +3,12 @@
 //! steps the match through its phases at the game's frames, calling the
 //! game's steps and the mode's hooks in the documented order; a counted
 //! death's win ends the round at the next frame; the gameplay picks
-//! whose modes play; free-for-all teams.
+//! whose modes play; free-for-all teams. With the options the other way
+//! (CS:S's rounds, a game stepping its own match with `flow::step_game`):
+//! the match starts at the first step, rounds numbered as they start,
+//! phases due exactly, the timer only telling the mode, a decided round
+//! over in the same step and the next round's setup straight after round
+//! over, with no intermission.
 
 use bevy::prelude::*;
 use chimera_core::{
@@ -12,7 +17,7 @@ use chimera_core::{
 };
 use chimera_sim::{
     mode::{
-        self, ALPHA, BRAVO, Death, DeathKind, FFA_FIRST, Flow, Match, Mode, ModeAppExt, ModeGame,
+        self, ALPHA, BRAVO, Death, DeathKind, FFA_FIRST, Flow, FlowOptions, Match, Mode, ModeAppExt, ModeGame,
         NO_HOOKS, Phase, Span, Teams, flow,
     },
     movement::placeholder,
@@ -119,6 +124,7 @@ const FLOW: Flow = Flow {
         Span::Revive => Some(0.5),
     },
     event: |w, e| log(w, format!("{e:?}")),
+    options: FlowOptions::MISSIONS,
 };
 
 fn kit_game(game: &'static str) -> ModeGame {
@@ -296,4 +302,175 @@ fn the_gameplay_picks_whose_modes_play() {
     // The registry lists them by id.
     let modes = sim.app.world().resource::<mode::Modes>();
     assert_eq!(modes.get("kit:ffa").map(|m| m.teams), Some(Teams::FreeForAll));
+}
+
+// --- Rounds back to back (`FlowOptions` the other way: CS:S's rounds)
+
+/// The round's decision the `BACK_TO_BACK` mode makes at its next live
+/// step (None: undecided; Some(0): no winner).
+#[derive(Resource, Default)]
+struct Decision(Option<u8>);
+
+/// Decided each live step by `Decision`, never by the timer; 2 round
+/// wins take the match; teams as joined.
+static BACK_TO_BACK: Mode = Mode {
+    id: "ticked:rounds",
+    key: "rounds",
+    shown_as: "Rounds back to back",
+    description: "decided each tick, 2 wins take the match",
+    respawns: false,
+    warmup: true,
+    warmup_revives: false,
+    forced_setup: None,
+    teams: Teams::AsJoined,
+    on_death: |_, _| {},
+    time_out: |w| w.resource_mut::<Match>().winner = Some(ALPHA),
+    match_end: |w| {
+        let m = w.resource::<Match>();
+        m.round_wins.iter().any(|r| *r >= 2).then_some(Some(ALPHA))
+    },
+    hooks: mode::Hooks {
+        setup: |w| log(w, "mode setup"),
+        round_over: |w| log(w, "mode round_over"),
+        round_end: |w| log(w, "mode round_end"),
+        after_round: |w| log(w, "mode after_round"),
+        decide: |w, time_up| {
+            if time_up {
+                log(w, "time up");
+            }
+            match w.resource_mut::<Decision>().0.take() {
+                Some(0) => w.resource_mut::<Match>().end_without_winner(),
+                Some(team) => w.resource_mut::<Match>().win(team),
+                None => {}
+            }
+        },
+        ..NO_HOOKS
+    },
+};
+
+const TICKED: Flow = Flow {
+    frame: 0.0,
+    // No warm-up length: the mode's warm-up never plays.
+    length: |_, span| match span {
+        Span::Setup => Some(0.5),
+        Span::Round => Some(1.0),
+        Span::RoundOver => Some(0.5),
+        Span::Warmup | Span::Intermission | Span::Revive => None,
+    },
+    options: FlowOptions {
+        slack: 0.0,
+        wait_for_players: false,
+        timer_ends_round: false,
+        direct: true,
+        count_at_start: true,
+    },
+    ..FLOW
+};
+
+/// A sim whose own rules' system steps the `ticked` game's match
+/// (`flow::step_game`), while the gameplay names another game.
+fn ticked_sim() -> Sim {
+    let mut sim = kit_sim();
+    sim.app
+        .insert_resource(Chosen("rounds"))
+        .init_resource::<Log>()
+        .init_resource::<Decision>()
+        .init_resource::<Match>()
+        .add_modes(kit_game("kit"), &[&DEATHMATCH])
+        .add_modes(
+            ModeGame {
+                game: "ticked",
+                chosen: |w| w.get_resource::<Chosen>().map(|c| c.0),
+                flow: TICKED,
+            },
+            &[&BACK_TO_BACK],
+        )
+        .add_systems(
+            FixedUpdate,
+            (|w: &mut World| {
+                let now = w.resource::<chimera_core::core::SimClock>().now;
+                assert!(flow::step_game(w, "ticked", now), "a mode chosen");
+            })
+            .in_set(SimSet::Rules),
+        );
+    sim
+}
+
+fn tick(sim: &Sim) -> f64 {
+    sim.app.world().resource::<chimera_core::core::SimClock>().delta.as_secs_f64()
+}
+
+#[test]
+fn rounds_back_to_back_start_at_once_and_are_numbered_as_they_start() {
+    let mut sim = ticked_sim();
+    assert_eq!(mode::current_mode(sim.app.world()).map(|m| m.id), None, "the first game has no `rounds`");
+    sim.ticks(1);
+    // Nobody in, and the match has started: its first round's setup.
+    let m = sim.app.world().resource::<Match>().clone();
+    assert!(matches!(m.phase, Phase::Setup { .. }), "{:?}", m.phase);
+    assert_eq!((m.round, m.warmup), (1, false), "the first round, numbered at its start; no warm-up length");
+    assert_eq!(log_of(&mut sim), ["Prepare { first: true }", "ResetStats", "MissionStart", "mode setup"]);
+    // Live at the first tick at or after the setup's end, exactly.
+    let Phase::Setup { until: live_at } = m.phase else { unreachable!() };
+    until(&mut sim, 1.0, |p| p == Phase::Live);
+    assert!(now(&sim) >= live_at && now(&sim) < live_at + tick(&sim), "live at {} for {live_at}", now(&sim));
+    let m = sim.app.world().resource::<Match>().clone();
+    assert_eq!(m.live_since, now(&sim), "when it went live");
+    let ends = m.round_ends.expect("a timer");
+    // The timer at 0 ends nothing: it tells the mode.
+    sim.seconds(1.5);
+    assert!(now(&sim) > ends);
+    assert_eq!(phase(&sim), Phase::Live, "the timer ends nothing");
+    let told = log_of(&mut sim);
+    assert!(!told.is_empty() && told.iter().all(|l| l == "time up"), "the mode is told: {told:?}");
+}
+
+#[test]
+fn a_decided_round_is_over_at_once_and_the_next_follows_without_an_intermission() {
+    let mut sim = ticked_sim();
+    until(&mut sim, 1.0, |p| p == Phase::Live);
+    log_of(&mut sim);
+    // Decided at a live step: over in the same step.
+    sim.app.world_mut().resource_mut::<Decision>().0 = Some(BRAVO);
+    sim.ticks(1);
+    let m = sim.app.world().resource::<Match>().clone();
+    let Phase::RoundOver { until: over } = m.phase else { panic!("{:?}", m.phase) };
+    assert!((over - now(&sim) - 0.5).abs() < 1e-9, "round over from this step");
+    assert_eq!((m.winner, m.round_wins, m.results.last().map(|r| r.round)), (Some(BRAVO), [0, 1], Some(1)));
+    assert_eq!(log_of(&mut sim), ["mode round_over", "RoundOver"]);
+    // Round over's end: the round's end and the next round's setup in one
+    // step, no intermission.
+    let mut seen = Vec::new();
+    while matches!(phase(&sim), Phase::RoundOver { .. }) {
+        sim.ticks(1);
+        seen.push(phase(&sim));
+    }
+    assert!(matches!(seen.last(), Some(Phase::Setup { .. })), "{seen:?}");
+    assert!(seen.iter().all(|p| !matches!(p, Phase::Intermission { .. })));
+    assert!(now(&sim) >= over && now(&sim) < over + tick(&sim), "exactly when due");
+    assert_eq!(
+        log_of(&mut sim),
+        [
+            "mode round_end",
+            "RoundEnd",
+            "RoundEnded",
+            "mode after_round",
+            "Prepare { first: false }",
+            "MissionStart",
+            "mode setup"
+        ]
+    );
+    assert_eq!(sim.app.world().resource::<Match>().round, 2, "the second round started");
+    // A round decided without a winner is a draw, not the time-out's.
+    until(&mut sim, 1.0, |p| p == Phase::Live);
+    sim.app.world_mut().resource_mut::<Decision>().0 = Some(0);
+    sim.ticks(1);
+    let m = sim.app.world().resource::<Match>().clone();
+    assert_eq!((m.winner, m.round_wins), (None, [0, 1]), "a draw");
+    // Two Bravo wins: the match is over as that round's pause runs out.
+    until(&mut sim, 1.0, |p| p == Phase::Live);
+    sim.app.world_mut().resource_mut::<Decision>().0 = Some(BRAVO);
+    until(&mut sim, 1.0, |p| p == Phase::MatchOver);
+    let m = sim.app.world().resource::<Match>().clone();
+    assert_eq!((m.result, m.round, m.round_wins), (Some(Some(ALPHA)), 3, [0, 2]));
 }

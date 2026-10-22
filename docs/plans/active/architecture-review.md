@@ -1399,14 +1399,14 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 
 | # | Item | Depends on | Size |
 |---|---|---|---|
-| L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (stages 1-2 done; CS:S open) |
-| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | done (10-22; note below) |
+| L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (**done 2026-10-22**) |
+| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (**done 2026-10-22**; note below) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
 | L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4), `bevy` without default features for servers (A5) | none | S each |
 
-L1, stages 1 and 2 done (10-21); stage 3 (CS:S's rounds) open.
+L1, done: stages 1 and 2 (10-21), stage 3 (10-22, below).
 `chimera_sim::mode` is the runtime: `Mode` (id, key, name, respawns,
 warm-up and its revives, a forced setup, `Teams`, `on_death`,
 `time_out`, `match_end`, `Hooks`: setup, update, touches, round over,
@@ -1437,18 +1437,54 @@ scoring table is L2's); the runtime's systems are chained by the game
 into its rules' set (a runtime plugin adding them would reorder
 unordered systems, X1's lesson); joining, leaving, the freeze's intent
 and the network view stay Combat Arms'; `CaStats` isn't generalised;
-rule modules (`rule_module`) stay beside the registry. Left for stage
-3, CS:S's rounds (`rules/rounds.rs`) on it: the runtime needs per-game
-options it doesn't have yet (steps every tick with exact `>=`
-comparisons, CA's are `+1e-9`; a match that starts without waiting for
-players; round over straight into the next setup, with no round-end
-frame or intermission; an outcome decided and the round over in the
-same tick; a round number counted as rounds started), CS:S's hooks
-for money and payouts, the buy window, `RoundOpen`, team balance,
-`mp_restartgame`, deathmatch (`chimera_rounds 0`) and the game end's
-intermission, and `RoundState` (read by the HUD, `NetRound` and about
-20 test files) kept as a view of `Match` each tick so those tests stay
-unchanged.
+rule modules (`rule_module`) stay beside the registry.
+
+Stage 3, CS:S's rounds on the runtime (10-22). The runtime's new
+per-game options are `Flow::options` (`FlowOptions`; Combat Arms'
+`FlowOptions::MISSIONS` keeps its behaviour): `slack` (the phases' end
+times compared as `now + slack >= until`: CA 1e-9, CS:S 0),
+`wait_for_players` (false: the first step starts the match, no
+`Starting`), `timer_ends_round` (false: the timer only tells the new
+`Hooks::decide`, called every live step before the end test, so a round
+it decides is over in the same step), `direct` (round over's end goes
+straight into the next mission start in the same step: the round end's
+steps, `match_end`, `after_round`, no intermission; a result there is
+`MatchOver`) and `count_at_start` (`Match::round` counts rounds
+started); also `Teams::AsJoined` (the runtime moves nobody),
+`Match::live_since`, `Span` lengths in f64 (so CS:S's `round_time as f64
+* 60.0` stays bit-identical; CA converts its f32s), and
+`flow::step_game` with `mode::current_of` (a game steps its own chosen
+mode from its rules' system, whichever game plays). Contract tests on
+the kit for each (chimera/sim/tests/it/mode.rs, two new). CS:S
+(`rules/rounds.rs`): three modes by the map's objectives,
+`cs_source:{bomb,hostage,elimination}` (the rule modules' names;
+deathmatch is no mode, the runtime idles), `FLOW` (every tick, exact,
+started at once, decided each tick, direct, counted at start; players
+as the old round start's query, respawn `put_at_spawn(fresh or dead)`,
+lengths from `RoundSettings`), hooks for the start money and bonuses
+(`event`: `Prepare`, `MissionStart`), the round's setup (`mp_tkpunish`,
+bots' shopping, loose weapons, `objectives::round_start`), `decide`
+(`live_outcome`), `round_over` (money, `RoundEnded` with its summary, a
+limit reached: the game end at once), `match_end` and `after_round`
+(the game end as the pause runs out, else team balance). `run_rounds`
+stays the rules' system (so no system moves): `mp_restartgame`, the
+map's clock, the game end's intermission, deathmatch and the broke's
+money around `step_game`, then `RoundState` as a view of `Match` (phase,
+number, wins, written only on change; kept while `MatchOver`; round wins
+written into it outside the rules, by `game_score` or a test, are
+taken back at the next step; a view at `Off` with the match elsewhere,
+another game's after a gameplay switch, starts the match over), then
+the buy window, freeze and `RoundOpen` from it. `RoundState`'s own
+fields (losses, draws, payouts, restart, map start, game over) stay
+CS:S's. Every CS:S round, objective and economy test passes unchanged
+(cs_source's whole suite, heavy included); Combat Arms' suite passes;
+the five apps' system dumps are identical (servers through a temporary
+dump patch, reverted). Left (L2): the game end held at round over (a
+limit reached as a round ends) leaves the match in `RoundOver` while
+the runtime's `MatchOver` comes only from the pause's end; both games
+share one `Match` (a gameplay switch doesn't save the other's);
+`RoundState` stays a separate view rather than the HUD and `NetRound`
+reading `Match`.
 
 L2, stage 1 done (10-22): `chimera_sim::minigame`. A definition is TOML
 (`def::MinigameDef`, D2's shape: id, name, players, map pool, teams, time

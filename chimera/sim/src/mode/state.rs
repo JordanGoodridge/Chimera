@@ -66,7 +66,7 @@ pub enum Phase {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RoundResult {
     /// The round's number (rounds played before it, the warm-up not
-    /// counted).
+    /// counted; with `FlowOptions::count_at_start`, its own, from 1).
     pub round: u32,
     pub warmup: bool,
     /// The winner's team id; None: no winner (a draw, the warm-up).
@@ -81,11 +81,14 @@ pub struct Match {
     pub phase: Phase,
     /// The round under way is the warm-up.
     pub warmup: bool,
-    /// Rounds played (the warm-up not counted).
+    /// Rounds played (the warm-up not counted); with
+    /// `FlowOptions::count_at_start`, rounds started.
     pub round: u32,
     /// Live: when the round timer reaches 0 (game seconds); None: no
     /// timer.
     pub round_ends: Option<f64>,
+    /// When the round under way went live (game seconds).
+    pub live_since: f64,
     /// The round's winner so far (team id).
     pub winner: Option<u8>,
     /// A rule asked for the round's end (the next frame's step enters

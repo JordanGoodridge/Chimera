@@ -108,9 +108,10 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   system), `movement` (the movement slot's placeholder and noclip) and
   `rule_module` (the rule-module interface, `mashup::rules::module`),
   `mode` (the mode runtime: modes as data and hooks on one match whose
-  phases it steps, architecture-review.md D2), `minigame` (minigames as
-  data files played on the mode runtime by Chimera's own flow, with the
-  `chimera:ladder` rules; D2, L2)
+  phases it steps, architecture-review.md D2; Combat Arms' modes and
+  CS:S's rounds play on it), `minigame` (minigames as data files played
+  on the mode runtime by Chimera's own flow, with the `chimera:ladder`
+  rules; D2, L2)
   and `spawning` (what every game's respawn does), and, behind the `testkit` feature, `testkit` (the test kit: a weapon set as data and the base on the greybox, docs/OBSERVABILITY.md). They name no game; games fill them. It uses `chimera_world` and
   `chimera_core`, never the presentation, `mashup` or a game (checked);
   `mashup` re-exports them at their old paths. `cargo test -p chimera_sim

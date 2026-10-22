@@ -57,6 +57,9 @@ pub const FLOW: Flow = Flow {
     respawn,
     length,
     event,
+    // Combat Arms' missions' stepping: wait for players, the timer ends
+    // the round, a round over and an intermission before the end.
+    options: crate::mode::FlowOptions::MISSIONS,
 };
 
 /// The order a character joined (numbered as it gets a team).
@@ -97,14 +100,14 @@ pub fn players(world: &mut World) -> Vec<(Entity, u8)> {
     all.into_iter().map(|(_, e, t)| (e, t)).collect()
 }
 
-fn length(world: &mut World, span: Span) -> Option<f32> {
+fn length(world: &mut World, span: Span) -> Option<f64> {
     let def = world.get_resource::<ActiveMinigame>()?.def;
     match span {
         Span::Setup => Some(0.0),
-        Span::Round => Some(def.time_limit),
-        Span::Warmup | Span::Revive => None,
-        Span::RoundOver => Some(ROUND_OVER),
-        Span::Intermission => Some(INTERMISSION),
+        Span::Round => Some(def.time_limit as f64),
+        Span::RoundOver => Some(ROUND_OVER as f64),
+        Span::Intermission => Some(INTERMISSION as f64),
+        _ => None,
     }
 }
 
