@@ -18,13 +18,20 @@
 //! grass and dirt, de_nuke's pool and cs_office's slide behave as in the
 //! game by eye; a spec session can settle both.
 //!
-//! Known shortcuts (docs/tech-debt.md): Textures are decoded to RGBA8 at load
-//! (`material::decode`): surf_sedona's 244 packed textures (up to 4096 square)
-//! come to ~270 M texels, about 1 GB in memory and on the GPU; and a map with
-//! HDR lighting only (surf_sedona) is lit at mat_hdr_level 2, where its trees
-//! sunk into the ground (origin in solid leaves, no ambient samples) are dark.
-//! Why it's OK for now: Loads in seconds now; keeping BC1/BC3 compressed on the
-//! GPU would cut it 4-8x. Level 2 isn't the default.
+//! DXT1/3/5 textures with a full mip chain also keep their blocks as stored
+//! (`MapTexture::bc`, `bc_levels`), which the GPU takes as BC1/2/3
+//! (`render::to_image`; 4-8x less video memory).
+//!
+//! Known shortcuts (docs/tech-debt.md): Textures are still decoded to RGBA8 at
+//! load (`material::decode`) for what reads texels on the CPU: surf_sedona's
+//! 244 packed textures (up to 4096 square) come to ~270 M texels, about 1 GB
+//! of memory until the map is spawned (the GPU holds the blocks); animated
+//! textures, uncompressed formats and normal maps in water go up decoded; and a
+//! map with HDR lighting only (surf_sedona) is lit at mat_hdr_level 2, where
+//! its trees sunk into the ground (origin in solid leaves, no ambient samples)
+//! are dark.
+//! Why it's OK for now: Loads in seconds now; skipping the decode needs the
+//! loader to know what reads texels. Level 2 isn't the default.
 //!
 //! Known shortcuts (docs/tech-debt.md): Community maps' materials
 //! (`games/cs_source/material.rs`): what the VMT parser refuses is rewritten
@@ -189,7 +196,7 @@ impl<'a> MaterialLoader<'a> {
             let slot = &mut self.textures[i];
             match result {
                 Ok(t) => {
-                    (slot.rgba8, slot.mips) = (t.rgba8, t.mips);
+                    (slot.rgba8, slot.mips, slot.bc) = (t.rgba8, t.mips, t.bc);
                 }
                 Err(e) => {
                     self.missing.push(format!("{}: {e}", slot.name));
@@ -1093,6 +1100,7 @@ impl<'a> MaterialLoader<'a> {
             width: 1,
             height: 1,
             rgba8: vec![px[0], px[1], px[2], 255],
+            bc: None,
         });
         let index = self.textures.len() - 1;
         self.by_path.insert(key, Some(index));
@@ -1113,6 +1121,7 @@ impl<'a> MaterialLoader<'a> {
                     width: 4,
                     height: 4,
                     rgba8: [16, 16, 16, 255].repeat(16),
+                    bc: None,
                 });
                 self.camera_texture = Some(self.textures.len() - 1);
             }
@@ -1160,6 +1169,7 @@ impl<'a> MaterialLoader<'a> {
                             width: vtf.header.width as u32,
                             height: vtf.header.height as u32,
                             rgba8: Vec::new(),
+                            bc: None,
                         });
                     }
                     let image = decode_full(&bytes, &vtf, f)?;
@@ -1170,6 +1180,7 @@ impl<'a> MaterialLoader<'a> {
                         width: image.width(),
                         height: image.height(),
                         rgba8: image.into_raw(),
+                        bc: None,
                     })
                 })
                 .collect()
@@ -1201,6 +1212,7 @@ impl<'a> MaterialLoader<'a> {
             width: vtf.header.width as u32,
             height: vtf.header.height as u32,
             rgba8: Vec::new(),
+            bc: None,
         };
         Ok((texture, bytes))
     }
@@ -1218,6 +1230,7 @@ fn decode_bytes(bytes: &[u8]) -> Result<MapTexture, String> {
         width: image.width(),
         height: image.height(),
         rgba8: image.into_raw(),
+        bc: bc_levels(bytes, &vtf.header),
     })
 }
 
@@ -1344,7 +1357,25 @@ fn mip_levels(bytes: &[u8], header: &vtf::header::VTFHeader) -> Option<Vec<Vec<u
 /// `mip_levels` of one frame of an animated texture (each level holds
 /// every frame in turn).
 fn frame_mip_levels(bytes: &[u8], header: &vtf::header::VTFHeader, frame: u32) -> Option<Vec<Vec<u8>>> {
-    use vtf::{image::VTFImage, resources::ResourceType};
+    use vtf::image::VTFImage;
+
+    let format = header.highres_image_format;
+    let spans = level_spans(header, frame)?;
+    let mut out = Vec::new();
+    for &(w, h, offset, _) in &spans[1..] {
+        let mut single = header.clone();
+        single.mipmap_count = 1;
+        let img = VTFImage::new(single, format, w as u16, h as u16, bytes, offset);
+        out.push(decode_rgba8(&img, 0).ok()?.into_raw());
+    }
+    Some(out)
+}
+
+/// Where each mip level of one frame of a VTF's image lies in the file:
+/// (width, height, offset, size), the full-size level first. None for a
+/// texture without mip levels, a volume texture or a frame it lacks.
+fn level_spans(header: &vtf::header::VTFHeader, frame: u32) -> Option<Vec<(u32, u32, usize, usize)>> {
+    use vtf::resources::ResourceType;
 
     let frames = header.frames.max(1) as usize;
     if header.mipmap_count <= 1 || header.depth > 1 || frame as usize >= frames {
@@ -1374,20 +1405,43 @@ fn frame_mip_levels(bytes: &[u8], header: &vtf::header::VTFHeader, frame: u32) -
     };
     let count = header.mipmap_count as u32;
     let mut out = Vec::new();
-    for m in 1..count {
+    for m in 0..count {
         // Offset of level m: all smaller levels come first.
         let mut offset = data_start;
         for smaller in (m + 1)..count {
             offset += size(smaller)?.2 * frames;
         }
         let (w, h, level_size) = size(m)?;
-        offset += frame as usize * level_size;
-        let mut single = header.clone();
-        single.mipmap_count = 1;
-        let img = VTFImage::new(single, format, w as u16, h as u16, bytes, offset);
-        out.push(decode_rgba8(&img, 0).ok()?.into_raw());
+        out.push((w, h, offset + frame as usize * level_size, level_size));
     }
     Some(out)
+}
+
+/// A VTF's DXT image and its whole mip chain as stored (`MapTexture::bc`),
+/// for a still texture the GPU can take as it is: DXT1/3/5, a size that
+/// is a multiple of 4 and mip levels down to 1 x 1 (as `mip_levels` wants).
+fn bc_levels(bytes: &[u8], header: &vtf::header::VTFHeader) -> Option<crate::map::MapBc> {
+    use crate::map::{MapBc, MapBcFormat};
+    use vtf::ImageFormat as F;
+
+    let format = match header.highres_image_format {
+        F::Dxt1 | F::Dxt1Onebitalpha => MapBcFormat::Bc1,
+        F::Dxt3 => MapBcFormat::Bc2,
+        F::Dxt5 => MapBcFormat::Bc3,
+        _ => return None,
+    };
+    let (w, h) = (header.width as u32, header.height as u32);
+    if header.frames > 1 || w % 4 != 0 || h % 4 != 0 || header.mipmap_count as u32 != w.max(h).ilog2() + 1 {
+        return None;
+    }
+    let levels = level_spans(header, 0)?
+        .into_iter()
+        .map(|(lw, lh, offset, size)| {
+            (size == MapBc::level_bytes(format, lw, lh))
+                .then(|| bytes.get(offset..offset + size).map(<[u8]>::to_vec))?
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(MapBc { format, levels })
 }
 
 /// Shaders the VMT parser doesn't know, read as the closest one it does.

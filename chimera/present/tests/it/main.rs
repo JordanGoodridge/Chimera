@@ -8,6 +8,7 @@
 //! fog-only water's fog and the sky under water. `cargo test -p chimera_present --features dev
 //! --test it`; where tests go: docs/OBSERVABILITY.md, section 1.
 
+mod bc_textures;
 mod map_unload;
 mod prop_lods;
 mod prop_shadows;

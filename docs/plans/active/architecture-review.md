@@ -1213,8 +1213,35 @@ by the same method but not those of the first two passes.
 | X6 **done** | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) (done 10-21: `GameInfo::steam`, `map_file -> Option`, `net::maps::offer_file`) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
 | X7 | `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
 | X8 **done** | (done 10-21, note below) Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
-| X9 | BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
+| X9 **done** | (done 10-21, note below) BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
 | X10 | A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |
+
+X9, done (10-21): `MapTexture` gained `bc: Option<MapBc>` (the file's
+DXT1/3/5 blocks, every stored level; `MapBcFormat` Bc1/2/3). The loaders
+fill it beside the decoded copy: CS:S's `bc_levels` (still textures with
+a full mip chain, a size multiple of 4; `level_spans` shared with the mip
+decode), Combat Arms' `dtx_bc` (the file's own levels from the loaded
+one down, which stop at 4 x 4: the box-filtered chain is not used for
+BC). `render::to_image(t, look, bc)` uploads the blocks as
+`Bc1/2/3Rgba(Unorm|UnormSrgb)` when `bc_wanted` (the main world's
+`CompressedImageFormatSupport` has BC; `CHIMERA_BC=0` forces decoded) and
+the blocks fit (`bc_fits`), else the decoded path as before. Kept decoded:
+animated frames, water's normal arrays (layers of one array image),
+second layers, anything not DXT. The CPU copy is
+still decoded at load (surface colours, shadows' alpha, sky, HUD and the
+tests read it; `shed_unread_textures` drops it and `bc` after the spawn),
+so "texture decode gone from loads" is not done: it needs the loader to
+know which textures the CPU reads (follow-up; the GPU side of F3 is). Image
+data of the maps' textures, from the new `textures:` log line: dust2 635
+to 165 MiB, de_nuke 1039 to 183, Combat Arms warehouse 451 to 56,
+junk_flea2 563 to 72; peak RSS dust2 3.0 to 2.1 GiB, nuke 5.1 to 3.4,
+warehouse 3.2 to 2.4. Guard (no reference captures on this box: A/B of
+`CHIMERA_BC=0` against on): 32 dust2 and 27 de_nuke views identical to
+under 0.15% of pixels differing (0.0002-0.001 of pixel-channel error;
+at most 300 pixels off by more than 4%, all edges and one-pixel
+highlights), the GPUs' DXT decoding against ours; Combat Arms
+warehouse and junk_flea2 at four looks: as close as two decoded runs are
+to each other (view model sway, effects).
 
 X8, done (10-21): the kit is `chimera_sim::testkit` (feature `testkit`,
 on through dev-dependencies only; smaller than a new crate, so no layering
