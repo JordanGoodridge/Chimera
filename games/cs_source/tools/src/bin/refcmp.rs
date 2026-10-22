@@ -363,7 +363,7 @@ fn add_eye_views(file: &mut ViewsFile) -> Result<(), String> {
         .step_by((map.spawns.len() / 10).max(1))
         .map(|(i, (p, _))| (format!("spawn{i}"), (*p + bevy::math::Vec3::Y * eye).to_array()))
         .collect();
-    if let Some(nav) = &map.nav {
+    if let Some(nav) = &map.kit.nav {
         let step = (nav.areas.len() / 60).max(1);
         for a in nav.areas.iter().step_by(step) {
             let c = (a.min + a.max) / 2.0;

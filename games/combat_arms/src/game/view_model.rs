@@ -468,7 +468,7 @@ pub fn add_view_models(map: &mut MapData, data: &super::data::CaDataInner, file:
                         map.warnings.push(format!("{} view-model hands: {e}", w.id));
                     }
                 }
-                map.view_models.push(v)
+                map.kit.view_models.push(v)
             }
             Err(e) => map.warnings.push(format!("{} view model: {e}", w.id)),
         }

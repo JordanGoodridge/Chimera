@@ -55,9 +55,9 @@ pub struct LooseAsset {
 /// Each held model's loose form, sized by the first character's scale
 /// (none without characters).
 pub fn assets(data: &super::MapData) -> Option<LooseAssets> {
-    let root = data.characters.first()?.root;
+    let root = data.kit.characters.first()?.root;
     Some(LooseAssets(
-        data.held.iter().map(|h| (h.key.clone(), asset(h, root))).collect(),
+        data.kit.held.iter().map(|h| (h.key.clone(), asset(h, root))).collect(),
     ))
 }
 

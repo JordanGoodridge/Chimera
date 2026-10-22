@@ -473,7 +473,7 @@ fn bots_stand_aside_without_a_nav_mesh() {
         eprintln!("skipping: bhop_flatzone not in the content cache");
         return;
     };
-    assert!(map.nav.is_none(), "bhop_flatzone ships no mesh");
+    assert!(map.kit.nav.is_none(), "bhop_flatzone ships no mesh");
     let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin, CsWeaponsPlugin));
     sim.set_tick_interval(TICK_INTERVAL);
     sim.app.insert_resource(crate::stack::slots::Loadout { movement: movement::ID });

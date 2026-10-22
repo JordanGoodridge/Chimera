@@ -48,7 +48,7 @@ fn map() -> MapData {
     let mut character = model();
     character.model = one_mesh_model();
     let mut data = floor_map(character);
-    data.held = vec![MapHeldModel {
+    data.kit.held = vec![MapHeldModel {
         key: "gun".into(),
         model: one_mesh_model(),
         bone: "pelvis".into(),

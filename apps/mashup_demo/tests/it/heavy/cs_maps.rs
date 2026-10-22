@@ -335,7 +335,10 @@ fn dust2s_surfaces_are_combat_arms_types() {
 fn a_combat_arms_soldier_fires_the_ak47_on_dust2() {
     let Some(map) = load("de_dust2") else { return };
     assert!(
-        map.view_models.iter().any(|v| v.key == cs_source::game::weapons::AK47),
+        map.kit
+            .view_models
+            .iter()
+            .any(|v| v.key == cs_source::game::weapons::AK47),
         "CS:S's AK-47 view model kept"
     );
     let mut sim = sim(map);
