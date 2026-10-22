@@ -63,11 +63,12 @@ impl MapDrawer for MapAssets<'static> {
 
     fn retire(world: &mut World, data: Arc<MapData>) {
         // The shadows keep a share of the data for the map's life: they
-        // take this one (theirs goes) and drop the texels they never read.
+        // take this one (theirs goes) and drop what they never read (the
+        // kit, the world's meshes and collision, most texels).
         if let Some(mut source) = world.get_resource_mut::<shadows::ShadowSource>() {
             drop(std::mem::replace(&mut source.data, data));
             if let Some(data) = Arc::get_mut(&mut source.data) {
-                shadows::shed_unread_textures(data);
+                shadows::shed_unread(data);
             }
         }
     }
@@ -221,7 +222,7 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
     build_model_materials(&mut drawn, s, meshes, materials, prop_materials);
 
     if view == MapDebugView::Normal
-        && let Some(props) = &data.detail_props
+        && let Some(props) = &data.source_fx().detail_props
         && let Some(detail_materials) = detail_materials.as_mut()
     {
         super::detail::spawn(
@@ -306,7 +307,7 @@ fn load_images(
     // ring's outer edge blends with its clear centre and lets the
     // scene through at the screen's edges.
     let hud: std::collections::HashSet<usize> = data
-        .hud
+        .kit.hud
         .iter()
         .flat_map(|h| h.sprites.values().map(|s| s.texture))
         .collect();
@@ -380,12 +381,12 @@ fn build_character_assets(
     };
     commands.insert_resource(probe_lit::ProbeLightScale(data.look.light_scale * lighting_scale));
     let bodies = data
-        .characters
+        .kit.characters
         .iter()
         .map(|c| body_assets(&c.model, &c.bones, c.root, meshes, pm, bindposes, &model_material))
         .collect();
     let held = data
-        .held
+        .kit.held
         .iter()
         .map(|h| {
             let mut build = |model: &MapModel| -> Vec<(Handle<Mesh>, Handle<PropMaterial>)> {
@@ -1089,7 +1090,7 @@ fn spawn_effects(
     textures: &[Handle<Image>],
 ) {
     let (data, root, visibility) = (s.data, s.root, s.visibility);
-    for (i, dust) in data.dust.iter().enumerate() {
+    for (i, dust) in data.source_fx().dust.iter().enumerate() {
         let mesh = meshes.add(dust::empty_mesh());
         // Culled by its bounds grown by its largest mote (9).
         let grow = Vec3::splat(if dust.world_size { dust.size.1 } else { 0.0 });
@@ -1125,7 +1126,7 @@ fn spawn_effects(
         }
     }
     // Steam jets: a puff mesh each, rebuilt per frame.
-    for (i, jet) in data.steam.iter().enumerate() {
+    for (i, jet) in data.source_fx().steam.iter().enumerate() {
         let mesh = meshes.add(dust::empty_mesh());
         let end = jet.origin + jet.forward * jet.length;
         let reach = Vec3::splat(jet.length * 0.5 + jet.end_size * 2.0);
@@ -1224,7 +1225,7 @@ fn spawn_effects(
             });
         }
     }
-    for (i, m) in data.embers.iter().enumerate() {
+    for (i, m) in data.source_fx().embers.iter().enumerate() {
         let clusters = visibility
             .map(|v| vis::box_clusters(v, m.min, m.max))
             .unwrap_or_default();
@@ -1246,7 +1247,7 @@ fn spawn_effects(
             });
         }
     }
-    for (i, t) in data.teslas.iter().enumerate() {
+    for (i, t) in data.source_fx().teslas.iter().enumerate() {
         let mut e = commands.spawn((
             Name::new(format!("Tesla {i}")),
             MapPart,
@@ -1264,7 +1265,7 @@ fn spawn_effects(
             });
         }
     }
-    for (i, strike) in data.strikes.iter().enumerate() {
+    for (i, strike) in data.source_fx().strikes.iter().enumerate() {
         commands.spawn((
             Name::new(format!("Strike beams {i}")),
             MapPart,
@@ -1274,7 +1275,7 @@ fn spawn_effects(
             ChildOf(root),
         ));
     }
-    for (i, stack) in data.smokestacks.iter().enumerate() {
+    for (i, stack) in data.source_fx().smokestacks.iter().enumerate() {
         let reach = stack.length + stack.base_spread + stack.end_size * 2.0;
         let clusters = visibility
             .map(|v| {

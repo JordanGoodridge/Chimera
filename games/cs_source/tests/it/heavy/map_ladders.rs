@@ -293,7 +293,7 @@ fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
         // Climbing each brush is slow (most tries are blocked): only on maps
         // whose nav mesh has no ladders.
         let brush_climbs = chimera_core::env::var_os("CHIMERA_LADDER_NAV_ONLY").is_none()
-            && map.nav.as_ref().is_none_or(|n| n.ladders.is_empty());
+            && map.kit.nav.as_ref().is_none_or(|n| n.ladders.is_empty());
         for (i, b) in ladders.iter().enumerate().filter(|_| brush_climbs) {
             match climb(&mut t, b) {
                 Some((0, on)) if on >= LONG_CLIMB => silent.push(i),
@@ -311,7 +311,7 @@ fn every_ladder_steps_and_its_top_is_a_floor(maps: Vec<String>) {
         // The nav mesh's ladders (where the map has one): walked onto from
         // their foot as bots and players do.
         let (mut nav_climbed, mut nav_silent, mut nav_total) = (0, Vec::new(), 0);
-        if let Some(nav) = map.nav.clone() {
+        if let Some(nav) = map.kit.nav.clone() {
             nav_total = nav.ladders.len();
             for (i, l) in nav.ladders.iter().enumerate() {
                 let trace = chimera_core::env::var("CHIMERA_LADDER_TRACE").is_ok_and(|v| v == i.to_string());
@@ -374,7 +374,7 @@ fn militia_footstep_volumes_remap_ladder_steps() {
     // Nav ladders whose climb passes through a volume (one into
     // wood_plank, one into concrete): climbed, they play the
     // destination's steps.
-    let nav = map.nav.clone().expect("cs_militia's nav mesh");
+    let nav = map.kit.nav.clone().expect("cs_militia's nav mesh");
     let mut t = Tester::new(&map);
     let mut climbed = Vec::new();
     for (i, l) in nav.ladders.iter().enumerate() {

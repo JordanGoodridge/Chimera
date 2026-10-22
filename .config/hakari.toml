@@ -41,4 +41,4 @@ workspace-members = ["chimera_dev"]
 # repository's checks (`repo_checks`: the hooks build it first), and
 # `chimera_dev` isn't managed.
 [final-excludes]
-workspace-members = ["source_formats", "lithtech_formats", "source_tools", "chimera_dev", "repo_checks"]
+workspace-members = ["chimera_vfs", "source_formats", "lithtech_formats", "source_tools", "chimera_dev", "repo_checks"]

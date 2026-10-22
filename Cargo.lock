@@ -2520,6 +2520,7 @@ dependencies = [
  "avian3d",
  "bevy",
  "chimera_dev",
+ "chimera_vfs",
  "dirs",
  "libc",
  "perf-event2",
@@ -2597,6 +2598,10 @@ dependencies = [
  "serde_json",
  "workspace-hack",
 ]
+
+[[package]]
+name = "chimera_vfs"
+version = "0.1.0"
 
 [[package]]
 name = "chimera_world"
@@ -4748,7 +4753,7 @@ name = "lithtech_formats"
 version = "0.1.0"
 dependencies = [
  "aes",
- "source_formats",
+ "chimera_vfs",
  "toml",
  "twofish",
 ]
@@ -6917,6 +6922,7 @@ dependencies = [
 name = "source_formats"
 version = "0.1.0"
 dependencies = [
+ "chimera_vfs",
  "glam",
  "lzma-rs",
  "symphonia",

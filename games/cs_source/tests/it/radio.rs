@@ -41,7 +41,7 @@ fn dust2() -> Option<MapData> {
 #[test]
 fn every_radio_call_has_a_loaded_sound_and_the_games_text() {
     let Some(map) = dust2() else { return };
-    let radio = map.radio.as_ref().expect("CS:S has a radio");
+    let radio = map.kit.radio.as_ref().expect("CS:S has a radio");
     assert_eq!(radio.menus.len(), 3);
     for (i, m) in radio.menus.iter().enumerate() {
         assert!(!m.title.is_empty(), "menu {i} has no title");

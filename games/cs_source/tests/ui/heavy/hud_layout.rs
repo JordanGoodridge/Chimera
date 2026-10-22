@@ -23,7 +23,7 @@ fn hud() -> Option<Arc<GameHud>> {
         return None;
     }
     let map = crate::load_map("cs_source:de_dust2").expect("load de_dust2");
-    Some(map.hud.expect("CS:S has a HUD"))
+    Some(map.kit.hud.expect("CS:S has a HUD"))
 }
 
 /// A part to check: what, and its ink rectangle [x0, y0, x1, y1) in CS:S.

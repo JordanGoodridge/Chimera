@@ -7,7 +7,7 @@
 //! (`rez_cipher`) and read only with a key for that scheme, supplied at run
 //! time; other titles (`LithTech Resource File`) are stored raw.
 //!
-//! `RezArchive` is a mount layer (`source_formats::fs::FileSource`, which
+//! `RezArchive` is a mount layer (`chimera_vfs::FileSource`, which
 //! Chimera's `mount` re-exports): paths are normalized (lowercase, `/`),
 //! `<dir>/<name>.<type>`. `open_dir` mounts a folder's archives in name
 //! order; a game's mount (Combat Arms: its install's `Game/`) calls it
@@ -30,7 +30,7 @@ use std::{
     sync::Arc,
 };
 
-use source_formats::fs::{Entry, FileSource, Mount, normalize};
+use chimera_vfs::{Entry, FileSource, Mount, normalize};
 
 pub use crate::rez_cipher::{RezCipher, RezCipherKind, RezKeys};
 

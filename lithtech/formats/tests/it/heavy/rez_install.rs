@@ -6,7 +6,7 @@
 use std::{io::ErrorKind, path::PathBuf};
 
 use lithtech_formats::rez::{RezArchive, RezCipher, RezKeys, open_dir};
-use source_formats::fs::FileSource;
+use chimera_vfs::FileSource;
 
 /// The local config's `[games.combat_arms]` table: `$CHIMERA_CONFIG` (or
 /// `$MASHUP_CONFIG`), else chimera.local.toml (or mashup.local.toml) at the

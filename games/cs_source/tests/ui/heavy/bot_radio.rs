@@ -319,7 +319,7 @@ fn the_installs_join_lines() {
         return;
     }
     let map = games::load_map("cs_source:de_dust2").expect("load de_dust2");
-    let say = &map.radio.as_ref().expect("CS:S has a radio").say;
+    let say = &map.kit.radio.as_ref().expect("CS:S has a radio").say;
     let line: String = say
         .join("Bot 2", 2)
         .expect("a CT join line")

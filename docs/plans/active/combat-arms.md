@@ -90,8 +90,8 @@ does for BSP.
   code and checked against `rez_archive.md` (`rez`: header, directory,
   archive as a mount layer, `open_dir` for a folder; `rez_cipher`: the
   payload cipher, keys at run time). Unit tests on archives written in
-  code; `heavy::` tests on this box's install. It uses `source_formats`
-  only for the VFS (`fs::FileSource`, `Mount`).
+  code; `heavy::` tests on this box's install. It uses `chimera_vfs`
+  only for the VFS (`FileSource`, `Mount`).
 - `games/combat_arms`' `game::mount` (its `INFO.open`) mounts the
   install's `Game/` with `rez::open_dir` and the keys from
   `chimera.local.toml`; the data seam (`game/data.rs`) reads the

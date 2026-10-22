@@ -15,7 +15,7 @@ use lithtech_formats::{
     rez::{RezArchive, RezKeys, open_dir},
     world::World,
 };
-use source_formats::fs::FileSource;
+use chimera_vfs::FileSource;
 
 use super::rez_install::{game_dir, keys};
 

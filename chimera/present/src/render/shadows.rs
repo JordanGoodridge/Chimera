@@ -506,6 +506,29 @@ pub fn casters(data: &MapData) -> impl Iterator<Item = (usize, &MapProp)> {
     data.props.iter().enumerate().filter(|(_, p)| p.casts_shadow && !p.skybox)
 }
 
+/// Drops what the shadows never read from the data they keep for the map's
+/// life (`ShadowSource`; the drawing was made from it at spawn): the
+/// gameplay's kit, the extensions, the world's meshes, lightmap, cubemaps,
+/// collision and entities, and the texels of every texture they don't
+/// sample (`shed_unread_textures`). What stays is what `build_posed` and
+/// the casters' silhouettes read: props, models, textures, visibility.
+pub fn shed_unread(data: &mut MapData) {
+    data.kit = Default::default();
+    data.extras = Default::default();
+    data.meshes = Vec::new();
+    data.lightmap = None;
+    data.cubemaps = Vec::new();
+    data.collision_positions = Vec::new();
+    data.collision_indices = Vec::new();
+    data.collision_sets = Vec::new();
+    data.collision_hulls = Vec::new();
+    data.collision_brushes = Vec::new();
+    data.brush_tree = None;
+    data.entities = Vec::new();
+    data.sky_surfaces = Vec::new();
+    shed_unread_textures(data);
+}
+
 /// Drops the texels of every texture the shadows never read: a caster's
 /// silhouette samples the alpha of its alpha-tested and translucent
 /// meshes' textures (`silhouette`), nothing else of `data.textures` is

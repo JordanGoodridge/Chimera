@@ -63,7 +63,7 @@ pub fn add_dust(bsp: &Bsp, leaves: &[super::ambient::RawLeaf], materials: &mut M
             texture = materials.resolve("particle/sparkles").texture;
         }
         let (a, b) = (to_engine(model.mins), to_engine(model.maxs));
-        data.dust.push(MapDust {
+        data.source_fx_mut().dust.push(MapDust {
             min: a.min(b),
             max: a.max(b),
             rate: num("SpawnRate", 40.0),

@@ -189,7 +189,7 @@ pub fn build_assets(
         view,
     };
     let models = data
-        .view_models
+        .kit.view_models
         .iter()
         .map(|v| (v.key.clone(), build.model(v, meshes, materials, bindposes)))
         .collect();
@@ -718,7 +718,7 @@ pub fn build_flash_assets(
     meshes: &mut Assets<Mesh>,
     sprites: Option<&mut Assets<SpriteMaterial>>,
 ) -> Option<FlashAssets> {
-    let flash = data.muzzle_flash.clone()?;
+    let flash = data.kit.muzzle_flash.clone()?;
     let size = flash
         .texture
         .and_then(|t| data.textures.get(t))

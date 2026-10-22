@@ -143,7 +143,7 @@ pub fn add_trails_and_stacks(bsp: &Bsp, materials: &mut MaterialLoader, data: &m
             let range = |a: &str, b: &str| (num(a).unwrap_or(0.0), num(b).unwrap_or(0.0));
             let (w0, w1) = range("thick_min", "thick_max");
             let (b0, b1) = range("beamcount_min", "beamcount_max");
-            data.teslas.push(crate::map::emitters::MapTesla {
+            data.source_fx_mut().teslas.push(crate::map::emitters::MapTesla {
                 entity: Some(index),
                 position: engine(origin),
                 material,
@@ -186,7 +186,7 @@ pub fn add_trails_and_stacks(bsp: &Bsp, materials: &mut MaterialLoader, data: &m
             };
             let angles = vec3(key(&e, "angles")).unwrap_or(Vec3::ZERO);
             let facing = crate::map::entities::rotation_to_engine(crate::map::entities::entity_rotation(angles));
-            data.embers.push(crate::map::emitters::MapEmbers {
+            data.source_fx_mut().embers.push(crate::map::emitters::MapEmbers {
                 entity: Some(index),
                 origin: engine(origin),
                 min: a.min(b),
@@ -233,7 +233,7 @@ pub fn add_trails_and_stacks(bsp: &Bsp, materials: &mut MaterialLoader, data: &m
             let angles = vec3(key(&e, "angles")).unwrap_or(Vec3::ZERO);
             // The colour is rendercolor (no env_particlelight on the
             // maps seen), scaled so its largest channel is at most 1.
-            data.smokestacks.push(MapSmokeStack {
+            data.source_fx_mut().smokestacks.push(MapSmokeStack {
                 entity: Some(index),
                 position: engine(origin),
                 rotation: crate::map::entities::rotation_to_engine(crate::map::entities::entity_rotation(angles)),

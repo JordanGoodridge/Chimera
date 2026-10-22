@@ -10,7 +10,7 @@
 //!   (and, in Lucker Party's rotation, the next game).
 //! - Once spawned, the pending data is gone (`PendingMap`), and the
 //!   decoded textures with it, but for the few texels the dynamic shadows
-//!   sample (`render::shadows::shed_unread_textures`).
+//!   sample (`render::shadows::shed_unread`), and the world's meshes and the kit.
 
 use std::{
     any::TypeId,
@@ -216,6 +216,10 @@ fn check_freed(sim: &mut Sim) {
     let world = sim.app.world();
     assert!(!world.contains_resource::<PendingMap>(), "the pending map is gone once spawned");
     let source = world.resource::<ShadowSource>();
+    assert!(
+        source.data.meshes.is_empty() && source.data.kit.characters.is_empty() && source.data.extras.is_empty(),
+        "the shadows keep no world meshes, kit or extensions"
+    );
     assert_eq!(source.data.textures.len(), 2, "the shadows keep the texture list");
     assert!(source.data.textures[0].rgba8.is_empty(), "the floor's texels are not kept");
     assert_eq!(source.data.textures[0].width, 128, "its size is");

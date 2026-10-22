@@ -152,7 +152,10 @@ pub(crate) fn floor_map(model: MapCharacterModel) -> MapData {
         name: "test:ragdoll".into(),
         collision_brushes: vec![MapBrush::from_box(lo, hi)],
         collision_hulls: vec![cube(lo, hi).iter().map(|v| v.to_array()).collect()],
-        characters: vec![model],
+        kit: chimera_world::map::GameKit {
+            characters: vec![model],
+            ..default()
+        },
         ..default()
     }
 }
