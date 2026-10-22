@@ -10,7 +10,6 @@
 
 pub mod dem;
 pub mod detail;
-pub mod fs;
 pub mod keyvalues;
 pub mod localization;
 pub mod lumps;

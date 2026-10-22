@@ -36,6 +36,7 @@ chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; mu
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay
+                      chimera_vfs (chimera/vfs/)   the neutral VFS (`FileSource`, `Mount`) under both format crates and `mount`
                       lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```
 
@@ -44,7 +45,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   the games, by the same rules (checked: `workspace_crates`). Their
   format crates never depend on Bevy, avian, Chimera or a game; a
   game converts what they read into Chimera's types. `lithtech_formats`
-  uses `source_formats` only for the VFS (`fs`), so a `.rez` is a mount
+  uses `chimera_vfs` (`FileSource`, `Mount`, `LooseDir`; no dependencies)
+  only for the VFS, as `source_formats`' VPK does, so a `.rez` is a mount
   layer like a VPK; `dump` reads Combat Arms' archives with it. Keys are
   never in the repo (checked: `no_keys_tracked`): they come from
   `chimera.local.toml` at run time.

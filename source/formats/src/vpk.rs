@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::fs::{Entry, FileSource, normalize};
+use chimera_vfs::{Entry, FileSource, normalize};
 
 const SIGNATURE: u32 = 0x55aa_1234;
 /// Archive index meaning "data follows the tree in the _dir file".

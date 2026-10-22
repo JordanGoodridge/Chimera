@@ -1214,7 +1214,7 @@ by the same method but not those of the first two passes.
 | X7 | `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
 | X8 **done** | (done 10-21, note below) Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
 | X9 | BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
-| X10 | A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |
+| X10 **done** | (done 10-21, note below) A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |
 
 X8, done (10-21): the kit is `chimera_sim::testkit` (feature `testkit`,
 on through dev-dependencies only; smaller than a new crate, so no layering
@@ -1240,6 +1240,19 @@ crate `chimera_sim` 39 to 54 (the contract tests plus the three moved),
 only tests missing by name are the three moved. The affected selection
 does not yet skip a game's heavy tier for changes the contract tests
 cover (a later decision, T2).
+
+X10, done (10-21): the crate is `chimera_vfs` (`chimera/vfs`), no
+dependencies: `source/formats/src/fs.rs` moved there whole (`Entry`,
+`FileSource`, `Mount`, `LooseDir`, `normalize`, with its tests).
+`source_formats` (VPK) and `lithtech_formats` (`.rez`, and its tests) use
+it; `lithtech_formats` no longer depends on `source_formats`; `chimera_core`
+re-exports it from `mount` as before (and still takes KeyValues from
+`source_formats`; Steam's `libraryfolders.vdf` stays on them). Checks:
+`chimera/vfs` is in `final-excludes` (plain, like the format crates) and
+`NO_HACK`; its `FORBIDDEN` rule bars every other workspace crate;
+`source/formats` now bars `chimera_*` except `chimera_vfs`, and the same
+exemption lifts the `chimera_` prefix rule for it in `lithtech/formats`.
+No `source_formats::fs` alias was kept.
 
 X4, done (10-21): `net::parts::OwnParts` (`NetAppExt::own_part(name,
 encode, decode)`, sorted by name as registered); `OwnState::parts` is one

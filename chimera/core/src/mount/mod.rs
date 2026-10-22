@@ -19,7 +19,5 @@
 pub mod config;
 pub mod install;
 
-pub use source_formats::{
-    fs::{Entry, FileSource, LooseDir, Mount, normalize},
-    keyvalues,
-};
+pub use chimera_vfs::{Entry, FileSource, LooseDir, Mount, normalize};
+pub use source_formats::keyvalues;
