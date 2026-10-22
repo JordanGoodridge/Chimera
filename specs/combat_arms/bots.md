@@ -21,7 +21,7 @@ Constants; Difficulty, profiles and loadouts; Behavior (1 think loop,
 2 goals and states, 3 navigation, 4 patrol, 5 perception, 6 target
 selection, 7 reaction and aim, 8 weapon use, 9 movement in a fight,
 10 team behaviour and mode rules, 11 other AI in the game); Per-tick order;
-Edge cases; Quirks; Test cases; Open questions.
+Edge cases; Quirks; Corrections (2026-10-22); Test cases; Open questions.
 
 ---
 
@@ -1196,6 +1196,217 @@ One server frame:
 16. **Template accuracy values (0.715 etc.) are dead**: the first weapon
     draw replaces them. Omit.
 
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's bot mission rules, client bot
+roster and chat, target tracking and visibility, shooting, attack-move,
+grenade-dodge, investigate and chase behaviour, against this spec and our
+implementation (`games/combat_arms/src/game/bots/`, at the commit this
+section was written on; file:line below is relative to that folder).
+Ordered by what a player notices. Test cases 58–69; Open questions 25–32.
+
+1. **A heard sound sends the bot only halfway** (corrects 5.3 "runs a path
+   to the spot and searches"; Open question 12).
+   - Reference: when a bot starts investigating something it heard (an
+     enemy's gunshot or footstep, or an ally's call), the investigation's
+     arrival radius is **half the straight-line distance** from the bot to
+     the sound's position at that moment. The bot runs its path toward the
+     spot and the investigation is over on the first update it is inside
+     that radius (or its path ends). The investigate goal then drops to
+     zero and the bot goes back to patrol (it searches instead only when
+     the conditions of Open question 30 hold). It never walks onto the
+     spot and never stands there.
+   - Ours: it walks until within 0.6 m of the spot, then stands looking at
+     it until 10 s after the investigation began (brain.rs:949-957,
+     1167-1171, 1311-1315).
+   - Expect: patrolling bot 1000 u from a gunshot, open floor → it runs
+     toward the shot and turns back to its patrol as soon as it is within
+     500 u of the shot's position; at 300 u, within 150 u. It is never
+     closer than half its starting distance when it gives up.
+
+2. **When a sound is only looked at** (5.3, corrects the reading "only when
+   not already strongly alarmed and not relaxed in the last 30 s").
+   - Reference: the bot does not move (it only turns toward the sound)
+     only if all of these hold, otherwise it runs (1):
+     (a) it is not "majorly alarmed": every investigated stimulus adds its
+     alarm level to a running total that is kept for the whole life and
+     never goes down; at or above the brain's major-alarm threshold the bot
+     is majorly alarmed. A gunshot's level is above the threshold, so after
+     the first gunshot a bot hears in a life, every later sound in that
+     life sends it running;
+     (b) more than 30 s have passed since it last returned to relaxed
+     awareness, and its **spawn counts as such a return**: for 30 s after
+     each spawn, and for 30 s after it calms down again (an investigation
+     or chase ending and its patrol resuming), it always runs;
+     (c) then: if the spot is within 1000 u, inside its relaxed field of
+     view (5.2) and visible (a straight walk through the AI volumes or a
+     clear eye ray), it stands where it is (aware); else, if a
+     straight walk through the volumes reaches the spot, it turns to look
+     at it; else it runs.
+   - Ours: a footstep or an ally's call is "look only" whenever a ray from
+     the eye to the spot is clear, at any distance and angle; gunfire never
+     (brain.rs:1153-1162).
+   - Expect: a bot 20 s after spawning hears a footstep in plain view at
+     400 u → runs (and stops at 200 u, 1). The same bot 40 s after
+     spawning, no gunshot heard this life, nothing investigated in the last
+     30 s → turns only. Footstep in plain view at 1200 u → runs. After one
+     heard gunshot this life, any footstep → runs.
+
+3. **An investigation is not restarted by every sound** (5.3).
+   - Reference: while a bot is investigating (or is merely suspicious) it
+     ignores allies' calls. A newly heard enemy sound replaces the current
+     investigation only if its alarm level is not lower than the current
+     one's and it is not the same stimulus already being followed. An ally's
+     call counts as alarm level 1 for the bot that hears it (it raises the
+     hearer's running total to at least the caller's). A bot answering a
+     call goes toward the **caller's position** and, when it arrives (by the
+     half-distance rule, 1), faces the direction the caller was facing.
+   - Ours: every accepted footstep, gunshot or call during an investigation
+     starts a new one at the new spot with a fresh 10 s, and a call is
+     taken while investigating (brain.rs:1067-1127, 1148-1178).
+   - Expect: bot investigating a gunshot hears an ally's call → keeps
+     going to the gunshot. Bot investigating a footstep hears a gunshot
+     elsewhere → switches to the gunshot.
+
+4. **A grenade just outside the blast radius draws the bot onto it**
+   (corrects 5.4 step 3, "if the bot is already outside the radius: it
+   stays").
+   - Reference: when the dodge time comes, the distance is taken from the
+     grenade's **current** position. If the bot is farther than the blast
+     radius, the point it is given is **the grenade's own position**, and
+     it moves there: as an attack move while shooting when it sees its
+     target from the weapon, otherwise running. Only a bot standing exactly
+     on that point stays. Since the danger is noticed out to radius + 100 u
+     (5.4 step 1), bots between r and r + 100 u from a grenade run onto it.
+     The dodge (in either case) lasts until the grenade object is gone
+     (exploded or removed) or the move ends; it sends the Grenade chat
+     event (5). Afterwards the bot returns to its attack if it has a
+     target, else stands idle until another goal takes over; a bot that was
+     chasing when the dodge began resumes its chase.
+   - Ours: outside the radius it stays, measured from where the grenade
+     was noticed (brain.rs:1366-1374); a dodge ends after 3 s or on arrival
+     and then goes to patrol unless the target is visible
+     (brain.rs:1316-1323, 1383).
+   - Keep the reference's behaviour (parity first; a "fix" would be an
+     option later).
+   - Expect: an M67 with blast radius r comes to rest r + 50 u from an HN
+     bot with a clear line; after the delay draw the bot moves to the
+     grenade's position. The same grenade at r − 50 u → the bot moves to
+     the point 1.1 r away (5.4).
+
+5. **Bot chat events: four are missing, and Kill is narrower** (10).
+   - Reference: Kill is sent only when the bot kills a **player** (from the
+     player's death handling), never when it kills another AI character.
+     Battle: every time its attack state starts from another state (not
+     when it returns to the attack after an attack move or a grenade
+     dodge). Search: every time its patrol goal activates, including the
+     patrol start at each spawn and every return to patrol after a chase,
+     an investigation or a fight. Grenade: every grenade-dodge activation
+     that found a point to go to (including 4). Mine: every time its sight
+     sense fires on a placed device. Respawn: every spawn, the first one
+     and the round-start respawns included. Each still passes the client's
+     cooldown and percent roll (10).
+   - Ours: Kill for any death the bot caused, bots included
+     (chat.rs:163-165); Battle, Search, Grenade and Mine are never sent
+     (chat.rs:12-15).
+   - Expect: with the cooldown elapsed, a bot that begins attacking shows
+     a `$Message<set>_Battle_<n>` line when the millisecond clock mod 100
+     is at most 25; a bot that kills another bot shows no Kill line; a bot
+     that turns back to patrol after losing you rolls a Search line.
+
+6. **The chat cooldown is the profile's, not the level's** (10).
+   - Reference: each bot's cooldown is its profile's `NextChatTime` (10 s
+     when the profile has none); profiles of the same level may differ.
+     The first line is possible one cooldown after the roster is built.
+   - Ours: 15, 20 or 25 s by `BotLevel` (chat.rs:121-127).
+   - Expect: when the profile file is read, a profile with
+     `NextChatTime` 25 on Easy waits 25 s between lines. Until it is read,
+     ours is a placeholder (the per-profile values are Open question 26).
+
+7. **Each life is a new brain** (10, Death).
+   - Reference: every respawn creates a new AI character from the same
+     roster entry. Everything the brain learned is gone: hit/miss counters
+     at 0/0, movement inaccuracy, every sense level and false-stimulation
+     count, the alarm total of correction 2 (back to 0), the "last relaxed" time (= the
+     spawn, 2b), the attack's last-deactivation time (0, so the first
+     attack of a life always rolls a reaction delay, 7.2), the dodge and
+     crouch timers, the grenade count (full) and the pending sense reaction
+     timers. The profile, kit, team and bot ID stay.
+   - Ours: the bot's brain state survives death; only the state, target,
+     route, danger, pending reaction, aim offset and crouch are cleared
+     (brain.rs:785-802): the hit/miss cycle, the footstep sense, the sight
+     cooldown, the dodge timer and the last attack time carry over.
+   - Expect: a bot dies with its cycle at 1 hit / 2 misses of (1, 5); after
+     its respawn its first shot starts a fresh cycle (0/0). A bot that left
+     an attack 1 s before dying rolls a reaction delay on its first attack
+     after the respawn.
+
+8. **Patrol stops at nodes; the first node comes from the mission file**
+   (4; the spec already says this, ours lacks it).
+   - Reference: every patrol node in the bot maps is a look-around node:
+     with probability 0.74 the bot runs on, else it stops 3 + U(0, 3) s
+     (head sweeps); while running it also starts a look-around every
+     U(0, `NextLookAroundTime`) s. Each spawned bot's first patrol node is
+     its team's next start node from the bot game-mode file (round robin
+     over spawns).
+   - Ours: never stops, never looks around, and starts from the nearest
+     node (brain.rs:1687-1738, 1694).
+   - Expect: over 100 node arrivals a bot stops at about 26 of them, each
+     stop 3–6 s. Eight Bravo bots spawned in a row start at
+     `PatrolNode_Bravo0` … `PatrolNode_Bravo7`; the ninth spawn starts at
+     `PatrolNode_Bravo0` again.
+
+9. **A grenade throw is an animated action from the hand** (8.5).
+   - Reference: the bot switches to its grenade, plays its throw animation
+     (one of two, chosen once by whether the target is closer than
+     1000 u), and the grenade leaves the **hand socket** at the animation's
+     throw key; until the throw animation has finished the bot cannot
+     switch back, so it fires nothing from the moment the throw starts to
+     the end of the animation; then it re-chooses its ranged weapon (8.2).
+   - Ours: the grenade is spawned at the eye in the same tick the count
+     reaches zero, and the bot keeps firing its gun (brain.rs:1568-1581).
+   - Expect: from the throw decision to the throw key no round is fired;
+     the grenade's first position is at the bot's hand, not its eye; the
+     next round comes after the weapon switch back. (Animation and key
+     times: Open question 27.)
+
+10. **Firing while chasing is blind** (5.6, 8.2).
+    - Reference: in the chase state the bot fires whenever its target is
+      visible from the weapon and within its ranged reach, with no
+      reaction delay and no burst pause from the per-weapon AI rows (its
+      whole clip, then an **instant** reload, with no reload animation).
+      While it is following a path its shots are "blind": each goes along
+      the bot's **torso facing**, not to the aim point of 7.3, so the
+      hit/miss cycle is not used. (The torso is turned toward the target's
+      head by head-and-torso tracking, within limits not measured here,
+      Open question 28.) In practice this matters for the frames before
+      the attack goal takes over (section 2) and when the target is visible but
+      the attack goal does not trigger.
+    - Ours: chase fires through the attack's aim, with the hit/miss cycle,
+      reaction delay and bursts (brain.rs:943-946).
+    - Expect: a chasing bot running along its path with the target visible
+      from the weapon fires along its torso direction; its rounds never
+      go through the 100 u side-offset of a miss.
+
+11. **The aim base point and the line of fire** (7.3, 7.4; small).
+    - Reference: the base point is the target's `Torso` node as animated
+      (5.14 u above the hull centre in the male bind pose standing; lower
+      crouched). Whether the bot may fire ("visible from the weapon") is a
+      ray from the bot's **right side** (one radius out, a quarter of its
+      height above its centre) to that node, then to the `Head` node; the
+      head-only flag of 7.4 comes from this ray. The eye test (5.2) only
+      says whether the target is seen.
+    - Ours: base point the hull centre (brain.rs:103), line of fire from the
+      eye (29 u above the centre) to the base point (brain.rs:866-876),
+      head-only from the eye test (brain.rs:1013-1016).
+    - Expect: bot and target standing on one floor 500 u apart, a wall
+      20 u in front of the target with its top 52 u above the floor: the
+      target's hull centre (50 u) is hidden but its `Torso` node (about
+      55 u) is not, and the side ray (from about 75 u) clears the wall
+      (it passes it at about 55.8 u) → the reference aims at the torso
+      with full accuracy; ours treats the target as head-only (half
+      accuracy, aimed at the head). Wall top 60 u → both head-only.
+
 ## Test cases
 
 Common setup unless stated: Bot Deathmatch, one bot, server dt = 0.05 s,
@@ -1383,6 +1594,52 @@ re-measure on the Steam install (build 25595979).
     3 updates restarts its door step; if alert with a target and the door's
     surface can be shot through, it shoots through it.
 
+**Corrections (2026-10-22) cases.**
+
+58. **Half-distance investigation (Correction 1).** Patrolling bot,
+    gunshot 1000 u away with a volume path → the bot runs toward it and
+    is back on its patrol goal on the first update it is within 500 u of
+    the shot's position; with the shot 300 u away, within 150 u.
+59. **Look only (Correction 2).** Bot 40 s after spawning, nothing heard
+    this life: footstep in plain view and in its relaxed field of view at
+    400 u → it turns to it and does not move; the same at 20 s after
+    spawning → it runs (Case 58's rule); at 1200 u → it runs; after one
+    gunshot heard earlier in the same life → it runs.
+60. **Calls while investigating (Correction 3).** Bot investigating a
+    gunshot; an ally's call arrives → ignored, the bot keeps its
+    destination.
+61. **Grenade just outside the radius (Correction 4).** Grenade of blast
+    radius r at rest r + 50 u from an HN bot, clear line, delay draw
+    0.4 s → at 0.4 s the bot starts moving to the grenade's position; at
+    r − 50 u → to the point 1.1 r from the grenade, straight away from it.
+62. **Kill chat (Correction 5).** A bot kills another bot → no Kill line;
+    it kills a player with its cooldown elapsed and the clock mod 100 at
+    42 → a `$Message<set>_Kill_<n>` line.
+63. **Battle and Search chat (Correction 5).** Cooldown elapsed, clock mod
+    100 at 20: a patrolling bot enters its attack → Battle line; later,
+    cooldown elapsed again, it gives up a chase and resumes patrol →
+    Search line; an attack move ending back in the attack → no Battle
+    line.
+64. **Chat cooldown (Correction 6).** Profile with `NextChatTime` 25 on
+    Easy → two lines of that bot are at least 25 s apart.
+65. **Fresh brain (Correction 7).** Bot dies with hit/miss counters 1/2
+    (cycle 1, 5) → its first shot after the respawn is drawn from 0/0; a
+    bot that left an attack 1 s before dying rolls a reaction delay in
+    its next life's first attack.
+66. **Patrol stops (Correction 8).** Node arrival with a 0..99 draw of 20
+    → the bot stops 3 + U(0, 3) s; draw 30 → it runs on. First patrol
+    node of the k-th Bravo spawn = `PatrolNode_Bravo<k mod 8>`.
+67. **Throw (Correction 9).** Grenade count reaches 0 with the target at
+    800 u → the near-throw animation plays; no round is fired until the
+    weapon is switched back after it; the grenade starts at the hand.
+68. **Blind chase fire (Correction 10).** Chasing bot following a path,
+    target visible from the weapon and in reach → each round leaves along
+    the bot's torso facing; no round is offset 100 u sideways (no miss of
+    7.3).
+69. **Base point (Correction 11).** Geometry of Correction 11 → wall top
+    52 u: aimed at the `Torso` node with full accuracy; 60 u: head-only,
+    half accuracy, aimed at the `Head` node.
+
 ## Open questions
 
 1. **Local server frame rate.** Bot Deathmatch runs a local server inside
@@ -1509,3 +1766,38 @@ re-measure on the Steam install (build 25595979).
 24. **Hit-zone factor for AI shooters** (with Open question 6).
     **Answered:** bots get it, from the server's sphere test (7.3
     corrected); PvE AI does not; case 45.
+25. **Alarm levels** (Corrections 2, 3). The brain's major-alarm threshold
+    and each stimulus's alarm level (gunfire 75 by Open question 12;
+    footsteps not read) are data in the install's single-play AI files,
+    not in the reference code. They decide when a bot stops "looking only"
+    (Correction 2a) and which sound replaces an investigation
+    (Correction 3). Read them from the attribute data.
+26. **Per-profile chat cooldowns** (Correction 6). Which profiles have
+    `NextChatTime` 15, 20 or 25 (or none, 10) needs the install's profile
+    file.
+27. **Animation times** (Correction 9, 8.3). The throw animations' lengths
+    and throw-key times, the bots' third-person reload and weapon-select
+    animation lengths (no firing while they play). Our bots use the
+    player's reload and switch times; measure the bots' in game.
+28. **Torso tracking limits** (Correction 10). How far the torso turns
+    toward the target while running (the direction of blind chase fire).
+29. **Dodge check chance** (9.2). Each 0.25 s dodge check first rolls
+    against a brain "check chance" before testing "aiming at me"; the
+    spec's 0.7 / 0.3 is the shuffle/roll split. The check chance's value
+    (1 would make 9.2 exact as written) was not read.
+30. **Search after an investigation** (Correction 1). On reaching the
+    half-distance point, a majorly alarmed bot whose volume lies in a
+    searchable region targets the character that made the sound and
+    starts a search instead of going back to patrol. Whether the bot maps'
+    single region (3, "Regions") is searchable was not determined; if it
+    is, a bot that has heard a gunshot this life turns toward the shooter
+    at that point.
+31. **"Has ammo" in the weapon choice** (8.2). Whether the test counts the
+    rounds in the clip or only the reserve was not settled; it decides
+    whether a bot switches away from a weapon with a loaded clip and no
+    reserve.
+32. **Firing during a grenade dodge** (Correction 4). The dodge forces the
+    fire pose only when the target is **beyond** the held weapon's range
+    max; whether the shooting itself still fires inside that range
+    during the dodge's attack move was not settled. Watch a bot dodge a
+    grenade while you stand 500 u away in view.
