@@ -13,6 +13,7 @@
 //! go: docs/OBSERVABILITY.md, section 1.
 
 mod attachments;
+mod bot_chat;
 mod bound;
 mod camera;
 mod death_screen;
@@ -28,6 +29,7 @@ mod ui_system;
 
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
+    mod bot_chat_install;
     mod death_screen;
     mod install_ui;
     mod options;

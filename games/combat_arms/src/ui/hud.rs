@@ -85,10 +85,10 @@
 //!   it).
 //! - The weapon panel's class is the inventory class (the data's `slot`,
 //!   Q16); the fire-mode icon's `RapidFireCount` comes from the trigger
-//!   (`rapid_fire_count`); continuous fire isn't done, so never on. No
-//!   reader fills `ItemNames` yet (the shop items file's fields aren't
-//!   specified), so the panel shows the weapon data's name, which ours
-//!   copy from the item table.
+//!   (`rapid_fire_count`); continuous fire isn't done, so never on. The
+//!   install's weapon names fill `ItemNames` (`install::weapon_names`, the
+//!   item file's `ItemName` through the string table); a weapon without
+//!   one shows the weapon data's name, else its id as words (`plain_name`).
 //! - The held weapon's attachments (`game::attachments::CaMods`): the
 //!   sight's range readout (A9; the local player's view ray, not a
 //!   spectated player's) and the gauge sight's images (Corrections 13:
@@ -433,8 +433,20 @@ fn weapon_name(items: &ItemNames, catalog: &crate::weapon::data::WeaponCatalog, 
         catalog
             .get(id)
             .and_then(|d| d.hud.name.clone())
-            .unwrap_or_else(|| id.rsplit(':').next().unwrap_or(id).to_uppercase())
+            .unwrap_or_else(|| plain_name(id))
     })
+}
+
+/// A weapon id as a readable name when nothing names it: its last part
+/// in capitals, `_` and `-` as spaces (`combat_arms:beretta_m92fs` is
+/// `BERETTA M92FS`).
+pub fn plain_name(id: &str) -> String {
+    id.rsplit(':')
+        .next()
+        .unwrap_or(id)
+        .chars()
+        .map(|c| if c == '_' || c == '-' { ' ' } else { c.to_ascii_uppercase() })
+        .collect()
 }
 
 /// `CaHud::minigame` from the playing minigame's `MinigameHud`: its lines'
@@ -1135,7 +1147,14 @@ impl Plugin for CaHudPlugin {
             use crate::gameplay::{Gameplay, GameplayAppExt};
             app.default_gameplay(Gameplay::of(&crate::game::INFO));
         }
+        // The install's weapon names (the shop item file's) for the weapon
+        // panel and the kill feed; an app adds other games' guns' later.
+        let mut names = ItemNames::default();
+        if let Some(i) = &ui.install {
+            names.0.extend(i.weapon_names.iter().cloned());
+        }
         app.insert_resource(ui)
+            .insert_resource(names)
             .insert_resource(InstallHud(panels))
             .insert_resource(bound)
             .add_plugins(CaHudStatePlugin)

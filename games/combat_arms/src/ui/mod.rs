@@ -124,15 +124,19 @@ impl Plugin for CaUiPlugin {
 }
 
 /// A bot's chat line in the chat box (bots.md 10): "nickname : line", the
-/// line its string-table key resolved, for its team.
-fn bot_chat(
+/// line its string-table key resolved, for its team (our own text when
+/// the table lacks the key: `bots::chat::shown_line`).
+pub fn bot_chat(
     mut lines: MessageReader<crate::game::bots::chat::CaBotChat>,
     ui: Option<Res<CaUi>>,
     names: Query<(&Name, Option<&crate::core::Team>)>,
     mut out: MessageWriter<crate::client::chat::ChatLine>,
 ) {
     for l in lines.read() {
-        let line = ui.as_ref().map_or_else(|| l.key.clone(), |ui| ui.strings.resolve(&l.key));
+        let line = crate::game::bots::chat::shown_line(
+            |k| ui.as_ref().map_or_else(|| k.to_string(), |ui| ui.strings.resolve(k)),
+            &l.key,
+        );
         let (name, team) = names.get(l.bot).map_or(("bot".to_string(), None), |(n, t)| (n.to_string(), t.copied()));
         let mut chat = crate::client::chat::ChatLine::plain(format!("{name} : {line}"));
         chat.1 = team;

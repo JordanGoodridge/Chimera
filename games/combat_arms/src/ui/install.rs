@@ -39,6 +39,11 @@
 //! isn't read: the game applies none (ui_system.md R1, Corrections 8),
 //! textures are drawn by their own names in every language.
 //!
+//! - Weapon names (`weapon_names`): each weapon's display name, from the
+//!   shop item file's `WeaponItem` records (`ItemID` is the weapon's
+//!   record index, lobby.md "Item numbers"; `ItemName` a string id the
+//!   table resolves), by our weapon id; they fill the HUD's `ItemNames`.
+//!
 //! Known shortcuts: the per-user override file isn't read, nor the client
 //! event attributes' event table (the one texture-name swap the game
 //! has: no events are configured); the language comes
@@ -173,6 +178,8 @@ pub struct InstallUi {
     pub art: HashMap<String, Art>,
     /// The full map's legend lists (`[IconListN]`, radar_minimap.md F2).
     pub legend: Vec<crate::game::radar::legend::IconList>,
+    /// Display names of the install's weapons by our id (`weapon_names`).
+    pub weapon_names: Vec<(String, String)>,
 }
 
 impl std::fmt::Debug for InstallUi {
@@ -452,6 +459,7 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
     let options: Option<Vec<Layout>> = OPTION_FILES.iter().map(|f| layout(mount, f)).collect();
     let hud_layout = hud_layout(mount);
     let fonts = font_list(mount);
+    let weapon_names = strings.as_ref().map(|t| weapon_names(mount, t)).unwrap_or_default();
     let mut names: Vec<String> = [&hud, &menu, &indicator, &result, &team_list, &no_team_list, &loading, &kill_cam]
         .into_iter()
         .flatten()
@@ -520,7 +528,49 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         language,
         art,
         legend,
+        weapon_names,
     })
+}
+
+/// The shop item file (display data, attribute_data.md).
+pub const ITEMS_FILE: &str = "attributes/items.txt";
+
+/// The display names of the weapons the item file names, by our weapon
+/// id: each `WeaponItem` record's `ItemID` is the weapon record's index
+/// (lobby.md), its `ItemName` a string id resolved through `strings`. A
+/// weapon whose id doesn't resolve to text has none here.
+pub fn weapon_names_from(
+    weapons: &lithtech_formats::attributes::Document,
+    items: &lithtech_formats::attributes::Document,
+    strings: &Strings,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for item in items.records("WeaponItem") {
+        let id = item.int("itemid", -1);
+        let key = item.fixed_string("itemname", "");
+        if id < 0 || key.is_empty() {
+            continue;
+        }
+        let Some(w) = weapons.section(&format!("Weapon{id}")) else { continue };
+        let name = w.fixed_string("Name", "");
+        let text = strings.resolve(&key);
+        if name.is_empty() || text.is_empty() || text.starts_with('$') {
+            continue;
+        }
+        out.push((format!("combat_arms:{}", crate::game::data::slug(&name)), text));
+    }
+    out
+}
+
+/// `weapon_names_from` the install's two files; none when either can't
+/// be read.
+pub fn weapon_names(mount: &Mount, strings: &Strings) -> Vec<(String, String)> {
+    use lithtech_formats::attributes::Document;
+    let read = |f: &str| mount.read(f).ok().and_then(|b| Document::parse(&b).ok());
+    match (read(crate::game::data::attributes::WEAPONS_FILE), read(ITEMS_FILE)) {
+        (Some(w), Some(i)) => weapon_names_from(&w, &i, strings),
+        _ => Vec::new(),
+    }
 }
 
 /// The full map's legend lists (F2) from the large-map attribute file;

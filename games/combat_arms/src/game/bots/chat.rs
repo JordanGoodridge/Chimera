@@ -6,7 +6,8 @@
 //! percent (`math::chat_roll`). The line is the string-table key
 //! `$Message<set>_<Event>_<0..9>` (the set, 0-2, drawn once per bot), shown
 //! in the chat box for 10 s as "nickname : line" (`CaBotChat`; the front
-//! end resolves the key through the game's string table).
+//! end resolves the key through the game's string table, `shown_line`:
+//! our own text for a key the table lacks).
 //!
 //! Known shortcuts: the events played are a kill by the bot, its death
 //! and its respawn (the battle, search, grenade and mine events of the
@@ -60,6 +61,60 @@ impl Event {
             Event::Respawn | Event::Battle | Event::Search | Event::Grenade => 25,
         }
     }
+}
+
+/// The nine events' names in a line's string key, with our own lines for
+/// each (a key's number picks one): what a bot says when the install's
+/// string table has no text for its key (the shipped table defines only
+/// some of the sets) or there is no install.
+const BUILT_IN: [(&str, [&str; 5]); 9] = [
+    ("Kill", ["Got you!", "Nothing personal.", "Too easy.", "Better luck next time.", "One down."]),
+    ("Death", ["Ouch!", "Nice shot.", "I'll be back.", "That one hurt.", "Well played."]),
+    ("Respawn", ["Back in the fight!", "Here I come again.", "Round two.", "Ready.", "Let's go."]),
+    ("Battle", ["Contact!", "Engaging!", "Enemy spotted!", "Open fire!", "They're here!"]),
+    ("Search", ["Moving out.", "Keep your eyes open.", "Where are they?", "Searching.", "Stay sharp."]),
+    ("Grenade", ["Grenade!", "Take cover!", "Watch out!", "Incoming!", "Get down!"]),
+    ("Mine", ["Watch your step, a mine!", "Mine ahead!", "Careful, mines!", "Don't step there!", "Mine spotted!"]),
+    ("Conceal", ["Staying low.", "Hiding.", "Out of sight.", "Quiet now.", "Wait for it."]),
+    ("Escape", ["Falling back!", "Retreat!", "Get me out of here!", "Running!", "Pull back!"]),
+];
+
+/// The key `$Message<set>_<Event>_<n>` as (set, event, line).
+fn parse_key(key: &str) -> Option<(u8, &str, usize)> {
+    let rest = key.strip_prefix('$')?.strip_prefix("Message")?;
+    let mut parts = rest.splitn(3, '_');
+    let set = parts.next()?.parse().ok()?;
+    let event = parts.next()?;
+    let line = parts.next()?.parse().ok()?;
+    Some((set, event, line))
+}
+
+/// Our own text for a bot line's key (`$Message2_Death_9`): None for a
+/// key that isn't one of the nine events'.
+pub fn built_in_line(key: &str) -> Option<String> {
+    let (_, event, line) = parse_key(key)?;
+    let (_, lines) = BUILT_IN.iter().find(|(e, _)| e.eq_ignore_ascii_case(event))?;
+    Some(lines[line % lines.len()].to_string())
+}
+
+/// What a bot's line says: `lookup` (the game's string table, giving the
+/// key unchanged for an id it lacks) of the key, else of the same line in
+/// another chat set (the install's table holds only some sets), else
+/// `built_in_line`; never the `$` key itself (a key that matches no event
+/// shows as plain words).
+pub fn shown_line(lookup: impl Fn(&str) -> String, key: &str) -> String {
+    let found = |k: &str| Some(lookup(k)).filter(|t| !t.is_empty() && !t.starts_with('$'));
+    if let Some(t) = found(key) {
+        return t;
+    }
+    if let Some((_, event, line)) = parse_key(key) {
+        for set in 0..3 {
+            if let Some(t) = found(&format!("$Message{set}_{event}_{line}")) {
+                return t;
+            }
+        }
+    }
+    built_in_line(key).unwrap_or_else(|| key.trim_start_matches('$').replace('_', " "))
 }
 
 /// The chat cooldown by `BotLevel` (s).
