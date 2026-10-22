@@ -12,8 +12,10 @@
 //!   (`Teams`), what a counted death does (`on_death`), its time-out rule,
 //!   when the match ends, and `Hooks` on the steps: a round's setup, a
 //!   per-tick update and touches, the round over and its end, any death,
-//!   respawning, holding joiners, before the spawns, after a round, and
-//!   a live round's decision (`decide`).
+//!   respawning, holding joiners (with whether the game's player count
+//!   also holds them, `counts_joiners`), before the spawns, after a round,
+//!   a live round's decision (`decide`) and the match's end after a
+//!   warm-up (`warmup_end`; none: a warm-up never ends the match).
 //! - `Flow`: a game's side of the runtime, the same for all its modes:
 //!   how often the phases step (`frame`), who plays (`players`, in join
 //!   order) and how they respawn, the phases' lengths (`Span`), the
@@ -100,6 +102,15 @@ pub struct Hooks {
     /// (`Match::win`, `Match::end_without_winner`), which ends it in the
     /// same step.
     pub decide: fn(&mut World, bool),
+    /// After a warm-up's end (never a real round's: that is
+    /// `Mode::match_end`): the match's result if it is over, without the
+    /// round-win goal (an empty team, one player left). `NO_HOOKS`: the
+    /// match never ends after a warm-up (CS:S's rounds).
+    pub warmup_end: fn(&World) -> Option<Option<u8>>,
+    /// The game's own late-join count (`Flow` games: Combat Arms'
+    /// `late_join_wait`) also holds this mode's joiners; false: only
+    /// `holds_joiner` decides.
+    pub counts_joiners: bool,
 }
 
 /// No hooks.
@@ -115,6 +126,8 @@ pub const NO_HOOKS: Hooks = Hooks {
     after_round: |_| {},
     touches: |_| {},
     decide: |_, _| {},
+    warmup_end: |_| None,
+    counts_joiners: true,
 };
 
 /// A game mode: its data and hooks.

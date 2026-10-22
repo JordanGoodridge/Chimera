@@ -77,7 +77,12 @@ fn live(mode: &str) -> (Sim, Entity) {
     sim.app.world_mut().entity_mut(me).insert((LocalPlayer, Name::new("Me")));
     until_live(&mut sim);
     if m(&sim).warmup {
+        // An empty team after the warm-up ends the match: the other team
+        // keeps a player, Creed's, out of the way.
+        let foe = join(&mut sim, CREED);
+        sim.app.world_mut().entity_mut(foe).insert(Name::new("Foe"));
         past_warmup(&mut sim);
+        put(&mut sim, foe, at(-4000.0, -4000.0));
     }
     unprotect_all(&mut sim);
     (sim, me)

@@ -39,9 +39,11 @@
 //!   modes that do (`CaMode::warmup_revives`).
 //! - Joining (S1, `enter_game`, the network's `JoinRules::enter`): in a
 //!   mode that respawns, at once (S4's points, protected); in a round mode,
-//!   held until the next setup when the round is live and at least
-//!   `late_join_wait` players are in, else at once; with join in progress
-//!   off, held until the next setup.
+//!   held until the next setup when the real round has been live for a
+//!   whole second and at least `late_join_wait` characters (the joiner and
+//!   the observers counted) are in, else at once (a ticking bomb holds
+//!   from the count alone; Quarantine holds by its own rule once the hosts
+//!   are chosen); with join in progress off, held until the next setup.
 //! - Leaving (S10): the mode's rule (`CaMode::leaving`) runs while the
 //!   leaver still counts (`rules`' observer on the player's removal).
 //! - A fresh match (`new_game`: a map loaded, `ca_restart`): back to
@@ -68,7 +70,7 @@ use super::{
     state::{CaMatch, CaStats, Phase, plays},
 };
 use crate::{
-    core::{Connecting, Dead, FreezeTime, Health, Intent, MapLoads, Npc, Spectating, Team},
+    core::{Connecting, Dead, FreezeTime, Health, Intent, MapLoads, Npc, SimClock, Spectating, Team},
     mode::{Flow, FlowEvent, Span},
     map::ragdoll::{Ragdoll, Ragdolled},
 };
@@ -108,6 +110,15 @@ pub(super) fn number_players(add: On<Add, Team>, mut next: Local<u64>, mut comma
     if let Ok(mut e) = commands.get_entity(add.entity) {
         e.try_insert(CaJoinOrder(*next));
     }
+}
+
+/// Every character on the server that is no bot and not connecting, the
+/// observers and spectators included (the late-join count).
+fn characters(world: &mut World) -> u32 {
+    world
+        .query_filtered::<(), (With<Intent>, With<Health>, Without<Connecting>, Without<Npc>)>()
+        .iter(world)
+        .count() as u32
 }
 
 /// The living players of `team` in the match.
@@ -186,6 +197,10 @@ fn event(world: &mut World, event: FlowEvent) {
             let drops = current_mode(world).is_some_and(|m| m.death_drops);
             world.resource_mut::<super::super::inventory::CaDeathDrops>().0 = drops;
             objectives::clear_players(world);
+            // Damage from an earlier round never earns an assist
+            // (Corrections 2026-10-22, 5).
+            world.resource_mut::<CaDamageLog>().0.clear();
+            world.resource_mut::<super::free_for_all::CaKillsMade>().0 = 0;
             // The map's mode objects: the mission's controllers and start
             // triggers, then the round's (S3 steps 2 and 3, S15).
             map_step(world, missions::MapStep::MissionStart);
@@ -324,11 +339,18 @@ pub fn enter_game(world: &mut World, e: Entity) {
     let live = phase == Phase::Live && !world.resource::<CaMatch>().warmup;
     let started = !matches!(phase, Phase::Waiting | Phase::Starting);
     assign_team(world, e, false);
-    let in_game = players(world).iter().filter(|(p, _)| *p != e).count() as u32;
+    // Corrections (2026-10-22) 3, 4: the count includes the joiner (and
+    // observers); it holds from the live round's first whole second, or
+    // while a bomb ticks; a mode without the count (Quarantine) is held
+    // by its own rule alone.
+    let in_game = characters(world);
+    let m = world.resource::<CaMatch>();
+    let seconds = (world.resource::<SimClock>().now - m.live_since + 1e-9).floor() > 0.0;
     let no_joining = settings.join_in_progress == 0 || super::no_join_in_progress(mode.key);
+    let own = (mode.hooks.holds_joiner)(world);
+    let counted = in_game >= settings.late_join_wait && (seconds || own);
     let hold = (started && no_joining)
-        || (!mode.respawns && live && in_game >= settings.late_join_wait)
-        || (!mode.respawns && live && (mode.hooks.holds_joiner)(world));
+        || (!mode.respawns && live && if mode.hooks.counts_joiners { counted } else { own });
     if hold {
         spawns::hold(world, e);
     } else {

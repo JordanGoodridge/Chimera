@@ -383,6 +383,8 @@ fn row(name: &str, team: u8, kills: u32) -> ScoreRow {
         assists: 0,
         captures: 2,
         returns: 0,
+        detonations: 0,
+        defuses: 0,
         mission_points: 0,
         hunted_ms: 0,
         ping: Some(120),

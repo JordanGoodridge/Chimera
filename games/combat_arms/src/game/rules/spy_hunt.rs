@@ -13,10 +13,14 @@
 //!   (Bravo), everyone else a hunter; every dead player is revived, every
 //!   living one refilled (health, ammunition, armour); respawning stops. The hunters win by
 //!   killing the final spy, the final spy when no hunter is left alive.
-//! - Deaths: One Man Army's counts (`scoring::free_for_all`).
-//! - Leaving: in stage 2 the last of a side leaving gives the round to the
-//!   other; in stage 1 the round ends (no winner) when one player would be
-//!   left.
+//! - Deaths: One Man Army's counts (`scoring::free_for_all`); in stage 2
+//!   an enemy kill adds no kill and no death, and the final spy's death by
+//!   a hunter sets that hunter's mission points to the intel total and the
+//!   spy's to 0 (Corrections 2026-10-22, 11).
+//! - Leaving: in stage 2 the last of either side leaving, in stage 1 a
+//!   leaver who leaves one player or fewer, ends the round with no winner
+//!   set: the time-out rule gives it to the hunters and clears the spy's
+//!   points (Corrections 2026-10-22, 12).
 //! - Spawns: the `BountyHunter` points, one list.
 //!
 //! - Stage 2's clock (Open question 10, answered): the views on the map
@@ -42,7 +46,7 @@ use super::{
     objects::{CaMapObjects, FLAG_DIMS, ObjBox},
     scoring::free_for_all,
     spawns,
-    state::{ALPHA, BRAVO, CaMatch, Death, FFA_FIRST, FFA_LAST, Phase},
+    state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, FFA_FIRST, FFA_LAST, Phase},
 };
 use crate::core::{Dead, Died, Health, Team};
 
@@ -64,7 +68,7 @@ pub const MODE: CaMode = CaMode {
         teams: Teams::AllAlpha,
         on_death,
         // Open question 10, answered: the hunters (Alpha) in both stages.
-        time_out: |w| w.resource_mut::<CaMatch>().winner = Some(ALPHA),
+        time_out,
         match_end: |w| Some(w.resource::<CaMatch>().winner),
         hooks: Hooks {
             setup,
@@ -213,8 +217,40 @@ pub fn refill(world: &mut World, e: Entity) {
     world.entity_mut(e).insert(super::super::weapons::CaArmor::default());
 }
 
+/// The hunters win a time-out (and a round a leaver ended), clearing the
+/// final spy's mission points in stage 2 (Corrections 2026-10-22, 12).
+fn time_out(world: &mut World) {
+    world.resource_mut::<CaMatch>().winner = Some(ALPHA);
+    if world.resource::<CaObjectives>().stage == 2 {
+        clear_spy_points(world);
+    }
+}
+
+fn clear_spy_points(world: &mut World) {
+    for (e, t) in players(world) {
+        if t == BRAVO {
+            super::scoring::stats(world, e).mission_points = 0;
+        }
+    }
+}
+
 fn on_death(world: &mut World, d: &Death) {
-    free_for_all(world, d);
+    // Stage 2: an enemy kill adds no kill and no death to anyone (team
+    // kills, suicides and falls count as in stage 1); the final spy's
+    // death by a hunter sets that hunter's mission points to the total
+    // intel count and the spy's to 0 (Corrections 2026-10-22, 11).
+    if world.resource::<CaObjectives>().stage == 2 && d.kind == DeathKind::Enemy {
+        if d.victim_team == BRAVO
+            && let Some(k) = d.killer
+            && world.resource::<CaMatch>().winner.is_none()
+        {
+            let total = super::super::missions::spy_hunt(world).0 as i32;
+            super::scoring::stats(world, k).mission_points = total;
+            super::scoring::stats(world, d.victim).mission_points = 0;
+        }
+    } else {
+        free_for_all(world, d);
+    }
     if world.resource::<CaObjectives>().stage != 2 || world.resource::<CaMatch>().winner.is_some() {
         return;
     }
@@ -225,18 +261,15 @@ fn on_death(world: &mut World, d: &Death) {
     }
 }
 
-/// Stage 2: the last of a side leaving gives the round to the other;
-/// stage 1: one player left ends the round with no winner.
+/// Stage 2: the last player of either side leaving, or in stage 1 a leaver
+/// who leaves one player or fewer, ends the round with no winner set, so
+/// the time-out rule gives it to the hunters (Corrections 2026-10-22, 12).
 fn leaving(m: &mut CaMatch, l: &Leaver) {
-    if m.phase != Phase::Live || m.warmup || m.winner.is_some() {
+    if m.phase != Phase::Live || m.warmup || m.decided() {
         return;
     }
     let stage_two = l.team == BRAVO || l.others.contains(&BRAVO);
-    if stage_two {
-        if l.team_players <= 1 {
-            m.win(if l.team == BRAVO { ALPHA } else { BRAVO });
-        }
-    } else if l.players <= 2 {
-        m.end_without_winner();
+    if (stage_two && l.team_players <= 1) || (!stage_two && l.players <= 2) {
+        m.end_requested = true;
     }
 }

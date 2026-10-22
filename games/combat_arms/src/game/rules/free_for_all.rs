@@ -7,11 +7,13 @@
 //! - Deaths (S7's One Man Army column, `scoring::free_for_all`): an enemy
 //!   kill, killer kills +1 and victim deaths +1; own damage or no killer,
 //!   victim deaths and suicides +1 (never a negative kill).
-//! - Win: the first kill that brings a player to G kills ends the round,
-//!   that player (its team id) the winner; the match ends with it.
+//! - Win: a kill that brings a player to G kills ends the round, that
+//!   player (its team id) the winner (the later of two such kills in one
+//!   frame, Corrections 2026-10-22, 14); the match ends with it.
 //! - Leaving: with 2 or fewer players left (the leaver counted) the round
-//!   ends; the remaining player wins if the kills made in total are above
-//!   `leave_kill_share` (10 %) of G, rounded, else nobody.
+//!   ends; the remaining player wins if the kills made in total (every
+//!   kill of the round, the departed players' too: `CaKillsMade`) are
+//!   above `leave_kill_share` (10 %) of G, rounded, else nobody.
 //! - Spawns: the `FreeForAll` points in one list, shuffled once a map
 //!   load, one cursor (S4). Firing ends spawn protection (S6).
 //!
@@ -75,13 +77,20 @@ fn on_death(world: &mut World, d: &Death) {
     test_win(world, k);
 }
 
-/// The kill that brings `k` to G kills wins (the first only).
+/// Every enemy kill of the round, including those of players who already
+/// left (the leaving rule's "kills made", Corrections 2026-10-22, 14);
+/// back to 0 at each round's setup.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaKillsMade(pub u32);
+
+/// A kill that brings `k` to G kills or more (re)sets the winner, so of two
+/// such kills in one frame the later wins (Corrections 2026-10-22, 14).
 pub fn test_win(world: &mut World, k: Entity) {
     let goal = world.resource::<CaRuleSettings>().goal();
     let kills = world.get::<super::CaStats>(k).map_or(0, |s| s.kills);
     let Some(team) = world.get::<Team>(k).map(|t| t.0) else { return };
     let mut m = world.resource_mut::<CaMatch>();
-    if kills >= goal && m.winner.is_none() {
+    if kills >= goal {
         m.win(team);
     }
 }

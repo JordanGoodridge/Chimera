@@ -29,8 +29,11 @@
 //!   is empty; the winner more round wins, else Bravo (Quirk 4, test case
 //!   42).
 //! - Leaving: a living leaver who was the last of its team alive gives the
-//!   round to the other team (as Elimination Pro). Joiners are held while
-//!   a bomb ticks (S1).
+//!   round to the other team, also in the warm-up (which it ends early,
+//!   Corrections 2026-10-22, 2). Joiners are held while a bomb ticks, from
+//!   the joining count (S1).
+//! - The planter is credited the detonation also when the round is decided
+//!   with the bomb ticking, and S&D keeps no plant count (`bomb`).
 //! - Spawns: the `Doobic` points per team. Statistics: plants, detonations
 //!   and defuses.
 //!
@@ -45,12 +48,12 @@ use bevy::prelude::*;
 
 use super::{
     super::missions,
-    CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, RoundTime, SEARCH_DESTROY, ScoreOrder, Spawns, Teams,
+    CaMode, CaRuleSettings, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, SEARCH_DESTROY, ScoreOrder, Spawns, Teams,
     bomb,
     flow::alive,
     objectives,
-    scoring::stats,
-    state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, enemy},
+    scoring::round_mode,
+    state::{ALPHA, BRAVO, CaMatch, Death, Phase, enemy},
 };
 
 /// The bomb sites' and points' game type.
@@ -91,8 +94,8 @@ pub const MODE: CaMode = CaMode {
     fire_ends_protection: false,
     death_drops: true,
     panel: Panel::RoundWins,
-    order: ScoreOrder::Kills,
-    leaving: super::elimination::leaving,
+    order: ScoreOrder::ExplodeDefuse,
+    leaving,
     left: super::NO_LEFT,
 };
 
@@ -100,8 +103,10 @@ pub const MODE: CaMode = CaMode {
 pub const HOOKS: Hooks = Hooks {
     setup,
     update,
+    round_over: bomb::credit_planter,
     round_end: bomb::remove_all,
     holds_joiner: bomb::ticking,
+    warmup_end: match_end,
     ..NO_HOOKS
 };
 
@@ -153,25 +158,7 @@ fn update(world: &mut World) {
 }
 
 fn on_death(world: &mut World, d: &Death) {
-    match d.kind {
-        DeathKind::Enemy => {
-            if let Some(k) = d.killer {
-                stats(world, k).kills += 1;
-            }
-            stats(world, d.victim).deaths += 1;
-        }
-        DeathKind::TeamKill => {
-            if let Some(k) = d.killer {
-                stats(world, k).friendly_kills += 1;
-            }
-        }
-        DeathKind::Suicide => {
-            let mut s = stats(world, d.victim);
-            s.deaths += 1;
-            s.suicides += 1;
-        }
-        DeathKind::NoKiller => stats(world, d.victim).deaths += 1,
-    }
+    round_mode(world, d);
     if world.resource::<CaMatch>().winner.is_some() {
         return;
     }
@@ -185,6 +172,15 @@ fn on_death(world: &mut World, d: &Death) {
     };
     if let Some(w) = winner {
         world.resource_mut::<CaMatch>().win(w);
+    }
+}
+
+/// A living leaver, the last of its team alive, gives the round to the
+/// other team (Corrections 2026-10-22, 2: also in the warm-up, which it
+/// ends early).
+pub fn leaving(m: &mut CaMatch, l: &Leaver) {
+    if m.phase == Phase::Live && m.winner.is_none() && l.alive && l.team_alive <= 1 {
+        m.win(enemy(l.team));
     }
 }
 

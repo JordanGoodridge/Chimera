@@ -17,7 +17,9 @@
 //!   to another is summed while the victim lives (`CaDamageLog`; heals
 //!   by the victim's enemies take it back, `heal`); an enemy kill gives
 //!   every other enemy damager with at least half the victim's maximum
-//!   health one assist; any death clears the victim's sums.
+//!   health one assist; a death by another player's damage clears the
+//!   victim's sums (a suicide or a fall leaves them), and every mission
+//!   start clears all of them (`flow`).
 //! - Friendly fire (S8): off, Chimera's team rule refuses a teammate's
 //!   damage (`core::FriendlyFire` 0; your own is never refused); on, in
 //!   the modes that scale it (`CaMode::ff_scaled`), a teammate's bullets,
@@ -174,7 +176,12 @@ fn on_died(world: &mut World, d: &Died) {
     // The mode's objects (a carried flag, bomb or intel dropped), in every
     // phase.
     (mode.hooks.died)(world, d);
-    clear_log(world, victim);
+    // Only another player's killing blow drops the victim's sums; a
+    // suicide or a fall leaves them for the next life (Corrections
+    // 2026-10-22, 5).
+    if matches!(kind, super::state::DeathKind::Enemy | super::state::DeathKind::TeamKill) {
+        clear_log(world, victim);
+    }
 }
 
 /// S7's assists for an enemy kill.
@@ -197,6 +204,34 @@ fn give_assists(world: &mut World, death: &Death) {
 
 fn clear_log(world: &mut World, victim: Entity) {
     world.resource_mut::<CaDamageLog>().0.retain(|(v, _), _| *v != victim);
+}
+
+/// S7's S&D column, which Bombing Run, Seize and Secure and Squad Match 2
+/// count by too (Corrections 2026-10-22, 6): enemy kill, killer kills +1
+/// and victim deaths +1; team kill, killer friendly kills +1 and no death;
+/// own damage, victim deaths and suicides +1 and no friendly kill; no
+/// killer, victim deaths +1 and no suicide.
+pub fn round_mode(world: &mut World, d: &Death) {
+    use super::state::DeathKind;
+    match d.kind {
+        DeathKind::Enemy => {
+            if let Some(k) = d.killer {
+                stats(world, k).kills += 1;
+            }
+            stats(world, d.victim).deaths += 1;
+        }
+        DeathKind::TeamKill => {
+            if let Some(k) = d.killer {
+                stats(world, k).friendly_kills += 1;
+            }
+        }
+        DeathKind::Suicide => {
+            let mut s = stats(world, d.victim);
+            s.deaths += 1;
+            s.suicides += 1;
+        }
+        DeathKind::NoKiller => stats(world, d.victim).deaths += 1,
+    }
 }
 
 /// S7's personal counts of the team respawn modes (TDM's and capture the
@@ -242,6 +277,10 @@ pub fn free_for_all(world: &mut World, d: &Death) {
         DeathKind::Enemy => {
             if let Some(k) = d.killer {
                 stats(world, k).kills += 1;
+                // The round's kills made, leavers' included.
+                if let Some(mut made) = world.get_resource_mut::<super::free_for_all::CaKillsMade>() {
+                    made.0 += 1;
+                }
             }
             stats(world, d.victim).deaths += 1;
         }

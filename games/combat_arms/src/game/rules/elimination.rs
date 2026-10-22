@@ -15,9 +15,12 @@
 //!   kills; else fewer round deaths; else no winner.
 //! - Match end, after each real round: a team has G round wins, or a team
 //!   is empty; the winner the non-empty team when one is empty, else more
-//!   round wins, else Bravo (Quirk 4).
-//! - Leaving: a living leaver who was the last of its team alive gives the
-//!   round to the other team.
+//!   round wins, else Bravo (Quirk 4). After the warm-up too, minus the
+//!   round-win goal (`Hooks::warmup_end`, Corrections 2026-10-22, 1).
+//! - Leaving (`leaving`, in the warm-up too): the only player of a team
+//!   leaving ends the round (the time-out rule picks the other team); a
+//!   living leaver who was the last of its team alive gives the round to
+//!   the other team.
 //! - Warm-up (S9, `TrainingTimeLimit` 10 s): nothing counts, the dead
 //!   revived every 5 s. Joiners are held until the next round when the
 //!   round is live with 3 or more players in (S1). Spawns: the
@@ -36,7 +39,7 @@
 use bevy::prelude::*;
 
 use super::{
-    CaMode, CaRuleSettings, ELIMINATION_PRO, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, TEAM_POINTS, Teams,
+    CaMode, CaRuleSettings, ELIMINATION_PRO, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, TEAM_POINTS, Teams,
     flow::alive,
     scoring::stats,
     state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, Phase, enemy, side},
@@ -57,7 +60,10 @@ pub const MODE: CaMode = CaMode {
         on_death,
         time_out,
         match_end,
-        hooks: NO_HOOKS,
+        hooks: Hooks {
+            warmup_end: match_end,
+            ..NO_HOOKS
+        },
     },
     ff_scaled: true,
     assists: true,
@@ -148,9 +154,19 @@ fn match_end(world: &World) -> Option<Option<u8>> {
     Some(Some(winner))
 }
 
-/// A living leaver, the last of its team alive: the other team wins.
+/// The leaving rule (Corrections 2026-10-22, 2; no phase or warm-up test
+/// beyond "live"; a request in the warm-up ends it early, no winner): the
+/// only player of a team leaving, alive or dead, asks for the round's end
+/// (the time-out rule picks the other team, which has living players);
+/// otherwise a living leaver, the last of its team alive, gives the round
+/// to the other team.
 pub fn leaving(m: &mut CaMatch, l: &Leaver) {
-    if m.phase == Phase::Live && !m.warmup && m.winner.is_none() && l.alive && l.team_alive <= 1 {
+    if m.phase != Phase::Live || m.winner.is_some() {
+        return;
+    }
+    if l.team_players <= 1 {
+        m.end_requested = true;
+    } else if l.alive && l.team_alive <= 1 {
         m.win(enemy(l.team));
     }
 }

@@ -270,6 +270,9 @@ pub enum Panel {
 pub enum ScoreOrder {
     /// Kills, then fewer deaths.
     Kills,
+    /// Kills, then fewer deaths; the column shows detonations and defuses
+    /// (S&D, Bombing Run).
+    ExplodeDefuse,
     /// Captures, returns, kills, fewer deaths.
     Captures,
     /// Mission points, kills, fewer deaths.
@@ -510,6 +513,7 @@ fn on_leave(
     settings: Option<Res<CaRuleSettings>>,
     role: Option<Res<crate::core::NetRole>>,
     clock: Option<Res<SimClock>>,
+    kills_made: Option<Res<free_for_all::CaKillsMade>>,
     mut state: Option<ResMut<CaMatch>>,
     mut commands: Commands,
 ) {
@@ -535,7 +539,7 @@ fn on_leave(
         team_alive: mates.filter(|(_, _, h, d, _)| living(h, *d)).count(),
         alive: living(health, dead),
         players: in_play.len(),
-        total_kills: in_play.iter().map(|(.., s)| s.map_or(0, |s| s.kills)).sum(),
+        total_kills: kills_made.map_or(0, |k| k.0),
         others: in_play
             .iter()
             .filter(|(e, ..)| *e != leave.entity)
@@ -609,6 +613,7 @@ impl Plugin for CaRulesPlugin {
             .init_resource::<flow::CaMissionFrames>()
             .init_resource::<spawns::CaSpawnCursors>()
             .init_resource::<scoring::CaDamageLog>()
+            .init_resource::<free_for_all::CaKillsMade>()
             .init_resource::<objects::CaMapObjects>()
             .init_resource::<objectives::CaObjectives>()
             .init_resource::<objectives::CaDraws>()

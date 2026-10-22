@@ -38,6 +38,9 @@ pub struct ScoreRow {
     pub assists: u32,
     pub captures: u32,
     pub returns: u32,
+    /// S&D's and Bombing Run's "Explode / Defuse" column.
+    pub detonations: u32,
+    pub defuses: u32,
     pub mission_points: i32,
     /// Hunted's time hunted, ms.
     pub hunted_ms: u32,
@@ -49,9 +52,20 @@ impl ScoreRow {
     /// The mode's column in `order`, if it has one.
     pub fn mode_column(&self, order: ScoreOrder) -> Option<i64> {
         match order {
-            ScoreOrder::Kills => None,
+            ScoreOrder::Kills | ScoreOrder::ExplodeDefuse => None,
             ScoreOrder::Captures => Some(self.captures as i64),
             ScoreOrder::MissionPoints | ScoreOrder::MissionOnly | ScoreOrder::Hunted => Some(self.mission_points as i64),
+        }
+    }
+}
+
+impl ScoreRow {
+    /// The mode's column as shown (S13): the number, or S&D's and Bombing
+    /// Run's "detonations / defuses" (Corrections 2026-10-22, 13).
+    pub fn mode_cell(&self, order: ScoreOrder) -> Option<String> {
+        match order {
+            ScoreOrder::ExplodeDefuse => Some(format!("{} / {}", self.detonations, self.defuses)),
+            _ => self.mode_column(order).map(|v| v.to_string()),
         }
     }
 }
@@ -77,7 +91,7 @@ pub fn mode_column_title(key: &str) -> Option<&'static str> {
 pub fn sort_by(rows: &mut [ScoreRow], order: ScoreOrder) {
     let kills = |a: &ScoreRow, b: &ScoreRow| b.kills.cmp(&a.kills).then(a.deaths.cmp(&b.deaths));
     match order {
-        ScoreOrder::Kills => rows.sort_by(kills),
+        ScoreOrder::Kills | ScoreOrder::ExplodeDefuse => rows.sort_by(kills),
         ScoreOrder::Captures => rows.sort_by(|a, b| {
             b.captures
                 .cmp(&a.captures)
@@ -135,6 +149,8 @@ pub fn rows(world: &mut World) -> Vec<ScoreRow> {
                 assists: s.assists,
                 captures: s.captures,
                 returns: s.returns,
+                detonations: s.detonations,
+                defuses: s.defuses,
                 mission_points: s.mission_points,
                 hunted_ms: s.hunted_ms,
                 ping: net.map(|n| n.ping as u32),
@@ -157,6 +173,8 @@ mod tests {
             assists: 0,
             captures: 0,
             returns: 0,
+            detonations: 0,
+            defuses: 0,
             mission_points: 0,
             hunted_ms: 0,
             ping: None,

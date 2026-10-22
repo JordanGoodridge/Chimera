@@ -561,6 +561,8 @@ fn case_19_scoreboard_sort() {
         assists: 0,
         captures: 0,
         returns: 0,
+        detonations: 0,
+        defuses: 0,
         mission_points: mp,
         hunted_ms: 0,
         ping: None,
@@ -646,8 +648,10 @@ fn default_order_fights() {
 /// spot at the world origin means the leader (Quirk 4).
 #[test]
 fn hold_position() {
-    // No enemy: nothing to fight.
-    let (mut sim, a, _b) = hg(1, 0);
+    // No enemy in reach: nothing to fight (the other team keeps a player, an
+    // empty team ending the match, but far away).
+    let (mut sim, a, b) = hg(1, 1);
+    put(&mut sim, b[0], Vec3::new(900.0, 1.0, 900.0));
     let merc = hire(&mut sim, a[0], 0).unwrap();
     mercs::set_order(sim.app.world_mut(), a[0], MercOrder::Hold);
     let spot = sim.position(merc);
