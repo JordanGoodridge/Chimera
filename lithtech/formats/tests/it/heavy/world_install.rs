@@ -12,7 +12,7 @@ use lithtech_formats::{
     rez::{RezArchive, RezKeys},
     world::{self, Location, World, shader},
 };
-use source_formats::fs::FileSource;
+use chimera_vfs::FileSource;
 
 use super::rez_install::{game_dir, keys};
 

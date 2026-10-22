@@ -9,7 +9,7 @@ use lithtech_formats::{
     dtx::{Dtx, Format},
     rez::{RezArchive, RezKeys},
 };
-use source_formats::fs::FileSource;
+use chimera_vfs::FileSource;
 
 use super::rez_install::game_dir;
 

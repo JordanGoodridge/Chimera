@@ -12,7 +12,7 @@ use lithtech_formats::{
     ltb::{self, Channel, Mesh, Model},
     rez::{RezArchive, RezKeys},
 };
-use source_formats::fs::FileSource;
+use chimera_vfs::FileSource;
 
 use super::rez_install::{game_dir, keys};
 

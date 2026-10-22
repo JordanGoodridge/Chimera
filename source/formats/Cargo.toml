@@ -14,6 +14,7 @@ doctest = false
 # Pure data: what a format needs to be read and nothing else. No Bevy, no
 # avian, no `mashup` (checks/tests/it/architecture.rs checks it).
 [dependencies]
+chimera_vfs.workspace = true
 glam.workspace = true
 lzma-rs.workspace = true
 symphonia.workspace = true

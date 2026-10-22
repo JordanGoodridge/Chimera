@@ -1,7 +1,8 @@
 //! A read-only virtual filesystem over a game's archives and loose files:
-//! `FileSource` (an archive such as `vpk::Vpk`, or a `LooseDir`), `Mount`
-//! (layers searched in order, like a game's search path) and path
-//! normalization.
+//! `FileSource` (an archive such as `source_formats`' `vpk::Vpk` or
+//! `lithtech_formats`' `.rez`, or a `LooseDir`), `Mount` (layers searched in
+//! order, like a game's search path) and path normalization. Neutral and
+//! dependency-free: it sits under both format crates and Chimera's `mount`.
 
 use std::{
     collections::BTreeMap,

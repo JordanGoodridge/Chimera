@@ -13,11 +13,11 @@ doctest = false
 
 # Pure data, like `source_formats`: what a format needs to be read and
 # nothing else. No Bevy, avian, Chimera's crates, a game or `mashup`
-# (checks/tests/it/architecture.rs checks it). `source_formats` only for
-# the VFS (`fs::FileSource`, `Mount`), which Chimera's `mount` re-exports,
+# (checks/tests/it/architecture.rs checks it). `chimera_vfs` only for
+# the VFS (`FileSource`, `Mount`), which Chimera's `mount` re-exports,
 # so a `.rez` archive is a mount layer like a VPK.
 [dependencies]
-source_formats.workspace = true
+chimera_vfs.workspace = true
 # `.rez` payloads (specs/combat_arms/rez_archive.md, "Encryption"): V2
 # archives are AES-256-CBC (CBC and the plain tail are ours, in
 # rez_cipher.rs). V1's Twofish is ours too (table-driven; RustCrypto's

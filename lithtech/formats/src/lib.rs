@@ -20,7 +20,7 @@
 //!   tree, weight sets, child models, animations, sockets and bindings,
 //!   bounds-checked.
 //! - `rez`: `.rez` resource archives (header, directory, file data) as a
-//!   mount layer (`source_formats::fs::FileSource`), and a folder of them
+//!   mount layer (`chimera_vfs::FileSource`), and a folder of them
 //!   as a `Mount`.
 //! - `rez_cipher`: the payload ciphers, chosen by the archive's title (V1
 //!   Twofish-CBC, V2 AES-256-CBC) with keys supplied at run time; keys
