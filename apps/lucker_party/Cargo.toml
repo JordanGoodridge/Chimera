@@ -1,0 +1,76 @@
+[package]
+name = "lucker_party"
+version = "0.1.0"
+description = "Lucker Party: minigames (data on Chimera's mode runtime) played with both games' parts, CS:S's and Combat Arms' maps and guns"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The app composes the games as libraries (`cs_source` for its maps, map
+# logic and guns, `combat_arms` for its soldiers, movement, HUD and
+# guns) with the original minigames (`originals`) on Chimera; never
+# another app (checks/tests/it/architecture.rs). The presentation, the
+# client shell and Combat Arms' front end are behind the default feature
+# `present`: the dedicated server (apps/lucker_party_server) builds
+# without them.
+[dependencies]
+chimera_core.workspace = true
+chimera_world.workspace = true
+chimera_sim.workspace = true
+chimera_net.workspace = true
+chimera_present = { workspace = true, optional = true }
+chimera_client = { workspace = true, optional = true }
+cs_source.workspace = true
+source_logic.workspace = true
+combat_arms.workspace = true
+originals.workspace = true
+avian3d.workspace = true
+bevy.workspace = true
+workspace-hack.workspace = true
+
+# The tests aim with the test kit's readers (`chimera_sim::testkit`).
+[dev-dependencies]
+chimera_sim = { workspace = true, features = ["testkit"] }
+
+# The game: its window, the presentation, the client shell and Combat
+# Arms' front end.
+[[bin]]
+name = "lucker_party"
+path = "src/main.rs"
+test = false
+required-features = ["present"]
+
+# Its integration tests (tests/it/): minigames on the composed
+# simulation, headless (`heavy::`: the user's installs).
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[features]
+default = ["present"]
+
+# The presentation (chimera_present), the client shell (chimera_client)
+# and Combat Arms' front end (`combat_arms/ui`): everything but the
+# dedicated server.
+present = ["dep:chimera_present", "dep:chimera_client", "combat_arms/ui"]
+
+# Faster iteration: link Bevy as a dynamic library, serve the remote
+# protocol. `cargo run --features dev --bin lucker_party`. Never for
+# release builds.
+dev = [
+    "chimera_core/dev",
+    "chimera_world/dev",
+    "chimera_sim/dev",
+    "chimera_net/dev",
+    "chimera_present?/dev",
+    "chimera_client?/dev",
+    "cs_source/dev",
+    "source_logic/dev",
+    "combat_arms/dev",
+    "originals/dev",
+]

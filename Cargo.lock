@@ -4812,6 +4812,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "lucker_party"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "combat_arms",
+ "cs_source",
+ "originals",
+ "source_logic",
+ "workspace-hack",
+]
+
+[[package]]
 name = "lzma"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5665,6 +5684,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c7c9e0d9b23589f26070720bac724174bfec1083e82f7854cdd0267518343c0"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "originals"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chimera_sim",
+ "workspace-hack",
 ]
 
 [[package]]

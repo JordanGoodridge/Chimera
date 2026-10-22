@@ -17,6 +17,8 @@ mashup (repository root: src/, tests/it/)   `dump`; `cs_source_app` at the old p
 cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ its version), games::load_map
   |    combat_arms_app (apps/combat_arms/)   the Combat Arms app: its game binary (beside, not above, CS:S)
   |    mashup_demo (apps/mashup_demo/)   the first mashup app: CS:S's maps played as Combat Arms (both games as libraries)
+  |    lucker_party (apps/lucker_party/)   Lucker Party: minigames with both games' parts (`present`: the client)
+  |    originals (games/originals/)   the original minigames: definitions (minigames/) and rules hooks, Chimera only
   |    combat_arms_server (apps/combat_arms_server/)   Combat Arms' dedicated server: the game without `ui`
   |    combat_arms (games/combat_arms/)   Combat Arms' skeleton on Chimera, like cs_source; `ui` its HUD
   |
@@ -203,6 +205,19 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   map logic (`source_logic`) and its guns alone (`CsGunsPlugin`), never
   its rules or front end. docs/plans/active/mashup-demo.md has what was
   generalised and what's left.
+- `lucker_party` (apps/lucker_party/) is Lucker Party (binary
+  `lucker_party`): minigames (`chimera_sim::minigame`, definitions as data
+  on the mode runtime) played with both games' parts, composed as the
+  mashup demo composes them (Combat Arms' simulation, CS:S's maps, logic
+  and guns) plus the minigame runtime and `originals`; it starts the
+  minigame `+minigame <id>` names (the gun game without one) on its
+  pool's first map. Its presentation, shell and Combat Arms' front end are
+  behind its default feature `present`. Never another app (checked).
+- `originals` (games/originals/) is Lucker Party's original minigames:
+  their definitions, our own TOML in the repository's `minigames/`
+  (compiled in, parsed at run time), and the rules hooks Chimera's
+  built-in modules don't cover. It uses Chimera only: a game's parts
+  reach it by id through Chimera's registries (checked; review A5).
 - `cs_source_server` (apps/cs_source_server/) is the dedicated server
   (`cs_source_server`): `cs_source_app` without `present`, so built alone it
   links no render or audio code (checked:

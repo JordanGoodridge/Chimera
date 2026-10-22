@@ -917,6 +917,13 @@ fn workspace_crates() {
     const MASHUP_APP: &str = "is a mashup app (docs/ARCHITECTURE.md, \"Crates\"): it composes games as \
         libraries (`cs_source`, `combat_arms`) on Chimera, never another app: what it shares with a game's \
         own app moves into the game or Chimera (a map loader, a dressing, a hook), not across.";
+    const ORIGINALS: &str = "is Lucker Party's original minigames (docs/ARCHITECTURE.md, \"Crates\"; \
+        architecture-review.md A5): Chimera only. A game's parts reach a minigame through Chimera's slots and \
+        registries (a weapon by id from the catalogue, a movement by id), filled by the app that composes the \
+        games, never through a game crate or an app.";
+    const PARTY_APP: &str = "is Lucker Party's glue (docs/ARCHITECTURE.md, \"Crates\"): the games as \
+        libraries, the original minigames and Chimera composed into the party, never another app: what it \
+        shares with one moves into a game or Chimera, not across.";
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
         into the client's side or behind `cs_source_app`'s `present`.";
@@ -944,6 +951,8 @@ fn workspace_crates() {
                 "cs_source",
                 "combat_arms",
                 "games",
+                "originals",
+                "lucker_party",
                 "workspace-hack",
             ],
             PURE_DATA,
@@ -965,24 +974,26 @@ fn workspace_crates() {
                 "cs_source",
                 "combat_arms",
                 "games",
+                "originals",
+                "lucker_party",
                 "workspace-hack",
             ],
             PURE_DATA,
         ),
-        ("chimera/core", &["mashup", "cs_source", "combat_arms", "games"], ENGINE),
+        ("chimera/core", &["mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"], ENGINE),
         (
             "chimera/world",
-            &["chimera_present", "mashup", "cs_source", "combat_arms", "games"],
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
             WORLD,
         ),
         (
             "chimera/present",
-            &["mashup", "cs_source", "combat_arms", "games"],
+            &["mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
             PRESENT,
         ),
         (
             "chimera/sim",
-            &["chimera_present", "mashup", "cs_source", "combat_arms", "games"],
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
             SIM,
         ),
         (
@@ -994,6 +1005,8 @@ fn workspace_crates() {
                 "cs_source",
                 "combat_arms",
                 "games",
+                "originals",
+                "lucker_party",
             ],
             NET,
         ),
@@ -1005,6 +1018,8 @@ fn workspace_crates() {
                 "cs_source_app",
                 "mashup",
                 "combat_arms",
+                "originals",
+                "lucker_party",
             ],
             GAME,
         ),
@@ -1017,20 +1032,41 @@ fn workspace_crates() {
                 "cs_source",
                 "combat_arms_app",
                 "mashup",
+                "originals",
+                "lucker_party",
             ],
             GAME,
         ),
         (
             "source/logic",
-            &["chimera_present", "mashup", "cs_source", "combat_arms", "games"],
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
             SOURCE,
         ),
         ("apps/cs_source", &["mashup", "combat_arms"], APP),
         ("apps/combat_arms", &["mashup", "cs_source", "source_logic"], CA_APP),
         (
             "apps/mashup_demo",
-            &["mashup", "cs_source_app", "combat_arms_app"],
+            &["mashup", "cs_source_app", "combat_arms_app", "lucker_party"],
             MASHUP_APP,
+        ),
+        (
+            "games/originals",
+            &[
+                "chimera_present",
+                "chimera_client",
+                "source_",
+                "lithtech_",
+                "cs_source",
+                "combat_arms",
+                "mashup",
+                "lucker_party",
+            ],
+            ORIGINALS,
+        ),
+        (
+            "apps/lucker_party",
+            &["mashup", "cs_source_app", "combat_arms_app"],
+            PARTY_APP,
         ),
         (
             "chimera/tools",
@@ -1046,6 +1082,8 @@ fn workspace_crates() {
                 "cs_source",
                 "combat_arms",
                 "games",
+                "originals",
+                "lucker_party",
                 "mashup",
             ],
             TOOLS,
@@ -1060,6 +1098,8 @@ fn workspace_crates() {
                 "cs_source",
                 "combat_arms",
                 "games",
+                "originals",
+                "lucker_party",
                 "mashup",
                 "workspace-hack",
             ],
@@ -1102,6 +1142,8 @@ fn workspace_crates() {
                 "cs_source",
                 "combat_arms",
                 "games",
+                "originals",
+                "lucker_party",
             ],
             CLIENT,
         ),

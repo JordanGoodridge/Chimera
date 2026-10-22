@@ -26,11 +26,13 @@ members = [
     "games/cs_source",
     "games/cs_source/tools",
     "games/combat_arms",
+    "games/originals",
     "apps/cs_source",
     "apps/cs_source_server",
     "apps/combat_arms",
     "apps/combat_arms_server",
     "apps/mashup_demo",
+    "apps/lucker_party",
     "checks",
 ]
 default-members = [
@@ -52,11 +54,13 @@ default-members = [
     "games/cs_source",
     "games/cs_source/tools",
     "games/combat_arms",
+    "games/originals",
     "apps/cs_source",
     "apps/cs_source_server",
     "apps/combat_arms",
     "apps/combat_arms_server",
     "apps/mashup_demo",
+    "apps/lucker_party",
     "checks",
 ]
 resolver = "3"
@@ -88,6 +92,12 @@ cs_source = { path = "games/cs_source" }
 # Combat Arms as a game crate (games/combat_arms): its skeleton, filled
 # from specs/combat_arms/ (docs/plans/active/combat-arms.md).
 combat_arms = { path = "games/combat_arms" }
+# Lucker Party's original minigames (games/originals): their definitions
+# (minigames/) and rules hooks, on Chimera only.
+originals = { path = "games/originals" }
+# Lucker Party's glue; without its default `present` here so its dedicated
+# server can leave the presentation out.
+lucker_party = { path = "apps/lucker_party", default-features = false }
 # The layers' tools (docs/ARCHITECTURE.md, "Crates"): Chimera's (the
 # perf gate, image comparison) and Source's (RCON) libraries, for the
 # tools above them.

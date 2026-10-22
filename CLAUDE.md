@@ -68,6 +68,7 @@ cargo run --features dev --bin combat_arms_server -- +map combat_arms:warehouse 
 cargo run --profile playtest   # optimized, quick to rebuild; for playtesting
 cargo run --features dev --bin combat_arms   # Combat Arms' skeleton (greybox)
 cargo run --features dev --bin mashup_demo   # mashup: de_dust2 played as Combat Arms
+cargo run --features dev --bin lucker_party -- +minigame originals:gun_game_dust2   # Lucker Party
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
 cargo run -q -p repo_checks --bin docs_index   # regenerate docs/modules.md and the
                                    # debt list after editing a `//!` doc

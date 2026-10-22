@@ -142,12 +142,28 @@ cargo run --release -p mashup_demo -- --map cs_source:de_inferno +MaxPlayer 7
 
 Combat Arms' own maps work too (`--map combat_arms:warehouse`).
 
+## Lucker Party
+
+Minigames made of both games' parts, each described by a data file in
+`minigames/`. The first is Gun Game on de_dust2: every player for
+themselves up a ladder of CS:S's and Combat Arms' guns, a rung a kill, a
+knife death costing a rung, the last gun's kill winning. It needs both
+games installed, like the mashup demo:
+
+```bash
+cargo run --release -p lucker_party                    # the gun game on de_dust2
+cargo run --release -p lucker_party -- --map combat_arms:warehouse
+```
+
 ## How it is built
 
 ```
 apps/       the programs: apps/cs_source (the game), apps/cs_source_server,
-            apps/combat_arms, apps/combat_arms_server and apps/mashup_demo
-games/      each game as a library of parts: games/cs_source
+            apps/combat_arms, apps/combat_arms_server, apps/mashup_demo
+            and apps/lucker_party
+games/      each game as a library of parts: games/cs_source,
+            games/combat_arms; games/originals, Lucker Party's own
+minigames/  Lucker Party's minigames as data
 source/     Source engine file formats and map logic, shared by Source games
 chimera/    the engine: simulation, physics, rendering, sound, network, UI shell
 specs/      behaviour specs: how the original games work, in plain words

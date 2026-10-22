@@ -32,6 +32,13 @@ Change a file's `//!` doc with the code, then run
 
 - `apps/cs_source_server/src/main.rs`: The dedicated server: the simulation and `net` with no window, Source's srcds in spirit
 
+## apps/lucker_party
+
+- `apps/lucker_party/build.rs`: Stamps the build with its git commit (`CHIMERA_GIT`) and version (`CHIMERA_VERSION`): `lucker_party::BUILD` and `VERSION`, for bug reports and the...
+- `apps/lucker_party/src/client.rs`: The client's side of Lucker Party (feature `present`): the shell with this app's hooks and Combat Arms' HUD (`ClientPlugin`), and the command line...
+- `apps/lucker_party/src/lib.rs`: Lucker Party (apps/lucker_party, crate `lucker_party`, binary `lucker_party`; docs/plans/active/architecture-review.md L2): minigames, each a data...
+- `apps/lucker_party/src/main.rs`: The Lucker Party game binary (`lucker_party`): a minigame (the gun game on de_dust2 without `+minigame`) played as Combat Arms' soldiers with both...
+
 ## apps/mashup_demo
 
 - `apps/mashup_demo/build.rs`: Stamps the build with its git commit (`CHIMERA_GIT`) and version (`CHIMERA_VERSION`): `mashup_demo::BUILD` and `VERSION`, for bug reports and the...
@@ -592,6 +599,10 @@ Change a file's `//!` doc with the code, then run
 - `games/cs_source/tools/src/bin/refcmp.rs`: Reference comparison against real Counter-Strike: Source
 - `games/cs_source/tools/src/hudcmp.rs`: `refcmp hudcmp`: the HUD compared panel by panel between CS:S captures and ours (docs/OBSERVABILITY.md, "Comparing the HUD")
 - `games/cs_source/tools/src/lib.rs`: Counter-Strike: Source's tools (docs/OBSERVABILITY.md):
+
+## games/originals
+
+- `games/originals/src/lib.rs`: Lucker Party's original minigames (games/originals, crate `originals`; docs/plans/active/architecture-review.md D2, A5): their definitions, our...
 
 ## lithtech/formats
 

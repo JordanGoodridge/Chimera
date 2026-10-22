@@ -1400,7 +1400,7 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | # | Item | Depends on | Size |
 |---|---|---|---|
 | L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (stages 1-2 done; CS:S open) |
-| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (stage 1 done) |
+| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (stages 1-2 done) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
@@ -1476,6 +1476,28 @@ tie a draw); events `rung_up`, `rung_down`, `match_won`
 (`MinigameEvent`, bound to no HUD yet). Contract tests on the test kit
 (chimera/sim/tests/it/minigame.rs). Not done: objective primitives,
 built-in modifiers, a scoring table, events on a HUD.
+
+L2, stage 2 done (10-22): `games/originals` (crate `originals`, Chimera
+only: checked, A5) holds the original minigames' definitions, compiled
+in from the repository's `minigames/` (a test keeps the list and the
+directory equal; the hooks' test selection maps `minigames/` to it), and
+will hold rules hooks no built-in module covers (none: Gun Game is
+`chimera:ladder`'s). The first original, `originals:gun_game_dust2`
+(minigames/gun_game_dust2.toml): de_dust2 then Warehouse, free for all,
+10 minutes, Combat Arms' HUD, binds, tick and movement, both games'
+weapon sets, a ten-rung ladder alternating CS:S's and Combat Arms' guns
+(Glock to AWP), the Combat Arms knife as the kit, a knife death a rung
+down. `apps/lucker_party` (crate `lucker_party`) composes it: Combat
+Arms' simulation, CS:S registered with its maps, Source's map logic and
+CS:S's guns, `MinigamePlugin` and `OriginalsPlugin` (`PartyPartsPlugin`),
+the mashup's `MapSources` (its surface table read from
+apps/mashup_demo/data: one table for both apps); the presentation behind
+its default feature `present`. Scenario tests on `CaSim` with
+`PartyPartsPlugin` and scripted soldiers (apps/lucker_party/tests/it/
+gun_game.rs): the definition checks against both games' parts and takes
+the rules slot; a full gun game shot through the weapon frame with every
+rung's gun runs to the winner and the match's end (kills with CS:S's and
+Combat Arms' guns); a death to Combat Arms' knife costs a rung.
 
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and
