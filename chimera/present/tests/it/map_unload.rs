@@ -59,6 +59,7 @@ fn texture(name: &str, size: u32) -> MapTexture {
         width: size,
         height: size,
         rgba8: vec![200; (size * size * 4) as usize],
+        bc: None,
     }
 }
 

@@ -212,6 +212,7 @@ pub fn add_looks(map: &mut MapData, data: &super::super::data::CaDataInner, file
                             width: dtx.width,
                             height: dtx.height,
                             rgba8: dtx.rgba(0),
+                            bc: None,
                         });
                         Some(map.textures.len() - 1)
                     }
