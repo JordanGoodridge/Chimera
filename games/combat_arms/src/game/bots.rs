@@ -377,8 +377,9 @@ impl Plugin for CaBotsPlugin {
                         .after(crate::core::apply_damage),
                 )
                     .run_if(server)
-                    // While Combat Arms is the gameplay.
-                    .run_if(crate::gameplay::gameplay_is(super::GAME)),
+                    // While Combat Arms' bots are the gameplay's (its
+                    // rules', or a minigame's that names them).
+                    .run_if(crate::gameplay::bots_are(super::GAME)),
             );
         // The network's `kick <name>` and its quota at serving's start.
         app.insert_resource(crate::net::BotHooks {

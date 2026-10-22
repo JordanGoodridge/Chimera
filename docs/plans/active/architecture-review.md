@@ -1400,7 +1400,7 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | # | Item | Depends on | Size |
 |---|---|---|---|
 | L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (**done 2026-10-22**) |
-| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L |
+| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (**done 2026-10-22**; note below) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
@@ -1485,6 +1485,79 @@ the runtime's `MatchOver` comes only from the pause's end; both games
 share one `Match` (a gameplay switch doesn't save the other's);
 `RoundState` stays a separate view rather than the HUD and `NetRound`
 reading `Match`.
+
+L2, stage 1 done (10-22): `chimera_sim::minigame`. A definition is TOML
+(`def::MinigameDef`, D2's shape: id, name, players, map pool, teams, time
+limit, `[slots]` hud/binds/tick game ids plus movement, character and
+the weapon sets allowed, `[spawn]` respawn delay and protection, points
+(`map`, `far_from_enemies`, `team`) and a kit, `[rules]` module plus its
+own keys, `[modifiers]`), parsed at run time (`add_minigames`,
+`minigame_load <file>`) and checked against the app (`check`: the module,
+its parameters, every weapon in the catalogue and an allowed set, the
+slots' games and movement, the modifiers). Small choices: a minigame is
+the gameplay's rules slot `MINIGAME` ("chimera"), played on the mode
+runtime by Chimera's own `Flow` (`runtime::FLOW`), so neither game's
+rules run; a rules module is a `Mode` plus `check`/`start`/`loadout`
+(`RulesModule`, registered by name); one round a match, live at once (no
+setup), its winner the match's, then round over (5 s), intermission (3 s)
+and match over (`minigame_restart` again); the match waits for
+`players.min`, joiners play at once meanwhile; protection is `core::God`
+under a `Protected` marker, ended by time or the first shot; deaths count
+in `core::Score` (the scoring table stays kills and deaths); definitions
+are leaked to `&'static` (few, loaded once). `chimera:ladder`
+(`minigame::ladder`): free-for-all, an enemy kill a rung up (weapon
+swapped at once), `demote_on = "melee_death"` a rung down, the last
+rung's kill wins, the time limit's winner the highest rung then kills (a
+tie a draw); events `rung_up`, `rung_down`, `match_won`
+(`MinigameEvent`, bound to no HUD yet). Contract tests on the test kit
+(chimera/sim/tests/it/minigame.rs). Not done: objective primitives,
+built-in modifiers, a scoring table, events on a HUD.
+
+L2, stage 2 done (10-22): `games/originals` (crate `originals`, Chimera
+only: checked, A5) holds the original minigames' definitions, compiled
+in from the repository's `minigames/` (a test keeps the list and the
+directory equal; the hooks' test selection maps `minigames/` to it), and
+will hold rules hooks no built-in module covers (none: Gun Game is
+`chimera:ladder`'s). The first original, `originals:gun_game_dust2`
+(minigames/gun_game_dust2.toml): de_dust2 then Warehouse, free for all,
+10 minutes, Combat Arms' HUD, binds, tick and movement, both games'
+weapon sets, a ten-rung ladder alternating CS:S's and Combat Arms' guns
+(Glock to AWP), the Combat Arms knife as the kit, a knife death a rung
+down. `apps/lucker_party` (crate `lucker_party`) composes it: Combat
+Arms' simulation, CS:S registered with its maps, Source's map logic and
+CS:S's guns, `MinigamePlugin` and `OriginalsPlugin` (`PartyPartsPlugin`),
+the mashup's `MapSources` (its surface table read from
+apps/mashup_demo/data: one table for both apps); the presentation behind
+its default feature `present`. Scenario tests on `CaSim` with
+`PartyPartsPlugin` and scripted soldiers (apps/lucker_party/tests/it/
+gun_game.rs): the definition checks against both games' parts and takes
+the rules slot; a full gun game shot through the weapon frame with every
+rung's gun runs to the winner and the match's end (kills with CS:S's and
+Combat Arms' guns); a death to Combat Arms' knife costs a rung.
+
+L2, stage 3 done (10-22): `apps/lucker_party` is the client (binary
+`lucker_party`: N7's `PresentationPlugins`, `physics_plugins()`, Combat
+Arms' gameplay until the command line's `+minigame` takes the rules slot;
+without one the gun game on its pool's first map, three bots) and
+`apps/lucker_party_server` its dedicated server (`lucker_party` without
+`present`, `+minigame <id>`, `+map`, `changelevel`; checked by
+`server_builds_without_presentation`). Small choices: a `bots` slot on
+`Gameplay` (`gameplay::bots_are`; `Gameplay::of` sets it to the game,
+so the other apps are unchanged), which Combat Arms' bots now gate on, so
+a minigame naming `bots = "combat_arms"` has them play under Chimera's
+rules; the party turns Combat Arms' modes off (`ca_mode none`: a joiner
+comes in at a free point and the minigame takes it); Combat Arms' bots
+read CS:S's guns' AI rows from the app's data
+(apps/lucker_party/data/bot_gun_types.toml); `far_from_enemies` prefers a
+free point. Tests: the server on the greybox (fast) and, heavy, on
+de_dust2 from the installs (soldiers at dust2's points, a Glock kill and
+the Beretta next); Combat Arms' bots play the gun game on the greybox and
+kill each other. Left for later: the HUD shows nothing of the minigame
+(no rung, leader or `MinigameEvent`), CS:S's guns have no view model under
+Combat Arms' driver (the mashup's shortcut), the bots keep their first
+life's reach, the map pool doesn't rotate, a client joins a party server
+by id only (L3's match manifest), objective primitives and modifiers
+(D2) and more original minigames.
 
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and

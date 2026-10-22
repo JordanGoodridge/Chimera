@@ -48,7 +48,8 @@
 //! A test that reads a repository file at run time (not through
 //! `include_str!`) outside its package isn't known; none does today
 //! (`tools/testmap` is mapped to `source_tools`, the tools' data to
-//! `cs_source_tools`).
+//! `cs_source_tools`, the minigames' definitions, `minigames/`, to
+//! `originals`).
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -464,8 +465,10 @@ fn is_docs(path: &str) -> bool {
         || [".gitignore", "rustfmt.toml", "chimera.local.example.toml"].contains(&path)
 }
 
-/// The root's tools/ data files and the package whose tools read them.
+/// The root's data files outside a crate (tools/'s, the minigames'
+/// definitions) and the package that reads them.
 const TOOL_DATA: &[(&str, &str)] = &[
+    ("minigames/", "originals"),
     ("tools/testmap/", "source_tools"),
     ("tools/perfgate/", "cs_source_tools"),
     ("tools/refcmp/", "cs_source_tools"),

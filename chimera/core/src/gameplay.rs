@@ -1,8 +1,10 @@
 //! The gameplay: which game's implementation fills each match-wide slot
 //! (docs/plans/active/architecture-review.md, A1): `Gameplay` names the
 //! rules (whose match-wide systems run: rules, objectives, bots, the
-//! match state on the network), the HUD drawn, the binds and movement
-//! cvars the shell offers, and the fixed tick. Set from the match (a
+//! match state on the network), the bots that think where a game gates
+//! them apart from its rules (`bots`: Combat Arms', so its bots play a
+//! minigame whose rules are Chimera's), the HUD drawn, the binds and
+//! movement cvars the shell offers, and the fixed tick. Set from the match (a
 //! minigame definition later; the app's default now: `set_gameplay`),
 //! changed at run time with `switch_gameplay` (the tick follows,
 //! `core::set_tick_length`). `Games` stays the registry of installs and
@@ -46,6 +48,9 @@ use crate::game_registry::{GameInfo, Games};
 pub struct Gameplay {
     /// The game whose rules run (its systems gated by `gameplay_is`).
     pub rules: &'static str,
+    /// The game whose bots think, for a game that gates its bots by
+    /// `bots_are` (Combat Arms); the rules' game otherwise.
+    pub bots: &'static str,
     /// The HUD drawn (its systems gated by `hud_is`): a game's id for
     /// its own HUD.
     pub hud: &'static str,
@@ -60,6 +65,7 @@ impl Gameplay {
     pub fn of(game: &'static GameInfo) -> Self {
         Self {
             rules: game.id,
+            bots: game.id,
             hud: game.id,
             binds: game.id,
             tick: game.tick(),
@@ -71,6 +77,12 @@ impl Gameplay {
 /// set): a game's match-wide systems.
 pub fn gameplay_is(game: &'static str) -> impl FnMut(Option<Res<Gameplay>>) -> bool + Clone {
     move |g: Option<Res<Gameplay>>| g.is_none_or(|g| g.rules == game)
+}
+
+/// Run condition: `game`'s bots think (or no gameplay is set): a game's
+/// bots, where it gates them apart from its rules.
+pub fn bots_are(game: &'static str) -> impl FnMut(Option<Res<Gameplay>>) -> bool + Clone {
+    move |g: Option<Res<Gameplay>>| g.is_none_or(|g| g.bots == game)
 }
 
 /// Run condition: `hud` is the gameplay's HUD (or no gameplay is set).
