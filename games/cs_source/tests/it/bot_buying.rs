@@ -4,28 +4,19 @@
 //! eco round when broke, a pistol round's kevlar, and profile
 //! preferences (`botprofile.db`'s `WeaponPreference`).
 
+use crate::common::sim;
 use bevy::prelude::*;
 use crate::stack::{
     bot::buy::{GRENADES_DEFEND, resolve},
     core::Team,
-    games::cs_source::{
-        TICK_INTERVAL,
-        weapons::{AK47, AWP, CsWeaponsPlugin, FAMAS, M4A1},
-    },
-    greybox::GreyboxMapPlugin,
-    harness::{CsSim, Sim},
+    games::cs_source::weapons::{AK47, AWP, FAMAS, M4A1},
+    harness::Sim,
     movement::placeholder,
     weapon::{
         Armor, Inventory, Weapon, WeaponRegistry,
         economy::{BotBuying, BuyKind, DefuseKit, Money, autobuy_rolling},
     },
 };
-
-fn sim() -> Sim {
-    let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin));
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim
-}
 
 /// A character on `team` with `money` and no primary, wanting `prefs`
 /// (and a kit if a counter-terrorist).

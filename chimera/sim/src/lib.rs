@@ -21,6 +21,8 @@
 pub mod movement;
 pub mod rule_module;
 pub mod spawning;
+#[cfg(feature = "testkit")]
+pub mod testkit;
 pub mod weapon;
 
 // `crate::core`, `crate::map` and the rest inside, as in the game crate.
@@ -35,6 +37,7 @@ use bevy::prelude::*;
 /// slot's implementations and the weapon
 /// framework. A game's set starts with it (`cs_source::SimPlugins`); the
 /// engine's tests run on it (`harness::Sim::new(SimBasePlugins, ..)`).
+#[derive(Clone, Copy)]
 pub struct SimBasePlugins;
 
 impl Plugin for SimBasePlugins {

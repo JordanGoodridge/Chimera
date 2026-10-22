@@ -2579,6 +2579,7 @@ dependencies = [
  "avian3d",
  "bevy",
  "chimera_core",
+ "chimera_sim",
  "chimera_world",
  "postcard",
  "serde",

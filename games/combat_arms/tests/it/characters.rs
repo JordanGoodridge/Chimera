@@ -11,6 +11,7 @@
 
 use std::sync::Arc;
 
+use crate::common::sim;
 use bevy::prelude::*;
 use chimera_core::core::{Damage, DamageKind, Hitgroup, MovementState};
 use chimera_sim::weapon::{self, Inventory, Magazine};
@@ -1051,12 +1052,6 @@ fn t42_body_creation() {
 
 // ---------------------------------------------------------------------
 // Scenario: the driver on a player.
-
-fn sim() -> Sim {
-    let mut sim = Sim::new(CaSim, GreyboxMapPlugin);
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim
-}
 
 fn player(sim: &mut Sim, at: Vec3, yaw: f32) -> Entity {
     let p = sim.spawn_character(at, movement::ID);

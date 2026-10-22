@@ -8,6 +8,7 @@
 //! 6.4) and the HE's view shake, the smoke cloud's life and bots' sight through
 //! it, round restarts, and a primed grenade dropped by the dying.
 
+use crate::common::sim;
 use bevy::{ecs::message::Messages, prelude::*};
 use crate::stack::{
     bot::{Bot, BotConfig},
@@ -31,12 +32,6 @@ use crate::stack::{
 };
 
 const UNIT: f32 = 0.0254;
-
-fn sim() -> Sim {
-    let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin));
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim
-}
 
 fn active(sim: &Sim, p: Entity) -> Option<Entity> {
     sim.app.world().get::<Inventory>(p).unwrap().active
