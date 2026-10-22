@@ -1175,16 +1175,34 @@ on `MapData`. `render::shadows::shed_unread` (was `shed_unread_textures`
 alone) now also drops the kit, the extensions, the world's meshes, lightmap,
 cubemaps, collision and entities from what `ShadowSource` keeps for the
 map's life. Spawn dumps on the five maps (and their system dumps) are
-byte-identical. Not done, and why: the kit's indices (muzzle flash, HUD
-sprites, character skins) point into `MapData::textures`, so the kit is not
-yet loaded apart from the map's file by the gameplay's game (A2's "loaded by
-the gameplay's game"): `MapLoader::load` still returns one `MapData` with
-the game's own kit in it, and a dressing still appends the gameplay's kit to
-that map's texture list. Skipping the map game's kit at load (a
-`MapLoadOptions` flag the CS:S and Combat Arms loaders honour) needs the
-kit's texture and material loading separated from the world's in
-`bsp.rs`/`world.rs`; that is the next step and `AppHooks::load_map` taking
-the options goes with it.
+byte-identical.
+
+X7, rest done (2026-10-22): a map of another game than the gameplay's no
+longer pays for its own game's kit. The kit's indices still point into
+`MapData::textures` (one list, appended in load order), so the kit was not
+split off the texture list; instead the loaders skip loading it.
+`MapLoadOptions::kit: KitLoad` (`All`, the default, or `Only(prefixes)`:
+just the held and view models whose keys start with a prefix);
+`MapSources::load_with` sets `Only(kept)` whenever the app's gameplay is not
+the loader's game, so a mashup's map is its world plus the kept guns, and
+`dress` still replaces the rest (`GameKit::stay`, kept as the net for a
+loader that ignores the option). CS:S's `bsp.rs` skips character bodies,
+hostages, decals, HUD, round sounds, radio, bot names, muzzle flash, shells
+and the nav mesh, and loads a kept gun's held and view model only when its
+key is wanted (the held ones need the player skeleton: one body is loaded to
+take its bones, and not kept); Combat Arms' `load_from_with` skips the
+shared character models (`append_shared` takes the `KitLoad`: bodies only
+with `parts()`, held models by `wants`). Normal loads (`All`) run the same
+code in the same order: spawn dumps on the five maps and their system dumps
+are byte-identical to before. The mashup's `de_dust2` (CS:S's map, Combat
+Arms' gameplay; one load in its own process, a shared and busy machine, so
+the time is rough): 918 to 725 textures, resident 2325 to 2200 MB, 9 to 11 s
+to about 6 s (`apps/mashup_demo` heavy `a_mashup_map_loads_only_its_world`
+also asserts the kit is empty but the kept guns, which equal a whole load's).
+Not done: `AppHooks::load_map` still takes an HDR level only. The mashup's
+hook is `MapSources::load`, which sets the kit scope itself; a client always
+draws and always wants its own game's whole kit, so the options would add
+nothing there. A third game's loader reads the option when it has a kit.
 
 N3 and N4 both reach `MapData`'s consumers but not the same files; if
 N3 changes the `MapLoader` signature, N4 rebases on it (one line).
@@ -1204,7 +1222,7 @@ and character models still decode: small). Both dedicated servers load lean;
 (`MaterialLoader::finish_textures` on `map::parallel::par_map`, which is
 Combat Arms' `decode_all` moved down). Not done: `AppHooks::load_map`
 (the client's) still takes an HDR level only, since a client always
-draws; X7 may fold it into the options.
+draws (X7 left it as is: see its note).
 
 N6, done (10-21), with these choices. `repo_checks --bin docs_index`
 (`checks/src/docs_index.rs`; `--check` only reports) generates two things
@@ -1384,8 +1402,8 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 
 | # | Item | Depends on | Size |
 |---|---|---|---|
-| L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (stages 1-2 done; CS:S open) |
-| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L |
+| L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (**done 2026-10-22**) |
+| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (**done 2026-10-22**; note below) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
@@ -1434,7 +1452,7 @@ servers (A5) and bots' sight in parallel (F4).
   tick) is not measurable here (its map is not on this box).
   docs/performance.md, "Bots' sight in parallel".
 
-L1, stages 1 and 2 done (10-21); stage 3 (CS:S's rounds) open.
+L1, done: stages 1 and 2 (10-21), stage 3 (10-22, below).
 `chimera_sim::mode` is the runtime: `Mode` (id, key, name, respawns,
 warm-up and its revives, a forced setup, `Teams`, `on_death`,
 `time_out`, `match_end`, `Hooks`: setup, update, touches, round over,
@@ -1465,18 +1483,127 @@ scoring table is L2's); the runtime's systems are chained by the game
 into its rules' set (a runtime plugin adding them would reorder
 unordered systems, X1's lesson); joining, leaving, the freeze's intent
 and the network view stay Combat Arms'; `CaStats` isn't generalised;
-rule modules (`rule_module`) stay beside the registry. Left for stage
-3, CS:S's rounds (`rules/rounds.rs`) on it: the runtime needs per-game
-options it doesn't have yet (steps every tick with exact `>=`
-comparisons, CA's are `+1e-9`; a match that starts without waiting for
-players; round over straight into the next setup, with no round-end
-frame or intermission; an outcome decided and the round over in the
-same tick; a round number counted as rounds started), CS:S's hooks
-for money and payouts, the buy window, `RoundOpen`, team balance,
-`mp_restartgame`, deathmatch (`chimera_rounds 0`) and the game end's
-intermission, and `RoundState` (read by the HUD, `NetRound` and about
-20 test files) kept as a view of `Match` each tick so those tests stay
-unchanged.
+rule modules (`rule_module`) stay beside the registry.
+
+Stage 3, CS:S's rounds on the runtime (10-22). The runtime's new
+per-game options are `Flow::options` (`FlowOptions`; Combat Arms'
+`FlowOptions::MISSIONS` keeps its behaviour): `slack` (the phases' end
+times compared as `now + slack >= until`: CA 1e-9, CS:S 0),
+`wait_for_players` (false: the first step starts the match, no
+`Starting`), `timer_ends_round` (false: the timer only tells the new
+`Hooks::decide`, called every live step before the end test, so a round
+it decides is over in the same step), `direct` (round over's end goes
+straight into the next mission start in the same step: the round end's
+steps, `match_end`, `after_round`, no intermission; a result there is
+`MatchOver`) and `count_at_start` (`Match::round` counts rounds
+started); also `Teams::AsJoined` (the runtime moves nobody),
+`Match::live_since`, `Span` lengths in f64 (so CS:S's `round_time as f64
+* 60.0` stays bit-identical; CA converts its f32s), and
+`flow::step_game` with `mode::current_of` (a game steps its own chosen
+mode from its rules' system, whichever game plays). Contract tests on
+the kit for each (chimera/sim/tests/it/mode.rs, two new). CS:S
+(`rules/rounds.rs`): three modes by the map's objectives,
+`cs_source:{bomb,hostage,elimination}` (the rule modules' names;
+deathmatch is no mode, the runtime idles), `FLOW` (every tick, exact,
+started at once, decided each tick, direct, counted at start; players
+as the old round start's query, respawn `put_at_spawn(fresh or dead)`,
+lengths from `RoundSettings`), hooks for the start money and bonuses
+(`event`: `Prepare`, `MissionStart`), the round's setup (`mp_tkpunish`,
+bots' shopping, loose weapons, `objectives::round_start`), `decide`
+(`live_outcome`), `round_over` (money, `RoundEnded` with its summary, a
+limit reached: the game end at once), `match_end` and `after_round`
+(the game end as the pause runs out, else team balance). `run_rounds`
+stays the rules' system (so no system moves): `mp_restartgame`, the
+map's clock, the game end's intermission, deathmatch and the broke's
+money around `step_game`, then `RoundState` as a view of `Match` (phase,
+number, wins, written only on change; kept while `MatchOver`; round wins
+written into it outside the rules, by `game_score` or a test, are
+taken back at the next step; a view at `Off` with the match elsewhere,
+another game's after a gameplay switch, starts the match over), then
+the buy window, freeze and `RoundOpen` from it. `RoundState`'s own
+fields (losses, draws, payouts, restart, map start, game over) stay
+CS:S's. Every CS:S round, objective and economy test passes unchanged
+(cs_source's whole suite, heavy included); Combat Arms' suite passes;
+the five apps' system dumps are identical (servers through a temporary
+dump patch, reverted). Left (L2): the game end held at round over (a
+limit reached as a round ends) leaves the match in `RoundOver` while
+the runtime's `MatchOver` comes only from the pause's end; both games
+share one `Match` (a gameplay switch doesn't save the other's);
+`RoundState` stays a separate view rather than the HUD and `NetRound`
+reading `Match`.
+
+L2, stage 1 done (10-22): `chimera_sim::minigame`. A definition is TOML
+(`def::MinigameDef`, D2's shape: id, name, players, map pool, teams, time
+limit, `[slots]` hud/binds/tick game ids plus movement, character and
+the weapon sets allowed, `[spawn]` respawn delay and protection, points
+(`map`, `far_from_enemies`, `team`) and a kit, `[rules]` module plus its
+own keys, `[modifiers]`), parsed at run time (`add_minigames`,
+`minigame_load <file>`) and checked against the app (`check`: the module,
+its parameters, every weapon in the catalogue and an allowed set, the
+slots' games and movement, the modifiers). Small choices: a minigame is
+the gameplay's rules slot `MINIGAME` ("chimera"), played on the mode
+runtime by Chimera's own `Flow` (`runtime::FLOW`), so neither game's
+rules run; a rules module is a `Mode` plus `check`/`start`/`loadout`
+(`RulesModule`, registered by name); one round a match, live at once (no
+setup), its winner the match's, then round over (5 s), intermission (3 s)
+and match over (`minigame_restart` again); the match waits for
+`players.min`, joiners play at once meanwhile; protection is `core::God`
+under a `Protected` marker, ended by time or the first shot; deaths count
+in `core::Score` (the scoring table stays kills and deaths); definitions
+are leaked to `&'static` (few, loaded once). `chimera:ladder`
+(`minigame::ladder`): free-for-all, an enemy kill a rung up (weapon
+swapped at once), `demote_on = "melee_death"` a rung down, the last
+rung's kill wins, the time limit's winner the highest rung then kills (a
+tie a draw); events `rung_up`, `rung_down`, `match_won`
+(`MinigameEvent`, bound to no HUD yet). Contract tests on the test kit
+(chimera/sim/tests/it/minigame.rs). Not done: objective primitives,
+built-in modifiers, a scoring table, events on a HUD.
+
+L2, stage 2 done (10-22): `games/originals` (crate `originals`, Chimera
+only: checked, A5) holds the original minigames' definitions, compiled
+in from the repository's `minigames/` (a test keeps the list and the
+directory equal; the hooks' test selection maps `minigames/` to it), and
+will hold rules hooks no built-in module covers (none: Gun Game is
+`chimera:ladder`'s). The first original, `originals:gun_game_dust2`
+(minigames/gun_game_dust2.toml): de_dust2 then Warehouse, free for all,
+10 minutes, Combat Arms' HUD, binds, tick and movement, both games'
+weapon sets, a ten-rung ladder alternating CS:S's and Combat Arms' guns
+(Glock to AWP), the Combat Arms knife as the kit, a knife death a rung
+down. `apps/lucker_party` (crate `lucker_party`) composes it: Combat
+Arms' simulation, CS:S registered with its maps, Source's map logic and
+CS:S's guns, `MinigamePlugin` and `OriginalsPlugin` (`PartyPartsPlugin`),
+the mashup's `MapSources` (its surface table read from
+apps/mashup_demo/data: one table for both apps); the presentation behind
+its default feature `present`. Scenario tests on `CaSim` with
+`PartyPartsPlugin` and scripted soldiers (apps/lucker_party/tests/it/
+gun_game.rs): the definition checks against both games' parts and takes
+the rules slot; a full gun game shot through the weapon frame with every
+rung's gun runs to the winner and the match's end (kills with CS:S's and
+Combat Arms' guns); a death to Combat Arms' knife costs a rung.
+
+L2, stage 3 done (10-22): `apps/lucker_party` is the client (binary
+`lucker_party`: N7's `PresentationPlugins`, `physics_plugins()`, Combat
+Arms' gameplay until the command line's `+minigame` takes the rules slot;
+without one the gun game on its pool's first map, three bots) and
+`apps/lucker_party_server` its dedicated server (`lucker_party` without
+`present`, `+minigame <id>`, `+map`, `changelevel`; checked by
+`server_builds_without_presentation`). Small choices: a `bots` slot on
+`Gameplay` (`gameplay::bots_are`; `Gameplay::of` sets it to the game,
+so the other apps are unchanged), which Combat Arms' bots now gate on, so
+a minigame naming `bots = "combat_arms"` has them play under Chimera's
+rules; the party turns Combat Arms' modes off (`ca_mode none`: a joiner
+comes in at a free point and the minigame takes it); Combat Arms' bots
+read CS:S's guns' AI rows from the app's data
+(apps/lucker_party/data/bot_gun_types.toml); `far_from_enemies` prefers a
+free point. Tests: the server on the greybox (fast) and, heavy, on
+de_dust2 from the installs (soldiers at dust2's points, a Glock kill and
+the Beretta next); Combat Arms' bots play the gun game on the greybox and
+kill each other. Left for later: the HUD shows nothing of the minigame
+(no rung, leader or `MinigameEvent`), CS:S's guns have no view model under
+Combat Arms' driver (the mashup's shortcut), the bots keep their first
+life's reach, the map pool doesn't rotate, a client joins a party server
+by id only (L3's match manifest), objective primitives and modifiers
+(D2) and more original minigames.
 
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and

@@ -1,0 +1,26 @@
+[package]
+name = "originals"
+version = "0.1.0"
+description = "Lucker Party's original minigames: their definitions (minigames/) and the rules hooks Chimera's built-in modules don't cover"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# Chimera's crates only: a game's parts reach an original minigame
+# through Chimera's slots and registries (a weapon by id from the
+# catalogue, a movement by id), never a game crate or an app
+# (checks/tests/it/architecture.rs, docs/plans/active/architecture-review.md
+# A5).
+[dependencies]
+chimera_sim.workspace = true
+bevy.workspace = true
+workspace-hack.workspace = true
+
+[features]
+# Bevy as a dynamic library, as the other crates' `dev`.
+dev = ["chimera_sim/dev"]

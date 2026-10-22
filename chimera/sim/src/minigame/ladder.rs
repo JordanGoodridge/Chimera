@@ -1,0 +1,257 @@
+//! `chimera:ladder`, the weapon ladder (Gun Game; Combat Arms' Arms Race
+//! is its first user in shape, architecture-review.md D2): every player a
+//! team of their own, each on a rung of the definition's ladder of weapons,
+//! holding that rung's weapon (with the definition's kit). An enemy kill
+//! moves the killer a rung up, its weapon swapped at once; a kill on the
+//! last rung wins the match. With `demote_on = "melee_death"` a player
+//! killed by an enemy's melee swing goes a rung down (not below the first).
+//! At the time limit the highest rung wins, then the most kills; a tie is
+//! a draw.
+//!
+//! ```toml
+//! [rules]
+//! module = "chimera:ladder"
+//! ladder = ["cs_source:weapon_glock", "combat_arms:m4a1"]   # the rungs, in order
+//! advance_on = "kill"              # the only one so far
+//! demote_on = "melee_death"        # or "none" (the default)
+//! win = { kind = "ladder_end" }    # the only one so far
+//! ```
+//!
+//! Events: `rung_up` and `rung_down` (`MinigameEvent`, the new rung).
+
+use bevy::prelude::*;
+use serde::Deserialize;
+
+use super::{ActiveMinigame, MinigameDef, MinigameEvent, RulesModule, runtime};
+use crate::{
+    core::{DamageKind, Died, Score, Team},
+    mode::{Death, DeathKind, Hooks, Match, Mode, NO_HOOKS, Teams},
+    weapon::{Inventory, Weapon, data::WeaponCatalog, give},
+};
+
+/// The module's name.
+pub const LADDER: &str = "chimera:ladder";
+
+/// The rules module.
+pub const RULES: RulesModule = RulesModule {
+    mode: &MODE,
+    check,
+    start,
+    loadout,
+};
+
+/// The mode on the runtime.
+pub static MODE: Mode = Mode {
+    id: LADDER,
+    key: LADDER,
+    shown_as: "Weapon ladder",
+    description: "every player for themselves up a ladder of weapons: a kill a rung up, the last rung's kill wins",
+    respawns: true,
+    warmup: false,
+    warmup_revives: false,
+    forced_setup: Some(0.0),
+    teams: Teams::FreeForAll,
+    on_death,
+    time_out,
+    match_end: |w| Some(w.resource::<Match>().winner),
+    hooks: Hooks {
+        died,
+        before_spawns,
+        ..NO_HOOKS
+    },
+};
+
+/// The `[rules]` keys.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Params {
+    #[allow(dead_code)]
+    module: String,
+    ladder: Vec<String>,
+    #[serde(default)]
+    advance_on: Advance,
+    #[serde(default)]
+    demote_on: Demote,
+    #[serde(default)]
+    win: Win,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Advance {
+    #[default]
+    Kill,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Demote {
+    #[default]
+    None,
+    MeleeDeath,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Win {
+    #[serde(default)]
+    kind: WinKind,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WinKind {
+    #[default]
+    LadderEnd,
+}
+
+/// The ladder playing.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct Ladder {
+    pub rungs: Vec<&'static str>,
+    pub demote_on_melee: bool,
+}
+
+/// A player's rung (0: the first).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Rung(pub usize);
+
+fn params(def: &MinigameDef) -> Result<Params, String> {
+    let mut table = def.rules.params.clone();
+    table.insert("module".into(), toml::Value::String(def.rules.module.clone()));
+    let p: Params = table.try_into().map_err(|e| format!("[rules]: {e}"))?;
+    let (Advance::Kill, WinKind::LadderEnd) = (p.advance_on, p.win.kind);
+    Ok(p)
+}
+
+fn check(def: &MinigameDef, catalog: &WeaponCatalog) -> Result<(), String> {
+    let p = params(def)?;
+    if p.ladder.is_empty() {
+        return Err("[rules] ladder: no rungs".into());
+    }
+    for id in &p.ladder {
+        super::weapon(def, catalog, id)?;
+    }
+    Ok(())
+}
+
+fn start(world: &mut World, def: &MinigameDef) {
+    let Ok(p) = params(def) else { return };
+    let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
+    let rungs = p.ladder.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
+    world.insert_resource(Ladder {
+        rungs,
+        demote_on_melee: p.demote_on == Demote::MeleeDeath,
+    });
+}
+
+/// The rung's weapon.
+fn loadout(world: &World, e: Entity) -> Vec<&'static str> {
+    let Some(ladder) = world.get_resource::<Ladder>() else { return Vec::new() };
+    let rung = world.get::<Rung>(e).map_or(0, |r| r.0);
+    ladder.rungs.get(rung.min(ladder.rungs.len().saturating_sub(1))).copied().into_iter().collect()
+}
+
+/// Everyone back to the first rung as the match starts.
+fn before_spawns(world: &mut World) {
+    for (e, _) in runtime::players(world) {
+        world.entity_mut(e).insert(Rung(0));
+    }
+}
+
+/// An enemy kill: the killer a rung up (its weapon swapped), or the match
+/// won from the last rung.
+fn on_death(world: &mut World, d: &Death) {
+    if d.kind != DeathKind::Enemy {
+        return;
+    }
+    let Some(k) = d.killer else { return };
+    let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return };
+    let rung = world.get::<Rung>(k).map_or(0, |r| r.0) + 1;
+    if rung >= ladder.rungs.len() {
+        if let Some(team) = world.get::<Team>(k).map(|t| t.0) {
+            world.resource_mut::<Match>().win(team);
+        }
+        return;
+    }
+    set_rung(world, k, rung, &ladder);
+    world.write_message(MinigameEvent {
+        name: "rung_up",
+        player: Some(k),
+        value: rung as i32,
+    });
+}
+
+/// A melee death at an enemy's hands: a rung down.
+fn died(world: &mut World, d: &Died) {
+    let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return };
+    if !ladder.demote_on_melee || !world.resource::<Match>().counting() || d.damage.kind != DamageKind::Melee {
+        return;
+    }
+    let team = |e: Entity| world.get::<Team>(e).map(|t| t.0);
+    let Some(k) = d.attacker.filter(|k| *k != d.entity) else { return };
+    if team(k) == team(d.entity) {
+        return;
+    }
+    let rung = world.get::<Rung>(d.entity).map_or(0, |r| r.0);
+    if rung == 0 {
+        return;
+    }
+    // Dead: the weapon is the next life's.
+    world.entity_mut(d.entity).insert(Rung(rung - 1));
+    world.write_message(MinigameEvent {
+        name: "rung_down",
+        player: Some(d.entity),
+        value: rung as i32 - 1,
+    });
+}
+
+/// `e` on `rung`, holding its weapon in place of the ladder's others.
+fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
+    world.entity_mut(e).insert(Rung(rung));
+    let old: Vec<Entity> = world
+        .get::<Inventory>(e)
+        .map(|i| {
+            i.weapons
+                .iter()
+                .copied()
+                .filter(|w| world.get::<Weapon>(*w).is_some_and(|w| ladder.rungs.contains(&w.id)))
+                .collect()
+        })
+        .unwrap_or_default();
+    for w in old {
+        runtime::take_weapon(world, e, w);
+    }
+    give(world, e, ladder.rungs[rung]);
+}
+
+/// The time limit: the highest rung, then the most kills; a tie, a draw.
+fn time_out(world: &mut World) {
+    let mut best: Option<((usize, i32), u8)> = None;
+    let mut tie = false;
+    for (e, team) in runtime::players(world) {
+        let key = (world.get::<Rung>(e).map_or(0, |r| r.0), world.get::<Score>(e).map_or(0, |s| s.kills));
+        match best {
+            Some((b, _)) if key == b => tie = true,
+            Some((b, _)) if key < b => {}
+            _ => {
+                best = Some((key, team));
+                tie = false;
+            }
+        }
+    }
+    if let Some((_, team)) = best.filter(|_| !tie) {
+        world.resource_mut::<Match>().winner = Some(team);
+    }
+}
+
+/// `e`'s place on the ladder, for `minigame_status`.
+pub fn standing(world: &World, e: Entity) -> Option<String> {
+    let active = world.get_resource::<ActiveMinigame>()?;
+    if active.rules.mode.id != LADDER {
+        return None;
+    }
+    let ladder = world.get_resource::<Ladder>()?;
+    let rung = world.get::<Rung>(e).map_or(0, |r| r.0);
+    Some(format!(", rung {}/{} ({})", rung + 1, ladder.rungs.len(), ladder.rungs.get(rung).unwrap_or(&"?")))
+}

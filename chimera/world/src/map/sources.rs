@@ -11,8 +11,12 @@
 //! - A map of another game is the world only: what its game brings to
 //!   every map (`MapData::kit`, a `GameKit`: bodies, held and view models,
 //!   HUD, radio, bot names and navigation, round sounds, muzzle flash,
-//!   shells, decals) is replaced (`GameKit::stay`: only the kept parts
-//!   remain, so a field added to the kit needs no line here), its spawn points' teams become the
+//!   shells, decals) is not even read: `load_with` gives the loader
+//!   `MapLoadOptions::kit` = `KitLoad::Only(kept)`, so the kit's textures
+//!   and materials aren't loaded with the map's (only the kept weapons'
+//!   models are), and `dress` replaces what is left (`GameKit::stay`: a
+//!   field added to the kit needs no line here, a loader that ignores the
+//!   option is still stripped). Its spawn points' teams become the
 //!   gameplay's (`SpawnTeams`; unlisted teams: any team), and the
 //!   gameplay's dressing is added.
 //! - Units: `MapData` is metres for every game (each loader applies its
@@ -61,11 +65,54 @@ pub struct MapLoadOptions {
     /// logic, collision and sounds are the same; a map loaded so can't be
     /// drawn. A game whose loader doesn't decode textures at load ignores it.
     pub textures: bool,
+    /// How much of the map's game's kit (`MapData::kit`) to load with the
+    /// map: all of it by default; a map of another game than the
+    /// gameplay's loads little or none (`MapSources::load_with`).
+    pub kit: KitLoad,
+}
+
+/// How much of a map game's kit (`GameKit`) a loader reads from the
+/// install with the map. The kit's textures and materials are read only
+/// for what is wanted, so a mashup's map of another game costs its world
+/// alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KitLoad {
+    /// The whole kit: the map's game is the gameplay's.
+    All,
+    /// Only the held and view models whose keys start with one of these
+    /// prefixes (`MapSources::kept`); everything else of the kit is left
+    /// unread. `Only(&[])`: no kit.
+    Only(&'static [&'static str]),
+}
+
+impl KitLoad {
+    /// Whether the kit's parts that aren't weapon models (character
+    /// bodies, HUD, radio, bot names, round sounds, decals, muzzle flash,
+    /// shells, navigation) are loaded.
+    pub fn parts(&self) -> bool {
+        matches!(self, Self::All)
+    }
+
+    /// Whether the held or view model `key` is loaded.
+    pub fn wants(&self, key: &str) -> bool {
+        match self {
+            Self::All => true,
+            Self::Only(kept) => kept.iter().any(|k| key.starts_with(k)),
+        }
+    }
+
+    /// Whether any weapon model is loaded.
+    pub fn any_models(&self) -> bool {
+        match self {
+            Self::All => true,
+            Self::Only(kept) => !kept.is_empty(),
+        }
+    }
 }
 
 impl Default for MapLoadOptions {
     fn default() -> Self {
-        Self { hdr_level: 0, textures: true }
+        Self { hdr_level: 0, textures: true, kit: KitLoad::All }
     }
 }
 
@@ -242,7 +289,14 @@ impl MapSources {
             ),
             None => (*self.loaders.first().ok_or("this app loads no maps")?, id),
         };
-        let mut map = (loader.load)(name, options)?;
+        // A map of another game than the gameplay's is the world only (its
+        // kit is replaced by `dress`): the loader reads none of the kit
+        // but the kept models.
+        let mut options = *options;
+        if self.gameplay.is_some_and(|g| !g.game.eq_ignore_ascii_case(loader.game)) {
+            options.kit = KitLoad::Only(self.kept);
+        }
+        let mut map = (loader.load)(name, &options)?;
         self.dress(loader.game, &mut map);
         Ok(map)
     }
@@ -383,6 +437,29 @@ mod tests {
         static S: MapSources = MapSources { loaders: &[&L], gameplay: None, teams: &[], surfaces: &[], kept: &[] };
         S.load_with("l:x", &MapLoadOptions::lean()).unwrap();
         assert!(MapLoadOptions::default().textures, "everything by default");
+    }
+
+    #[test]
+    fn only_another_games_map_leaves_its_kit_unloaded() {
+        fn kit_seen(name: &str, o: &MapLoadOptions) -> Result<MapData, String> {
+            // The loader reports the kit it was asked for in the name.
+            Ok(MapData { name: format!("{name}/{:?}", o.kit), ..default() })
+        }
+        static A2: MapLoader = MapLoader { game: "a", load: kit_seen };
+        static B2: MapLoader = MapLoader { game: "b", load: kit_seen };
+        static S2: MapSources = MapSources {
+            loaders: &[&A2, &B2],
+            gameplay: Some(&B_PARTS),
+            teams: &[],
+            surfaces: &[],
+            kept: &["a:gun"],
+        };
+        assert_eq!(S2.load("a:x", 0).unwrap().name, "x/Only([\"a:gun\"])", "the world and the kept guns");
+        assert_eq!(S2.load("b:x", 0).unwrap().name, "x/All", "the gameplay's own game: its whole kit");
+        let kit = KitLoad::Only(&["a:gun"]);
+        assert!(!kit.parts() && kit.any_models());
+        assert!(kit.wants("a:gun_ak") && !kit.wants("a:knife"));
+        assert!(!KitLoad::Only(&[]).any_models() && KitLoad::All.wants("any") && KitLoad::All.parts());
     }
 
     #[test]

@@ -56,6 +56,7 @@ pub fn load_map_level_lean(id: &str, hdr_level: u8) -> Result<MapData, String> {
     let options = chimera_world::map::MapLoadOptions {
         hdr_level,
         textures: false,
+        ..Default::default()
     };
     load_map_with(id, &options)
 }
