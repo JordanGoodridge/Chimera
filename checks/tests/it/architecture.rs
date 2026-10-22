@@ -56,6 +56,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // The rule-module interface (chimera/sim): a game registers its modes
     // by name; `rules::module` at its old path.
     ("rule_module", &["console"]),
+    // The mode runtime (chimera/sim): modes as data and hooks on one match
+    // whose phases it steps; which game plays from the gameplay.
+    ("mode", &["core", "console", "gameplay"]),
     // Every game's respawn (chimera/sim): the dead held, a character
     // revived at a place (out of a toggled noclip).
     ("spawning", &["core", "movement"]),
@@ -199,6 +202,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "objectives",
             "rules",
             "rule_module",
+            "mode",
             "spawning",
             "bot",
             "net",
@@ -493,6 +497,7 @@ fn simulation_builds_no_drawn_parts() {
         "bot",
         "movement",
         "rule_module",
+        "mode",
         "spawning",
         "games",
     ];

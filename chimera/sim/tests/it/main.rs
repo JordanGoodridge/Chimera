@@ -6,6 +6,7 @@
 //! docs/OBSERVABILITY.md, section 1.
 
 mod map_lifetime;
+mod mode;
 mod movement;
 mod noclip_damage;
 mod weapon_frame;
