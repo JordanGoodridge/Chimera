@@ -1780,6 +1780,9 @@ struct Delivery<'w, 's> {
     infected: Query<'w, 's, (), With<super::movement::CaInfected>>,
     /// The bots, whose shots the server traces on its own pose.
     bots: Query<'w, 's, (), With<crate::core::Bot>>,
+    /// Mercenaries, whose rounds deal body damage wherever they land
+    /// (bots_objectives.md 3.3 Correction 1: PvE AI has no zone factor).
+    mercs: Query<'w, 's, (), With<super::rules::mercs::CaMerc>>,
     teams: Query<'w, 's, &'static crate::core::Team>,
     figures: Query<'w, 's, Option<&'static super::movement::CaCharacter>>,
     knockback: Query<'w, 's, &'static super::movement::HitKnockback>,
@@ -2866,7 +2869,7 @@ fn hurt(
     let hit = ArmourHit {
         damage_type: dmg.damage_type,
         location: sphere.location,
-        zone: sphere.factor,
+        zone: if w.mercs.contains(r.owner) { 1.0 } else { sphere.factor },
         infected,
     };
     let after = armour_and_zone(d * ff / hp, hit, armor.map(|a| a.into_inner()), lands);

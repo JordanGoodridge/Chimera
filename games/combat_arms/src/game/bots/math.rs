@@ -118,6 +118,37 @@ impl HitCycle {
     }
 }
 
+impl HitCycle {
+    /// One shot of a mercenary (PvE AI, bots_objectives.md 3.3): every cycle
+    /// is its `h` aimed shots first, then its `m` misses, whatever the
+    /// draws.
+    pub fn ordered_shot(&mut self, a: f32) -> bool {
+        let (h, m) = cycle(a);
+        if self.hits >= h && self.misses >= m {
+            *self = Self::default();
+        }
+        if self.hits < h {
+            self.hits += 1;
+            true
+        } else {
+            self.misses += 1;
+            false
+        }
+    }
+}
+
+/// A mercenary's aimed shot (PvE AI): off by exactly 100 u while the
+/// movement inaccuracy `c` is above zero, in the direction of the random
+/// offset (U(−c, c), U(−c/2, c/2), U(−c, c)) scaled to length 1; on the
+/// base point once `c` has decayed to 0.
+pub fn merc_hit_point(base: Vec3, c: f32, u: Vec3) -> Vec3 {
+    if c <= 0.0 {
+        return base;
+    }
+    let s = |u: f32, r: f32| (u * 2.0 - 1.0) * r;
+    base + 100.0 * Vec3::new(s(u.x, c), s(u.y, c * 0.5), s(u.z, c)).normalize_or_zero()
+}
+
 /// An aimed shot's point: `base` moved by 100 x (U(−c, c), U(−c/2, c/2),
 /// U(−c, c)) for draws `u` in [0, 1]³ (7.3 step 6).
 pub fn hit_point(base: Vec3, c: f32, u: Vec3) -> Vec3 {
@@ -311,6 +342,12 @@ pub fn patrol_choice(links: &[(f64, Vec3)], forward: Vec3) -> Option<usize> {
         }
     }
     best.map(|b| b.0)
+}
+
+/// Whether a bot stops at a patrol node (4): a 0..99 draw at or below the
+/// template's `StopLookAroundPercentage`.
+pub fn patrol_stops(draw: u32, percent: f32) -> bool {
+    draw as f32 <= percent
 }
 
 /// The patrol mine timer (4): U(min, max) for a draw `u`.

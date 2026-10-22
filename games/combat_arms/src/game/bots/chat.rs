@@ -1,7 +1,7 @@
 //! Bot chat (specs/combat_arms/bots.md 10, Open question 23): on its
 //! events a bot may say a line of its chat set. The server checks the
-//! bot's cooldown (15, 20, 25 s by `BotLevel`); if it has passed it
-//! restarts it **before** the roll, then shows a line with probability by
+//! bot's cooldown (its profile's `NextChatTime`, 10 s when it has none:
+//! `cooldown`); if it has passed it restarts it **before** the roll, then shows a line with probability by
 //! the event's percent: the milliseconds since start mod 100 at most the
 //! percent (`math::chat_roll`). The line is the string-table key
 //! `$Message<set>_<Event>_<0..9>` (the set, 0-2, drawn once per bot), shown
@@ -9,15 +9,21 @@
 //! end resolves the key through the game's string table, `shown_line`:
 //! our own text for a key the table lacks).
 //!
-//! Known shortcuts: the events played are a kill by the bot, its death
-//! and its respawn (the battle, search, grenade and mine events of the
-//! brain's states aren't hooked yet); the line isn't sent to network
-//! clients.
+//! The events: a kill of a **player** by the bot (never of another AI), its
+//! death and its respawn; from the brain (`CaBot::chat`) the start of its
+//! attack from another state (battle), of its patrol goal, spawns
+//! included (search), and of a grenade dodge that found a point (grenade).
+//!
+//! Known shortcuts: the mine event (its sight sense firing on a placed
+//! device) is never raised, the game has no placed devices as targets; the
+//! install's profile file isn't read, so every profile has the default
+//! cooldown unless `data/bots.toml` names one (Open question 26); the line
+//! isn't sent to network clients.
 
 use bevy::prelude::*;
 
-use super::{BotSettings, CaBot, math};
-use crate::core::{Died, Dead, SimClock};
+use super::{CaBot, data::BotData, math};
+use crate::core::{Dead, Died, Intent, Npc, SimClock};
 
 /// A bot's chat line, for the chat box.
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -25,6 +31,14 @@ pub struct CaBotChat {
     pub bot: Entity,
     /// The string-table key (`$Message0_Kill_3`).
     pub key: String,
+}
+
+/// A chat event a bot's brain or the rules raised, before its cooldown and
+/// roll (for tests and logs).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct CaBotEvent {
+    pub bot: Entity,
+    pub event: Event,
 }
 
 /// How long a line shows (s).
@@ -117,13 +131,10 @@ pub fn shown_line(lookup: impl Fn(&str) -> String, key: &str) -> String {
     built_in_line(key).unwrap_or_else(|| key.trim_start_matches('$').replace('_', " "))
 }
 
-/// The chat cooldown by `BotLevel` (s).
-pub fn cooldown(level: u8) -> f64 {
-    match level {
-        0 => 15.0,
-        2 => 25.0,
-        _ => 20.0,
-    }
+/// A bot's chat cooldown (s, Correction 6): its profile's `NextChatTime`
+/// (`BotData::chat_cooldown`; 10 s when the profile has none).
+pub fn cooldown(data: &BotData, bot: &CaBot) -> f64 {
+    data.chat_cooldown(bot.template.level, bot.profile)
 }
 
 /// A bot's chat: its set and when it may talk again.
@@ -147,26 +158,34 @@ impl CaChat {
     }
 }
 
-/// The events of this tick: kills by bots, bots' deaths and respawns.
+/// The events of this tick: kills of players by bots, bots' deaths and
+/// respawns, and the brains' battle, search, grenade and mine events
+/// (`CaBot::chat`).
+#[allow(clippy::type_complexity)]
 pub fn chat(
     mut died: MessageReader<Died>,
     mut bots: Query<(Entity, &mut CaBot, Option<&mut CaChat>, Has<Dead>)>,
-    settings: Res<BotSettings>,
+    players: Query<(), (With<Intent>, Without<CaBot>, Without<Npc>)>,
+    data: Res<BotData>,
     clock: Res<SimClock>,
     mut out: MessageWriter<CaBotChat>,
+    mut raised: MessageWriter<CaBotEvent>,
     mut commands: Commands,
 ) {
     let now = clock.now;
     let ms = (now * 1000.0) as u64;
-    let cool = cooldown(settings.level);
     let mut events: Vec<(Entity, Event)> = Vec::new();
     for d in died.read() {
-        if let Some(k) = d.damage.attacker.filter(|k| *k != d.entity) {
+        // Kill: only when a bot kills a player, never another AI.
+        if let Some(k) = d.damage.attacker.filter(|k| *k != d.entity)
+            && players.contains(d.entity)
+        {
             events.push((k, Event::Kill));
         }
         events.push((d.entity, Event::Death));
     }
     for (e, mut bot, chat, dead) in &mut bots {
+        let cool = cooldown(&data, &bot);
         let Some(mut chat) = chat else {
             let set = (bot.dice.next_u64() % 3) as u8;
             commands.entity(e).insert(CaChat {
@@ -176,13 +195,16 @@ pub fn chat(
             });
             continue;
         };
+        let queued = std::mem::take(&mut bot.chat);
         if chat.dead && !dead {
             events.push((e, Event::Respawn));
         }
         chat.dead = dead;
-        for (_, ev) in events.iter().filter(|(who, _)| *who == e) {
+        let own = events.iter().filter(|(who, _)| *who == e).map(|(_, ev)| *ev);
+        for ev in own.chain(queued) {
+            raised.write(CaBotEvent { bot: e, event: ev });
             let line = bot.dice.int(0, 9);
-            if let Some(key) = chat.event(*ev, now, ms, cool, line) {
+            if let Some(key) = chat.event(ev, now, ms, cool, line) {
                 out.write(CaBotChat { bot: e, key });
             }
         }

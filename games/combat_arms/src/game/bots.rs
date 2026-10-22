@@ -48,8 +48,22 @@
 //! (`math::Sense`); the dodge tries its five directions in the spec's
 //! order (`math::DODGE_STEPS`); the knife closes to its 130 u reach; a bot
 //! is protected 3 s from every damage and respawns 7 s after its death
-//! (`rules::spawns`); bots chat on their kills, deaths and respawns
-//! (`chat`). Ally stimuli stay off (Open question 14: confirmed).
+//! (`rules::spawns`); bots chat on their kills of players, deaths,
+//! respawns, battles, searches and grenade dodges (`chat`). Ally stimuli
+//! stay off (Open question 14: confirmed).
+//!
+//! The 2026-10-22 corrections: a heard sound's investigation ends within
+//! half the distance it started from (Correction 1); a sound is only
+//! looked at when the life's alarm total is under the major threshold, 30 s
+//! have passed since the last relaxed moment (the spawn counts), and it is
+//! within 1000 u and in view (2); an investigation ignores calls and takes
+//! only an equal or higher alarm (3); the grenade dodge goes onto a grenade
+//! just outside the blast radius, kept for parity (4); chat events from
+//! the brain, the profile's cooldown (5, 6); every life a fresh brain (7);
+//! patrol stops and per-team start nodes (8); the throw as an action from
+//! the hand (9); blind chase fire along the torso (10); the `Torso` aim
+//! point and the line of fire from the right side (11). Mercenaries aim
+//! like PvE AI (bots_objectives.md 3.3; `brain::aim_and_fire`).
 //!
 //! Known shortcuts (docs/tech-debt.md; the most literal reading where the
 //! spec is unclear, listed for its open questions):
@@ -70,8 +84,10 @@
 //!   `brain::nav_params`), where the 48 u link minimum, doors, ladders and
 //!   teleport volumes don't apply. Patrol nodes: the map's `AINodePatrol`s
 //!   where it has them, else ours (`nav::PatrolGraph`); either way with
-//!   the spec's link choice and no look-around stops, guard nodes or the
-//!   bot game-mode file's start nodes. A bot that makes no progress for
+//!   the spec's link choice, the 25 % stops at nodes and (on a map's own
+//!   nodes) the start nodes `AI_Node_<A|B>_01..08` round robin per team
+//!   (the bot game-mode file isn't read); no look-arounds while running
+//!   (head only) and no guard nodes. A bot that makes no progress for
 //!   1.5 s plans again and jumps (the spec has none: Open question 11,
 //!   still open).
 //! - Senses: the `Head` height is the standing pose's (not crouched or
@@ -88,8 +104,17 @@
 //!   question 20); a roll is a fast sidestep; the knife is the player's
 //!   knife with the bot's 130 u reach (`inventory::KnifeReach`; its swing
 //!   trace and zones stay, where the spec deals the damage straight to
-//!   the target); bodies; chat on battle, search, grenade and mine events
-//!   and for network clients.
+//!   the target); bodies; chat on the mine event and for network clients.
+//! - Values the spec leaves open, with our fallbacks: the alarm levels
+//!   (`[alarm]`: major 50, gunfire 75, footstep 20, call 1; Open question
+//!   25); the sound is looked at only within 1000 u (the straight-walk look
+//!   is limited the same, to match the expected cases); a bot always turns to
+//!   a sound it only looks at; a call's answer faces the caller's yaw for
+//!   a tick; the throw's key and length are the grenade's (`Throwable`) for
+//!   both animations and the hand is a point beside and below the eye
+//!   (Open question 27); the chasing torso turns up to 90 degrees of yaw
+//!   and 1 rad of pitch from the run heading (28); the crouched `Torso` is
+//!   the standing one's; a chasing bot's reload refills its clip at once.
 //! - Profiles: the install's profile file isn't read: a bot is
 //!   `AI_<Team>_<profile>`, its archetype the profile number mod 3, its
 //!   item sets ours (data/bots.toml), the draw ρ our seeded dice (any
@@ -145,15 +170,31 @@ pub enum BotState {
     /// The idle behaviour: walking the patrol graph.
     #[default]
     Patrol,
-    /// Going to a heard spot (or looking at it), until `until`.
-    Investigate { spot: Vec3, until: f64, look_only: bool },
+    /// Going to a heard spot (or looking at it), until `until`: over on
+    /// the first update within `radius` (m, half the straight-line
+    /// distance at the start) of `at` (the sound, Correction 1). `level`
+    /// is the alarm level of the stimulus followed and `id` its id
+    /// (Correction 3); `face` the yaw to face on arrival (a call's).
+    Investigate {
+        spot: Vec3,
+        until: f64,
+        look_only: bool,
+        at: Vec3,
+        radius: f32,
+        level: f32,
+        id: u64,
+        face: Option<f32>,
+    },
     /// Pursuing the target, knowing where it is, until `until`; standing
     /// for breath until `breath`.
     Chase { until: f64, breath: f64 },
     /// Fighting the target since `since`.
     Attack { since: f64 },
-    /// Moving away from a grenade to `to`.
-    Dodge { to: Vec3, until: f64 },
+    /// Moving to `to` (away from grenade `grenade`, or onto it when just
+    /// outside its blast radius, 5.4 Correction 4), until the grenade is
+    /// gone, the move ends, or `until`; `chase`: it was chasing when the
+    /// dodge began.
+    Dodge { to: Vec3, until: f64, grenade: Entity, chase: bool },
 }
 
 impl BotState {
@@ -169,8 +210,22 @@ impl BotState {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pending {
     pub at_pass: u64,
-    pub spot: Vec3,
-    pub gunfire: bool,
+    pub heard: brain::Heard,
+}
+
+/// A throw in progress (8.5, Correction 9): the bot has switched to its
+/// grenade and plays the throw animation; no round is fired until it is
+/// over.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Throw {
+    pub weapon: Entity,
+    /// When the throw was decided (a switch that never completes ends it).
+    pub begun: f64,
+    /// When the grenade was drawn (the animation starts), once it is.
+    pub started: Option<f64>,
+    /// The close-range throw animation (the target nearer than 1000 u).
+    pub near: bool,
+    pub released: bool,
 }
 
 /// A Hired Guns mercenary's mind (bots_objectives.md 3; `rules::mercs`):
@@ -280,6 +335,25 @@ pub struct CaBot {
 
     // Grenade danger (5.4).
     pub danger: Option<(Entity, Vec3, f64)>,
+    /// The throw in progress (8.5).
+    pub throw: Option<Throw>,
+
+    // Alarm (5.3, Corrections 2, 3): the running total of every sound
+    // investigated this life; when the bot last returned to relaxed
+    // awareness (its spawn counts; None: not spawned yet).
+    pub alarm: f32,
+    pub last_relaxed: Option<f64>,
+    /// Chat events the brain raised, for `chat::chat`.
+    pub chat: Vec<chat::Event>,
+    /// A new life that has not taken its patrol start node (4).
+    pub needs_start: bool,
+    /// Standing at a patrol node to look around until then (4).
+    pub patrol_wait: f64,
+    /// A mercenary aims like PvE AI (bots_objectives.md 3.3 Correction 1):
+    /// set by its tick.
+    pub merc_aim: bool,
+    /// A mercenary's aim point above its target's hull centre (u).
+    pub merc_height: f32,
 
     // Navigation.
     pub route: Vec<Vec3>,
@@ -338,6 +412,14 @@ impl CaBot {
             crouch_until: 0.0,
             release: false,
             danger: None,
+            throw: None,
+            alarm: 0.0,
+            last_relaxed: None,
+            chat: Vec::new(),
+            needs_start: true,
+            patrol_wait: 0.0,
+            merc_aim: false,
+            merc_height: brain::MERC_HEIGHT,
             route: Vec::new(),
             route_goal: None,
             patrol_from: None,
@@ -357,6 +439,7 @@ impl Plugin for CaBotsPlugin {
     fn build(&self, app: &mut App) {
         let server = crate::core::authoritative;
         app.add_message::<chat::CaBotChat>()
+            .add_message::<chat::CaBotEvent>()
             .add_message::<crate::core::Died>()
             .init_resource::<BotSettings>()
             .init_resource::<BotData>()

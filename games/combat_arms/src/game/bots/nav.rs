@@ -188,6 +188,8 @@ pub struct PatrolGraph {
     pub points: Vec<Vec3>,
     /// Each node's links (node indices).
     pub links: Vec<Vec<usize>>,
+    /// Each node's name in the map (empty for ours).
+    pub names: Vec<String>,
 }
 
 /// Patrol nodes' least spacing and their links' reach (m).
@@ -223,7 +225,12 @@ impl PatrolGraph {
             })
             .collect();
         let points = nodes.iter().map(|&n| mesh.areas[n].center).collect();
-        Self { nodes, points, links }
+        Self { nodes, points, links, names: Vec::new() }
+    }
+
+    /// The node the map names `name` (any case).
+    pub fn by_name(&self, name: &str) -> Option<usize> {
+        self.names.iter().position(|n| n.eq_ignore_ascii_case(name))
     }
 
     /// The node nearest `p` (m).
