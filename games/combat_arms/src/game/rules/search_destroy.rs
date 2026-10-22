@@ -62,19 +62,25 @@ pub const DEFENCE: u8 = BRAVO;
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: SEARCH_DESTROY,
-    key: "TMM",
-    shown_as: "Search & Destroy",
-    description: "Search & Destroy: JSF plants a bomb at one of two sites, Creed defends; rounds without respawn after a \
-                  warm-up, G round wins take the match",
-    respawns: false,
-    warmup: true,
-    warmup_revives: true,
+    rules: super::Mode {
+        id: SEARCH_DESTROY,
+        key: "TMM",
+        shown_as: "Search & Destroy",
+        description: "Search & Destroy: JSF plants a bomb at one of two sites, Creed defends; rounds without respawn after a \
+                      warm-up, G round wins take the match",
+        respawns: false,
+        warmup: true,
+        warmup_revives: true,
+        forced_setup: None,
+        teams: Teams::Two,
+        on_death,
+        time_out: |w| w.resource_mut::<CaMatch>().winner = Some(missions::sides(w).1),
+        match_end,
+        hooks: HOOKS,
+    },
     ff_scaled: true,
     assists: true,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::Two,
     spawns: Spawns {
         family: Some(FAMILY),
         one_list: false,
@@ -86,11 +92,8 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::RoundWins,
     order: ScoreOrder::Kills,
-    on_death,
-    time_out: |w| w.resource_mut::<CaMatch>().winner = Some(missions::sides(w).1),
-    match_end,
     leaving: super::elimination::leaving,
-    hooks: HOOKS,
+    left: super::NO_LEFT,
 };
 
 /// S&D's hooks (Go4CA's too).

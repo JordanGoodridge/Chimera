@@ -43,19 +43,34 @@ pub const FAMILY: &str = "Sabotage";
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: BOMBING_RUN,
-    key: "SBT",
-    shown_as: "Bombing Run",
-    description: "Bombing Run: one bomb for both teams, respawning; plant it at the enemy's site, G round wins take the \
-                  match",
-    respawns: true,
-    warmup: true,
-    warmup_revives: true,
+    rules: super::Mode {
+        id: BOMBING_RUN,
+        key: "SBT",
+        shown_as: "Bombing Run",
+        description: "Bombing Run: one bomb for both teams, respawning; plant it at the enemy's site, G round wins take the \
+                      match",
+        respawns: true,
+        warmup: true,
+        warmup_revives: true,
+        forced_setup: None,
+        teams: Teams::Two,
+        on_death: |w, d| personal(w, d),
+        time_out,
+        match_end,
+        hooks: Hooks {
+            setup,
+            update,
+            died,
+            round_end: |w| {
+                bomb::remove_all(w);
+                w.resource_mut::<CaCarrier>().0 = None;
+            },
+            ..NO_HOOKS
+        },
+    },
     ff_scaled: false,
     assists: false,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::Two,
     spawns: Spawns {
         family: Some(FAMILY),
         ..TEAM_POINTS
@@ -65,20 +80,8 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::RoundWins,
     order: ScoreOrder::Kills,
-    on_death: |w, d| personal(w, d),
-    time_out,
-    match_end,
     leaving: |_, _| {},
-    hooks: Hooks {
-        setup,
-        update,
-        died,
-        round_end: |w| {
-            bomb::remove_all(w);
-            w.resource_mut::<CaCarrier>().0 = None;
-        },
-        ..NO_HOOKS
-    },
+    left: super::NO_LEFT,
 };
 
 /// The bomb's carrier and where they last were alive (the server's).

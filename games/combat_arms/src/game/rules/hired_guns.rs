@@ -85,19 +85,32 @@ pub const BAG_HALF: f32 = 16.0;
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: HIRED_GUNS,
-    key: "SQM",
-    shown_as: "Hired Guns",
-    description: "Hired Guns: Alpha against Bravo, respawning; carry bullion bars to your bank in 300 s rounds, hire AI \
-                  mercenaries with bank money; G rounds played",
-    respawns: true,
-    warmup: true,
-    warmup_revives: true,
+    rules: super::Mode {
+        id: HIRED_GUNS,
+        key: "SQM",
+        shown_as: "Hired Guns",
+        description: "Hired Guns: Alpha against Bravo, respawning; carry bullion bars to your bank in 300 s rounds, hire AI \
+                      mercenaries with bank money; G rounds played",
+        respawns: true,
+        warmup: true,
+        warmup_revives: true,
+        forced_setup: None,
+        teams: Teams::Two,
+        on_death,
+        time_out,
+        match_end,
+        hooks: Hooks {
+            setup,
+            update,
+            touches,
+            round_over,
+            died,
+            ..NO_HOOKS
+        },
+    },
     ff_scaled: true,
     assists: true,
     timer_shown: true,
-    forced_setup: None,
-    teams: Teams::Two,
     spawns: Spawns {
         family: Some(FAMILY),
         ..TEAM_POINTS
@@ -107,19 +120,8 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::RoundWins,
     order: ScoreOrder::MissionPoints,
-    on_death,
-    time_out,
-    match_end,
     leaving,
-    hooks: Hooks {
-        setup,
-        update,
-        touches,
-        round_over,
-        died,
-        left,
-        ..NO_HOOKS
-    },
+    left,
 };
 
 /// A player's bank money (M11.6); replicated (the hire menu's and the

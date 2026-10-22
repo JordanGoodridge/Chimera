@@ -14,25 +14,33 @@
 //! (`CMM`) and `clan_elimination_pro` (`CTSV`, M18); and
 //! `combat_arms:none` (no mode: the rules leave players alone).
 //!
-//! A mode is data and hooks (`CaMode`: its room key, whether it respawns,
-//! has a warm-up, scales friendly fire, gives assists, shows a timer, how
-//! it makes teams (`Teams`: two, free-for-all, everyone Alpha), its spawn
-//! family (`Spawns`), its round length (`RoundTime`), whether firing ends
-//! protection, its death drops, its score panel and scoreboard order;
-//! what a death adds, its time-out rule, when the match ends, what a
-//! leaver does; `Hooks` for its objects: the round's setup, a per-tick
-//! update, the round over and its end, a death in any phase, respawning
-//! and holding joiners) on the shared rules, one submodule each:
+//! A mode is data and hooks on Chimera's mode runtime (`chimera_sim::
+//! mode`, lifted from here, architecture-review.md L1): `CaMode` is the
+//! runtime's `Mode` (`CaMode::rules`, read through `Deref`: its room key,
+//! whether it respawns, has a warm-up, its forced setup, how it makes
+//! teams (`Teams`: two, free-for-all, everyone Alpha), what a death adds,
+//! its time-out rule, when the match ends; `Hooks` for its objects: the
+//! round's setup, a per-tick update, the round over and its end, a death
+//! in any phase, respawning and holding joiners) plus Combat Arms' own
+//! (whether it scales friendly fire, gives assists, shows a timer, its
+//! spawn family (`Spawns`), its round length (`RoundTime`), whether firing
+//! ends protection, its death drops, its score panel and scoreboard
+//! order, what a leaver does and what a leaver's objects do). Every mode
+//! is registered with the runtime (`ModeAppExt::add_modes`, picked by
+//! `ca_mode`), which steps the match (`CaMatch`, the runtime's `Match`)
+//! through its phases with Combat Arms' flow (`flow::FLOW`). The shared
+//! rules, one submodule each:
 //!
 //! - `settings`: the room's and the server file's settings, the shared
 //!   constants (S2) and the objectives' numbers, data/modes.toml under the
 //!   `ca_*` cvars;
-//! - `state`: the match (`CaMatch`: phase, clocks, team counters, round
-//!   wins and results, the tie-break counters) and each player's
-//!   statistics (`CaStats`, S7, with the modes' own);
-//! - `flow`: the phases the server's mission update runs once per server
-//!   frame (S3), the warm-up (S9), round ends and their cleanup (S10,
-//!   S11), joining, team assignment and leaving (S1, S10), a fresh match
+//! - `state`: the match (`CaMatch`, the runtime's: phase, clocks, team
+//!   counters, round wins and results, the tie-break counters) and each
+//!   player's statistics (`CaStats`, S7, with the modes' own);
+//! - `flow`: Combat Arms' side of the runtime's phases (`FLOW`: the
+//!   mission update once per server frame, S3; the mission's lengths, the
+//!   warm-up's revives, S9; round ends' cleanup and map messages, S11,
+//!   S15), joining, team assignment and leaving (S1, S10), a fresh match
 //!   (`ca_restart`, a map load: `core::NewGame`);
 //! - `spawns`: start points by the mode's family and their cursors (S4),
 //!   the respawn and its request (S5), telefrags, spawn protection (S6);
@@ -112,12 +120,14 @@ pub mod vip;
 
 use bevy::prelude::*;
 
+pub use crate::mode::{Hooks, Mode, NO_HOOKS, Teams};
 pub use settings::CaRuleSettings;
 pub use state::{CaMatch, CaStats, Phase};
 
 use crate::{
     console::ConsoleAppExt,
-    core::{Connecting, Dead, Died, Health, Intent, Npc, SimClock, SimSet, Spectating, Team},
+    core::{Connecting, Dead, Health, Intent, Npc, SimClock, SimSet, Spectating, Team},
+    mode::ModeAppExt,
     rule_module::{self, RuleModule, RuleModules},
 };
 
@@ -208,18 +218,6 @@ pub struct LeftPlayer {
     pub alive: bool,
 }
 
-/// How a mode makes teams (S1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Teams {
-    /// Alpha against Bravo, as the lobby put them.
-    Two,
-    /// Every player a team of their own (`state::FFA_FIRST`..).
-    FreeForAll,
-    /// Everyone starts on Alpha; the mode moves players (Spy Hunt's spies,
-    /// Quarantine's infected).
-    AllAlpha,
-}
-
 /// Which start points a mode spawns at (S4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Spawns {
@@ -282,85 +280,21 @@ pub enum ScoreOrder {
     Hunted,
 }
 
-/// A mode's hooks on the shared rules (`NO_HOOKS` do nothing).
-#[derive(Clone, Copy)]
-pub struct Hooks {
-    /// The round's setup, after everyone was respawned (objective weapons,
-    /// items; `CaMatch::warmup` says whether it is the warm-up).
-    pub setup: fn(&mut World),
-    /// Every server tick before the mission update: the mode's objects
-    /// (touches, timers, plants).
-    pub update: fn(&mut World),
-    /// The round is over (its winner decided, the win counted).
-    pub round_over: fn(&mut World),
-    /// The round's end, before the cleanup (objective items removed).
-    pub round_end: fn(&mut World),
-    /// A player died, in any phase, before the counting (carried items
-    /// dropped).
-    pub died: fn(&mut World, &Died),
-    /// Whether `e` may respawn now beyond `CaMode::respawns` (Spy Hunt's
-    /// second stage stops it).
-    pub may_respawn: fn(&World, Entity) -> bool,
-    /// A round mode holds joiners now beyond S1's rule (a bomb ticking).
-    pub holds_joiner: fn(&World) -> bool,
-    /// At a mission start after the teams are made, before everyone is
-    /// respawned (VIP Escort's VIP choice, the clan modes' half-time
-    /// swap).
-    pub before_spawns: fn(&mut World),
-    /// After a round's end, its intermission set (`CaMatch::phase`): the
-    /// mode may lengthen it or ask for a warm-up next (VIP Escort's side
-    /// swap, the clan modes' half time).
-    pub after_round: fn(&mut World),
-    /// A player on a team left (after the leaving rule): its carried
-    /// objects and its own (Hired Guns' pocket and mercenaries).
-    pub left: fn(&mut World, &LeftPlayer),
-    /// Every server tick after the tick's damage and deaths: touches of
-    /// the mode's objects (game_modes_2.md "Per-tick order": a death from
-    /// a shot comes before a bank or exit touch of the same frame).
-    pub touches: fn(&mut World),
-}
-
-/// No hooks.
-pub const NO_HOOKS: Hooks = Hooks {
-    setup: |_| {},
-    update: |_| {},
-    round_over: |_| {},
-    round_end: |_| {},
-    died: |_, _| {},
-    may_respawn: |_, _| true,
-    holds_joiner: |_| false,
-    before_spawns: |_| {},
-    after_round: |_| {},
-    left: |_, _| {},
-    touches: |_| {},
-};
-
-/// A game mode: its data and hooks.
+/// A game mode: the runtime's part (`rules`: its key, respawning,
+/// warm-up, teams, death counting, time-out and match end, the hooks on
+/// the runtime's steps; read through `Deref`, `mode.key`) and Combat Arms'
+/// own (its spawns, panel, scoreboard, friendly fire, leaving).
 #[derive(Clone, Copy)]
 pub struct CaMode {
-    /// The rule module's name.
-    pub module: &'static str,
-    /// The room key (`ca_mode`).
-    pub key: &'static str,
-    /// The name players see.
-    pub shown_as: &'static str,
-    pub description: &'static str,
-    /// The dead respawn on request (S5).
-    pub respawns: bool,
-    /// The match starts with a warm-up round (S9) ...
-    pub warmup: bool,
-    /// ... that revives the dead every `warmup_revive` s.
-    pub warmup_revives: bool,
+    /// The runtime's mode (`Mode::id` its rule module's name, `Mode::key`
+    /// the room key, `ca_mode`).
+    pub rules: Mode,
     /// Friendly fire on scales a teammate's direct damage (S8).
     pub ff_scaled: bool,
     /// Enemy kills give assists (S7).
     pub assists: bool,
     /// The HUD shows the round timer (hud_crosshair.md D7).
     pub timer_shown: bool,
-    /// The round setup's length, when the mode forces one (TDM: 0).
-    pub forced_setup: Option<f32>,
-    /// How it makes teams (S1).
-    pub teams: Teams,
     /// Its start points (S4).
     pub spawns: Spawns,
     /// Its rounds' length.
@@ -373,18 +307,23 @@ pub struct CaMode {
     pub panel: Panel,
     /// The scoreboard's order.
     pub order: ScoreOrder,
-    /// What a counted death adds (S7) and the win test.
-    pub on_death: fn(&mut World, &state::Death),
-    /// The winner of a round that ran out of time without one (may stay
-    /// None: a draw).
-    pub time_out: fn(&mut World),
-    /// After a real round's end: the match's result if it is over
-    /// (Some(None): a draw).
-    pub match_end: fn(&World) -> Option<Option<u8>>,
     /// A player leaves (S10).
     pub leaving: fn(&mut CaMatch, &Leaver),
-    pub hooks: Hooks,
+    /// A player on a team left (after the leaving rule): its carried
+    /// objects and its own (Hired Guns' pocket and mercenaries).
+    pub left: fn(&mut World, &LeftPlayer),
 }
+
+impl std::ops::Deref for CaMode {
+    type Target = Mode;
+
+    fn deref(&self) -> &Mode {
+        &self.rules
+    }
+}
+
+/// No leaving hook (`CaMode::left`).
+pub const NO_LEFT: fn(&mut World, &LeftPlayer) = |_, _| {};
 
 /// Every mode, by room key.
 pub const MODES: &[CaMode] = &[
@@ -446,10 +385,10 @@ const SETTINGS: &[&str] = &[
 macro_rules! module_of {
     ($($m:ident)::+) => {
         RuleModule {
-            name: $($m)::+.module,
+            name: $($m)::+.id,
             description: $($m)::+.description,
             settings: SETTINGS,
-            applies: |w| current_mode(w).is_some_and(|m| m.module == $($m)::+.module),
+            applies: |w| current_mode(w).is_some_and(|m| m.id == $($m)::+.id),
         }
     };
 }
@@ -615,30 +554,15 @@ fn on_leave(
         carry,
         alive: leaver.alive,
     };
-    let hook = mode.hooks.left;
+    let hook = mode.left;
     commands.queue(move |w: &mut World| hook(w, &left));
 }
-/// The mode's touches, after the tick's deaths.
-fn mode_touches(world: &mut World) {
-    if let Some(mode) = current_mode(world) {
-        (mode.hooks.touches)(world);
-    }
-}
-
 /// This machine's player.
 fn local_player(world: &mut World) -> Option<Entity> {
     world
         .query_filtered::<Entity, With<crate::core::LocalPlayer>>()
         .iter(world)
         .next()
-}
-
-/// The mode's own update (its objects), every server tick before the
-/// mission update.
-fn mode_update(world: &mut World) {
-    if let Some(mode) = current_mode(world) {
-        (mode.hooks.update)(world);
-    }
 }
 
 /// Combat Arms' rule modules and the shared rules' systems.
@@ -666,6 +590,17 @@ impl Plugin for CaRulesPlugin {
         for m in modules() {
             RuleModules::register(app, m);
         }
+        // The modes on the runtime (`chimera_sim::mode`), picked by
+        // `ca_mode`, stepped by Combat Arms' flow (`flow::FLOW`).
+        let rules: Vec<&'static Mode> = MODES.iter().map(|m| &m.rules).collect();
+        app.add_modes(
+            crate::mode::ModeGame {
+                game: super::GAME,
+                chosen: |w| w.get_resource::<CaRuleSettings>().map(|s| s.mode.as_str()),
+                flow: flow::FLOW,
+            },
+            &rules,
+        );
         settings::plugin(app);
         let server = crate::core::authoritative;
         app.init_resource::<CaMatch>()
@@ -698,8 +633,8 @@ impl Plugin for CaRulesPlugin {
                 (
                     (
                         update_team_counts,
-                        mode_update,
-                        flow::mission_update,
+                        crate::mode::flow::update,
+                        crate::mode::flow::mission_update,
                         spawns::ask_for_respawns,
                         crate::spawning::hold_the_dead,
                         flow::hold_frozen,
@@ -715,7 +650,7 @@ impl Plugin for CaRulesPlugin {
                         .after(SimSet::Weapons)
                         .before(crate::core::apply_damage),
                     spawns::firing_ends_protection.after(SimSet::Weapons),
-                    (scoring::log_damage, scoring::handle_deaths, mode_touches, publish)
+                    (scoring::log_damage, scoring::handle_deaths, crate::mode::flow::touches, publish)
                         .chain()
                         .after(crate::core::apply_damage),
                 )

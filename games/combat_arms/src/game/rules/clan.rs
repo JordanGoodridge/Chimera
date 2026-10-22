@@ -67,89 +67,101 @@ pub struct CaClan {
 
 /// Clan Elimination.
 pub const TDM: CaMode = CaMode {
-    module: CLAN_TDM,
-    key: "CDM",
-    shown_as: "Clan Elimination",
-    description: "Clan Elimination: Team Death Match between two clans, sides swapped at G/2 kills after a warm-up; G \
-                  kills win",
-    warmup: true,
-    warmup_revives: true,
-    on_death: tdm_death,
-    match_end: halves_match_end,
-    leaving,
-    hooks: Hooks {
-        setup,
-        update: |w| clan_update(w, |_| {}),
-        before_spawns: swap_teams,
-        after_round: half_after_round,
-        ..super::NO_HOOKS
+    rules: super::Mode {
+        id: CLAN_TDM,
+        key: "CDM",
+        shown_as: "Clan Elimination",
+        description: "Clan Elimination: Team Death Match between two clans, sides swapped at G/2 kills after a warm-up; G \
+                      kills win",
+        warmup: true,
+        warmup_revives: true,
+        on_death: tdm_death,
+        match_end: halves_match_end,
+        hooks: Hooks {
+            setup,
+            update: |w| clan_update(w, |_| {}),
+            before_spawns: swap_teams,
+            after_round: half_after_round,
+            ..super::NO_HOOKS
+        },
+        ..tdm::MODE.rules
     },
+    leaving,
     ..tdm::MODE
 };
 
 /// Clan Capture the Flag.
 pub const CTF: CaMode = CaMode {
-    module: CLAN_CTF,
-    key: "CCTF",
-    shown_as: "Clan Capture the Flag",
-    description: "Clan Capture the Flag: two halves of 600 s, sides swapped at G/2 captures or the first half's end; G \
-                  captures win",
-    warmup: true,
-    warmup_revives: true,
-    round_time: RoundTime::Mission,
-    time_out: ctf_time_out,
-    match_end: halves_match_end,
-    leaving,
-    hooks: Hooks {
-        setup: |w| {
-            (ctf::MODE.hooks.setup)(w);
-            setup(w);
+    rules: super::Mode {
+        id: CLAN_CTF,
+        key: "CCTF",
+        shown_as: "Clan Capture the Flag",
+        description: "Clan Capture the Flag: two halves of 600 s, sides swapped at G/2 captures or the first half's end; G \
+                      captures win",
+        warmup: true,
+        warmup_revives: true,
+        time_out: ctf_time_out,
+        match_end: halves_match_end,
+        hooks: Hooks {
+            setup: |w| {
+                (ctf::MODE.hooks.setup)(w);
+                setup(w);
+            },
+            update: |w| clan_update(w, ctf_update),
+            before_spawns: swap_teams,
+            after_round: half_after_round,
+            ..ctf::MODE.rules.hooks
         },
-        update: |w| clan_update(w, ctf_update),
-        before_spawns: swap_teams,
-        after_round: half_after_round,
-        ..ctf::MODE.hooks
+        ..ctf::MODE.rules
     },
+    round_time: RoundTime::Mission,
+    leaving,
     ..ctf::MODE
 };
 
 /// Clan Search & Destroy.
 pub const SEARCH_DESTROY: CaMode = CaMode {
-    module: CLAN_SEARCH_DESTROY,
-    key: "CMM",
-    shown_as: "Clan Search & Destroy",
-    description: "Clan Search & Destroy: exactly G rounds, sides swapped after G/2 with a warm-up",
-    match_end: rounds_match_end,
-    leaving: rounds_leaving,
-    hooks: Hooks {
-        setup: |w| {
-            (search_destroy::HOOKS.setup)(w);
-            setup(w);
+    rules: super::Mode {
+        id: CLAN_SEARCH_DESTROY,
+        key: "CMM",
+        shown_as: "Clan Search & Destroy",
+        description: "Clan Search & Destroy: exactly G rounds, sides swapped after G/2 with a warm-up",
+        match_end: rounds_match_end,
+        hooks: Hooks {
+            setup: |w| {
+                (search_destroy::HOOKS.setup)(w);
+                setup(w);
+            },
+            update: |w| clan_update(w, search_destroy::HOOKS.update),
+            round_over: completions,
+            before_spawns: swap_teams,
+            after_round: rounds_after_round,
+            ..search_destroy::HOOKS
         },
-        update: |w| clan_update(w, search_destroy::HOOKS.update),
-        round_over: completions,
-        before_spawns: swap_teams,
-        after_round: rounds_after_round,
-        ..search_destroy::HOOKS
+        ..search_destroy::MODE.rules
     },
+    leaving: rounds_leaving,
     ..search_destroy::MODE
 };
 
 /// Clan Elimination Pro.
 pub const ELIMINATION_PRO: CaMode = CaMode {
-    module: CLAN_ELIMINATION_PRO,
-    key: "CTSV",
-    shown_as: "Clan Elimination Pro",
-    description: "Clan Elimination Pro: exactly G rounds, sides swapped after G/2 with a warm-up",
-    match_end: rounds_match_end,
-    leaving: rounds_leaving,
-    hooks: Hooks {
-        setup,
-        update: |w| clan_update(w, |_| {}),
-        before_spawns: swap_teams,
-        after_round: rounds_after_round,
-        ..super::NO_HOOKS
+    rules: super::Mode {
+        id: CLAN_ELIMINATION_PRO,
+        key: "CTSV",
+        shown_as: "Clan Elimination Pro",
+        description: "Clan Elimination Pro: exactly G rounds, sides swapped after G/2 with a warm-up",
+        match_end: rounds_match_end,
+        hooks: Hooks {
+            setup,
+            update: |w| clan_update(w, |_| {}),
+            before_spawns: swap_teams,
+            after_round: rounds_after_round,
+            ..super::NO_HOOKS
+        },
+        ..elimination::MODE.rules
     },
+    leaving: rounds_leaving,
     ..elimination::MODE
 };
 

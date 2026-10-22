@@ -33,11 +33,19 @@ pub const FIST: i32 = 934;
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: HUNTED,
-    key: "HG",
-    shown_as: "Hunted",
-    description: "Hunted: Last Man Standing on the HungerGame points (unlocked in the warm-up, locked in rounds), \
-                  starting with fists",
+    rules: super::Mode {
+        id: HUNTED,
+        key: "HG",
+        shown_as: "Hunted",
+        description: "Hunted: Last Man Standing on the HungerGame points (unlocked in the warm-up, locked in rounds), \
+                      starting with fists",
+        hooks: Hooks {
+            setup,
+            update,
+            ..last_man::MODE.rules.hooks
+        },
+        ..last_man::MODE.rules
+    },
     spawns: Spawns {
         family: Some("HungerGame"),
         one_list: true,
@@ -45,11 +53,6 @@ pub const MODE: CaMode = CaMode {
         locked_rounds: true,
     },
     order: ScoreOrder::Hunted,
-    hooks: Hooks {
-        setup,
-        update,
-        ..last_man::MODE.hooks
-    },
     ..last_man::MODE
 };
 

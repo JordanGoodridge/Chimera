@@ -39,7 +39,7 @@ pub mod ui;
 // table).
 use chimera_core::{character, console, core, game_registry, gameplay, mount, profile, slots};
 use chimera_net::net;
-use chimera_sim::{rule_module, spawning, weapon};
+use chimera_sim::{mode, rule_module, spawning, weapon};
 use chimera_world::{map, music};
 
 // The front end's: the shell.

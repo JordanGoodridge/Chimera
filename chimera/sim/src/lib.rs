@@ -3,7 +3,9 @@
 //! economy, grenades, drops, lag compensation, sprays), the movement
 //! slot's own implementations (`movement`: placeholder walking, noclip),
 //! the rule-module interface (`rule_module`: a game registers its
-//! modes by name) and what every game's respawn does (`spawning`: the dead
+//! modes by name), the mode runtime (`mode`: a game mode as data and
+//! hooks on one match whose phases it steps, lifted from Combat Arms') and
+//! what every game's respawn does (`spawning`: the dead
 //! held still, a character revived at a place). A game fills them with its data and hooks; they name
 //! no game. It uses the engine's base (`chimera_core`) and the
 //! simulation's map (`chimera_world`) and nothing above them, so an edit in
@@ -18,6 +20,7 @@
 //! slot's implementations, the weapon framework): the start of a game's set (`cs_source::SimPlugins`)
 //! and the base of the engine's own scenario tests (tests/it/).
 
+pub mod mode;
 pub mod movement;
 pub mod rule_module;
 pub mod spawning;

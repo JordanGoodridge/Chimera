@@ -31,13 +31,16 @@ use crate::weapon::{Inventory, Weapon};
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: ARMS_RACE,
-    key: "VWRM",
-    shown_as: "Arms Race",
-    description: "Arms Race: One Man Army with a weapon ladder (a step's weapon at its kill count), first to G kills wins",
+    rules: super::Mode {
+        id: ARMS_RACE,
+        key: "VWRM",
+        shown_as: "Arms Race",
+        description: "Arms Race: One Man Army with a weapon ladder (a step's weapon at its kill count), first to G kills wins",
+        on_death,
+        hooks: Hooks { update, ..NO_HOOKS },
+        ..free_for_all::MODE.rules
+    },
     death_drops: false,
-    on_death,
-    hooks: Hooks { update, ..NO_HOOKS },
     ..free_for_all::MODE
 };
 

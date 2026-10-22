@@ -41,17 +41,20 @@ pub struct CaVipTeams(pub [Vec<Entity>; 2]);
 
 /// The mode.
 pub const MODE: CaMode = CaMode {
-    module: VIP_ELIMINATION,
-    key: "VTDM",
-    shown_as: "VIP Elimination",
-    description: "VIP Elimination: Team Death Match where a death is worth the victim's VIP rank's points, first team \
-                  to G points wins",
-    order: ScoreOrder::MissionPoints,
-    on_death,
-    hooks: super::Hooks {
-        update,
-        ..super::NO_HOOKS
+    rules: super::Mode {
+        id: VIP_ELIMINATION,
+        key: "VTDM",
+        shown_as: "VIP Elimination",
+        description: "VIP Elimination: Team Death Match where a death is worth the victim's VIP rank's points, first team \
+                      to G points wins",
+        on_death,
+        hooks: super::Hooks {
+            update,
+            ..super::NO_HOOKS
+        },
+        ..tdm::MODE.rules
     },
+    order: ScoreOrder::MissionPoints,
     ..tdm::MODE
 };
 

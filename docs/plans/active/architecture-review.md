@@ -1381,12 +1381,56 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 
 | # | Item | Depends on | Size |
 |---|---|---|---|
-| L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L |
+| L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (stages 1-2 done; CS:S open) |
 | L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
 | L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4), `bevy` without default features for servers (A5) | none | S each |
+
+L1, stages 1 and 2 done (10-21); stage 3 (CS:S's rounds) open.
+`chimera_sim::mode` is the runtime: `Mode` (id, key, name, respawns,
+warm-up and its revives, a forced setup, `Teams`, `on_death`,
+`time_out`, `match_end`, `Hooks`: setup, update, touches, round over,
+round end, died, may respawn, holds joiner, before spawns, after round),
+registered by id under its game (`Modes`, `ModeAppExt::add_modes`; the
+playing game is the gameplay's rules game, else the first registered;
+its mode the one `ModeGame::chosen` names; `chimera_modes` lists them);
+the match (`Match`, `Phase`, `RoundResult`, the two sides' ids 1 and 2,
+free-for-all ids, `Death`, `classify`) and the phase machine
+(`mode::flow`: `mission_update`, `update`, `touches`) calling the game's
+side (`Flow`: frame, players in join order, respawn, `Span` lengths,
+`FlowEvent` steps) and the mode's hooks. Contract tests on the test kit
+(chimera/sim/tests/it/mode.rs). Combat Arms runs on it: `CaMode` is a
+`Mode` (`CaMode::rules`, read through `Deref`, so `mode.key` and the
+spec tests read as before) plus its own fields (spawns, panel, order,
+friendly fire, assists, timer, death drops, `leaving` and `left`, which
+take its `Leaver`/`LeftPlayer`); `CaMatch` is the runtime's `Match`
+(a type alias, the tests' `CaMatch { .. }` unchanged); `flow::FLOW` is
+its side (20 Hz frame, `missions`' lengths, map messages, clean-up,
+statistics). Every Combat Arms test passes unchanged; the five apps'
+system dumps (servers through a temporary dump patch, reverted) keep
+their order, three systems renamed (`rules::mode_update`,
+`flow::mission_update`, `rules::mode_touches` to
+`chimera_sim::mode::flow::{update, mission_update, touches}`).
+Smallest-change choices: the match keeps Combat Arms' counters as the
+generic ones (round kills and deaths, returns, hold, immunity: a
+scoring table is L2's); the runtime's systems are chained by the game
+into its rules' set (a runtime plugin adding them would reorder
+unordered systems, X1's lesson); joining, leaving, the freeze's intent
+and the network view stay Combat Arms'; `CaStats` isn't generalised;
+rule modules (`rule_module`) stay beside the registry. Left for stage
+3, CS:S's rounds (`rules/rounds.rs`) on it: the runtime needs per-game
+options it doesn't have yet (steps every tick with exact `>=`
+comparisons, CA's are `+1e-9`; a match that starts without waiting for
+players; round over straight into the next setup, with no round-end
+frame or intermission; an outcome decided and the round over in the
+same tick; a round number counted as rounds started), CS:S's hooks
+for money and payouts, the buy window, `RoundOpen`, team balance,
+`mp_restartgame`, deathmatch (`chimera_rounds 0`) and the game end's
+intermission, and `RoundState` (read by the HUD, `NetRound` and about
+20 test files) kept as a view of `Match` each tick so those tests stay
+unchanged.
 
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and
