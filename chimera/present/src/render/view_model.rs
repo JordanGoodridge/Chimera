@@ -389,6 +389,10 @@ pub fn draw_view_models(
                 Visibility::default(),
                 ChildOf(anchor),
             ));
+            if let Some(t) = anchor_target {
+                // Born on the anchor's target, not the window's.
+                e.insert(t.clone());
+            }
             if let Some(t) = tonemapping {
                 e.insert(*t);
             }

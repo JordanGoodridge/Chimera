@@ -229,6 +229,11 @@ pub fn follow_sky_camera(
                 Transform::from_translation(translation).with_rotation(rotation),
                 bevy::camera::visibility::RenderLayers::layer(layer),
             ));
+            // Born on the main camera's target: one frame on the default
+            // (the window) can pair a window-sized depth with an image.
+            if let Some(t) = target {
+                e.insert(t.clone());
+            }
             if let Some(fog) = &info.0.fog {
                 let [r, g, b] = fog.color;
                 e.insert(bevy::pbr::DistanceFog {
