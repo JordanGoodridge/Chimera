@@ -3,7 +3,7 @@
 Source basis: the server's per-mode rule sets (which of them create, command or remove AI characters), the AI goal list the engine can build (every goal type it knows), the AI character object's leader and follow-point fields, the follow goal and follow state, the attack-tower goal, the squad-unit manager that player-bought mercenaries belong to, the Hired Guns and Squad Match 2 rule sets' unit messages, the client's mercenary order HUD, the pickup code of the objective items (bullion), the damage and kill-credit path for AI attackers; plus shipped data from a plaintext copy of the BR client's archives: the room data, every mission file of the bot maps (the bot game-mode files and the same maps' objective-mode files), the Hired Guns mission file, the single-play and multiplayer AI goal files, and the AI character records of the Hired Guns world. Continues `bots.md`.
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Which modes have bots (the answer per mode); What the bot game-mode files hold; Behavior (1 why no bot touches an objective; 2 per-mode sections: Search & Destroy, Capture the Flag, VIP Escort, Seize and Secure, Bombing Run, Spy Hunt, Hired Guns, Squad Match 2, the remaining modes; 3 Hired Guns mercenaries: buying, orders, goals, following, fighting, credit, removal); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Which modes have bots (the answer per mode); What the bot game-mode files hold; Behavior (1 why no bot touches an objective; 2 per-mode sections: Search & Destroy, Capture the Flag, VIP Escort, Seize and Secure, Bombing Run, Spy Hunt, Hired Guns, Squad Match 2, the remaining modes; 3 Hired Guns mercenaries: buying, orders, goals, following, fighting, credit, removal); Per-tick order; Edge cases; Quirks; Corrections (2026-10-22); Test cases; Open questions.
 
 ---
 
@@ -210,6 +210,55 @@ Nothing in any mode's objective update reads or writes AI. For mercenaries, the 
 5. **Attack-move unreachable.** The server implements an attack-move order but the shipped client never sends it. Keep the server side; no UI needed.
 6. **The follow goal's own range keys are ignored.** The follow goal reads a range parameter (default 100 u) but the follow state always uses its own 200 u. Keep 200 u.
 
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's target tracking, aiming and
+accuracy against `bots.md` and our implementation
+(`games/combat_arms/src/game/bots/`, file:line relative to that folder).
+Test cases 25–28; Open question 9.
+
+1. **Mercenaries aim like PvE AI, not like Bot Deathmatch bots** (3.3,
+   "the `bots.md` attack").
+   - Reference: the bot-only rules of `bots.md` 7 apply to an AI character
+     only when it was created as a bot (it carries a bot ID from the bot
+     roster). Mercenaries are created from their unit templates without
+     one, so for them:
+     - **Hit/miss order is fixed**: with the cycle lengths (h, m) of
+       `bots.md` 7.3 step 4, every cycle is h aimed shots first, then m
+       misses, then a new cycle; there is no random roll deciding which
+       shot misses.
+     - **An aimed shot is off by exactly 100 u whenever the movement
+       inaccuracy c is above zero**: the random offset (U(−c, c),
+       U(−c/2, c/2), U(−c, c)) is scaled to length 1 before it is
+       multiplied by 100. So aimed shots only land once c has decayed to 0
+       (the target standing still, or moving in a straight line at a
+       constant speed, for c_max / decay seconds, `bots.md` 7.5).
+     - **No camping bonus to accuracy** (`bots.md` 5.5; whether the
+       camping cut of the reaction delay applies depends on the unit
+       template's values, Open question 9) and **no halving** of accuracy
+       when only the head is visible (the head retry of the visibility
+       test still applies, so they then aim at the head at full accuracy).
+     - **Aim base point**: not the `Torso` node. The point tested and aimed
+       at is the target's hull centre raised by an offset that starts at
+       half of the hull's half-height (25 u standing, 20 u crouched) and,
+       on every update the weapon ray fails, steps down by one eighth of
+       the hull's full height, wrapping from the bottom of the hull back to
+       its top; it stays at the step that last succeeded.
+     - **Devices are not aimed at exactly**: a turret or guard tower goes
+       through the same hit/miss cycle as a character.
+     - **No hit-zone factor**: their rounds deal body damage wherever they
+       land (`bots.md` 7.3, "only AI that is not in bot mode gets none").
+     - Their accuracy goes through the engine's AI difficulty raising
+       (`bots.md` 11), whose factor in Hired Guns was not determined (Open
+       question 9).
+   - Ours: mercenaries run the Bot Deathmatch attack unchanged
+     (brain.rs:1761-1851 into the shared attack and aim, brain.rs:1420-1627):
+     the random hit/miss order (math.rs:97-118), the unnormalised
+     offset (math.rs:123-129), the camping bonus to accuracy and the
+     head-only halving (math.rs:78-80),
+     the hull-centre base point, and the bots' hit-zone factors.
+   - Expect: see test cases 25–28.
+
 ## Test cases
 
 1. **Bot mode files.** Load the room data's `GMS_BDM` for each of the seven bot maps → each file's `MissionMode` is `BDM`, its objective weapons are empty, and it has `[AIStartNodeList]` with 8 Alpha and 8 Bravo patrol start nodes `AI_Node_A_01..08`, `AI_Node_B_01..08`.
@@ -237,6 +286,21 @@ Nothing in any mode's objective update reads or writes AI. For mercenaries, the 
 23. **Round end.** Round ends with 2 mercenaries alive → both removed; next round the player's squad is empty and the order is Default.
 24. **Owner leaves.** Player with 2 mercenaries leaves the match → both removed at once.
 
+25. **Merc hit order (Correction 1).** Mercenary with accuracy 0.25
+    (h = 1, m = 3), target standing still for long enough that c = 0 →
+    shots 1, 5, 9 … are aimed and hit, shots 2–4, 6–8 … miss 100 u to a
+    side, whatever the random draws.
+26. **Merc aim under movement (Correction 1).** Same mercenary, target
+    strafing back and forth (c at c_max) → every aimed shot lands exactly
+    100 u from the base point; none hits.
+27. **Merc base point (Correction 1).** Standing target in the open → the
+    first aimed shot goes to 25 u above its hull centre; if the weapon ray
+    to that point is blocked, the next update tests 12.5 u above the
+    centre, then the centre, and so on.
+28. **Merc damage (Correction 1).** A mercenary's round crossing a
+    player's head → body damage (factor 1), where a Bot Deathmatch bot's
+    would get the head factor.
+
 ## Open questions
 
 1. **Contradiction with `bots.md`.** Its "Does the game have bots" table lists only `BDM`/`BTRN` bots, PvE enemies and turrets, and its section 11 does not mention Hired Guns mercenaries; the reference also runs AI goals (attack, follow, attack tower) in the multiplayer Hired Guns and Squad Match 2 modes, on players' teams. `bots.md` should add a row: "Hired Guns, Squad Match 2: player-bought mercenaries, see `bots_objectives.md`". No other contradiction with `bots.md`, `game_modes.md` or `missions.md` was found; `game_modes_2.md` had not landed when this was written and was not checked.
@@ -247,3 +311,9 @@ Nothing in any mode's objective update reads or writes AI. For mercenaries, the 
 6. **Mercenary attributes.** The `Squad_AR`, `Squad_SMG` and `Squad_MG` brains and the `Squad_0..9` attribute templates live in the multiplayer AI attribute file (not the single-play one `bots.md` reads); their reaction, accuracy and per-weapon rows need their own table before mercenaries are implemented.
 7. **Spawn protection and respawn.** Mercenaries never respawn (none of the rule sets re-creates them); whether a freshly bought one is invulnerable for a moment like a bot (`bots.md` 10) was not traced.
 8. **Bomb-site or flag AI in other builds.** Only the BR-era code and data were read. If a later build (for example the Steam one, whose mission files include extra suffixes `missions.md` lists as unread) added objective bots, this spec would not know; check its goal list for new goal types.
+9. **Mercenaries' difficulty and shooting data** (Correction 1). The
+   engine raises AI accuracy (and lowers reaction-type times) by a
+   difficulty factor; for bots it is 1 (`bots.md` Quirk 14). Whether Hired
+   Guns sets a server difficulty, and whether the `Squad_*` templates have
+   per-weapon AI rows (bursts by those rows, reaction delay from template
+   times) in the multiplayer attribute file, was not determined.
