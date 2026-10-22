@@ -334,7 +334,7 @@ impl BoundBoard {
             bound::set_text(&mut l, id, Some(&board.scores[i].to_string()), None);
         }
         // The headers: the mode's column only where it has one.
-        let mission = board.order.and_then(|o| board.lists.iter().flatten().next().and_then(|r| r.mode_column(o))).is_some();
+        let mission = board.order.and_then(|o| board.lists.iter().flatten().next().and_then(|r| r.mode_cell(o))).is_some();
         for name in ["menu_Mission"] {
             let text = l.tree.find_from(panel, name);
             let id = text.and_then(|t| l.tree.get(t).parent);
@@ -390,10 +390,10 @@ fn bind_row(l: &mut Layout, row_id: WidgetId, k: usize, row: &ScoreRow, order: O
         let id = find(l, name);
         bound::set_text(l, id, Some(&value), None);
     }
-    let mission = order.and_then(|o| row.mode_column(o));
+    let mission = order.and_then(|o| row.mode_cell(o));
     let id = find(l, "User_Mission");
     match mission {
-        Some(v) => bound::set_text(l, id, Some(&v.to_string()), None),
+        Some(v) => bound::set_text(l, id, Some(&v), None),
         None => {
             let parent = id.and_then(|i| l.tree.get(i).parent);
             bound::show(l, parent, false);
@@ -495,7 +495,7 @@ fn draw(
                 let ping = row.ping.map_or(String::new(), |p| p.to_string());
                 let mode_column = board
                     .order
-                    .and_then(|o| row.mode_column(o))
+                    .and_then(|o| row.mode_cell(o))
                     .map_or(String::new(), |v| v.to_string());
                 let cells = [
                     row.name.clone(),

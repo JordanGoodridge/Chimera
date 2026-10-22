@@ -23,8 +23,13 @@
 //! - Round win: no human alive, the infected; after the selection, no
 //!   infected alive, the humans. Time-out: the humans. The living members
 //!   of the winning side get +10 (humans) or +5 (infected) at the round's
-//!   end. Match end: after G rounds played, with no winner (players rank
-//!   by mission points).
+//!   end. Match end: after G rounds played, or with one player or fewer
+//!   on a team (after the warm-up too), with no winner (players rank by
+//!   mission points). A leaver who leaves one player or fewer ends the
+//!   round (no side wins). The setup is one frame (Corrections
+//!   2026-10-22, 16). Joiners: held once the hosts are chosen, whatever
+//!   the player count; before that they play at once, as humans
+//!   (Corrections 4).
 //! - Spawns: the `Quarantine` points, one list (all `JSF` in the stock
 //!   maps). No respawn request.
 //!
@@ -40,12 +45,12 @@
 use bevy::prelude::*;
 
 use super::{
-    CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, QUARANTINE, RoundTime, ScoreOrder, Spawns, Teams,
+    CaMode, CaRuleSettings, Hooks, Leaver, NO_HOOKS, Panel, QUARANTINE, RoundTime, ScoreOrder, Spawns, Teams,
     flow::{alive, players},
     objectives,
     scoring::{personal, stats},
     spawns,
-    state::{ALPHA, BRAVO, CaMatch, Death, DeathKind},
+    state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, Phase},
 };
 use crate::core::{Health, SimClock, Team};
 
@@ -59,15 +64,19 @@ pub const MODE: CaMode = CaMode {
         respawns: false,
         warmup: true,
         warmup_revives: false,
-        forced_setup: None,
+        // Always one frame, like TDM (Corrections 2026-10-22, 16).
+        forced_setup: Some(0.0),
         teams: Teams::AllAlpha,
         on_death,
         time_out: |w| w.resource_mut::<CaMatch>().winner = Some(ALPHA),
-        match_end: |w| (w.resource::<CaMatch>().round >= w.resource::<CaRuleSettings>().goal()).then_some(None),
+        match_end,
         hooks: Hooks {
             setup,
             update,
             round_over,
+            holds_joiner: hosts_chosen,
+            counts_joiners: false,
+            warmup_end: match_end,
             ..NO_HOOKS
         },
     },
@@ -85,9 +94,35 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::RoundWins,
     order: ScoreOrder::MissionOnly,
-    leaving: |_, _| {},
+    leaving,
     left: super::NO_LEFT,
 };
+
+/// After G rounds played, or with one player or fewer on a team (also
+/// after the warm-up, `Hooks::warmup_end`): no winner (Corrections
+/// 2026-10-22, 10).
+fn match_end(world: &World) -> Option<Option<u8>> {
+    let on_teams: u32 = world.resource::<super::CaTeamCounts>().0.iter().sum();
+    let over = world.resource::<CaMatch>().round >= world.resource::<CaRuleSettings>().goal() || on_teams <= 1;
+    over.then_some(None)
+}
+
+/// A leaver who leaves one player or fewer on the server ends the round at
+/// once, no side winning (Corrections 2026-10-22, 10).
+fn leaving(m: &mut CaMatch, l: &Leaver) {
+    if m.phase == Phase::Live && l.players <= 2 && !m.decided() {
+        m.end_without_winner();
+    }
+}
+
+/// A joiner is held once the hosts are chosen (the live round past the
+/// host-selection wait), whatever the player count; before, it plays at
+/// once as a human (Corrections 2026-10-22, 4).
+fn hosts_chosen(world: &World) -> bool {
+    let wait = world.resource::<CaRuleSettings>().objectives.host_delay as f64;
+    let now = world.resource::<SimClock>().now;
+    now + 1e-9 >= world.resource::<CaMatch>().live_since + wait
+}
 
 /// The round's infection state (the server's).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]

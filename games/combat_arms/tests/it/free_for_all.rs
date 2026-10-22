@@ -10,6 +10,7 @@ use combat_arms::game::{
     grenades::M67,
     rules::{
         self, CaMatch, CaStats, Phase,
+        free_for_all::CaKillsMade,
         last_man::winner_of,
         objects::StartPoint,
         spawns::{self, CaProtected, CaSpawnCursors},
@@ -142,10 +143,9 @@ fn case_52_leaving() {
     assert_eq!((phase(&sim), m(&sim).winner), (Phase::Live, None));
     for (kills, winner) in [(10, true), (3, false)] {
         let (mut sim, p) = ffa("FFA", 2);
-        sim.app.world_mut().entity_mut(p[1]).insert(CaStats {
-            kills,
-            ..default()
-        });
+        // The kills made in the round, the leaver's too (Corrections
+        // 2026-10-22, 14).
+        sim.app.world_mut().resource_mut::<CaKillsMade>().0 = kills;
         let stayer = team(&sim, p[0]);
         sim.app.world_mut().despawn(p[1]);
         until(&mut sim, 0.1, |p| matches!(p, Phase::RoundOver { .. }));

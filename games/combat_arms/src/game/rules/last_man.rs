@@ -8,23 +8,29 @@
 //!   (if any) wins the round (its round wins +1, its mission points with
 //!   them: the scoreboard's column).
 //! - Time-out: no winner.
-//! - Match end: after G rounds played; the winner by `winner`, which
-//!   compares every other player with the first in the server's list only
-//!   (Quirk 5); with one player or fewer left, that player.
+//! - Match end: after G rounds played, or with one player or fewer left
+//!   (also after the warm-up, `Hooks::warmup_end`; Corrections 2026-10-22,
+//!   1 and 9); the winner by `winner`, which compares every other player
+//!   with the first in the server's list only (Quirk 5); with one player
+//!   or fewer left, that player.
+//! - Leaving (Corrections 2026-10-22, 9): with 2 or fewer players on the
+//!   server (the leaver counted) the round ends at once; a leaver's going
+//!   that leaves one living player or none ends it with that player the
+//!   winner (`leaving`, `left`).
 //! - Spawns: the shuffled `FreeForAll` list; firing ends spawn protection;
 //!   the warm-up revives the dead every 5 s (S9).
 //!
-//! Known shortcuts: leaving has no rule of its own (S10 names none); the
-//! score panel shows the local player's round wins and the leader's.
+//! Known shortcuts: the score panel shows the local player's round wins
+//! and the leader's.
 
 use bevy::prelude::*;
 
 use super::{
-    CaMode, CaRuleSettings, LAST_MAN_STANDING, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, Teams,
+    CaMode, CaRuleSettings, Hooks, LAST_MAN_STANDING, LeftPlayer, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, Teams,
     flow::alive_players,
     free_for_all::FFA_POINTS,
     scoring::free_for_all,
-    state::{CaMatch, CaStats, Death},
+    state::{CaMatch, CaStats, Death, Phase},
 };
 
 /// The mode.
@@ -43,7 +49,10 @@ pub const MODE: CaMode = CaMode {
         on_death,
         time_out: |_| {},
         match_end,
-        hooks: NO_HOOKS,
+        hooks: Hooks {
+            warmup_end: players_left_end,
+            ..NO_HOOKS
+        },
     },
     ff_scaled: false,
     assists: false,
@@ -54,8 +63,8 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::PlayerRoundWins,
     order: ScoreOrder::MissionPoints,
-    leaving: |_: &mut CaMatch, _: &Leaver| {},
-    left: super::NO_LEFT,
+    leaving,
+    left,
 };
 
 /// A death leaving at most one player alive ends the round, that player
@@ -78,13 +87,50 @@ pub fn on_death(world: &mut World, d: &Death) {
     }
 }
 
-/// After G rounds played: `winner`.
+/// Two or fewer players on the server (the leaver counted): the round ends
+/// at once (Corrections 2026-10-22, 9).
+pub fn leaving(m: &mut CaMatch, l: &Leaver) {
+    if m.phase == Phase::Live && l.players <= 2 && !m.decided() {
+        m.end_requested = true;
+    }
+}
+
+/// The leaver's going left one living player or none (and no winner is
+/// set): the round ends at once with that player, the first in the
+/// server's list, its winner (its round wins +1 with the mission points).
+/// A warm-up has no winner.
+pub fn left(world: &mut World, l: &LeftPlayer) {
+    let m = world.resource::<CaMatch>();
+    if m.phase != Phase::Live || m.warmup || m.winner.is_some() {
+        return;
+    }
+    let living: Vec<_> = alive_players(world).into_iter().filter(|(e, _)| *e != l.entity).collect();
+    if living.len() > 1 {
+        return;
+    }
+    match living.first() {
+        Some((e, t)) => {
+            super::scoring::stats(world, *e).mission_points += 1;
+            world.resource_mut::<CaMatch>().win(*t);
+        }
+        None => world.resource_mut::<CaMatch>().end_without_winner(),
+    }
+}
+
+/// After G rounds played, or with one player or fewer left (that player the
+/// winner; Corrections 2026-10-22, 9): `winner`.
 pub fn match_end(world: &World) -> Option<Option<u8>> {
     let goal = world.resource::<CaRuleSettings>().goal();
-    if world.resource::<CaMatch>().round < goal {
+    if world.resource::<CaMatch>().round < goal && list(world).len() > 1 {
         return None;
     }
     Some(winner(world))
+}
+
+/// After the warm-up (and every real round, `match_end`): one player or
+/// fewer left ends the match, that player the winner.
+fn players_left_end(world: &World) -> Option<Option<u8>> {
+    (list(world).len() <= 1).then(|| winner(world))
 }
 
 /// M6's match winner, as the game picks it (Quirk 5): every other player

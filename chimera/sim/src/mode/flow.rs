@@ -24,8 +24,9 @@
 //!   `Span::RoundOver` on.
 //! - Round end at the next frame after that: the mode's `round_end`,
 //!   `RoundEnd`, unfrozen, the round's counters cleared, the round counted
-//!   (not the warm-up), `RoundEnded`, the mode's `match_end` (never after
-//!   the warm-up), the intermission (`Span::Intermission`), the mode's
+//!   (not the warm-up), `RoundEnded`, the mode's `match_end` (after
+//!   the warm-up its `Hooks::warmup_end`, never ends by default), the
+//!   intermission (`Span::Intermission`), the mode's
 //!   `after_round`; then the next mission start or the match over.
 //! - The warm-up (`Mode::warmup`, when the game has a `Span::Warmup`):
 //!   the match's first round, nothing counts, no winner; the dead revived
@@ -299,7 +300,8 @@ fn round_end(world: &mut World, now: f64, mode: &'static Mode, flow: Flow) {
         warmup
     };
     (flow.event)(world, FlowEvent::RoundEnded);
-    if !warmup && let Some(result) = (mode.match_end)(world) {
+    let result = if warmup { (mode.hooks.warmup_end)(world) } else { (mode.match_end)(world) };
+    if let Some(result) = result {
         world.resource_mut::<Match>().result = Some(result);
     }
     if flow.options.direct {

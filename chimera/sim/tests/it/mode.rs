@@ -89,6 +89,21 @@ static ROUNDS: Mode = Mode {
     },
 };
 
+/// Whether `WARMUP_ENDS`' match is over after its warm-up.
+#[derive(Resource, Default)]
+struct EndAfterWarmup(bool);
+
+/// `ROUNDS`, but its warm-up's end can end the match (`Hooks::warmup_end`).
+static WARMUP_ENDS: Mode = Mode {
+    id: "kit:warmup_ends",
+    key: "warmup_ends",
+    hooks: mode::Hooks {
+        warmup_end: |w| w.get_resource::<EndAfterWarmup>().is_some_and(|e| e.0).then_some(Some(ALPHA)),
+        ..NO_HOOKS
+    },
+    ..ROUNDS
+};
+
 /// Every player a team of their own.
 static FREE_FOR_ALL: Mode = Mode {
     id: "kit:ffa",
@@ -142,7 +157,7 @@ fn sim(key: &'static str) -> Sim {
         .insert_resource(Chosen(key))
         .init_resource::<Log>()
         .init_resource::<Match>()
-        .add_modes(kit_game("kit"), &[&DEATHMATCH, &ROUNDS, &FREE_FOR_ALL])
+        .add_modes(kit_game("kit"), &[&DEATHMATCH, &ROUNDS, &WARMUP_ENDS, &FREE_FOR_ALL])
         .add_systems(
             FixedUpdate,
             (flow::update, flow::mission_update).chain().in_set(SimSet::Rules),
@@ -238,6 +253,41 @@ fn a_match_walks_its_phases_in_order() {
     until(&mut sim, 10.0, |p| p == Phase::MatchOver);
     let m = sim.app.world().resource::<Match>().clone();
     assert_eq!((m.result, m.round, m.round_wins), (Some(Some(ALPHA)), 2, [2, 0]));
+}
+
+#[test]
+fn a_warm_ups_end_can_end_the_match_by_the_modes_hook_only() {
+    // No hook (`NO_HOOKS`): the warm-up never ends the match (CS:S's).
+    let mut plain = sim("rounds");
+    player(&mut plain, ALPHA);
+    player(&mut plain, BRAVO);
+    until(&mut plain, 6.0, |p| matches!(p, Phase::Intermission { .. }));
+    until(&mut plain, 3.0, |p| matches!(p, Phase::Setup { .. }));
+    assert_eq!(plain.app.world().resource::<Match>().result, None);
+    // The hook says the match is over: after the warm-up's round over and
+    // intermission, the match is over, no real round played.
+    let mut sim = sim("warmup_ends");
+    sim.app.insert_resource(EndAfterWarmup(true));
+    player(&mut sim, ALPHA);
+    player(&mut sim, BRAVO);
+    until(&mut sim, 6.0, |p| matches!(p, Phase::Intermission { .. }));
+    assert_eq!(sim.app.world().resource::<Match>().result, Some(Some(ALPHA)));
+    until(&mut sim, 1.2, |p| p == Phase::MatchOver);
+    let m = sim.app.world().resource::<Match>().clone();
+    assert_eq!((m.round, m.results.len(), m.results[0].warmup), (0, 1, true), "only the warm-up ran");
+    // Not over: the real round follows.
+    let mut sim = sim_with_flag_off();
+    until(&mut sim, 6.0, |p| matches!(p, Phase::Intermission { .. }));
+    until(&mut sim, 1.2, |p| matches!(p, Phase::Setup { .. }));
+    assert_eq!(sim.app.world().resource::<Match>().result, None);
+}
+
+fn sim_with_flag_off() -> Sim {
+    let mut sim = sim("warmup_ends");
+    sim.app.insert_resource(EndAfterWarmup(false));
+    player(&mut sim, ALPHA);
+    player(&mut sim, BRAVO);
+    sim
 }
 
 #[test]

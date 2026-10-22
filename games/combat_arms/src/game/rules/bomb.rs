@@ -28,6 +28,12 @@
 //!   every machine plays the show's effects (`effects::bomb_show`). A
 //!   partial defuse keeps nothing (every attempt the full `DefuseTime`).
 //!
+//! - The planter's credit (Corrections 2026-10-22, 13): S&D keeps no plant
+//!   statistic (Bombing Run counts plants); the planter is credited one
+//!   detonation when the bomb explodes, and also when the round is
+//!   decided while the bomb still ticks (`credit_planter`, the mode's
+//!   `round_over`); a planter who left is not credited.
+//!
 //! Known shortcuts: the sites' `PlantedCommand`, `DetonatedCommand` and
 //! the other command strings aren't run (no map commands yet: the other
 //! site closes by the one-bomb rule, the show is ours from S15's
@@ -105,7 +111,11 @@ pub fn update(world: &mut World, family: &str) {
             let mut c = objectives::carry(world, p.e);
             c.bomb = false;
             objectives::set_carry(world, p.e, c);
-            stats(world, p.e).plants += 1;
+            // S&D keeps no plant statistic (Corrections 2026-10-22, 13);
+            // Bombing Run counts plants.
+            if family == super::bombing_run::FAMILY {
+                stats(world, p.e).plants += 1;
+            }
             info!("bomb planted at site {} ({:?})", z.number, p.e);
             return;
         }
@@ -149,6 +159,22 @@ pub fn update(world: &mut World, family: &str) {
             world.resource_mut::<CaMatch>().win(bomb.team);
             info!("bomb detonated");
         }
+    }
+}
+
+/// A real round decided while the bomb still ticks (the defenders
+/// eliminated, the attackers' last player leaving): the planter is
+/// credited the detonation at the round result as when it exploded
+/// (Corrections 2026-10-22, 13); not if they left, never in the warm-up.
+/// The mode's `round_over`.
+pub fn credit_planter(world: &mut World) {
+    if world.resource::<CaMatch>().warmup || !ticking(world) {
+        return;
+    }
+    if let Some(planter) = world.resource::<CaPlanter>().0
+        && world.get_entity(planter).is_ok()
+    {
+        stats(world, planter).detonations += 1;
     }
 }
 

@@ -857,17 +857,20 @@ fn case_32_match_end() {
 }
 
 /// 33. Late join: 6 players, round live; a 7th joins: held until the next
-/// round's setup. With only 2 players in, it spawns at once.
+/// round's setup. With 2 players in the joiner makes 3 (Corrections
+/// 2026-10-22, 3): held too, once a second of live play has passed. A joiner
+/// 0.6 s after the round went live spawns at once.
 #[test]
 fn case_33_late_join() {
-    for (per_side, held) in [(3, true), (1, false)] {
+    for (per_side, wait, held) in [(3, 3, true), (1, 3, true), (1, 4, false)] {
         let (mut sim, ..) = elimination(per_side);
+        sim.app.world_mut().resource_mut::<CaRuleSettings>().late_join_wait = wait;
         sim.seconds(30.0);
         let late = join(&mut sim, JSF);
         sim.app.world_mut().entity_mut(late).insert(chimera_core::core::Connecting);
         flow::enter_game(sim.app.world_mut(), late);
         sim.ticks(1);
-        assert_eq!(dead(&sim, late), held, "{} in", 2 * per_side);
+        assert_eq!(dead(&sim, late), held, "{} in, wait {wait}", 2 * per_side);
         if held {
             sim.app.world_mut().resource_mut::<CaMatch>().round_ends = Some(now(&sim));
             until(&mut sim, 8.0, |p| matches!(p, Phase::Setup { .. }));
@@ -875,6 +878,13 @@ fn case_33_late_join() {
             assert!(!dead(&sim, late), "in with everyone at the setup");
         }
     }
+    let (mut sim, ..) = elimination(3);
+    sim.seconds(0.6);
+    let late = join(&mut sim, JSF);
+    sim.app.world_mut().entity_mut(late).insert(chimera_core::core::Connecting);
+    flow::enter_game(sim.app.world_mut(), late);
+    sim.ticks(1);
+    assert!(!dead(&sim, late), "0.6 s after going live: at once");
 }
 
 /// Case 42's Elimination Pro half: a team that's empty at a round's end

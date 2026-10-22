@@ -15,8 +15,11 @@
 //! - Match end: a team has G round wins or a team is empty; the winner
 //!   more round wins, if equal the last round's winner (none after a
 //!   time-out).
-//! - Deaths: S7's personal counts (`scoring::personal`; the mode has no
-//!   column of its own). Friendly fire on is full damage (S8).
+//! - Deaths: S&D's counts (`scoring::round_mode`, Corrections 2026-10-22,
+//!   6: a team kill gives the victim no death, a suicide no friendly
+//!   kill). Friendly fire on is full damage (S8).
+//! - Leaving (Corrections 2026-10-22, 7): the only player of a team, or
+//!   the last of it alive, leaving gives the round to the other team.
 //!
 //! - Spawns: the `Sabotage` points per team (Open question 19). The
 //!   carrier is given its own team's objective weapons of the mission
@@ -30,11 +33,11 @@
 use bevy::prelude::*;
 
 use super::{
-    BOMBING_RUN, CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, RoundTime, ScoreOrder, Spawns, TEAM_POINTS, Teams, bomb,
+    BOMBING_RUN, CaMode, CaRuleSettings, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, Spawns, TEAM_POINTS, Teams, bomb,
     objectives::{self, BOMB, CaObjectives},
     objects::{CaMapObjects, FLAG_DIMS, ObjBox},
-    scoring::personal,
-    state::{ALPHA, BRAVO, CaMatch, side},
+    scoring::round_mode,
+    state::{ALPHA, BRAVO, CaMatch, Phase, enemy, side},
 };
 use crate::core::{Dead, Died};
 
@@ -54,13 +57,15 @@ pub const MODE: CaMode = CaMode {
         warmup_revives: true,
         forced_setup: None,
         teams: Teams::Two,
-        on_death: |w, d| personal(w, d),
+        on_death: |w, d| round_mode(w, d),
         time_out,
         match_end,
         hooks: Hooks {
             setup,
             update,
             died,
+            round_over: bomb::credit_planter,
+            warmup_end: match_end,
             round_end: |w| {
                 bomb::remove_all(w);
                 w.resource_mut::<CaCarrier>().0 = None;
@@ -79,8 +84,8 @@ pub const MODE: CaMode = CaMode {
     fire_ends_protection: false,
     death_drops: true,
     panel: Panel::RoundWins,
-    order: ScoreOrder::Kills,
-    leaving: |_, _| {},
+    order: ScoreOrder::ExplodeDefuse,
+    leaving,
     left: super::NO_LEFT,
 };
 
@@ -173,6 +178,19 @@ fn update(world: &mut World) {
         }
     }
     bomb::update(world, FAMILY);
+}
+
+/// The only player of a team leaving, or none of its teammates alive (dead
+/// and waiting to respawn; the leaver alive or dead): the other team wins
+/// the round (Corrections 2026-10-22, 7).
+fn leaving(m: &mut CaMatch, l: &Leaver) {
+    if m.phase != Phase::Live || m.winner.is_some() {
+        return;
+    }
+    let others_alive = l.team_alive - usize::from(l.alive);
+    if l.team_players <= 1 || others_alive == 0 {
+        m.win(enemy(l.team));
+    }
 }
 
 /// Both teams +1 round win, no winner.

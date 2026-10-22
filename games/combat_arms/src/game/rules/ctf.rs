@@ -23,7 +23,8 @@
 //!   zone while their own flag is home, in any phase but the warm-up (a
 //!   capture in the round-over hold still counts, Quirk 13): team captures
 //!   (the team counter, `CaMatch::score`) +1, player captures +1, the
-//!   carried flag home. The capture that brings a team to G wins.
+//!   carried flag home. Every capture that leaves a team at G or more
+//!   re-picks the winner (more captures; equal keeps the old one).
 //! - Deaths (S7's CTF column): enemy kill, killer kills +1, victim deaths
 //!   +1, the killer's team's kills +1; team kill, killer friendly kills
 //!   +1, victim deaths +1, the enemy team's kills +1; own damage, victim
@@ -303,8 +304,16 @@ fn capture(world: &mut World, e: Entity, team: u8, at: Vec3) {
     let Some(i) = side(team) else { return };
     let mut m = world.resource_mut::<CaMatch>();
     m.score[i] += 1;
-    if m.score[i] >= goal && m.winner.is_none() {
-        m.win(team);
+    // Every capture that leaves a team at G or more re-picks the winner:
+    // the team with more captures, an equal count keeping the old one
+    // (Corrections 2026-10-22, 15; the capturer when there is none).
+    if m.score[i] >= goal {
+        let w = match m.score[0].cmp(&m.score[1]) {
+            std::cmp::Ordering::Greater => super::state::ALPHA,
+            std::cmp::Ordering::Less => super::state::BRAVO,
+            std::cmp::Ordering::Equal => m.winner.unwrap_or(team),
+        };
+        m.win(w);
     }
     info!("flag captured by team {team}: {:?}", m.score);
 }

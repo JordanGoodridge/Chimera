@@ -136,11 +136,14 @@ pub const SEARCH_DESTROY: CaMode = CaMode {
             round_over: completions,
             before_spawns: swap_teams,
             after_round: rounds_after_round,
+            // Not determined for the clan modes (their leaving rule ends
+            // the match at once).
+            warmup_end: |_| None,
             ..search_destroy::HOOKS
         },
         ..search_destroy::MODE.rules
     },
-    leaving: rounds_leaving,
+    leaving: sd_rounds_leaving,
     ..search_destroy::MODE
 };
 
@@ -379,6 +382,14 @@ fn rounds_leaving(m: &mut CaMatch, l: &Leaver) {
     leaving(m, l);
     if m.result.is_none() {
         elimination::leaving(m, l);
+    }
+}
+
+/// Clan Search & Destroy's: the clans' rule, then S&D's.
+fn sd_rounds_leaving(m: &mut CaMatch, l: &Leaver) {
+    leaving(m, l);
+    if m.result.is_none() {
+        search_destroy::leaving(m, l);
     }
 }
 

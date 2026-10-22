@@ -175,3 +175,29 @@ fn clan_modes_over_the_network() {
     });
     assert!(swapped, "swapped everywhere: {:?} {}", view(&sim, 0).score, client_objectives(&sim, 0).half);
 }
+
+/// The 2026-10-22 corrections over the network (game_modes.md Corrections
+/// 2, 3): in S&D a third client joining a round that has been live for a
+/// second is held (it counts itself); then the Creed client leaves and
+/// the round goes to JSF on the server.
+#[test]
+fn late_joining_and_leaving_over_the_network() {
+    let mut sim = mode_sim("TMM", 5);
+    restart_and_play(&mut sim);
+    sim.ticks((1.5 / TICK_INTERVAL) as u64);
+    let third = sim.add_client(|_| {});
+    let came = sim.until(600, |s| s.character_of(third).is_some());
+    assert!(came, "the third client's character");
+    let e = sim.character_of(third).unwrap();
+    sim.ticks(5);
+    let held = {
+        let w = sim.server.app.world();
+        w.get::<combat_arms::game::rules::spawns::CaHeld>(e).is_some() || w.get::<chimera_core::core::Dead>(e).is_some()
+    };
+    assert!(held, "held until the next setup");
+    // Creed's only player leaves: JSF wins the round.
+    let creed = if player(&mut sim, 0).1 == 2 { 0 } else { 1 };
+    sim.remove_client(creed);
+    let won = sim.until(300, |s| server_match(s).winner == Some(1));
+    assert!(won, "JSF's round: {:?}", server_match(&sim).winner);
+}

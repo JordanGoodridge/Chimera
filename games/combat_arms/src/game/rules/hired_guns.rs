@@ -105,6 +105,7 @@ pub const MODE: CaMode = CaMode {
             touches,
             round_over,
             died,
+            warmup_end: match_end,
             ..NO_HOOKS
         },
     },

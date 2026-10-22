@@ -408,6 +408,8 @@ fn install_hud_rest_binds() {
         assists: 0,
         captures: 0,
         returns: 0,
+        detonations: 0,
+        defuses: 0,
         mission_points: 0,
         hunted_ms: 0,
         ping: None,

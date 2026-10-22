@@ -18,8 +18,12 @@
 //!   then more points; else more enemy kills, counted over every player
 //!   but the first in the server's list (Quirk 6); else fewer deaths; else
 //!   a draw.
-//! - Deaths: S7's personal counts, the victim's team's deaths +1.
-//!   Friendly fire on is full damage (S8, test case 13).
+//! - Deaths: S&D's counts (`scoring::round_mode`, Corrections 2026-10-22,
+//!   6), the victim's team's deaths +1. Friendly fire on is full damage
+//!   (S8, test case 13).
+//! - Leaving: the only player of a team leaving gives the other team the
+//!   win at once (Corrections 2026-10-22, 8); an empty team after the
+//!   warm-up ends the match (no winner, Corrections 1).
 //!
 //! - Spawns: the `HeadQuaters` points per team (Open question 19; Squad
 //!   Match 2 its `SquadMatch2`). The use time of each trigger, the rise
@@ -35,14 +39,14 @@
 use bevy::prelude::*;
 
 use super::{
-    CaMode, Hooks, NO_HOOKS, Panel, RoundTime, SEIZE_AND_SECURE, SQUAD_MATCH_2, ScoreOrder, Spawns,
+    CaMode, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, SEIZE_AND_SECURE, SQUAD_MATCH_2, ScoreOrder, Spawns,
     TEAM_POINTS, Teams,
     ctf::pick,
     flow::players,
     objectives::{self, ActionKind, CaObjectives, Pole},
     objects::CaMapObjects,
-    scoring::{personal, stats},
-    state::{ALPHA, BRAVO, CaMatch, CaStats, side},
+    scoring::{round_mode, stats},
+    state::{ALPHA, BRAVO, CaMatch, CaStats, Phase, enemy, side},
 };
 use crate::core::SimClock;
 
@@ -60,7 +64,7 @@ pub const MODE: CaMode = CaMode {
         forced_setup: None,
         teams: Teams::Two,
         on_death: |w, d| {
-            personal(w, d);
+            round_mode(w, d);
             if let Some(i) = side(d.victim_team) {
                 w.resource_mut::<CaMatch>().deaths[i] += 1;
             }
@@ -73,6 +77,7 @@ pub const MODE: CaMode = CaMode {
                 w.resource_mut::<CaObjectives>().pole = real.then(Pole::default);
             },
             update,
+            warmup_end,
             ..NO_HOOKS
         },
     },
@@ -88,7 +93,7 @@ pub const MODE: CaMode = CaMode {
     death_drops: true,
     panel: Panel::TeamScore,
     order: ScoreOrder::MissionPoints,
-    leaving: |_, _| {},
+    leaving,
     left: super::NO_LEFT,
 };
 
@@ -107,6 +112,24 @@ pub const SQUAD_MATCH: CaMode = CaMode {
     },
     ..MODE
 };
+
+/// The only player of a team leaving gives the other team the win at once
+/// (the match ends with it: one round; Corrections 2026-10-22, 8).
+fn leaving(m: &mut CaMatch, l: &Leaver) {
+    if m.phase == Phase::Live && m.winner.is_none() && l.team_players <= 1 {
+        m.win(enemy(l.team));
+    }
+}
+
+/// After the warm-up an empty team ends the match (Corrections
+/// 2026-10-22, 1); the warm-up has no winner.
+fn warmup_end(world: &World) -> Option<Option<u8>> {
+    world
+        .resource::<super::CaTeamCounts>()
+        .0
+        .contains(&0)
+        .then(|| world.resource::<CaMatch>().winner)
+}
 
 /// Seize and Secure's start points' game type (spelled so).
 pub const FAMILY: &str = "HeadQuaters";

@@ -36,6 +36,7 @@ mod lobby;
 mod lobby_loadout;
 mod lobby_net;
 mod missions;
+mod mode_corrections;
 mod mode_kit;
 mod model;
 mod movement;
