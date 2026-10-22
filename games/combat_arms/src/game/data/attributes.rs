@@ -888,6 +888,8 @@ pub struct BodyLook {
     pub lower_skins: Vec<String>,
     pub render_styles: Vec<String>,
     pub faces: Vec<i32>,
+    /// `FootprintSndVolume`: a share added to the footstep volume.
+    pub footprint_volume: f32,
 }
 
 impl BodyLook {
@@ -899,6 +901,7 @@ impl BodyLook {
             lower_skins: list("LowerSkin"),
             render_styles: list("RenderStyle"),
             faces: s.int_list("FaceRelationModel"),
+            footprint_volume: s.number("FootprintSndVolume", 0.0) as f32,
         }
     }
 }

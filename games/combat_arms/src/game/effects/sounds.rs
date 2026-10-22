@@ -101,6 +101,10 @@ impl CaSound {
 /// Sound channels by source.
 pub const CHANNEL_FIRE: u8 = 1;
 pub const CHANNEL_GRENADE: u8 = 2;
+/// Your local voices (`voice`): kill, sprint and idle.
+pub const CHANNEL_KILL: u8 = 3;
+pub const CHANNEL_DASH: u8 = 4;
+pub const CHANNEL_IDLE: u8 = 5;
 
 /// The install's sound files loaded so far: clip index in the bank (None:
 /// doesn't read).

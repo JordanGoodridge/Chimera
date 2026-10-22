@@ -118,6 +118,9 @@ impl Plugin for CaUiPlugin {
             }
             Ok(None)
         })
+        // The flash fades on Combat Arms' cosine, not the shell's linear
+        // fade (grenades.md Corrections 2026-10-22, 1).
+        .insert_resource(crate::client::senses::FlashFade(crate::game::grenades::blinded_alpha))
         .add_message::<crate::game::bots::chat::CaBotChat>()
         .add_systems(Update, bot_chat);
     }

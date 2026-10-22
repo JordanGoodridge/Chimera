@@ -9,36 +9,47 @@
 //!   a silenced part without a level nothing); the third-person muzzle
 //!   group (`hh_muzzle`, the muzzle part's first) for others when the fire
 //!   point is seen; your FireFX group (`test`) at your flash point; a
-//!   casing (seen and near fire point, the FireFX ejecting); the tracer
-//!   (`rules::TracerCounter`: yours by the last fitted part naming a
-//!   tracer, others' by the ammo's; the muzzle part's look, else the
-//!   ammo's; first ray only); per ray the impact: the surface type
+//!   casing (seen and near fire point, the FireFX ejecting); the muzzle or
+//!   FireFX group again for each further pellet of a round; the tracer
+//!   (`rules::TracerCounter`: yours by the last fitted part's tracer, the
+//!   ammo's when it names none, others' by the ammo's; the muzzle part's
+//!   look, else the ammo's; first ray only); per ray the impact: the surface type
 //!   (characters 6, 4 for a head hit; the world's from `SurfaceGrid`,
 //!   meshes tagged by `library::tag_surfaces`; nothing hit: sky, no
 //!   impact), the ImpactFX's sound (the surface's list by ammo kind,
 //!   one of four slots), its own group, and when the impact is seen the
 //!   decal (`rules::CaMarks`: crowding, cap, fade) and the surface's
 //!   burst (blood on characters); others' bullets fly by within 600 u
-//!   (`rules::flyby`, played at the nearest point of the line); your hits
+//!   (`rules::flyby`, played at the nearest point of the line, also for
+//!   shots that hit nothing); your hits
 //!   on characters queue a ding (`rules::DingQueue`, played next frame);
 //!   dry fire and knife swings their sounds.
 //! - **View-model keys** (`key_sounds`): `sound_key n` plays the weapon's
 //!   reload, select, deselect or misc sound (yours local, others' 3D, R
-//!   `ReloadSndRadius`/`SelectSndRadius`); `SHELL_CASING` drops a casing
+//!   `ReloadSndRadius`/`SelectSndRadius`, 2000 for misc; none from the
+//!   dead); `SHELL_CASING` drops a casing
 //!   for a weapon whose FireFX doesn't eject.
 //! - **Grenades** (`grenade_effects`, 9): the ImpactFX by weapon
 //!   (`[grenade]` in data/effects.toml): its sound at the blast (none on
-//!   sky); the surface's grenade group when seen (Air in mid-air: none);
+//!   sky); the surface's grenade group when seen (that of the grenade's
+//!   last bounce or touch, its own Metal if none: mid-air too);
 //!   the flash's and smoke's own groups always. Bounces (`bounce_sounds`,
 //!   the server's): the surface's grenade sound, one per grenade.
 //! - **Hurt** (`hurt_sounds`, the server's): a sound by damage kind and
-//!   one by hit zone at the victim, radius 500, each kind one at a time
-//!   across the server (`rules::HurtLimiter`).
+//!   one by hit zone (none for burn and gas) at the victim's centre,
+//!   radius 500, each kind one at a time across the server
+//!   (`rules::HurtLimiter`).
 //! - **Footsteps** (`footsteps`): yours by the sway phase
-//!   (`rules::OwnSteps`, silent off the run flag), others' by their
+//!   (`rules::OwnSteps`: the bob's ramp restarts it after a stop, a step
+//!   on the movement key, silent off the run flag), others' by their
 //!   gait's animation keys (`rules::footsteps_between`: walking and
-//!   crouching silent), the surface under the feet (ladders 200), radius
-//!   1200; your jump voice.
+//!   crouching silent) from the character's centre, the surface under the
+//!   feet (ladders 200), radius 1200, the model's `FootprintSndVolume`
+//!   share added to the volume (ghillie -0.5), the listener's Awareness
+//!   in place of the walker's Specter plus the perk's own sound
+//!   (`footstep_sound`); your jump voice.
+//! - **Your voices** (`voice`): the kill voice, the sprint and idle sounds
+//!   (and the HUD's heartbeat), local (Corrections 2026-10-22, 8).
 //! - **Liquids** (`volumes::in_liquid`, 5, 8, 11): an impact whose point
 //!   plus normal is in a liquid volume (`submerge`) plays its sound at half
 //!   volume and the surface's under-water group in place of its burst
@@ -96,6 +107,7 @@ pub mod fx;
 pub mod library;
 pub mod rules;
 pub mod sounds;
+pub mod voice;
 
 use std::collections::HashMap;
 
@@ -110,7 +122,8 @@ use self::{
 };
 use super::{
     attachments::{CaMods, MUZZLE, ObserverSound},
-    grenades::CaGrenade,
+    characters::records::Selection,
+    grenades::{CaBlastSurface, CaGrenade},
     inventory::UNIT,
     view_model::{CaViewKey, CaViewModel, CaViewParams, machine::ViewKey},
     volumes::{CaVolume, in_liquid},
@@ -249,6 +262,7 @@ impl Plugin for CaEffectsPlugin {
         .init_resource::<HurtLimiter>()
         .init_resource::<CaSoundFiles>()
         .init_resource::<CaSoundLengths>()
+        .add_message::<crate::game::grenades::CaBlastSurface>()
         .add_message::<CaSound>()
         .add_message::<CaFxRequest>()
         .add_message::<RemoteShot>()
@@ -263,6 +277,7 @@ impl Plugin for CaEffectsPlugin {
                 grenade_effects,
                 bomb::bomb_effects,
                 footsteps,
+                voice::voices,
                 step_effects,
                 spawn_fx,
                 sounds::play,
@@ -347,7 +362,7 @@ pub struct Ground<'w> {
 }
 
 impl Ground<'_> {
-    fn ty(&self, s: &str) -> u16 {
+    pub fn ty(&self, s: &str) -> u16 {
         surface_type(s, self.names.as_deref(), CaFxTables::built_in())
     }
 
@@ -421,14 +436,15 @@ pub fn fire_sound<'a>(fx: &'a CaWeaponFx, mods: Option<&CaMods>, own: bool) -> O
 }
 
 /// The tracer frequency F a shooter's own client counts with: the last
-/// fitted part (slot order) that names a tracer, else the ammo's.
+/// fitted part's (slot order) when it names a tracer, else the ammo's. A
+/// later fitted part with no tracer resets the choice to none
+/// (Corrections 2026-10-22, 3).
 pub fn own_tracer_frequency(t: &CaFxTables, fx: &CaWeaponFx, mods: Option<&CaMods>) -> Option<u32> {
     let ammo = t.tracer(&fx.tracer).map(|r| r.frequency);
-    let part = mods.and_then(|m| {
-        m.fitted()
-            .filter_map(|p| t.attachment(&p.record.name).and_then(|a| a.tracer.as_deref()))
-            .filter_map(|n| t.tracer(n))
-            .last()
+    let part = mods.and_then(|m| m.fitted().last()).and_then(|p| {
+        t.attachment(&p.record.name)
+            .and_then(|a| a.tracer.as_deref())
+            .and_then(|n| t.tracer(n))
             .map(|r| r.frequency)
     });
     part.or(ammo)
@@ -446,12 +462,21 @@ pub fn tracer_look<'a>(t: &'a CaFxTables, fx: &CaWeaponFx, mods: Option<&CaMods>
     Some(muzzle.unwrap_or(ammo))
 }
 
-/// The third-person muzzle group: the muzzle part's, else the weapon's.
+/// The third-person muzzle group: the muzzle part's, else (a flash hider of
+/// level h, when the part names none) the weapon's third-person
+/// flash-hider group h-1, else the weapon's (Corrections 2026-10-22, 12).
 pub fn hh_muzzle<'a>(t: &'a CaFxTables, fx: &'a CaWeaponFx, mods: Option<&CaMods>) -> &'a str {
-    mods.and_then(|m| m.part(MUZZLE))
+    let part = mods.and_then(|m| m.part(MUZZLE));
+    if let Some(own) = part
         .and_then(|p| t.attachment(&p.record.name))
         .and_then(|a| a.hh_muzzle.as_deref())
-        .unwrap_or(&fx.hh_muzzle)
+    {
+        return own;
+    }
+    part.map(|p| p.record.flash_hider_level)
+        .filter(|l| *l >= 1)
+        .and_then(|l| fx.hh_flash_hider.get(l as usize - 1))
+        .map_or(&fx.hh_muzzle, String::as_str)
 }
 
 /// The first-person muzzle group: a muzzle part with a flash hider
@@ -573,6 +598,12 @@ struct ShotState {
 struct Round {
     fire: Vec3,
     first_ray: bool,
+    /// The muzzle (or own FireFX) group the round's first weapon effect
+    /// made: every further pellet's weapon effect makes it again
+    /// (Corrections 2026-10-22, 10).
+    muzzle: Option<CaFxRequest>,
+    /// Rays (pellets) seen so far.
+    rays: u32,
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -653,7 +684,12 @@ fn shot_effects(
                     .ok()
                     .and_then(|(p, t, s)| Some(p.world(t, s, UNIT, p.right_hand?)));
                 let fire = if mine { vm.map_or(*origin, |v| v.flash_point) } else { hand.unwrap_or(*origin) };
-                rounds.insert(e.owner, Round { fire, first_ray: true });
+                let mut round = Round {
+                    fire,
+                    first_ray: true,
+                    muzzle: None,
+                    rays: 0,
+                };
                 // The fire sound.
                 if let Some((file, radius)) = fire_sound(wfx, mods, mine) {
                     let silenced = mods.is_some_and(|m| m.silencer_level().is_some());
@@ -664,12 +700,15 @@ fn shot_effects(
                     }
                     sounds.write(s);
                 }
-                let Some(cam) = cam else { continue };
+                let Some(cam) = cam else {
+                    rounds.insert(e.owner, round);
+                    continue;
+                };
                 let gates = cam.gates(fire, fire + dir, !mine);
                 if mine {
                     // Your FireFX group at your flash point.
                     if let Some(f) = fire_record.filter(|f| !f.fx.is_empty()) {
-                        fx.write(CaFxRequest {
+                        round.muzzle = Some(CaFxRequest {
                             group: f.fx.clone(),
                             at: fire,
                             normal: dir,
@@ -679,7 +718,7 @@ fn shot_effects(
                 } else if gates.fire_seen {
                     let group = hh_muzzle(&tables, wfx, mods);
                     if !group.is_empty() {
-                        fx.write(CaFxRequest {
+                        round.muzzle = Some(CaFxRequest {
                             group: group.to_string(),
                             at: fire,
                             normal: dir,
@@ -687,6 +726,10 @@ fn shot_effects(
                         });
                     }
                 }
+                if let Some(m) = &round.muzzle {
+                    fx.write(m.clone());
+                }
+                rounds.insert(e.owner, round);
                 // A casing (8).
                 if let Some(f) = fire_record
                     && f.shells
@@ -740,6 +783,38 @@ fn shot_effects(
                         });
                     }
                 }
+                // Every further pellet's weapon effect makes the muzzle group
+                // again (Corrections 2026-10-22, 10).
+                if first && let Some(r) = rounds.get_mut(&e.owner) {
+                    if r.rays > 0
+                        && let Some(m) = &r.muzzle
+                    {
+                        fx.write(m.clone());
+                    }
+                    r.rays += 1;
+                }
+                // 11: fly-by of others' bullets, whether or not the ray hit
+                // anything (a miss is a sky impact at the ray's end;
+                // Corrections 2026-10-22, 2).
+                if first
+                    && !mine
+                    && wfx.ammo_kind == AmmoKind::Bullet
+                    && let Some(cam) = cam
+                    && let Some(record) = tables.impact(&wfx.impact)
+                    && let Some(near) = rules::flyby(cam.at / UNIT, fire / UNIT, *to / UNIT, record.sound_radius)
+                    && let Some(file) = rules::draw_any(&tables.sounds.flyby, state.rolls.next())
+                {
+                    let at = if settings.original_flyby {
+                        rules::flyby_quirk_position(cam.at / UNIT, near)
+                    } else {
+                        near
+                    };
+                    let [r, big] = tables.sounds.flyby_radii;
+                    sounds.write(CaSound {
+                        radii: (r, big),
+                        ..CaSound::at(file, at * UNIT, big)
+                    });
+                }
                 let Some(hit) = hit else { continue };
                 // A spawn-protected player absorbs the round: no blood, no
                 // impact (game_modes.md S6, Open question 25).
@@ -772,25 +847,6 @@ fn shot_effects(
                     submerge(&mut out, record, surface, wfx.ammo_kind, gates.impact_seen);
                 }
                 emit_impact(&out, at, n, &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
-                // 11: fly-by of others' bullets.
-                if first
-                    && !mine
-                    && wfx.ammo_kind == AmmoKind::Bullet
-                    && let Some(cam) = cam
-                    && let Some(near) = rules::flyby(cam.at / UNIT, fire / UNIT, *to / UNIT, record.sound_radius)
-                    && let Some(file) = rules::draw_any(&tables.sounds.flyby, state.rolls.next())
-                {
-                    let at = if settings.original_flyby {
-                        rules::flyby_quirk_position(cam.at / UNIT, near)
-                    } else {
-                        near
-                    };
-                    let [r, big] = tables.sounds.flyby_radii;
-                    sounds.write(CaSound {
-                        radii: (r, big),
-                        ..CaSound::at(file, at * UNIT, big)
-                    });
-                }
             }
             WeaponEventKind::Swing { at, .. } => {
                 if let Some((file, radius)) = fire_sound(wfx, mods, true) {
@@ -903,6 +959,7 @@ fn spawn_casing(
                 velocity,
                 spin,
                 angles: Vec2::ZERO,
+                orientation: Quat::IDENTITY,
                 bounces: 0,
                 age: 0.0,
                 resting: false,
@@ -924,7 +981,7 @@ fn spawn_casing(
 fn key_sounds(
     mut keys: MessageReader<CaViewKey>,
     cameras: CameraQuery,
-    owners: Query<(&Inventory, Option<&Transform>, Option<&MovementState>, Option<&CaViewModel>, &Intent)>,
+    owners: Query<(&Inventory, Option<&Transform>, Option<&MovementState>, Option<&CaViewModel>, &Intent, Option<&Health>)>,
     weapons: Query<(Option<&CaWeaponFx>, Option<&CaMods>)>,
     tables: Res<CaFxTables>,
     settings: Res<CaFxSettings>,
@@ -934,12 +991,17 @@ fn key_sounds(
 ) {
     let me = camera(&cameras).map(|c| c.player);
     for k in keys.read() {
-        let Ok((inv, t, ms, vm, intent)) = owners.get(k.owner) else { continue };
+        let Ok((inv, t, ms, vm, intent, health)) = owners.get(k.owner) else { continue };
         let Some((Some(fx), mods)) = inv.active.and_then(|w| weapons.get(w).ok()) else { continue };
         let mine = Some(k.owner) == me;
         match k.key {
             ViewKey::Sound(n) => {
                 let Some((file, radius)) = fx.key_sound(n) else { continue };
+                // No key sound is sent to others while the player is dead
+                // (Corrections 2026-10-22, 4).
+                if !mine && health.is_some_and(|h| h.current <= 0.0) {
+                    continue;
+                }
                 let eye = t.map_or(Vec3::ZERO, |t| t.translation) + ms.map_or(Vec3::ZERO, |m| m.eye_offset);
                 let at = vm.map_or(eye, |v| v.flash_point);
                 sounds.write(if mine { CaSound::local(file) } else { CaSound::at(file, at, radius) });
@@ -993,6 +1055,7 @@ fn play_dings(mut dings: ResMut<DingQueue>, tables: Res<CaFxTables>, mut sounds:
 #[allow(clippy::too_many_arguments)]
 fn grenade_effects(
     mut detonations: MessageReader<Detonated>,
+    mut surfaces: MessageReader<CaBlastSurface>,
     cameras: CameraQuery,
     grid: Ground,
     tables: Res<CaFxTables>,
@@ -1004,10 +1067,18 @@ fn grenade_effects(
     volumes: Query<&CaVolume>,
 ) {
     let cam = camera(&cameras);
+    let last: Vec<CaBlastSurface> = surfaces.read().cloned().collect();
     for d in detonations.read() {
         let Some(g) = tables.grenade.get(d.weapon) else { continue };
         let Some(record) = tables.impact(&g.impact) else { continue };
-        let ty = grid.nearest(d.at, GRENADE_SURFACE_REACH * UNIT).unwrap_or(1);
+        // The surface of the grenade's last bounce or touch, wherever it
+        // is now; one that touched nothing is its own metal, never Air
+        // (Corrections 2026-10-22, 1). Without the server's word (a
+        // network client): the nearest tagged triangle, else metal.
+        let ty = match last.iter().find(|l| l.projectile == d.projectile) {
+            Some(l) => l.surface.as_deref().map_or(GRENADE_OWN_SURFACE, |n| grid.ty(n)),
+            None => grid.nearest(d.at, GRENADE_SURFACE_REACH * UNIT).unwrap_or(GRENADE_OWN_SURFACE),
+        };
         let surface = tables.surface(ty);
         let seen = cam.is_some_and(|c| c.gates(d.at, d.at, true).impact_seen);
         let mut out = impact(
@@ -1042,8 +1113,12 @@ fn grenade_effects(
 pub const WATER_SURFACE: u16 = 204;
 
 /// How far (u) a detonation's point may lie from a surface for its type
-/// to count (else it is in mid-air: Air).
+/// to count when the server's last-contact surface isn't known.
 pub const GRENADE_SURFACE_REACH: f32 = 16.0;
+
+/// A thrown grenade's own object surface (Metal): what a detonation that
+/// never touched anything uses.
+pub const GRENADE_OWN_SURFACE: u16 = 20;
 
 /// A grenade bounce sound's volume (grenades.md 6, step 4): 100, 50 in
 /// water, × the contact's loudness (min(1, |v''| h / 200)).
@@ -1095,7 +1170,10 @@ pub fn hurt_kinds(kind: DamageKind, zone: Hitgroup, gas: bool) -> [Option<HurtKi
         _ if gas => Some(HurtKind::Gas),
         _ => None,
     };
+    // Burn, poison and bleed damage count as a torso hit: no head or groin
+    // sound (Corrections 2026-10-22, 9).
     let by_zone = match zone {
+        _ if kind == DamageKind::Burn || gas => None,
         Hitgroup::Head => Some(HurtKind::Head),
         // The groin's zone.
         Hitgroup::Stomach => Some(HurtKind::Groin),
@@ -1118,6 +1196,13 @@ pub fn hurt_files(t: &CaFxTables, k: HurtKind) -> &[String] {
     }
 }
 
+/// A hurt kind's radius (u): its 3D auto-cast record's. The install's
+/// records (autocastsound.txt, `3DsoundRadius`) give 500 for every kind
+/// (Open question 27), the table's one value.
+pub fn hurt_radius(t: &CaFxTables, _kind: HurtKind) -> f32 {
+    t.sounds.hurt_radius
+}
+
 /// The length a hurt sound is taken to play when its clip isn't loaded
 /// (no install): ours.
 pub const HURT_DEFAULT_LENGTH: f32 = 1.0;
@@ -1125,7 +1210,7 @@ pub const HURT_DEFAULT_LENGTH: f32 = 1.0;
 #[allow(clippy::too_many_arguments)]
 fn hurt_sounds(
     mut damage: MessageReader<Damage>,
-    players: Query<(), (With<Intent>, With<Health>)>,
+    players: Query<&Transform, (With<Intent>, With<Health>)>,
     tables: Res<CaFxTables>,
     lengths: Res<CaSoundLengths>,
     mut limiter: ResMut<HurtLimiter>,
@@ -1135,7 +1220,8 @@ fn hurt_sounds(
 ) {
     let now = time.elapsed_secs_f64();
     for d in damage.read() {
-        if d.amount <= 0.0 || players.get(d.target).is_err() {
+        let Ok(victim) = players.get(d.target) else { continue };
+        if d.amount <= 0.0 {
             continue;
         }
         let gas = d.weapon.is_some_and(|w| w.ends_with("g7a"));
@@ -1145,9 +1231,11 @@ fn hurt_sounds(
             if !limiter.try_start(k, now, length) {
                 continue;
             }
-            let r = tables.sounds.hurt_radius;
+            // Both sound at the victim's centre, not the hit point; each
+            // kind takes its own radius (Corrections 2026-10-22, 9).
+            let r = hurt_radius(&tables, k);
             let radii = rules::server_radii(rules::inner_radius(r), r);
-            sounds.write(sounds::server_sound(file, d.point, radii));
+            sounds.write(sounds::server_sound(file, victim.translation, radii));
         }
     }
 }
@@ -1167,9 +1255,10 @@ fn footsteps(
         Has<LocalPlayer>,
         Option<&mut OwnSteps>,
         Option<&mut OthersSteps>,
-        (Option<&super::perks::CaPerkEffects>, Option<&Team>),
+        (Option<&super::perks::CaPerkEffects>, Option<&Team>, Option<&Selection>),
     )>,
     listener: Query<(&super::perks::CaPerkEffects, Option<&Team>), With<LocalPlayer>>,
+    ca: Option<Res<super::data::CaData>>,
     grid: Ground,
     tables: Res<CaFxTables>,
     mut sounds: MessageWriter<CaSound>,
@@ -1184,7 +1273,7 @@ fn footsteps(
     }
     // What the listener's Awareness does to enemy steps (gear_perks.md 14).
     let listener = listener.single().ok().filter(|(fx, _)| fx.awareness).map(|(fx, t)| (*fx, t.map(|t| t.0)));
-    for (e, t, ms, intent, health, local, own, others, (perk, team)) in &mut players {
+    for (e, t, ms, intent, health, local, own, others, (perk, team, look)) in &mut players {
         let Some(ms) = ms else { continue };
         let alive = health.is_none_or(|h| h.current > 0.0);
         let (before, was_ground) = last.insert(e, (t.translation, ms.on_ground)).unwrap_or((t.translation, ms.on_ground));
@@ -1215,7 +1304,9 @@ fn footsteps(
             let walk = intent.is_some_and(|i| i.walk);
             let inputs = StepInputs {
                 dt,
-                moving: moved > 0.1 && intent.is_some_and(|i| i.move_axis != Vec2::ZERO),
+                // The movement key itself, not displacement (Corrections
+                // 2026-10-22, 5).
+                moving: intent.is_some_and(|i| i.move_axis != Vec2::ZERO),
                 can_step: ms.on_ground || ms.on_ladder,
                 run: (!walk || ms.sprinting) && !ms.crouching,
                 jumped,
@@ -1262,29 +1353,47 @@ fn footsteps(
         };
         steps.airborne = !ms.on_ground;
         steps.clock = if matches!(gait, Gait::Run | Gait::Sprint) { steps.clock + dt } else { 0.0 };
-        // Specter quiets the walker's own steps (sprinting: its dash
-        // volume); a listener's Awareness plays an enemy's at its own
-        // volume and radius, plus one more step sound.
-        let mut volume = perk.map_or(1.0, |p| if ms.sprinting { p.dash_volume } else { p.step_volume });
-        let mut radius = rules::FOOTSTEP_RADIUS;
-        let mut extra = 0;
-        if let Some((fx, mine)) = listener
-            && mine != team.map(|t| t.0)
-        {
-            volume *= fx.aware_volume;
-            radius *= fx.aware_radius;
-            extra = 1;
-        }
+        // A listener's Awareness plays an enemy's steps at its own volume
+        // and radius and ignores the walker's Specter (the perk routine
+        // returns before it), plus one sound of the perk's own at the
+        // step's volume from before the scaling; otherwise Specter quiets
+        // the walker's own steps (sprinting: its dash volume). Then the
+        // model's `FootprintSndVolume` share is added (Corrections
+        // 2026-10-22, 6, 7).
+        let share = ca
+            .as_deref()
+            .map_or(0.0, |c| c.characters().effective(look.unwrap_or(&Selection::default())).0.footprint_volume);
+        let aware = listener.filter(|(_, mine)| *mine != team.map(|t| t.0));
+        let specter = perk.map_or(1.0, |p| if ms.sprinting { p.dash_volume } else { p.step_volume });
+        let (volume, radius, extra) = footstep_sound(aware.map(|(fx, _)| (fx.aware_volume, fx.aware_radius)), specter, share);
+        // Others' steps sound from the character's centre; only the
+        // surface ray starts at the foot.
+        let centre = t.translation;
         for i in 0..n {
             let roll = if (steps.clock * 1000.0) as u32 / 300 % 2 == 0 && i == 0 { 0.0 } else { 1.0 };
-            for k in 0..=extra {
-                let roll = if k == 0 { roll } else { rolls.next() };
-                if let Some(f) = surface(roll, &mut rolls) {
-                    sounds.write(CaSound::at(f, feet, radius).volume(100.0 * volume));
-                }
+            if let Some(f) = surface(roll, &mut rolls) {
+                sounds.write(CaSound::at(f, centre, radius).volume(volume));
+            }
+            if let Some(volume) = extra
+                && let Some(f) = rules::draw_any(&tables.sounds.awareness, rolls.next())
+            {
+                sounds.write(CaSound::at(f, centre, radius).volume(volume));
             }
         }
     }
+}
+
+/// An enemy step's volume (0..100) and radius (u), and the volume of the
+/// Awareness perk's own extra sound (None without the perk), for the
+/// listener's `awareness` (volume and radius factors), the walker's
+/// Specter factor and the model's `FootprintSndVolume` share.
+pub fn footstep_sound(awareness: Option<(f32, f32)>, specter: f32, share: f32) -> (f32, f32, Option<f32>) {
+    let base = 100.0;
+    let (volume, radius, extra) = match awareness {
+        Some((v, r)) => (base * v, rules::FOOTSTEP_RADIUS * r, Some(base)),
+        None => (base * specter, rules::FOOTSTEP_RADIUS, None),
+    };
+    (volume + volume * share, radius, extra)
 }
 
 // ---------------------------------------------------------------------------
@@ -1354,8 +1463,7 @@ fn step_effects(
             _ => {}
         }
         t.translation = s.casing.at * UNIT;
-        let a = s.casing.angles;
-        t.rotation = Quat::from_euler(EulerRot::YXZ, a.x, a.y, 0.0);
+        t.rotation = s.casing.orientation;
         alive.push((s.serial, e));
     }
     for owner in moved.keys() {
