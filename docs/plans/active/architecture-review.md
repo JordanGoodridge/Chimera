@@ -1172,16 +1172,34 @@ on `MapData`. `render::shadows::shed_unread` (was `shed_unread_textures`
 alone) now also drops the kit, the extensions, the world's meshes, lightmap,
 cubemaps, collision and entities from what `ShadowSource` keeps for the
 map's life. Spawn dumps on the five maps (and their system dumps) are
-byte-identical. Not done, and why: the kit's indices (muzzle flash, HUD
-sprites, character skins) point into `MapData::textures`, so the kit is not
-yet loaded apart from the map's file by the gameplay's game (A2's "loaded by
-the gameplay's game"): `MapLoader::load` still returns one `MapData` with
-the game's own kit in it, and a dressing still appends the gameplay's kit to
-that map's texture list. Skipping the map game's kit at load (a
-`MapLoadOptions` flag the CS:S and Combat Arms loaders honour) needs the
-kit's texture and material loading separated from the world's in
-`bsp.rs`/`world.rs`; that is the next step and `AppHooks::load_map` taking
-the options goes with it.
+byte-identical.
+
+X7, rest done (2026-10-22): a map of another game than the gameplay's no
+longer pays for its own game's kit. The kit's indices still point into
+`MapData::textures` (one list, appended in load order), so the kit was not
+split off the texture list; instead the loaders skip loading it.
+`MapLoadOptions::kit: KitLoad` (`All`, the default, or `Only(prefixes)`:
+just the held and view models whose keys start with a prefix);
+`MapSources::load_with` sets `Only(kept)` whenever the app's gameplay is not
+the loader's game, so a mashup's map is its world plus the kept guns, and
+`dress` still replaces the rest (`GameKit::stay`, kept as the net for a
+loader that ignores the option). CS:S's `bsp.rs` skips character bodies,
+hostages, decals, HUD, round sounds, radio, bot names, muzzle flash, shells
+and the nav mesh, and loads a kept gun's held and view model only when its
+key is wanted (the held ones need the player skeleton: one body is loaded to
+take its bones, and not kept); Combat Arms' `load_from_with` skips the
+shared character models (`append_shared` takes the `KitLoad`: bodies only
+with `parts()`, held models by `wants`). Normal loads (`All`) run the same
+code in the same order: spawn dumps on the five maps and their system dumps
+are byte-identical to before. The mashup's `de_dust2` (CS:S's map, Combat
+Arms' gameplay; one load in its own process, a shared and busy machine, so
+the time is rough): 918 to 725 textures, resident 2325 to 2200 MB, 9 to 11 s
+to about 6 s (`apps/mashup_demo` heavy `a_mashup_map_loads_only_its_world`
+also asserts the kit is empty but the kept guns, which equal a whole load's).
+Not done: `AppHooks::load_map` still takes an HDR level only. The mashup's
+hook is `MapSources::load`, which sets the kit scope itself; a client always
+draws and always wants its own game's whole kit, so the options would add
+nothing there. A third game's loader reads the option when it has a kit.
 
 N3 and N4 both reach `MapData`'s consumers but not the same files; if
 N3 changes the `MapLoader` signature, N4 rebases on it (one line).
@@ -1201,7 +1219,7 @@ and character models still decode: small). Both dedicated servers load lean;
 (`MaterialLoader::finish_textures` on `map::parallel::par_map`, which is
 Combat Arms' `decode_all` moved down). Not done: `AppHooks::load_map`
 (the client's) still takes an HDR level only, since a client always
-draws; X7 may fold it into the options.
+draws (X7 left it as is: see its note).
 
 N6, done (10-21), with these choices. `repo_checks --bin docs_index`
 (`checks/src/docs_index.rs`; `--check` only reports) generates two things
