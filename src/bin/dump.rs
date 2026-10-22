@@ -112,7 +112,8 @@ fn install_path(args: &Args) -> Result<PathBuf, String> {
     if let Some(p) = &args.install {
         return Ok(p.clone());
     }
-    LocalConfig::load()?.game_path(&args.game).ok_or_else(|| {
+    let steam = (args.game == cs_source::GAME).then_some(cs_source::INFO.steam).flatten();
+    LocalConfig::load()?.game_path_in(&args.game, steam.as_ref()).ok_or_else(|| {
         format!(
             "no install path for `{}`. Set [games.{}] path in chimera.local.toml \
              (copy chimera.local.example.toml) or pass --install.",

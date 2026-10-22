@@ -12,14 +12,20 @@
 //!   loaded map if it is the same file; else the copy this process would
 //!   load (`MapFiles::read`: the install, its downloads, the content
 //!   cache) or the cache's own, compared by hash in the background; else a
-//!   download: from `sv_downloadurl` over HTTP (`<url>/maps/<name>.bsp.bz2`,
-//!   then `.bsp`), or over the connection (`MapRequest`, `MapChunk`s with a
+//!   download: from `sv_downloadurl` over HTTP (`<url>/<file>.bz2`, then
+//!   `<file>`, the file a game names: `maps/<name>.bsp`), or over the connection (`MapRequest`, `MapChunk`s with a
 //!   window of acknowledged bytes, `sv_allowdownload`, `net_maxfilesize`).
 //!   What arrives is checked against the offer's hash and size, written to
-//!   the content cache (`<cache>/maps/<name>.bsp`, noted in `index.toml`)
+//!   the content cache (`<cache>/<file>`, noted in `index.toml`)
 //!   and loaded from there (`NetEvent::LoadMap` with the file). Anything
 //!   that fails disconnects with the reason, the game's words where it has
 //!   them (`client::JoinFailure`).
+//!
+//! - **Which file.** The game names a map's file (`GameInfo::map_file`,
+//!   found by the id's game prefix, else the default game: `offer_file`).
+//!   A map without one (Combat Arms', in the install's archives) is
+//!   offered by id and hash only: nothing is served, cached or fetched, and
+//!   a client without the map fails as missing it.
 //!
 //! `net` can't reach the mounts, so the game, the dedicated server and
 //! tests say how this process reads map files (`MapFiles`).
@@ -49,6 +55,7 @@ use crate::{
     console::resource_cvar,
     core::{Intent, NetRole},
 };
+use chimera_core::game_registry::Games;
 
 /// Bytes in each piece of a map sent over the connection.
 pub const CHUNK: usize = 16 * 1024;
@@ -67,7 +74,7 @@ pub struct MapFiles {
     /// install, its downloads, the content cache), None without one.
     pub read: Arc<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>,
     /// The content cache (`content_dir`): downloads go to
-    /// `<cache>/maps/<name>.bsp`. None: this process can't download.
+    /// `<cache>/<file>` (`GameInfo::map_file`). None: this process can't download.
     pub cache: Option<PathBuf>,
 }
 
@@ -83,7 +90,8 @@ pub const MAX_FILE_MB: f32 = 512.0;
 pub struct DownloadSettings {
     /// 1: clients may download the map over the connection.
     pub allow: u8,
-    /// An HTTP folder laid out like the game's (`maps/<name>.bsp.bz2`).
+    /// An HTTP folder laid out like the game's (`maps/<name>.bsp.bz2`:
+    /// `GameInfo::map_file`, plus `.bz2`).
     pub url: String,
     /// Largest file sent over the connection, MB.
     pub max_mb: f32,
@@ -223,9 +231,26 @@ pub fn map_name(map: &str) -> &str {
     map.rsplit(':').next().unwrap_or(map)
 }
 
-/// The file a map is in, as the game names it (`maps/de_dust2.bsp`).
-pub fn map_path(map: &str) -> String {
-    format!("maps/{}.bsp", map_name(map))
+/// The file a map is in, as its game names it (`GameInfo::map_file`:
+/// `maps/de_dust2.bsp`); None for a map offered by id and hash only. The
+/// id's game prefix picks the game, a bare name the default game.
+pub fn offer_file(games: Option<&Games>, map: &str) -> Option<String> {
+    let games = games?;
+    let game = match map.split_once(':') {
+        Some((id, _)) => games.get(id),
+        None => games.default_game(),
+    }?;
+    (game.map_file)(map_name(map)).filter(|f| safe_file(f))
+}
+
+/// `offer_file` in a world.
+fn world_file(world: &World, map: &str) -> Option<String> {
+    offer_file(world.get_resource::<Games>(), map)
+}
+
+/// A relative path of plain names: nothing to climb out of a folder with.
+fn safe_file(file: &str) -> bool {
+    !file.is_empty() && file.split('/').all(safe_name) && !file.starts_with('/')
 }
 
 /// A name safe to use as a file name in the cache.
@@ -252,9 +277,9 @@ pub fn loaded_map(world: &World) -> Option<(String, Option<[u8; 32]>)> {
 }
 
 /// The map to serve: `id` with its file from `MapFiles` (none for the
-/// greybox, or without a provider).
+/// greybox, a map without a downloadable file, or without a provider).
 fn serve(world: &World, id: &str, hash: Option<[u8; 32]>) -> ServedMap {
-    let bytes = if id == GREYBOX {
+    let bytes = if id == GREYBOX || world_file(world, id).is_none() {
         None
     } else {
         world
@@ -419,6 +444,7 @@ fn receive_requests(
     mut requests: MessageReader<FromClient<MapRequest>>,
     served: Option<Res<ServedMap>>,
     settings: Res<DownloadSettings>,
+    games: Option<Res<Games>>,
     players: Query<&Player>,
     mut denied: MessageWriter<ToClients<MapDenied>>,
     mut commands: Commands,
@@ -428,7 +454,7 @@ fn receive_requests(
         if players.get(client).is_err() {
             continue;
         }
-        let file = map_path(&r.message.map);
+        let file = offer_file(games.as_deref(), &r.message.map).unwrap_or_else(|| r.message.map.clone());
         let refuse = match served.as_deref() {
             _ if settings.allow == 0 => Some(format!(
                 "The server doesn't send maps (sv_allowdownload 0): you need {file}."
@@ -557,7 +583,9 @@ pub enum LocalCopy {
 
 /// Compare the copies of `map` here with `hash`: the one this process
 /// loads by name, then the cache's.
-pub fn check_local(files: &MapFiles, map: &str, hash: [u8; 32]) -> LocalCopy {
+/// `file`: the map's downloadable file (`offer_file`), where the cache
+/// would keep it.
+pub fn check_local(files: &MapFiles, map: &str, file: Option<&str>, hash: [u8; 32]) -> LocalCopy {
     let mut seen = false;
     if let Some(bytes) = (files.read)(map) {
         seen = true;
@@ -565,8 +593,8 @@ pub fn check_local(files: &MapFiles, map: &str, hash: [u8; 32]) -> LocalCopy {
             return LocalCopy::Found(None);
         }
     }
-    if let Some(cache) = &files.cache {
-        let path = cache_file(cache, map);
+    if let (Some(cache), Some(file)) = (&files.cache, file) {
+        let path = cache_file(cache, file);
         if let Ok(bytes) = std::fs::read(&path) {
             seen = true;
             if sha256(&bytes) == hash {
@@ -577,15 +605,22 @@ pub fn check_local(files: &MapFiles, map: &str, hash: [u8; 32]) -> LocalCopy {
     if seen { LocalCopy::Differs } else { LocalCopy::Missing }
 }
 
-/// Where the cache keeps `map`.
-pub fn cache_file(cache: &Path, map: &str) -> PathBuf {
-    cache.join("maps").join(format!("{}.bsp", map_name(map)))
+/// Where the cache keeps a map's `file` (`offer_file`).
+pub fn cache_file(cache: &Path, file: &str) -> PathBuf {
+    cache.join(file)
 }
 
 /// Check a downloaded file against the offer and put it in the cache
 /// (written aside, then moved in place, and noted in `index.toml`).
-pub fn save_download(cache: &Path, map: &str, hash: [u8; 32], size: u64, bytes: &[u8], from: &str) -> Result<PathBuf, String> {
-    let file = map_path(map);
+pub fn save_download(
+    cache: &Path,
+    map: &str,
+    file: &str,
+    hash: [u8; 32],
+    size: u64,
+    bytes: &[u8],
+    from: &str,
+) -> Result<PathBuf, String> {
     if size != 0 && bytes.len() as u64 != size {
         return Err(format!(
             "The downloaded {file} is {} bytes, not the server's {size}: refused.",
@@ -603,10 +638,14 @@ pub fn save_download(cache: &Path, map: &str, hash: [u8; 32], size: u64, bytes: 
     if !safe_name(map_name(map)) {
         return Err(format!("{file}: not a name to save"));
     }
-    let target = cache_file(cache, map);
+    let target = cache_file(cache, file);
     let dir = target.parent().expect("has a folder");
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let part = target.with_extension("bsp.part");
+    let part = {
+        let mut p = target.clone().into_os_string();
+        p.push(".part");
+        PathBuf::from(p)
+    };
     std::fs::write(&part, bytes).map_err(|e| format!("{}: {e}", part.display()))?;
     std::fs::rename(&part, &target).map_err(|e| format!("{}: {e}", target.display()))?;
     let entry = format!(
@@ -625,17 +664,17 @@ pub fn save_download(cache: &Path, map: &str, hash: [u8; 32], size: u64, bytes: 
     Ok(target)
 }
 
-/// Download `<url>/maps/<name>.bsp.bz2` (unpacked) or else `.bsp`, at most
+/// Download `<url>/<file>.bz2` (unpacked) or else `<file>`, at most
 /// `size` bytes unpacked, on a thread.
-fn start_http(url: &str, map: &str, size: u64) -> HttpFetch {
+fn start_http(url: &str, file: &str, size: u64) -> HttpFetch {
     let progress = Arc::new(super::http::Progress::default());
     let result = Arc::new(Mutex::new(None));
     let base = url.trim().trim_end_matches('/').to_string();
-    let name = map_name(map).to_string();
+    let file = file.to_string();
     let (p, r) = (progress.clone(), result.clone());
     let max = size.max(1) + 1024 * 1024;
     std::thread::spawn(move || {
-        let bz = format!("{base}/maps/{name}.bsp.bz2");
+        let bz = format!("{base}/{file}.bz2");
         let out = match super::http::get(&bz, max, &p) {
             Ok(packed) => {
                 use std::io::Read;
@@ -646,7 +685,7 @@ fn start_http(url: &str, map: &str, size: u64) -> HttpFetch {
                 }
             }
             Err(super::http::HttpError::NotFound) => {
-                let plain = format!("{base}/maps/{name}.bsp");
+                let plain = format!("{base}/{file}");
                 p.done.store(0, Ordering::Relaxed);
                 p.total.store(0, Ordering::Relaxed);
                 super::http::get(&plain, max, &p).map(|b| (b, plain.clone())).map_err(|e| (e, plain))
@@ -664,6 +703,7 @@ pub(super) fn step(world: &mut World) {
     let Some(h) = world.get_resource::<Handshake>() else { return };
     let welcome = h.welcome.clone();
     let map = welcome.map.clone();
+    let file = world_file(world, &map);
     let fetch = std::mem::take(&mut world.resource_mut::<Handshake>().fetch);
     let next = match fetch {
         Fetch::Start => start(world, &welcome),
@@ -681,7 +721,7 @@ pub(super) fn step(world: &mut World) {
                     // Wrong bytes from the web: the server's own copy, if it sends it.
                     let (hash, size) = (welcome.map_hash.unwrap_or_default(), welcome.map_size);
                     if sha256(&bytes) != hash && welcome.allow_download {
-                        warn!("{from} isn't the server's {}: asking the server", map_path(&map));
+                        warn!("{from} isn't the server's {}: asking the server", shown(file.as_deref(), &map));
                         request(world, &map)
                     } else {
                         save(world, &map, hash, size, bytes, from)
@@ -692,14 +732,14 @@ pub(super) fn step(world: &mut World) {
                     if welcome.allow_download {
                         request(world, &map)
                     } else {
-                        let file = from.rsplit('/').next().unwrap_or(&from).to_string();
+                        let file = shown(file.as_deref(), &map);
                         super::client::fail(
                             world,
                             JoinFailure::Download {
-                                file: format!("maps/{file}"),
+                                file: file.clone(),
                                 error: e.to_string(),
                             },
-                            &format!("Could not download maps/{file}:\n{e}"),
+                            &format!("Could not download {file}:\n{e}"),
                         );
                         return;
                     }
@@ -725,7 +765,7 @@ pub(super) fn step(world: &mut World) {
         Fetch::Saving(mut task) => match block_on(poll_once(&mut task)) {
             None => Fetch::Saving(task),
             Some(Ok(path)) => {
-                info!("saved {} to {}", map_path(&map), path.display());
+                info!("saved {} to {}", shown(file.as_deref(), &map), path.display());
                 load(world, &map, Some(path))
             }
             Some(Err(e)) => {
@@ -754,7 +794,8 @@ fn start(world: &mut World, welcome: &Welcome) -> Fetch {
             return Fetch::Loading;
         }
         Some(false) if world.get_resource::<MapFiles>().is_none() => {
-            super::client::fail(world, JoinFailure::MapDiffers, &differs(&map));
+            let why = differs(world, &map);
+            super::client::fail(world, JoinFailure::MapDiffers, &why);
             return Fetch::Start;
         }
         _ => {}
@@ -764,13 +805,19 @@ fn start(world: &mut World, welcome: &Welcome) -> Fetch {
         return load(world, &map, None);
     };
     super::client::set_stage(world, JoinStage::Verifying);
-    let task = AsyncComputeTaskPool::get().spawn(async move { check_local(&files, &map, hash) });
+    let file = world_file(world, &map);
+    let task = AsyncComputeTaskPool::get().spawn(async move { check_local(&files, &map, file.as_deref(), hash) });
     Fetch::Checking(task)
 }
 
 /// CS:S's words for another version of the map.
-pub fn differs(map: &str) -> String {
-    format!("Your map [{}] differs from the server's.", map_path(map))
+pub fn differs(world: &World, map: &str) -> String {
+    format!("Your map [{}] differs from the server's.", shown(world_file(world, map).as_deref(), map))
+}
+
+/// A map's file as the messages name it: the map's id without one.
+fn shown(file: Option<&str>, map: &str) -> String {
+    file.unwrap_or(map).to_string()
 }
 
 /// Ask the game to load the map (from `file`), and wait for it.
@@ -792,14 +839,16 @@ fn load(world: &mut World, map: &str, file: Option<PathBuf>) -> Fetch {
 /// No copy here (or another version): download it, from the web first.
 fn download(world: &mut World, welcome: &Welcome, copy: LocalCopy) -> Fetch {
     let map = welcome.map.clone();
-    let file = map_path(&map);
-    let can_save = world
-        .get_resource::<MapFiles>()
-        .is_some_and(|f| f.cache.is_some());
+    let offer = world_file(world, &map);
+    let file = shown(offer.as_deref(), &map);
+    let can_save = offer.is_some()
+        && world
+            .get_resource::<MapFiles>()
+            .is_some_and(|f| f.cache.is_some());
     let wanted = world.get_resource::<DownloadFilter>().is_none_or(DownloadFilter::allows_maps);
     if !can_save || !wanted || (welcome.download_url.is_empty() && !welcome.allow_download) {
         let (kind, reason) = match copy {
-            LocalCopy::Differs => (JoinFailure::MapDiffers, differs(&map)),
+            LocalCopy::Differs => (JoinFailure::MapDiffers, differs(world, &map)),
             // CS:S's words.
             _ => (JoinFailure::MapMissing, format!("Missing map {file}, disconnecting")),
         };
@@ -808,7 +857,7 @@ fn download(world: &mut World, welcome: &Welcome, copy: LocalCopy) -> Fetch {
     }
     if !welcome.download_url.is_empty() {
         super::client::set_stage(world, JoinStage::Downloading);
-        let http = start_http(&welcome.download_url, &map, welcome.map_size);
+        let http = start_http(&welcome.download_url, &file, welcome.map_size);
         show_download(world, &map, "HTTP", &http.progress);
         Fetch::Http(http)
     } else {
@@ -822,7 +871,7 @@ fn request(world: &mut World, map: &str) -> Fetch {
     let total = world.get_resource::<Handshake>().map_or(0, |h| h.welcome.map_size);
     let max_mb = world.get_resource::<DownloadSettings>().map_or(MAX_FILE_MB, |s| s.max_mb);
     if total as f64 > max_mb as f64 * 1024.0 * 1024.0 {
-        let file = map_path(map);
+        let file = shown(world_file(world, map).as_deref(), map);
         let error = format!(
             "{file} is {:.1} MB, more than you download (net_maxfilesize {max_mb}).",
             total as f64 / (1024.0 * 1024.0)
@@ -838,9 +887,10 @@ fn request(world: &mut World, map: &str) -> Fetch {
         return Fetch::Start;
     }
     super::client::set_stage(world, JoinStage::Downloading);
+    let file = shown(world_file(world, map).as_deref(), map);
     if let Some(mut p) = world.get_resource_mut::<JoinProgress>() {
         p.download = Some(super::client::DownloadInfo {
-            file: map_path(map),
+            file,
             from: "server".into(),
             done: 0,
             total,
@@ -854,11 +904,12 @@ fn request(world: &mut World, map: &str) -> Fetch {
 }
 
 fn show_download(world: &mut World, map: &str, from: &str, progress: &super::http::Progress) {
+    let file = world_file(world, map);
     if let Some(mut p) = world.get_resource_mut::<JoinProgress>() {
         let total = progress.total.load(Ordering::Relaxed);
         let done = progress.done.load(Ordering::Relaxed);
         p.download = Some(super::client::DownloadInfo {
-            file: format!("{}.bz2", map_path(map)),
+            file: format!("{}.bz2", shown(file.as_deref(), map)),
             from: from.into(),
             done,
             total,
@@ -872,8 +923,12 @@ fn save(world: &mut World, map: &str, hash: [u8; 32], size: u64, bytes: Vec<u8>,
         super::client::fail(world, JoinFailure::MapMissing, "no content cache to save the map in");
         return Fetch::Start;
     };
+    let Some(file) = world_file(world, map) else {
+        super::client::fail(world, JoinFailure::MapMissing, &format!("{map} has no file to save"));
+        return Fetch::Start;
+    };
     let map = map.to_string();
-    let task = AsyncComputeTaskPool::get().spawn(async move { save_download(&cache, &map, hash, size, &bytes, &from) });
+    let task = AsyncComputeTaskPool::get().spawn(async move { save_download(&cache, &map, &file, hash, size, &bytes, &from) });
     Fetch::Saving(task)
 }
 
@@ -888,7 +943,7 @@ fn receive_chunks(world: &mut World) {
         if downloading {
             let file = world
                 .get_resource::<Handshake>()
-                .map(|h| map_path(&h.welcome.map))
+                .map(|h| shown(world_file(world, &h.welcome.map).as_deref(), &h.welcome.map))
                 .unwrap_or_default();
             super::client::fail(
                 world,
@@ -924,11 +979,39 @@ fn send_acks(handshake: Option<ResMut<Handshake>>, mut out: MessageWriter<MapAck
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chimera_core::game_registry::GameInfo;
+
+    const A_GAME: GameInfo = GameInfo {
+        id: "a_game",
+        short_name: "A",
+        content_dir: "a",
+        tick_interval: 0.015,
+        open: |_| Err(std::io::ErrorKind::NotFound.into()),
+        map_cycle: |_| Vec::new(),
+        map_names: |_| Vec::new(),
+        steam: None,
+        map_file: |n| Some(format!("maps/{n}.bsp")),
+        import_map: |_| Err("no".into()),
+        default_binds_cfg: "cfg/default.cfg",
+        default_binds: &[],
+        old_default_binds: &[],
+        movement_cvars: &[],
+        meters_per_unit: 1.0,
+    };
+    const NO_FILE_GAME: GameInfo = GameInfo { id: "no_file", map_file: |_| None, ..A_GAME };
 
     #[test]
     fn names_and_paths() {
         assert_eq!(map_name("cs_source:de_dust2"), "de_dust2");
-        assert_eq!(map_path("cs_source:de_dust2"), "maps/de_dust2.bsp");
+        let mut games = Games::default();
+        games.register(&A_GAME);
+        games.register(&NO_FILE_GAME);
+        assert_eq!(offer_file(Some(&games), "a_game:de_dust2").as_deref(), Some("maps/de_dust2.bsp"));
+        assert_eq!(offer_file(Some(&games), "de_dust2").as_deref(), Some("maps/de_dust2.bsp"), "the default game");
+        assert_eq!(offer_file(Some(&games), "no_file:warehouse"), None, "by id and hash only");
+        assert_eq!(offer_file(Some(&games), "other:x"), None, "an unknown game");
+        assert_eq!(offer_file(None, "a_game:x"), None, "no games registered");
+        assert_eq!(offer_file(Some(&games), "a_game:../x"), None, "nothing outside the cache");
         assert!(safe_name("mg_swag_multigames_v1"));
         assert!(!safe_name("../x") && !safe_name("a/b") && !safe_name(".."));
     }
@@ -947,18 +1030,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let bytes = b"VBSP not really a map".to_vec();
         let hash = sha256(&bytes);
-        assert!(save_download(&dir, "test:m", [0; 32], 0, &bytes, "x").is_err());
-        assert!(save_download(&dir, "test:m", hash, 3, &bytes, "x").is_err());
-        assert!(!cache_file(&dir, "test:m").exists(), "nothing kept from a bad download");
-        let path = save_download(&dir, "test:m", hash, bytes.len() as u64, &bytes, "x").unwrap();
+        assert!(save_download(&dir, "test:m", "maps/m.bsp", [0; 32], 0, &bytes, "x").is_err());
+        assert!(save_download(&dir, "test:m", "maps/m.bsp", hash, 3, &bytes, "x").is_err());
+        assert!(!cache_file(&dir, "maps/m.bsp").exists(), "nothing kept from a bad download");
+        let path = save_download(&dir, "test:m", "maps/m.bsp", hash, bytes.len() as u64, &bytes, "x").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         let files = MapFiles {
             read: Arc::new(|_| None),
             cache: Some(dir.clone()),
         };
-        assert_eq!(check_local(&files, "test:m", hash), LocalCopy::Found(Some(path)));
-        assert_eq!(check_local(&files, "test:m", [1; 32]), LocalCopy::Differs);
-        assert_eq!(check_local(&files, "test:other", hash), LocalCopy::Missing);
+        assert_eq!(check_local(&files, "test:m", Some("maps/m.bsp"), hash), LocalCopy::Found(Some(path)));
+        assert_eq!(check_local(&files, "test:m", Some("maps/m.bsp"), [1; 32]), LocalCopy::Differs);
+        assert_eq!(check_local(&files, "test:other", Some("maps/other.bsp"), hash), LocalCopy::Missing);
+        // A map without a downloadable file has no cache copy to find.
+        assert_eq!(check_local(&files, "test:m", None, hash), LocalCopy::Missing);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -9,7 +9,6 @@
 //! hashes), as the app's `games` has them. `stack.rs`: what the scenario
 //! tests run on, at the app's paths.
 
-use chimera_core::mount::config::LocalConfig;
 use chimera_world::map::MapData;
 
 /// The install's mount for a `cs_source:<name>` id, and the name.
@@ -17,8 +16,8 @@ fn mount_of(id: &str) -> Result<(chimera_core::mount::Mount, &str), String> {
     let name = id
         .strip_prefix("cs_source:")
         .ok_or_else(|| format!("map ID `{id}` should look like cs_source:name"))?;
-    let install = LocalConfig::load()?
-        .game_path(cs_source::game::GAME)
+    let install = cs_source::game::INFO
+        .install()
         .ok_or("no `cs_source` install found (chimera_install <folder>, or chimera.local.toml)")?;
     let mount = cs_source::game::mount::open(&install).map_err(|e| e.to_string())?;
     Ok((mount, name))

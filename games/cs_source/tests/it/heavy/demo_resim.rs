@@ -30,7 +30,7 @@ use crate::stack::{
 fn probe(name: &str) -> Option<Recording> {
     let config = LocalConfig::load().ok()?;
     let installed = config
-        .game_path(cs_source::GAME)
+        .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
         .is_some_and(|p| p.join("cstrike").is_dir());
     let logs = config
         .game_path("cs_source_server")

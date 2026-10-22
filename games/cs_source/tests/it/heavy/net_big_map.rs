@@ -24,7 +24,7 @@ fn a_150_mb_map_downloads_over_the_connection_by_default() {
     let install = dir.join("server");
     let bytes = file_bytes("big", 1, SIZE);
     write_map(&install, "big", &bytes);
-    let mut sim = server(install.clone(), "test:big", 77);
+    let mut sim = server(install.clone(), "cs_source:big", 77);
     let empty = dir.join("client");
     std::fs::create_dir_all(&empty).unwrap();
     let cache = dir.join("cache");

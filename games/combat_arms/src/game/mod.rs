@@ -140,7 +140,10 @@ pub static INFO: GameInfo = GameInfo {
     open: mount::open,
     map_cycle: |_| Vec::new(),
     map_names: world::map_names,
-    map_file: |name| format!("worlds/{name}.dat"),
+    steam: None,
+    // In the install's archives (`worlds*/<name>.dat`, `world::find`), not
+    // a file clients download.
+    map_file: |_| None,
     import_map: |_| Err("Combat Arms maps load from the install by id (combat_arms:<name>), not from a file".into()),
     // No such file in an install: the built-in table is used.
     default_binds_cfg: "chimera_placeholder_binds.cfg",

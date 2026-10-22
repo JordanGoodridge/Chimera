@@ -82,9 +82,8 @@ fn find(name: &str) -> Option<std::path::PathBuf> {
     if !name.to_lowercase().ends_with(".dem") {
         names.push(format!("{name}.dem").into());
     }
-    let install = crate::mount::config::LocalConfig::load()
-        .ok()
-        .and_then(|c| c.game_path(crate::game::GAME))
+    let install = crate::game::INFO
+        .install()
         .map(|p| p.join("cstrike"));
     let more: Vec<std::path::PathBuf> = install
         .iter()

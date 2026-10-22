@@ -22,7 +22,7 @@ use std::{
 
 use bevy::prelude::*;
 
-use crate::mount::{Mount, config};
+use crate::mount::{Mount, config, install::SteamGame};
 
 /// One game, as the shell needs to know it.
 #[derive(Debug)]
@@ -46,9 +46,15 @@ pub struct GameInfo {
     /// own layout (Source's `maps/<name>.bsp`, Combat Arms'
     /// `worlds*/<name>.dat`).
     pub map_names: fn(&Mount) -> Vec<String>,
-    /// A map's file relative to a content folder (the install's download
-    /// folder, Chimera's cache): `maps/<name>.bsp`.
-    pub map_file: fn(&str) -> String,
+    /// The Steam app the install is found by (`mount::install`): None for
+    /// a game found by its configured path only.
+    pub steam: Option<SteamGame>,
+    /// A map's downloadable file, relative to a content folder (the
+    /// install's download folder, Chimera's cache): `maps/<name>.bsp`.
+    /// The network's map offer (`net::maps`) names, caches and fetches by
+    /// it. None: the map has no such file (Combat Arms' lives in the
+    /// install's archives), so it is offered by id and hash only.
+    pub map_file: fn(&str) -> Option<String>,
     /// Copy a map file into Chimera's content cache; returns its name.
     pub import_map: fn(&Path) -> Result<String, String>,
     /// The default binds' config file, relative to `content_dir`
@@ -75,7 +81,7 @@ impl GameInfo {
     /// Where the game is installed (chimera.local.toml, saved, or found:
     /// `mount::install`).
     pub fn install(&self) -> Option<PathBuf> {
-        config::LocalConfig::load().ok()?.game_path(self.id)
+        config::LocalConfig::load().ok()?.game_path_in(self.id, self.steam.as_ref())
     }
 
     /// The install mounted (`open`), if there is one and it opens.
@@ -187,7 +193,8 @@ mod tests {
         open: no_mount,
         map_cycle: |_| Vec::new(),
         map_names: |_| Vec::new(),
-        map_file: |n| format!("maps/{n}.bsp"),
+        map_file: |n| Some(format!("maps/{n}.bsp")),
+        steam: None,
         import_map: |_| Err("no".into()),
         default_binds_cfg: "cfg/default.cfg",
         default_binds: &[("w", "+forward")],

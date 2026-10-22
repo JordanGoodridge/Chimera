@@ -60,7 +60,7 @@ fn an_install_in_a_steam_library_is_found_and_mounted() {
 
     // No config, nothing saved: Steam's library 1.
     let settings = s.0.join("user/settings.toml");
-    let r = install::resolve_with(&LocalConfig::default(), Some(&settings), Some(&[root.clone()]), cs_source::GAME);
+    let r = install::resolve_with(&LocalConfig::default(), Some(&settings), Some(&[root.clone()]), cs_source::GAME, cs_source::INFO.steam.as_ref());
     let found = r.install.expect("found through the Steam folder");
     assert_eq!(found.path, css);
     assert_eq!(found.build_id.as_deref(), Some("777"));
@@ -72,7 +72,7 @@ fn an_install_in_a_steam_library_is_found_and_mounted() {
 
     // Saved by the first-run dialog: used next time, Steam or not.
     install::save_install(&settings, cs_source::GAME, Some(&css)).unwrap();
-    let r = install::resolve_with(&LocalConfig::default(), Some(&settings), Some(&[]), cs_source::GAME);
+    let r = install::resolve_with(&LocalConfig::default(), Some(&settings), Some(&[]), cs_source::GAME, cs_source::INFO.steam.as_ref());
     assert_eq!(r.install.unwrap().found, Found::Saved(settings.clone()));
 }
 

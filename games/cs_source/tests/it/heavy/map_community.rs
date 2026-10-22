@@ -25,7 +25,7 @@ use crate::stack::{
 fn load(name: &str) -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
+        .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
         .is_some_and(|p| p.join("cstrike").is_dir());
     let cached = content_dir(cs_source::GAME).is_some_and(|d| d.join("maps").join(format!("{name}.bsp")).is_file());
     if !installed || !cached {
@@ -139,7 +139,7 @@ fn spawn_equipment_and_placed_weapons() {
 fn cached(name: &str) -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
+        .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
         .is_some_and(|p| p.join("cstrike").is_dir());
     let present = content_dir(cs_source::GAME).is_some_and(|d| d.join("maps").join(format!("{name}.bsp")).is_file());
     if !installed || !present {
