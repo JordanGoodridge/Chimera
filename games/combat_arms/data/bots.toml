@@ -37,6 +37,9 @@ dodge_delay_min = [0.3, 0.3, 0.3, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.6, 0.6, 0.6]
 dodge_delay_max = [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.2, 0.2, 0.2, 1.4, 1.4, 1.4]
 # Not seen within this times a placed device's blast radius.
 safe_device = [0.3, 0.3, 0.3, 0.4, 0.4, 0.4, 0.5, 0.5, 0.5, 0.3, 0.3, 0.3]
+# Patrol (4): the chance in percent points (a 0..99 draw at or below it)
+# that a bot stops at a patrol node to look around, 3 + U(0, 3) s.
+stop_look_around_percent = 25
 mine_min = [8, 5, 3, 8, 5, 3, 8, 5, 3, 8, 5, 3]
 mine_max = 12
 
@@ -170,6 +173,26 @@ fire_frame = 0
 # ranks, chat) isn't read: a bot is named after its team and profile
 # number (`AI_Alpha_<n>`, `AI_Bravo_<n>`), its archetype is PLACEHOLDER
 # (profile number mod 3: N, H, E), its item sets those of its level below.
+# Heard sounds (5.3, Corrections 2, 3; Open question 25: the install's
+# values weren't read): each stimulus's alarm level and the brain's
+# major-alarm threshold. Gunfire is 75 (Open question 12) and above the
+# threshold; footsteps and the rest are ours, below it.
+[alarm]
+major = 50.0
+gunfire = 75.0
+footstep = 20.0
+ally_call = 1.0
+
+# Chat (10, Correction 6; Open question 26): the cooldown of a profile
+# that has no `NextChatTime` of its own, and the profiles that have one
+# (`level` easy|normal|veteran|tutorial, `profile` the profile index).
+[chat]
+default_cooldown = 10.0
+# [[chat.profiles]]
+# level = "easy"
+# profile = 3
+# cooldown = 25.0
+
 [profiles]
 easy = 22
 normal = 25

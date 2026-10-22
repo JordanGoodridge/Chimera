@@ -9,6 +9,12 @@
 //! trigger) and its `Inventory::wanted`; a throw is the grenade spawned
 //! with the hang-time solution (`grenades::spawn_grenade`).
 //!
+//! The corrections of 2026-10-22 are in the module doc of `bots.rs`:
+//! `investigate` (the alarm, look-only, half-distance), `grenade_danger`,
+//! `dead` (a fresh brain), `take_start_node` and `patrol` (stops),
+//! `throw_step`, `chase_fire`, `weapon_view` and `aim_and_fire` (also the
+//! mercenaries' aim).
+//!
 //! `post_stimuli` (after the weapons and damage): gunfire from every
 //! `Fired` round of a gun (radius: the fitted weapon's fire sound,
 //! `attachments::CaMods`), footsteps, the shot's bookkeeping (a new aim
@@ -25,7 +31,8 @@ use avian3d::prelude::*;
 use bevy::{ecs::system::SystemState, prelude::*};
 
 use super::{
-    BotSettings, BotState, CaBot, MercMind, Pending,
+    BotSettings, BotState, CaBot, MercMind, Pending, Throw,
+    chat::Event as Chat,
     data::{BotData, GunAi},
     map_ai::MapAi,
     math::{self, Choice, MOVES, Move},
@@ -99,10 +106,41 @@ pub const GRAVITY: f32 = -1600.0;
 /// The sight points (5.2, Open question 18): the target's object position
 /// (its hull centre) and its `Head` node, the eye the bot's own hull x/z
 /// at its `Head` node's height; the node's height above the centre is the
-/// spec's measured standing pose (`Head` at 29.03 u), m.
-pub const TORSO: f32 = 0.0;
+/// spec's measured standing pose (`Head` at 29.03 u), m. The aim base
+/// point is the `Torso` node (5.14 u above the centre standing, Correction
+/// 11), the line of fire starts at the bot's right side (`side_origin`).
+pub const TORSO: f32 = 5.14 * UNIT;
 pub const HEAD: f32 = 29.03 * UNIT;
 pub const EYE: f32 = HEAD;
+/// The line of fire's origin: one radius out to the right, a quarter of
+/// the hull's height above its centre (Correction 11), u.
+pub const SIDE_UP: f32 = 25.0;
+/// Heard sounds (5.3 Corrections 2, 3): a sound is only looked at within
+/// this (u) and more than this long (s) after the last relaxed moment (the
+/// spawn, or an investigation or chase ending).
+pub const LOOK_ONLY_RANGE: f32 = 1000.0;
+pub const LOOK_ONLY_GRACE: f64 = 30.0;
+/// The grenade dodge ends at the latest this long after it began (s);
+/// otherwise when the grenade is gone or the move ends (Correction 4).
+pub const DODGE_MAX: f64 = 5.0;
+/// Chasing, the torso turns toward the target's head this far (rad) from
+/// the run heading, in yaw and pitch (ours, Open question 28).
+pub const TORSO_YAW: f32 = std::f32::consts::FRAC_PI_2;
+pub const TORSO_PITCH: f32 = 1.0;
+/// Patrol stops (4): the look-around lasts 3 + U(0, 3) s.
+pub const STOP_MIN: f32 = 3.0;
+pub const STOP_SPREAD: f32 = 3.0;
+/// The hand the grenade leaves (8.5): ours (the `RightHand` socket isn't
+/// read), u right, forward and up of the hull centre.
+pub const HAND_RIGHT: f32 = 20.0;
+pub const HAND_FORWARD: f32 = 15.0;
+pub const HAND_UP: f32 = 5.0;
+/// A mercenary's aim point above its target's hull centre at first (u,
+/// bots_objectives.md 3.3: half the half-height standing).
+pub const MERC_HEIGHT: f32 = 25.0;
+/// The hull's height standing and crouched (u).
+pub const HULL_HEIGHT: f32 = 100.0;
+pub const HULL_HEIGHT_CROUCHED: f32 = 80.0;
 
 /// A kind of stimulus (5.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -124,6 +162,21 @@ pub struct Stimulus {
     pub source: Entity,
     pub team: u8,
     pub until: f64,
+    /// An ally call's caller's alarm total and facing (yaw).
+    pub alarm: f32,
+    pub facing: Option<f32>,
+}
+
+/// What a bot heard: the stimulus, its alarm level, and (a call's) the
+/// caller's total and facing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Heard {
+    pub id: u64,
+    pub kind: Kind,
+    pub at: Vec3,
+    pub level: f32,
+    pub caller_alarm: f32,
+    pub face: Option<f32>,
 }
 
 /// The global stimulus list.
@@ -136,6 +189,12 @@ pub struct Stimuli {
 impl Stimuli {
     /// Post a stimulus (from now for its kind's lifetime).
     pub fn post(&mut self, kind: Kind, at: Vec3, radius: f32, source: Entity, team: u8, now: f64) {
+        self.post_call(kind, at, radius, source, team, now, 0.0, None);
+    }
+
+    /// `post` with an ally call's caller's alarm total and facing.
+    #[allow(clippy::too_many_arguments)]
+    pub fn post_call(&mut self, kind: Kind, at: Vec3, radius: f32, source: Entity, team: u8, now: f64, alarm: f32, facing: Option<f32>) {
         self.next += 1;
         let life = match kind {
             Kind::Gunfire => GUNFIRE_LIFE,
@@ -150,6 +209,8 @@ impl Stimuli {
             source,
             team,
             until: now + life,
+            alarm,
+            facing,
         });
     }
 }
@@ -160,6 +221,9 @@ impl Stimuli {
 pub struct PatrolClock {
     pub reached: HashMap<usize, f64>,
     pub chase_cycle: u32,
+    /// The spawns each team's bots have had (Alpha, Bravo): the next
+    /// patrol start node is this mod 8 (4).
+    pub starts: [u32; 2],
 }
 
 /// The brains' shared copy of the navigation mesh (`ensure_nav`).
@@ -439,6 +503,7 @@ pub struct Char {
     pub pitch: f32,
     pub alive: bool,
     pub bot: bool,
+    pub crouched: bool,
     pub crouching_attack: Option<Entity>,
 }
 
@@ -454,6 +519,20 @@ impl Char {
     }
     pub fn head(&self) -> Vec3 {
         self.pos + Vec3::Y * HEAD
+    }
+    /// The hull's height (u).
+    pub fn hull_height(&self) -> f32 {
+        if self.crouched { HULL_HEIGHT_CROUCHED } else { HULL_HEIGHT }
+    }
+    /// The line of fire's origin: the bot's right side (Correction 11).
+    pub fn side_origin(&self) -> Vec3 {
+        let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
+        self.pos + right * (RADIUS * UNIT) + Vec3::Y * (SIDE_UP * UNIT)
+    }
+    /// The hand a grenade leaves (8.5).
+    pub fn hand(&self) -> Vec3 {
+        let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
+        self.pos + (right * HAND_RIGHT + self.forward() * HAND_FORWARD + Vec3::Y * HAND_UP) * UNIT
     }
     pub fn forward(&self) -> Vec3 {
         Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos())
@@ -471,6 +550,9 @@ struct Gun {
     clip: u32,
     reserve: u32,
     count: Option<u32>,
+    /// A grenade's throw key and animation (s).
+    throw_delay: f32,
+    throw_time: f32,
 }
 
 impl Gun {
@@ -517,7 +599,10 @@ struct Out {
     wanted: Option<Entity>,
     throw: Option<(Entity, Vec3, Vec3)>,
     ask_crouch: Option<Entity>,
-    ally_call: Option<Vec3>,
+    /// An ally call: where, the caller's yaw and alarm total.
+    ally_call: Option<(Vec3, f32, f32)>,
+    /// A weapon whose clip is filled at once (a chasing bot's reload).
+    refill: Option<Entity>,
     reached: Option<usize>,
     chase_step: bool,
 }
@@ -559,6 +644,7 @@ pub fn think(world: &mut World) {
 
     // The brains' decisions (the world read only).
     let mut outs: Vec<(Entity, CaBot, Out)> = Vec::new();
+    let mut starts = patrol.starts;
     {
         let mut state = SystemState::<SpatialQuery>::new(world);
         let q = state.get(world).unwrap();
@@ -583,8 +669,14 @@ pub fn think(world: &mut World) {
             let mut bot = world.get::<CaBot>(e).unwrap().clone();
             let guns = guns_of(world, e);
             let active = world.get::<Inventory>(e).and_then(|i| i.active);
+            if me.alive
+                && bot.needs_start
+                && let Some(graph) = graph.as_deref().filter(|g| !g.nodes.is_empty())
+            {
+                take_start_node(&mut bot, &me, graph, &mut starts);
+            }
             let out = if !me.alive {
-                dead(&mut bot);
+                dead(&mut bot, data);
                 Out::default()
             } else if frozen {
                 Out {
@@ -640,9 +732,16 @@ pub fn think(world: &mut World) {
         {
             m.crouch_until = m.crouch_until.max(now + CROUCH_HOLD);
         }
-        if let Some(at) = out.ally_call {
+        if let Some((at, yaw, alarm)) = out.ally_call {
             let team = world.get::<Team>(e).map_or(0, |t| t.0);
-            world.resource_mut::<Stimuli>().post(Kind::AllyCall, at, ALLY_CALL, e, team, now);
+            world.resource_mut::<Stimuli>().post_call(Kind::AllyCall, at, ALLY_CALL, e, team, now, alarm, Some(yaw));
+        }
+        if let Some(w) = out.refill
+            && let Some(mut m) = world.get_mut::<Magazine>(w)
+        {
+            let take = m.size.saturating_sub(m.clip).min(m.reserve);
+            m.clip += take;
+            m.reserve -= take;
         }
         if let Some(a) = out.reached {
             world.resource_mut::<PatrolClock>().reached.insert(a, now * 1000.0);
@@ -652,6 +751,37 @@ pub fn think(world: &mut World) {
         }
         *world.get_mut::<CaBot>(e).unwrap() = bot;
     }
+    world.resource_mut::<PatrolClock>().starts = starts;
+}
+
+/// A new life's first patrol node (4): its team's next start node of the
+/// bot game-mode file, `PatrolNode_<Team><k mod 8>` = the map's
+/// `AI_Node_<A|B>_<k mod 8 + 1>`, round robin over the team's spawns; a
+/// map without such a node leaves the bot to the nearest one. Mercenaries
+/// have none.
+fn take_start_node(bot: &mut CaBot, me: &Char, graph: &nav::PatrolGraph, starts: &mut [u32; 2]) {
+    bot.needs_start = false;
+    if bot.merc.is_some() || !matches!(me.team, 1 | 2) {
+        return;
+    }
+    let k = &mut starts[(me.team - 1) as usize];
+    let n = *k % 8 + 1;
+    *k += 1;
+    let name = format!("AI_Node_{}_{n:02}", if me.team == 1 { 'A' } else { 'B' });
+    bot.patrol_to = graph.by_name(&name);
+    bot.patrol_from = None;
+    bot.patrol_came = None;
+    bot.route.clear();
+    bot.route_goal = None;
+    say(bot, Chat::Search);
+}
+
+/// Raise a chat event (10); a mercenary says nothing.
+fn say(bot: &mut CaBot, event: Chat) {
+    if bot.merc_aim || bot.merc.is_some() || bot.chat.len() >= 16 {
+        return;
+    }
+    bot.chat.push(event);
 }
 
 /// What the brains read of the world this tick.
@@ -671,9 +801,9 @@ struct Snap {
 impl Snap {
     fn take(world: &mut World, now: f64) -> Snap {
         let chars: Vec<Char> = world
-            .query_filtered::<(Entity, &Team, &Transform, &Intent, &Health, Has<Dead>, Has<CaHeld>, Option<&CaBot>), Without<Spectating>>()
+            .query_filtered::<(Entity, &Team, &Transform, &Intent, &Health, Has<Dead>, Has<CaHeld>, Option<&CaBot>, Option<&MovementState>), Without<Spectating>>()
             .iter(world)
-            .map(|(e, t, tr, i, h, dead, held, b)| Char {
+            .map(|(e, t, tr, i, h, dead, held, b, ms)| Char {
                 e,
                 team: t.0,
                 pos: tr.translation,
@@ -681,6 +811,7 @@ impl Snap {
                 pitch: i.pitch,
                 alive: !dead && !held && h.current > 0.0,
                 bot: b.is_some(),
+                crouched: ms.is_some_and(|m| m.crouching),
                 crouching_attack: b.and_then(|b| {
                     (b.crouch_until > now && matches!(b.state, BotState::Attack { .. })).then_some(b.target).flatten()
                 }),
@@ -776,29 +907,25 @@ fn guns_of(world: &World, e: Entity) -> Vec<Gun> {
                 clip: m.map_or(0, |m| m.clip),
                 reserve: m.map_or(0, |m| m.reserve),
                 count: world.get::<Throwable>(w).map(|t| t.count),
+                throw_delay: world.get::<Throwable>(w).map_or(0.0, |t| t.throw_delay),
+                throw_time: world.get::<Throwable>(w).map_or(0.0, |t| t.throw_time),
             })
         })
         .collect()
 }
 
-/// A dead bot forgets its fight; its next life's kit is set up again.
-fn dead(bot: &mut CaBot) {
-    bot.armed = false;
-    if matches!(bot.state, BotState::Attack { .. }) {
-        bot.attack_off = 0.0f64.max(bot.attack_off);
-    }
-    bot.state = BotState::Patrol;
-    bot.target = None;
-    bot.route.clear();
-    bot.route_goal = None;
-    bot.move_to = None;
-    bot.patrol_to = None;
-    bot.patrol_from = None;
-    bot.patrol_came = None;
-    bot.danger = None;
-    bot.pending = None;
-    bot.aim_offset = None;
-    bot.crouch_until = 0.0;
+/// A dead bot's brain is gone (Correction 7): every respawn is a new AI
+/// character from the same roster entry (profile, template, kit, dice, the
+/// reaches fixed at the first life, a mercenary's mind); its kit is set up
+/// again and it takes a new patrol start node.
+fn dead(bot: &mut CaBot, data: &BotData) {
+    let mut fresh = CaBot::new(bot.profile, bot.template, 0, bot.kit, data);
+    fresh.dice = bot.dice;
+    fresh.reach_fixed = bot.reach_fixed;
+    fresh.ranged_reach = bot.ranged_reach;
+    fresh.thrown_reach = bot.thrown_reach;
+    fresh.merc = bot.merc;
+    *bot = fresh;
 }
 
 fn u(m: f32) -> f32 {
@@ -863,16 +990,32 @@ fn sight(ctx: &Ctx, me: &Char, t: &Char, alert: bool) -> Option<bool> {
     clear(t.head()).then_some(true)
 }
 
-/// The line of fire from `me`'s eye to `to`: None when clear, Some(Some(e))
-/// when character `e` stands in it, Some(None) for the world.
-fn fire_line(ctx: &Ctx, me: &Char, target: Entity, to: Vec3) -> Option<Option<Entity>> {
-    let eye = me.eye();
-    let d = to - eye;
+/// The line of fire from `from` (the bot's right side, `Char::side_origin`)
+/// to `to`: None when clear, Some(Some(e)) when character `e` stands in it,
+/// Some(None) for the world.
+fn fire_line(ctx: &Ctx, me: &Char, target: Entity, from: Vec3, to: Vec3) -> Option<Option<Entity>> {
+    let d = to - from;
     let dir = Dir3::new(d).ok()?;
-    let hit = ctx.q.cast_ray_predicate(eye, dir, d.length(), true, &sight_filter(), &|e| {
+    let hit = ctx.q.cast_ray_predicate(from, dir, d.length(), true, &sight_filter(), &|e| {
         e != me.e && e != target && !ctx.loose.contains(&e)
     })?;
     Some(ctx.chars.iter().any(|c| c.e == hit.entity).then_some(hit.entity))
+}
+
+/// Whether the target is visible from the weapon (Correction 11): a ray
+/// from the bot's right side to its `Torso` node, then its `Head` node.
+/// Some(false) when the torso is, Some(true) when only the head is (the
+/// head-only flag of 7.4), None when neither.
+fn weapon_view(ctx: &Ctx, me: &Char, t: &Char) -> Option<bool> {
+    let from = me.side_origin();
+    let blocked = |to: Vec3| matches!(fire_line(ctx, me, t.e, from, to), Some(None));
+    if !blocked(t.torso()) {
+        Some(false)
+    } else if !blocked(t.head()) {
+        Some(true)
+    } else {
+        None
+    }
 }
 
 /// The bot's kit weapon in slot `k` (0 mid primary, 1 long, 2 secondary,
@@ -888,6 +1031,9 @@ fn gun_ai(ctx: &Ctx, bot: &CaBot, id: &str) -> Option<GunAi> {
 }
 
 fn decide(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], active: Option<Entity>) -> Out {
+    // A new life's relaxed moment is its spawn (Correction 2b).
+    bot.last_relaxed.get_or_insert(ctx.now);
+    bot.merc_aim = bot.merc.is_some();
     if let Some(mut mind) = bot.merc.take() {
         let out = decide_merc(ctx, bot, &mut mind, me, guns, active);
         bot.merc = Some(mind);
@@ -940,19 +1086,33 @@ fn decide(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], active: Option<En
                     let diverge = !bot.visible;
                     walk(ctx, bot, me, goal, diverge, &mut io);
                 }
-                // Fire on the way when in reach and visible.
+                // Fire on the way when in reach and visible: blind, along the
+                // torso (Correction 10).
                 if bot.visible && u(me.pos.distance(target.pos)) <= bot.ranged_reach {
-                    aim_and_fire(ctx, bot, me, &target, guns, active, &mut io, &mut out);
+                    chase_fire(ctx, bot, me, &target, guns, active, &mut io, &mut out);
                 }
             }
         }
-        BotState::Investigate { spot, look_only, .. } => {
-            if look_only || me.feet().xz().distance(spot.xz()) < 0.6 {
+        BotState::Investigate { spot, look_only, at, radius, face, .. } => {
+            if look_only {
                 let (yaw, _) = look_at(me.eye(), spot);
                 io.yaw = yaw;
                 io.pitch = 0.0;
+            } else if me.pos.distance(at) <= radius {
+                // Over on the first update inside half the distance it
+                // started from (Correction 1); a call's answer faces
+                // where the caller faced (3).
+                if let Some(yaw) = face {
+                    io.yaw = yaw;
+                    io.pitch = 0.0;
+                }
+                enter_patrol(ctx, bot);
             } else {
                 walk(ctx, bot, me, spot, false, &mut io);
+                if bot.route.is_empty() {
+                    // The path ended.
+                    enter_patrol(ctx, bot);
+                }
             }
         }
         BotState::Dodge { to, .. } => {
@@ -1013,7 +1173,8 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
     if let Some(target) = bot.target.and_then(|e| ctx.chars.iter().find(|c| c.e == e)) {
         let seen = sight(ctx, me, target, true);
         bot.visible = seen.is_some();
-        bot.head_only = seen == Some(true);
+        // The head-only flag is the weapon's ray's (Correction 11).
+        bot.head_only = seen.is_some() && weapon_view(ctx, me, target) == Some(true);
         let gun = held_gun(ctx, bot, guns, me);
         bot.tracking
             .update(target.pos / UNIT, SERVER_FRAME as f32, gun.map_or(0.0, |g| g.c_max), gun.map_or(0.0, |g| g.decay));
@@ -1084,8 +1245,14 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
                 let passes = (bot.dice.range(0.1, 0.3) / 0.01).round() as u64;
                 bot.pending = Some(Pending {
                     at_pass: bot.passes + passes,
-                    spot: s.at,
-                    gunfire: true,
+                    heard: Heard {
+                        id: s.id,
+                        kind: Kind::Gunfire,
+                        at: s.at,
+                        level: ctx.data.alarm.gunfire,
+                        caller_alarm: 0.0,
+                        face: None,
+                    },
                 });
                 break;
             }
@@ -1102,8 +1269,14 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
                 if bot.pending.is_none() {
                     bot.pending = Some(Pending {
                         at_pass: bot.passes + passes,
-                        spot: s.at,
-                        gunfire: false,
+                        heard: Heard {
+                            id: s.id,
+                            kind: Kind::AllyCall,
+                            at: s.at,
+                            level: ctx.data.alarm.ally_call,
+                            caller_alarm: s.alarm,
+                            face: s.facing,
+                        },
                     });
                 }
                 break;
@@ -1122,7 +1295,7 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
                 }
                 bot.last_step_at = Some(s.at);
                 if bot.footsteps.add(0.5) {
-                    investigate(ctx, bot, me, s.at, false, out);
+                    investigate(ctx, bot, me, step_heard(ctx, s.id, s.at), out);
                 }
                 break;
             }
@@ -1133,61 +1306,114 @@ fn sense_pass(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun], out: &mut Out
         && let Some(at) = bot.last_step_at
     {
         // A third false stimulation: fully stimulated.
-        investigate(ctx, bot, me, at, false, out);
+        investigate(ctx, bot, me, step_heard(ctx, bot.last_step, at), out);
     }
     if let Some(p) = bot.pending
         && bot.passes >= p.at_pass
     {
         bot.pending = None;
-        investigate(ctx, bot, me, p.spot, p.gunfire, out);
+        investigate(ctx, bot, me, p.heard, out);
     }
 }
 
-/// A heard spot fires the investigate goal (5.3): only over patrol and
-/// investigate; the bot calls its allies when it starts.
-fn investigate(ctx: &Ctx, bot: &mut CaBot, me: &Char, spot: Vec3, gunfire: bool, out: &mut Out) {
+fn step_heard(ctx: &Ctx, id: u64, at: Vec3) -> Heard {
+    Heard {
+        id,
+        kind: Kind::Footstep,
+        at,
+        level: ctx.data.alarm.footstep,
+        caller_alarm: 0.0,
+        face: None,
+    }
+}
+
+/// A heard sound fires the investigate goal (5.3): only over patrol and
+/// investigate; the bot calls its allies when it starts. While
+/// investigating it ignores allies' calls, and a new enemy sound replaces
+/// the investigation only if its alarm level is not lower than the current
+/// one's and it is not the stimulus already followed (Correction 3). Every
+/// sound taken adds its level to the life's running total (Correction 2a).
+fn investigate(ctx: &Ctx, bot: &mut CaBot, me: &Char, heard: Heard, out: &mut Out) {
     if !bot.state.relaxed() {
         return;
     }
+    if let BotState::Investigate { level, id, .. } = bot.state
+        && (heard.kind == Kind::AllyCall || heard.level < level || heard.id == id)
+    {
+        return;
+    }
     let starting = bot.state == BotState::Patrol;
-    // A spot in plain view is only looked at (not a shot, Open question 12).
-    let look_only = !gunfire && {
-        let eye = me.eye();
-        let d = spot + Vec3::Y * 0.5 - eye;
-        Dir3::new(d).ok().is_some_and(|dir| {
-            ctx.q
-                .cast_ray_predicate(eye, dir, d.length(), true, &sight_filter(), &|e| !ctx.see_through.contains(&e))
-                .is_none()
-        })
-    };
+    bot.alarm += heard.level;
+    if heard.kind == Kind::AllyCall {
+        bot.alarm = bot.alarm.max(heard.caller_alarm);
+    }
     let spot_feet = ctx
         .mesh
-        .and_then(|m| m.nearest_area(spot).map(|a| m.areas[a].closest_point(spot)))
-        .unwrap_or(spot);
+        .and_then(|m| m.nearest_area(heard.at).map(|a| m.areas[a].closest_point(heard.at)))
+        .unwrap_or(heard.at);
+    // Only looked at (Correction 2): not majorly alarmed, more than 30 s
+    // since the last relaxed moment, within 1000 u, and in plain view
+    // (inside the relaxed field of view, a straight walk or a clear eye
+    // ray) or a straight walk away. Otherwise it runs.
+    let distance = u(me.pos.distance(heard.at));
+    let look_only = bot.alarm < ctx.data.alarm.major
+        && ctx.now - bot.last_relaxed.unwrap_or(ctx.now) > LOOK_ONLY_GRACE
+        && distance <= LOOK_ONLY_RANGE
+        && (in_plain_view(ctx, me, heard.at) || ctx.mesh.is_some_and(|m| nav::straight(m, me.feet(), spot_feet, 0.4)));
     bot.state = BotState::Investigate {
         spot: spot_feet,
         until: ctx.now + INVESTIGATE_TIME,
         look_only,
+        at: heard.at,
+        radius: 0.5 * me.pos.distance(heard.at),
+        level: heard.level,
+        id: heard.id,
+        face: heard.face,
     };
     bot.route.clear();
     bot.route_goal = None;
     if starting {
-        out.ally_call = Some(me.pos);
+        out.ally_call = Some((me.pos, me.yaw, bot.alarm));
         reset_grenades(ctx, bot);
     }
+}
+
+/// Whether `spot` is inside the bot's relaxed field of view (5.2) and
+/// visible by a clear eye ray.
+fn in_plain_view(ctx: &Ctx, me: &Char, spot: Vec3) -> bool {
+    let eye = me.eye();
+    let d = u(eye.distance(spot));
+    if d > NO_FOV_RADIUS {
+        let dir = (spot - eye).normalize_or_zero();
+        if dir.dot(me.forward()) < RELAXED_DOT || dir.y > RELAXED_UP_DOT {
+            return false;
+        }
+    }
+    let to = spot + Vec3::Y * 0.5 - eye;
+    Dir3::new(to).ok().is_some_and(|dir| {
+        ctx.q
+            .cast_ray_predicate(eye, dir, to.length(), true, &sight_filter(), &|e| !ctx.see_through.contains(&e))
+            .is_none()
+    })
 }
 
 fn reset_grenades(ctx: &Ctx, bot: &mut CaBot) {
     bot.grenades = ctx.data.template.grenade_shots.at(bot.template) as u32;
 }
 
+/// The patrol goal activates (4): the bot is relaxed again (Correction 2b)
+/// and says a Search line (Correction 5).
 fn enter_patrol(ctx: &Ctx, bot: &mut CaBot) {
     bot.state = BotState::Patrol;
     bot.target = None;
     bot.route.clear();
     bot.route_goal = None;
     bot.patrol_to = None;
+    bot.patrol_wait = 0.0;
+    bot.throw = None;
+    bot.last_relaxed = Some(ctx.now);
     reset_grenades(ctx, bot);
+    say(bot, Chat::Search);
 }
 
 fn leave_attack(ctx: &Ctx, bot: &mut CaBot) {
@@ -1205,7 +1431,7 @@ fn ranged_usable(bot: &CaBot, guns: &[Gun]) -> bool {
 
 /// Sight fired on `target` at `d` u (6: the last sight that fired is the
 /// target).
-fn sight_fired(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, d: f32, head_only: bool, guns: &[Gun]) {
+fn sight_fired(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, d: f32, _eye_head_only: bool, guns: &[Gun]) {
     if bot.target != Some(target.e) {
         bot.target = Some(target.e);
         let c_max = held_gun(ctx, bot, guns, me).map_or(0.0, |g| g.c_max);
@@ -1215,20 +1441,25 @@ fn sight_fired(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, d: f32, hea
         bot.aim_offset = None;
     }
     bot.visible = true;
-    bot.head_only = head_only;
+    bot.head_only = weapon_view(ctx, me, target) == Some(true);
     let melee = !ranged_usable(bot, guns) && slot(bot, guns, 3).is_some();
     let in_reach = d <= bot.ranged_reach || (melee && d <= KNIFE_RANGE);
     match bot.state {
         BotState::Attack { .. } => bot.chase_timer = None,
         BotState::Dodge { .. } => {}
-        _ if in_reach => enter_attack(ctx, bot, target),
+        _ if in_reach => enter_attack(ctx, bot, target, true),
         BotState::Chase { .. } => {}
         _ => enter_chase(ctx, bot),
     }
 }
 
-/// The attack goal activates (7.2's reaction delay, 9.3's crouch).
-fn enter_attack(ctx: &Ctx, bot: &mut CaBot, target: &Char) {
+/// The attack goal activates (7.2's reaction delay, 9.3's crouch); from
+/// another state it says a Battle line (`announce`; not when it returns
+/// from a grenade dodge, Correction 5).
+fn enter_attack(ctx: &Ctx, bot: &mut CaBot, target: &Char, announce: bool) {
+    if announce {
+        say(bot, Chat::Battle);
+    }
     let t = &ctx.data.template;
     let tp = bot.template;
     if ctx.now - bot.attack_off > REARM_GAP {
@@ -1313,12 +1544,16 @@ fn goals(ctx: &Ctx, bot: &mut CaBot, me: &Char, guns: &[Gun]) {
                 enter_patrol(ctx, bot);
             }
         }
-        BotState::Dodge { until, to } => {
-            if now >= until || me.feet().xz().distance(to.xz()) < 0.25 {
-                bot.danger = None;
+        BotState::Dodge { until, to, grenade, chase } => {
+            // Until the grenade is gone or the move ends (Correction 4);
+            // then back to the chase it was in, to the attack when it has
+            // a target, else idle.
+            let gone = !ctx.dangers.iter().any(|d| d.e == grenade);
+            if gone || now >= until || me.feet().xz().distance(to.xz()) < 0.25 {
                 match target {
-                    Some(t) if bot.visible => enter_attack(ctx, bot, &t),
-                    _ => enter_patrol(ctx, bot),
+                    Some(_) if chase => enter_chase(ctx, bot),
+                    Some(t) => enter_attack(ctx, bot, &t, false),
+                    None => enter_patrol(ctx, bot),
                 }
             }
         }
@@ -1363,27 +1598,50 @@ fn grenade_danger(ctx: &Ctx, bot: &mut CaBot, me: &Char) {
         let delay = bot.dice.range(t.dodge_delay_min.at(tp), t.dodge_delay_max.at(tp)) as f64;
         bot.danger = Some((g.e, g.pos, ctx.now + delay));
     }
-    let Some((g, at, when)) = bot.danger else { return };
+    let Some((g, _, when)) = bot.danger else { return };
     if ctx.now < when || matches!(bot.state, BotState::Dodge { .. }) {
         return;
     }
     let Some(danger) = ctx.dangers.iter().find(|d| d.e == g) else { return };
-    // Already outside the radius: it stays.
-    if u(me.pos.distance(at)) > danger.radius {
+    // The dodge is decided once per notice.
+    bot.danger = bot.danger.map(|(g, at, _)| (g, at, f64::INFINITY));
+    let from = danger.pos;
+    let chase = matches!(bot.state, BotState::Chase { .. });
+    if u(me.pos.distance(from)) > danger.radius {
+        // Just outside the blast radius: onto the grenade itself, as the
+        // reference does (Correction 4, kept for parity); only a bot
+        // standing on that point stays.
+        let mut to = from;
+        to.y = me.feet().y;
+        if me.feet().xz().distance(to.xz()) >= 0.25 && move_possible(ctx, me, to) {
+            start_dodge(ctx, bot, to, g, chase);
+        }
         return;
     }
-    let away = Vec3::new(me.pos.x - at.x, 0.0, me.pos.z - at.z).normalize_or(Vec3::X);
+    let away = Vec3::new(me.pos.x - from.x, 0.0, me.pos.z - from.z).normalize_or(Vec3::X);
     let r = danger.radius * DODGE_FACTOR * UNIT;
     for k in math::DODGE_STEPS {
         let dir = Quat::from_rotation_y(k as f32 * std::f32::consts::FRAC_PI_4) * away;
-        let mut to = at + dir * r;
+        let mut to = from + dir * r;
         to.y = me.feet().y;
         if move_possible(ctx, me, to) {
-            leave_attack(ctx, bot);
-            bot.state = BotState::Dodge { to, until: ctx.now + 3.0 };
+            start_dodge(ctx, bot, to, g, chase);
             return;
         }
     }
+}
+
+/// The grenade dodge goal activates with a point to go to (it says a
+/// Grenade line).
+fn start_dodge(ctx: &Ctx, bot: &mut CaBot, to: Vec3, grenade: Entity, chase: bool) {
+    leave_attack(ctx, bot);
+    bot.state = BotState::Dodge {
+        to,
+        until: ctx.now + DODGE_MAX,
+        grenade,
+        chase,
+    };
+    say(bot, Chat::Grenade);
 }
 
 /// A straight walk through the areas from `me` to `to` (feet level) with
@@ -1505,12 +1763,10 @@ fn dodge(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char) {
     }
 }
 
-/// Weapon choice, aim and trigger (7, 8).
-#[allow(clippy::too_many_arguments)]
-fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gun], active: Option<Entity>, io: &mut IntentOut, out: &mut Out) {
+/// 8.2: the weapon for a target at `d` u, kept in `held` until it needs
+/// choosing again.
+fn pick_weapon(ctx: &Ctx, bot: &mut CaBot, guns: &[Gun], d: f32) -> Option<Gun> {
     let now = ctx.now;
-    let d = u(me.pos.distance(target.pos));
-    // 8.2: which weapon.
     let choice = |k: usize| {
         slot(bot, guns, k).map(|g| Choice {
             has_ammo: g.has_ammo(),
@@ -1535,23 +1791,55 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
         }
         bot.held = Some(w.e);
     }
-    let Some(held) = bot.held.and_then(|h| guns.iter().find(|g| g.e == h)).copied() else { return };
+    bot.held.and_then(|h| guns.iter().find(|g| g.e == h)).copied()
+}
+
+/// Weapon choice, aim and trigger (7, 8).
+#[allow(clippy::too_many_arguments)]
+fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gun], active: Option<Entity>, io: &mut IntentOut, out: &mut Out) {
+    let now = ctx.now;
+    let d = u(me.pos.distance(target.pos));
+    if let Some(th) = bot.throw {
+        throw_step(ctx, bot, me, target, guns, active, th, io, out);
+        return;
+    }
+    let Some(held) = pick_weapon(ctx, bot, guns, d) else { return };
     out.wanted = Some(held.e);
     let gun = gun_ai(ctx, bot, held.id).unwrap_or_default();
 
-    // 7.3: the aim point for this shot.
-    let base = if bot.head_only { target.head() } else { target.torso() };
+    // 7.3: the aim point for this shot. A mercenary aims like PvE AI
+    // (bots_objectives.md 3.3 Correction 1): at its height above the hull
+    // centre, the cycle in fixed order, an aimed shot exactly 100 u off
+    // while the target moves, no camping bonus, no head-only halving.
+    let merc = bot.merc_aim;
+    let base = if bot.head_only {
+        target.head()
+    } else if merc {
+        target.pos + Vec3::Y * bot.merc_height * UNIT
+    } else {
+        target.torso()
+    };
     if bot.aim_offset.is_none() {
-        let camp = ctx.camping.get(&target.e).copied().unwrap_or(0.0);
+        let camp = if merc { 0.0 } else { ctx.camping.get(&target.e).copied().unwrap_or(0.0) };
         let base_u = base / UNIT;
         let offset = if math::full_accuracy(d, gun.full_accuracy) {
             Vec3::ZERO
         } else {
-            let a = math::accuracy(gun.a, camp, bot.head_only);
-            let r = bot.dice.r100();
-            if bot.cycle.shot(a, r) {
+            let a = math::accuracy(gun.a, camp, bot.head_only && !merc);
+            let aimed = if merc {
+                bot.cycle.ordered_shot(a)
+            } else {
+                let r = bot.dice.r100();
+                bot.cycle.shot(a, r)
+            };
+            if aimed {
                 let draws = Vec3::new(bot.dice.unit(), bot.dice.unit(), bot.dice.unit());
-                math::hit_point(base_u, bot.tracking.c, draws) - base_u
+                let point = if merc {
+                    math::merc_hit_point(base_u, bot.tracking.c, draws)
+                } else {
+                    math::hit_point(base_u, bot.tracking.c, draws)
+                };
+                point - base_u
             } else {
                 let right = bot.dice.unit() < 0.5;
                 let up = bot.dice.range(-5.0, 15.0);
@@ -1565,7 +1853,8 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
     io.yaw = yaw;
     io.pitch = pitch;
 
-    // 8.5: a grenade after its count of shots.
+    // 8.5: a grenade after its count of shots: the bot switches to it and
+    // throws (`throw_step`); nothing is fired meanwhile.
     if ctx.frame
         && bot.grenades == 0
         && bot.visible
@@ -1573,10 +1862,14 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
         && d <= bot.thrown_reach
         && let Some(g) = slot(bot, guns, 4).filter(|g| g.count.unwrap_or(0) > 0)
     {
-        let from = me.eye();
-        let v = math::throw_velocity(from / UNIT, target.pos / UNIT, HANG_TIME, GRAVITY, 1.0, 0.0);
-        out.throw = Some((g.e, from, v * UNIT));
-        reset_grenades(ctx, bot);
+        bot.throw = Some(Throw {
+            weapon: g.e,
+            begun: now,
+            started: None,
+            near: d < NEAR_THROW,
+            released: false,
+        });
+        out.wanted = Some(g.e);
         return;
     }
 
@@ -1603,7 +1896,7 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
     }
     let knife = Some(held.id) == bot.kit[3];
     let in_reach = !knife || d <= KNIFE_RANGE;
-    let line = fire_line(ctx, me, target.e, base);
+    let line = fire_line(ctx, me, target.e, me.side_origin(), base);
     if let Some(Some(mate)) = line
         && ctx.chars.iter().any(|c| c.e == mate && c.team == me.team)
     {
@@ -1623,6 +1916,108 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
         && (knife || held.clip > 0)
         && (knife || bot.burst_left > 0)
         && now >= bot.pause_until;
+    io.fire = fire && !std::mem::take(&mut bot.release);
+}
+
+/// The target is nearer than this (u): the close throw animation (8.5).
+pub const NEAR_THROW: f32 = 1000.0;
+
+/// A grenade throw in progress (8.5, Correction 9): the bot has the
+/// grenade drawn (it switched to it), the throw animation plays and the
+/// grenade leaves the hand at the throw key; the animation over, the gun is
+/// chosen again and switched back to. Nothing is fired meanwhile. The
+/// animation's length and key are the grenade's (`Throwable`: the throw
+/// key and the throw time), the same for both animations (Open question
+/// 27).
+#[allow(clippy::too_many_arguments)]
+fn throw_step(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gun], active: Option<Entity>, mut th: Throw, io: &mut IntentOut, out: &mut Out) {
+    let now = ctx.now;
+    out.wanted = Some(th.weapon);
+    io.fire = false;
+    let (yaw, pitch) = look_at(me.eye(), target.torso());
+    io.yaw = yaw;
+    io.pitch = pitch;
+    if th.started.is_none() && active == Some(th.weapon) {
+        th.started = Some(now);
+    }
+    let Some(start) = th.started else {
+        // Never drew it: give up.
+        if now - th.begun > THROW_PATIENCE {
+            bot.throw = None;
+            bot.held = None;
+            reset_grenades(ctx, bot);
+        } else {
+            bot.throw = Some(th);
+        }
+        return;
+    };
+    let grenade = guns.iter().find(|g| g.e == th.weapon);
+    let key = grenade.map_or(THROW_KEY, |g| g.throw_delay) as f64;
+    let total = grenade.map_or(THROW_TIME, |g| g.throw_time.max(g.throw_delay)) as f64;
+    if !th.released && now + 1e-9 >= start + key {
+        let from = me.hand();
+        let v = math::throw_velocity(from / UNIT, target.pos / UNIT, HANG_TIME, GRAVITY, 1.0, 0.0);
+        out.throw = Some((th.weapon, from, v * UNIT));
+        th.released = true;
+        reset_grenades(ctx, bot);
+    }
+    if th.released && now + 1e-9 >= start + total {
+        // Over: choose the gun again.
+        bot.throw = None;
+        bot.held = None;
+        bot.burst_left = 0;
+        bot.pause_until = now;
+        bot.last_clip = None;
+        return;
+    }
+    bot.throw = Some(th);
+}
+
+/// A throw whose grenade is never drawn is given up after this (s); the
+/// throw key and animation when the grenade has none (s).
+pub const THROW_PATIENCE: f64 = 3.0;
+pub const THROW_KEY: f32 = 0.4;
+pub const THROW_TIME: f32 = 0.9;
+
+/// Wrap an angle into -pi..pi.
+fn wrap_pi(a: f32) -> f32 {
+    (a + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
+}
+
+/// Firing while chasing (Correction 10, 5.6, 8.2): whenever the target is
+/// visible from the weapon and in reach, with no reaction delay and no
+/// burst pause: the whole clip, then an instant reload. The shots are
+/// blind: each goes along the bot's torso facing, which turns toward the
+/// target's head within `TORSO_YAW`/`TORSO_PITCH` of the run heading (Open
+/// question 28), not to the aim point of 7.3 (no hit/miss cycle).
+#[allow(clippy::too_many_arguments)]
+fn chase_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gun], active: Option<Entity>, io: &mut IntentOut, out: &mut Out) {
+    let now = ctx.now;
+    let d = u(me.pos.distance(target.pos));
+    let Some(held) = pick_weapon(ctx, bot, guns, d) else { return };
+    out.wanted = Some(held.e);
+    // The torso turns toward the head while the legs run the path.
+    let run = io.yaw;
+    let (to_yaw, to_pitch) = look_at(me.eye(), target.head());
+    let yaw = run + wrap_pi(to_yaw - run).clamp(-TORSO_YAW, TORSO_YAW);
+    if io.axis != Vec2::ZERO {
+        io.axis = axis_toward(Vec3::new(-run.sin(), 0.0, -run.cos()), yaw);
+    }
+    io.yaw = yaw;
+    io.pitch = to_pitch.clamp(-TORSO_PITCH, TORSO_PITCH);
+    let knife = Some(held.id) == bot.kit[3];
+    if !knife && held.count.is_none() && held.clip == 0 && held.reserve > 0 {
+        out.refill = Some(held.e);
+    }
+    let view = weapon_view(ctx, me, target);
+    let base = if view == Some(true) { target.head() } else { target.torso() };
+    let line = fire_line(ctx, me, target.e, me.side_origin(), base);
+    let fire = active == Some(held.e)
+        && view.is_some()
+        && line.is_none()
+        && (!knife || d <= KNIFE_RANGE)
+        && now >= bot.next_shot
+        && (knife || held.clip > 0);
     io.fire = fire && !std::mem::take(&mut bot.release);
 }
 
@@ -1689,6 +2084,10 @@ fn patrol(ctx: &Ctx, bot: &mut CaBot, me: &Char, io: &mut IntentOut, out: &mut O
     if graph.nodes.is_empty() {
         return;
     }
+    // Standing at a node to look around (4).
+    if ctx.now < bot.patrol_wait {
+        return;
+    }
     let feet = me.feet();
     if bot.patrol_to.is_none() {
         let here = bot.patrol_from.filter(|&n| n < graph.nodes.len()).or_else(|| graph.nearest(feet));
@@ -1727,6 +2126,12 @@ fn patrol(ctx: &Ctx, bot: &mut CaBot, me: &Char, io: &mut IntentOut, out: &mut O
         out.reached = Some(to);
         bot.patrol_from = Some(to);
         bot.patrol_to = None;
+        // Every node is a look-around node: it stops with the template's
+        // chance for 3 + U(0, 3) s, else runs on.
+        let percent = ctx.data.template.stop_look_around_percent.at(bot.template);
+        if math::patrol_stops(bot.dice.r100(), percent) {
+            bot.patrol_wait = ctx.now + (STOP_MIN + bot.dice.range(0.0, STOP_SPREAD)) as f64;
+        }
         return;
     }
     walk(ctx, bot, me, goal, false, io);
@@ -1786,6 +2191,16 @@ fn decide_merc(ctx: &Ctx, bot: &mut CaBot, mind: &mut MercMind, me: &Char, guns:
                 .update(target.pos / UNIT, SERVER_FRAME as f32, gun.map_or(0.0, |g| g.c_max), gun.map_or(0.0, |g| g.decay));
             if bot.visible {
                 mind.seen_at = ctx.now;
+                // The aim point steps down the hull each update the
+                // weapon's ray to it fails (bots_objectives.md 3.3).
+                let aim = target.pos + Vec3::Y * bot.merc_height * UNIT;
+                if matches!(fire_line(ctx, me, target.e, me.side_origin(), aim), Some(None)) {
+                    let h = target.hull_height();
+                    bot.merc_height -= h / 8.0;
+                    if bot.merc_height < -h / 2.0 - 1e-3 {
+                        bot.merc_height = h / 2.0;
+                    }
+                }
             }
         }
         if mind.follow_only {
@@ -1819,9 +2234,10 @@ fn decide_merc(ctx: &Ctx, bot: &mut CaBot, mind: &mut MercMind, me: &Char, guns:
                     bot.aim_offset = None;
                     bot.visible = true;
                     bot.head_only = head_only;
+                    bot.merc_height = MERC_HEIGHT;
                 }
                 if !matches!(bot.state, BotState::Attack { .. }) {
-                    enter_attack(ctx, bot, &target);
+                    enter_attack(ctx, bot, &target, true);
                 }
             } else if matches!(bot.state, BotState::Attack { .. }) && ctx.now - mind.seen_at >= MERC_ATTACK_DECAY - 1e-9 {
                 leave_attack(ctx, bot);
