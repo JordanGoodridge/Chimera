@@ -59,6 +59,12 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // The mode runtime (chimera/sim): modes as data and hooks on one match
     // whose phases it steps; which game plays from the gameplay.
     ("mode", &["core", "console", "gameplay"]),
+    // Minigames (chimera/sim): definitions as data played on the mode
+    // runtime, their spawning and weapons, the gameplay switched to them.
+    (
+        "minigame",
+        &["core", "console", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry"],
+    ),
     // Every game's respawn (chimera/sim): the dead held, a character
     // revived at a place (out of a toggled noclip).
     ("spawning", &["core", "movement"]),

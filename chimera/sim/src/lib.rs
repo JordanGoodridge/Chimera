@@ -4,7 +4,9 @@
 //! slot's own implementations (`movement`: placeholder walking, noclip),
 //! the rule-module interface (`rule_module`: a game registers its
 //! modes by name), the mode runtime (`mode`: a game mode as data and
-//! hooks on one match whose phases it steps, lifted from Combat Arms') and
+//! hooks on one match whose phases it steps, lifted from Combat Arms'),
+//! minigames (`minigame`: a match described by a data file, played on the
+//! mode runtime by Chimera's own flow, with the `chimera:ladder` rules) and
 //! what every game's respawn does (`spawning`: the dead
 //! held still, a character revived at a place). A game fills them with its data and hooks; they name
 //! no game. It uses the engine's base (`chimera_core`) and the
@@ -20,6 +22,7 @@
 //! slot's implementations, the weapon framework): the start of a game's set (`cs_source::SimPlugins`)
 //! and the base of the engine's own scenario tests (tests/it/).
 
+pub mod minigame;
 pub mod mode;
 pub mod movement;
 pub mod rule_module;

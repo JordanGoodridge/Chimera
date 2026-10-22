@@ -1400,7 +1400,7 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | # | Item | Depends on | Size |
 |---|---|---|---|
 | L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (stages 1-2 done; CS:S open) |
-| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L |
+| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (stage 1 done) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
@@ -1449,6 +1449,33 @@ for money and payouts, the buy window, `RoundOpen`, team balance,
 intermission, and `RoundState` (read by the HUD, `NetRound` and about
 20 test files) kept as a view of `Match` each tick so those tests stay
 unchanged.
+
+L2, stage 1 done (10-22): `chimera_sim::minigame`. A definition is TOML
+(`def::MinigameDef`, D2's shape: id, name, players, map pool, teams, time
+limit, `[slots]` hud/binds/tick game ids plus movement, character and
+the weapon sets allowed, `[spawn]` respawn delay and protection, points
+(`map`, `far_from_enemies`, `team`) and a kit, `[rules]` module plus its
+own keys, `[modifiers]`), parsed at run time (`add_minigames`,
+`minigame_load <file>`) and checked against the app (`check`: the module,
+its parameters, every weapon in the catalogue and an allowed set, the
+slots' games and movement, the modifiers). Small choices: a minigame is
+the gameplay's rules slot `MINIGAME` ("chimera"), played on the mode
+runtime by Chimera's own `Flow` (`runtime::FLOW`), so neither game's
+rules run; a rules module is a `Mode` plus `check`/`start`/`loadout`
+(`RulesModule`, registered by name); one round a match, live at once (no
+setup), its winner the match's, then round over (5 s), intermission (3 s)
+and match over (`minigame_restart` again); the match waits for
+`players.min`, joiners play at once meanwhile; protection is `core::God`
+under a `Protected` marker, ended by time or the first shot; deaths count
+in `core::Score` (the scoring table stays kills and deaths); definitions
+are leaked to `&'static` (few, loaded once). `chimera:ladder`
+(`minigame::ladder`): free-for-all, an enemy kill a rung up (weapon
+swapped at once), `demote_on = "melee_death"` a rung down, the last
+rung's kill wins, the time limit's winner the highest rung then kills (a
+tie a draw); events `rung_up`, `rung_down`, `match_won`
+(`MinigameEvent`, bound to no HUD yet). Contract tests on the test kit
+(chimera/sim/tests/it/minigame.rs). Not done: objective primitives,
+built-in modifiers, a scoring table, events on a HUD.
 
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and
