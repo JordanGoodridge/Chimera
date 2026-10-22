@@ -184,3 +184,50 @@ fn a_knife_death_costs_a_rung() {
     line_up(&mut sim, a, b, 4.0);
     assert_eq!(held(&sim, b), Some(cs_source::game::weapons::DEAGLE));
 }
+
+/// Combat Arms' bots (the gun game's `bots` slot) come in, each on a team
+/// of its own, and fight it out with the ladder's guns: kills move them up.
+#[test]
+fn combat_arms_bots_play_the_gun_game() {
+    let mut sim = party();
+    // Eight more start points about the greybox's floor (it has two).
+    for x in [-8.0, 8.0] {
+        for z in [-25.0, -15.0, -5.0, 5.0] {
+            sim.app.world_mut().spawn((
+                chimera_core::core::SpawnPoint::default(),
+                Transform::from_translation(Vec3::new(x, 1.0, z)),
+            ));
+        }
+    }
+    {
+        let mut s = sim.app.world_mut().resource_mut::<combat_arms::game::bots::BotSettings>();
+        s.quota = 4;
+        s.quota_set = true;
+    }
+    sim.seconds(2.0);
+    let bots: Vec<Entity> = {
+        let w = sim.app.world_mut();
+        w.query_filtered::<Entity, With<combat_arms::game::bots::CaBot>>().iter(w).collect()
+    };
+    assert_eq!(bots.len(), 4);
+    assert_eq!(phase(&sim), Phase::Live);
+    let mut teams: Vec<u8> = bots.iter().map(|b| sim.app.world().get::<Team>(*b).unwrap().0).collect();
+    teams.sort();
+    teams.dedup();
+    assert_eq!(teams.len(), 4, "a team each: {teams:?}");
+    let in_hand: Vec<Option<&str>> = bots.iter().map(|b| held(&sim, *b)).collect();
+    assert!(
+        in_hand.iter().all(|h| [Some(cs_source::game::weapons::GLOCK), Some(combat_arms::game::inventory::KNIFE)].contains(h)),
+        "the first rung's Glock or the kit's knife: {in_hand:?}"
+    );
+    let mut kills = 0;
+    for _ in 0..90 {
+        sim.seconds(1.0);
+        kills = bots.iter().map(|b| sim.app.world().get::<Score>(*b).map_or(0, |s| s.kills)).sum::<i32>();
+        if kills >= 2 {
+            break;
+        }
+    }
+    assert!(kills >= 2, "the bots kill each other ({kills} kills in 90 s)");
+    assert!(bots.iter().any(|b| rung(&sim, *b) > 0), "and climb");
+}

@@ -31,6 +31,7 @@ combat_arms.workspace = true
 originals.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
+toml.workspace = true
 workspace-hack.workspace = true
 
 # The tests aim with the test kit's readers (`chimera_sim::testkit`).

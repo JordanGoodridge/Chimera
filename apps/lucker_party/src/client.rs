@@ -40,8 +40,12 @@ impl Plugin for ClientPlugin {
 
 /// The command line as the app plays it: `DEFAULT_MINIGAME` without
 /// `+minigame`, and without `--map` that minigame's first map (a minigame
-/// that isn't built in keeps the default's).
+/// that isn't built in keeps the default's); `DEFAULT_BOTS` bots unless it
+/// sets `MaxPlayer`.
 pub fn with_defaults(mut args: Args) -> Args {
+    if !args.console.iter().any(|c| c.to_lowercase().starts_with("maxplayer")) {
+        args.console.insert(0, format!("MaxPlayer {}", super::DEFAULT_BOTS));
+    }
     let minigame = match super::minigame_of(&args.console) {
         Some(id) => id,
         None => {
@@ -64,13 +68,14 @@ mod tests {
     fn it_starts_the_gun_game_on_its_first_map() {
         let args = super::with_defaults(Args::default());
         assert_eq!(args.map.as_deref(), Some("cs_source:de_dust2"));
-        assert_eq!(args.console, ["minigame originals:gun_game_dust2"]);
+        assert_eq!(args.console, ["MaxPlayer 3", "minigame originals:gun_game_dust2"]);
         let mut own = Args::default();
         own.map = Some("combat_arms:warehouse".into());
         own.console.push("minigame originals:gun_game_dust2".into());
+        own.console.push("maxplayer 0".into());
         let own = super::with_defaults(own);
         assert_eq!(own.map.as_deref(), Some("combat_arms:warehouse"));
-        assert_eq!(own.console.len(), 1);
+        assert_eq!(own.console.len(), 2);
         assert_eq!(super::client_hooks().build, crate::BUILD);
     }
 }

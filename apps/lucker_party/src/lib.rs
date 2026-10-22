@@ -28,12 +28,15 @@
 //!   hooks and Combat Arms' HUD) and `with_defaults` (the command line as
 //!   the app plays it).
 //!
+//! - Bots: Combat Arms' (the gun game's `bots` slot), with CS:S's guns'
+//!   types for their AI rows (data/bot_gun_types.toml); `MaxPlayer`.
+//!
 //! Known shortcuts: maps load by id only (no downloaded map files); the
-//! minigame's map pool isn't rotated (its first map plays); Combat Arms'
-//! bots don't play a minigame (their brain runs with Combat Arms' rules
-//! only); the HUD is Combat Arms' without the minigame's state (the
-//! ladder's rung shows as the weapon in hand; `minigame_status` prints
-//! the match).
+//! minigame's map pool isn't rotated (its first map plays); the bots fight
+//! with whatever their ladder gives but keep the reach of their first
+//! life's weapons; the HUD is Combat Arms' without the minigame's state
+//! (the ladder's rung shows as the weapon in hand; `minigame_status`
+//! prints the match).
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
 use chimera_core::game_registry::GameAppExt;
@@ -106,10 +109,20 @@ impl PluginGroup for PartyPlugins {
     }
 }
 
+/// Combat Arms' bots' gun types for CS:S's guns (data/bot_gun_types.toml).
+pub const BOT_GUN_TYPES: &str = include_str!("../data/bot_gun_types.toml");
+
+/// Bots the app keeps without a `MaxPlayer` of the user's: a gun game of
+/// four with the player.
+pub const DEFAULT_BOTS: u32 = 3;
+
 /// What the party adds to Combat Arms' simulation (the headless tests run
-/// it on `combat_arms::harness::CaSim`): CS:S registered as a second game
-/// (its install and maps), Source's map logic, CS:S's guns, the minigame
-/// runtime and the original minigames.
+/// it on `combat_arms::harness::CaSim`), after Combat Arms' parts: CS:S
+/// registered as a second game (its install and maps), Source's map
+/// logic, CS:S's guns, the minigame runtime and the original minigames;
+/// Combat Arms' modes off (`ca_mode none`: its rules leave the players
+/// to the minigame, a joiner comes in at a free spawn point) and its bots
+/// given CS:S's guns' types (`BOT_GUN_TYPES`).
 pub struct PartyPartsPlugin;
 
 impl Plugin for PartyPartsPlugin {
@@ -121,7 +134,22 @@ impl Plugin for PartyPartsPlugin {
             MinigamePlugin,
             originals::OriginalsPlugin,
         ));
+        if let Some(mut s) = app.world_mut().get_resource_mut::<combat_arms::game::rules::CaRuleSettings>() {
+            s.mode = "none".into();
+        }
+        if let Some(mut bots) = app.world_mut().get_resource_mut::<combat_arms::game::bots::BotData>() {
+            bots.gun_types.extend(bot_gun_types());
+        }
     }
+}
+
+/// `BOT_GUN_TYPES` read: weapon id to Combat Arms' gun type.
+pub fn bot_gun_types() -> Vec<(String, String)> {
+    let table: toml::Table = toml::from_str(BOT_GUN_TYPES).expect("data/bot_gun_types.toml reads");
+    table
+        .into_iter()
+        .map(|(id, kind)| (id, kind.as_str().expect("a gun type's name").to_string()))
+        .collect()
 }
 
 /// The minigame a command line's console lines ask for (`minigame <id>`,
@@ -172,6 +200,17 @@ mod tests {
         assert_eq!(super::minigame_of(&lines[..1]), None);
         assert_eq!(super::first_map(super::DEFAULT_MINIGAME).unwrap(), "cs_source:de_dust2");
         assert!(super::first_map("originals:nothing").is_err());
+    }
+
+    #[test]
+    fn every_cs_source_gun_has_a_bot_gun_type_combat_arms_knows() {
+        let ca = combat_arms::game::bots::BotData::built_in();
+        let types = super::bot_gun_types();
+        for gun in cs_source::game::weapons::guns() {
+            let row = types.iter().find(|(id, _)| *id == gun.id);
+            let (_, kind) = row.unwrap_or_else(|| panic!("{} has no bot gun type", gun.id));
+            assert!(ca.guns.contains_key(kind.as_str()), "{}: {kind} isn't one of Combat Arms' gun types", gun.id);
+        }
     }
 
     #[test]

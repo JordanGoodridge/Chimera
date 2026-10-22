@@ -14,6 +14,7 @@
 //! hud = "combat_arms"         # the HUD drawn
 //! binds = "combat_arms"       # the default binds and movement cvars
 //! tick = "combat_arms"        # whose fixed tick the match runs at
+//! bots = "combat_arms"        # whose bots play (a game that gates them by `gameplay::bots_are`)
 //! movement = "combat_arms:movement"   # checked to be registered; the app's characters use it
 //! character = "combat_arms:soldier"   # informational (the kit isn't a slot yet)
 //! weapons = ["cs_source", "combat_arms"]   # the weapon sets a definition may name
@@ -100,6 +101,7 @@ pub struct Slots {
     pub hud: Option<String>,
     pub binds: Option<String>,
     pub tick: Option<String>,
+    pub bots: Option<String>,
     pub movement: Option<String>,
     pub character: Option<String>,
     /// Game ids whose weapons the definition may name (empty: any).

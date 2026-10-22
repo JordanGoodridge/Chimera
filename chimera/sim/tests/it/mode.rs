@@ -283,6 +283,7 @@ fn the_gameplay_picks_whose_modes_play() {
     assert_eq!(mode::current_mode(sim.app.world()).map(|m| m.id), Some("kit:deathmatch"), "the first game");
     let mut other = Gameplay {
         rules: "other",
+        bots: "other",
         hud: "other",
         binds: "other",
         tick: std::time::Duration::from_millis(15),

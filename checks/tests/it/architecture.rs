@@ -924,6 +924,10 @@ fn workspace_crates() {
     const PARTY_APP: &str = "is Lucker Party's glue (docs/ARCHITECTURE.md, \"Crates\"): the games as \
         libraries, the original minigames and Chimera composed into the party, never another app: what it \
         shares with one moves into a game or Chimera, not across.";
+    const PARTY_SERVER: &str = "is Lucker Party's dedicated server (docs/ARCHITECTURE.md, \"Crates\"): \
+        the party's glue (`lucker_party`) without its default `present`, Chimera's simulation crates and the \
+        games without their front ends, so no presentation or client shell links \
+        (`server_builds_without_presentation`). Move what needs them into the client's side (`present`).";
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
         into the client's side or behind `cs_source_app`'s `present`.";
@@ -1067,6 +1071,20 @@ fn workspace_crates() {
             "apps/lucker_party",
             &["mashup", "cs_source_app", "combat_arms_app"],
             PARTY_APP,
+        ),
+        (
+            "apps/lucker_party_server",
+            &[
+                "chimera_present",
+                "chimera_client",
+                "bevy_egui",
+                "bevy-inspector-egui",
+                "arboard",
+                "cs_source_app",
+                "combat_arms_app",
+                "mashup",
+            ],
+            PARTY_SERVER,
         ),
         (
             "chimera/tools",
@@ -1297,8 +1315,9 @@ fn game_ui_only_with_its_feature() {
 /// (docs/ARCHITECTURE.md, "Crates"): `cs_source_server` uses the app's
 /// glue (`cs_source_app`) without its default feature `present`, and
 /// `combat_arms_server` Chimera's simulation crates and Combat Arms
-/// without `ui`, so neither depends on `chimera_present` or links render
-/// or audio code. (That they compile that way the pre-push hook checks:
+/// without `ui`, and `lucker_party_server` the party's glue
+/// (`lucker_party`) without its `present`, so none depends on
+/// `chimera_present` or links render or audio code. (That they compile that way the pre-push hook checks:
 /// `cargo check -p cs_source_server`, `-p combat_arms_server`.)
 #[test]
 fn server_builds_without_presentation() {
@@ -1364,6 +1383,18 @@ fn server_builds_without_presentation() {
          Chimera's simulation crates and `combat_arms` without its `ui` feature (apps/combat_arms_server/\
          Cargo.toml): don't turn on `ui` or depend on the app (`combat_arms_app`), and keep the new \
          dependency out of the simulation crates (the front end's optional ones: UI_FEATURES)."
+    );
+    let server = tree("lucker_party_server");
+    let present: Vec<&str> = server
+        .lines()
+        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "`lucker_party_server` (Lucker Party's dedicated server's build) depends on {present:?}. It uses \
+         `lucker_party` without its default feature `present` (the workspace's dependency, Cargo.toml) and \
+         the games without their front ends: make the new dependency optional in `lucker_party` behind \
+         `present`, or move what the simulation needs out of the presentation."
     );
 }
 

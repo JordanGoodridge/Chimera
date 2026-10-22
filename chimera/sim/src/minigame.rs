@@ -21,8 +21,8 @@
 //!   value (`[modifiers]`), registered by name; none are built in yet.
 //! - Starting one (`start`, `minigame <id>`): the definition becomes the
 //!   `ActiveMinigame`, the gameplay switches to it (rules `MINIGAME`; the
-//!   HUD, binds and tick from its slots, the current ones where it names
-//!   none), the match starts over (`mode::Match`), every player joins
+//!   bots, HUD, binds and tick from its slots, the current ones where it
+//!   names none), the match starts over (`mode::Match`), every player joins
 //!   again, the module and the modifiers start.
 //! - The primitives the runtime gives every minigame (`runtime`): joining
 //!   (teams as the definition makes them), the match waiting for
@@ -168,7 +168,12 @@ pub fn check(world: &World, def: &MinigameDef) -> Result<(), String> {
         (m.check)(value).map_err(|e| fail(format!("modifier {name}: {e}")))?;
     }
     if let Some(games) = world.get_resource::<Games>() {
-        let slots = [("hud", &def.slots.hud), ("binds", &def.slots.binds), ("tick", &def.slots.tick)];
+        let slots = [
+            ("hud", &def.slots.hud),
+            ("binds", &def.slots.binds),
+            ("tick", &def.slots.tick),
+            ("bots", &def.slots.bots),
+        ];
         for (slot, game) in slots {
             if let Some(g) = game
                 && games.get(g).is_none()
@@ -218,6 +223,7 @@ pub fn start(world: &mut World, id: &str) -> Result<&'static MinigameDef, String
         .unwrap_or_else(|| world.resource::<Time<Fixed>>().timestep());
     let gameplay = Gameplay {
         rules: MINIGAME,
+        bots: game_id(&def.slots.bots).or(current.as_ref().map(|c| c.bots)).unwrap_or(MINIGAME),
         hud: game_id(&def.slots.hud).or(current.as_ref().map(|c| c.hud)).unwrap_or(MINIGAME),
         binds: game_id(&def.slots.binds).or(current.as_ref().map(|c| c.binds)).unwrap_or(MINIGAME),
         tick,

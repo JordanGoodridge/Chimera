@@ -18,6 +18,7 @@ cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ i
   |    combat_arms_app (apps/combat_arms/)   the Combat Arms app: its game binary (beside, not above, CS:S)
   |    mashup_demo (apps/mashup_demo/)   the first mashup app: CS:S's maps played as Combat Arms (both games as libraries)
   |    lucker_party (apps/lucker_party/)   Lucker Party: minigames with both games' parts (`present`: the client)
+  |    lucker_party_server (apps/lucker_party_server/)   its dedicated server: `lucker_party` without `present`
   |    originals (games/originals/)   the original minigames: definitions (minigames/) and rules hooks, Chimera only
   |    combat_arms_server (apps/combat_arms_server/)   Combat Arms' dedicated server: the game without `ui`
   |    combat_arms (games/combat_arms/)   Combat Arms' skeleton on Chimera, like cs_source; `ui` its HUD
@@ -213,6 +214,11 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   minigame `+minigame <id>` names (the gun game without one) on its
   pool's first map. Its presentation, shell and Combat Arms' front end are
   behind its default feature `present`. Never another app (checked).
+- `lucker_party_server` (apps/lucker_party_server/) is Lucker Party's
+  dedicated server (`lucker_party_server`): `lucker_party` without
+  `present`, the network and the minigame the command line names
+  (`+minigame <id>`, its first map unless `+map`), so it links no render
+  or audio code (checked the same way as the other servers).
 - `originals` (games/originals/) is Lucker Party's original minigames:
   their definitions, our own TOML in the repository's `minigames/`
   (compiled in, parsed at run time), and the rules hooks Chimera's

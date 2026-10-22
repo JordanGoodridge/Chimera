@@ -33,6 +33,7 @@ members = [
     "apps/combat_arms_server",
     "apps/mashup_demo",
     "apps/lucker_party",
+    "apps/lucker_party_server",
     "checks",
 ]
 default-members = [
@@ -61,6 +62,7 @@ default-members = [
     "apps/combat_arms_server",
     "apps/mashup_demo",
     "apps/lucker_party",
+    "apps/lucker_party_server",
     "checks",
 ]
 resolver = "3"

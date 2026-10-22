@@ -206,9 +206,11 @@ pub fn spawn_point(world: &mut World, e: Entity, points: Points) -> Option<Trans
                     .map(|o| o.distance(t.translation))
                     .fold(f32::INFINITY, f32::min)
             };
-            // The farthest from its nearest other player; ties: the first.
+            // The farthest from its nearest other player (a free one if
+            // any is); ties: the first.
             let mut best: Option<(f32, Transform)> = None;
-            for (_, t, _) in &all {
+            let any_free = all.iter().any(|(_, t, _)| free(t));
+            for (_, t, _) in all.iter().filter(|(_, t, _)| !any_free || free(t)) {
                 let d = nearest(t);
                 if best.is_none_or(|(b, _)| d > b + 1e-3) {
                     best = Some((d, *t));

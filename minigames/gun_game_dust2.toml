@@ -15,6 +15,7 @@ time_limit = "10m"
 hud = "combat_arms"
 binds = "combat_arms"
 tick = "combat_arms"
+bots = "combat_arms"
 movement = "combat_arms:movement"
 character = "combat_arms:soldier"
 weapons = ["cs_source", "combat_arms"]

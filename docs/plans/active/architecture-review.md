@@ -1400,7 +1400,7 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | # | Item | Depends on | Size |
 |---|---|---|---|
 | L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (stages 1-2 done; CS:S open) |
-| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (stages 1-2 done) |
+| L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | done (10-22; note below) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
@@ -1498,6 +1498,30 @@ gun_game.rs): the definition checks against both games' parts and takes
 the rules slot; a full gun game shot through the weapon frame with every
 rung's gun runs to the winner and the match's end (kills with CS:S's and
 Combat Arms' guns); a death to Combat Arms' knife costs a rung.
+
+L2, stage 3 done (10-22): `apps/lucker_party` is the client (binary
+`lucker_party`: N7's `PresentationPlugins`, `physics_plugins()`, Combat
+Arms' gameplay until the command line's `+minigame` takes the rules slot;
+without one the gun game on its pool's first map, three bots) and
+`apps/lucker_party_server` its dedicated server (`lucker_party` without
+`present`, `+minigame <id>`, `+map`, `changelevel`; checked by
+`server_builds_without_presentation`). Small choices: a `bots` slot on
+`Gameplay` (`gameplay::bots_are`; `Gameplay::of` sets it to the game,
+so the other apps are unchanged), which Combat Arms' bots now gate on, so
+a minigame naming `bots = "combat_arms"` has them play under Chimera's
+rules; the party turns Combat Arms' modes off (`ca_mode none`: a joiner
+comes in at a free point and the minigame takes it); Combat Arms' bots
+read CS:S's guns' AI rows from the app's data
+(apps/lucker_party/data/bot_gun_types.toml); `far_from_enemies` prefers a
+free point. Tests: the server on the greybox (fast) and, heavy, on
+de_dust2 from the installs (soldiers at dust2's points, a Glock kill and
+the Beretta next); Combat Arms' bots play the gun game on the greybox and
+kill each other. Left for later: the HUD shows nothing of the minigame
+(no rung, leader or `MinigameEvent`), CS:S's guns have no view model under
+Combat Arms' driver (the mashup's shortcut), the bots keep their first
+life's reach, the map pool doesn't rotate, a client joins a party server
+by id only (L3's match manifest), objective primitives and modifiers
+(D2) and more original minigames.
 
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and
