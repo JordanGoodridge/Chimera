@@ -27,7 +27,8 @@ each kind; Behavior (1 kinds, 2 carrying and starting counts, 3 pin pull and
 8 detonation, 9 blast damage, 10 flash, 11 smoke, 12 fire and gas, 13 the
 grenade as a target, 14 death release and the drop perk, 15 the end of a
 round); Per-tick order;
-Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
+Edge cases; Quirks; Corrections (2026-10-19); Corrections (2026-10-22);
+Test cases; Open questions.
 
 ---
 
@@ -703,6 +704,8 @@ w(t) = \cos\frac{\pi t}{T}\quad (0 \le t < T/2), \qquad w = 0\ \text{and the eff
   (−1000…1000, −1000…1000, −200…400) in the effect's frame, damped by a
   friction of 0.98, with an extra acceleration of 10 and full bounce off
   the world. So the cloud lasts at most about 12 s after detonation.
+  (Superseded: one burst on the first frame, 75 % bounces, gone by 10 s;
+  Corrections (2026-10-22) 2.)
 - **What it blocks**: nothing in game logic. The server has no smoke
   object. Bullet traces, bot sight, name tags and crosshair identification
   all ignore it. It only hides things visually.
@@ -921,6 +924,54 @@ explosion code, compared with this spec and our implementation. Test cases
    - Ours: section 9 said "(not players)". The implementation applies it as
      the spec said (no player case to check). Text fix only.
 
+## Corrections (2026-10-22)
+
+From the effects-and-sounds comparison (`effects_sounds.md` Corrections
+(2026-10-22)), the parts that touch this spec: the flash's screen curve,
+the smoke cloud's life and the explosion look of a mid-air grenade. Each
+entry: the reference behaviour, what we do now (file:line), and a testable
+expectation. Test cases 61–63.
+
+1. **The flash fades on a cosine, not a straight line** (section 10, Screen
+   effect).
+   - Reference: as section 10 says, w(t) = cos(π t / T) until T/2. The
+     white stays near full for the first part, so the victim is fully blind
+     for longer than a linear fade would make them.
+   - Ours: the server sets Chimera's `Blinded` with alpha 1 fading
+     linearly from the moment of arrival to T/2
+     (`games/combat_arms/src/game/grenades.rs:1450-1454`;
+     `chimera/core/src/core.rs:1556`, `alpha_at`). The client overlay draws
+     that linear alpha, and `flash_white` (the cosine) is not used for
+     drawing.
+   - Expect: T = 25 s (facing, within 250 u): white 0.924 at 3.125 s,
+     0.707 at 6.25 s, 0.5 at 8.333 s, 0 at 12.5 s. Ours today: 0.75, 0.5,
+     0.333, 0. Facing away (T = 6.25 s): 0.707 at 1.5625 s (ours 0.5).
+2. **The smoke cloud is gone 10 s after detonation, not 12 s** (section
+   11; `effects_sounds.md` 9 and its Open question 12).
+   - Reference: one burst of 10 particles on the first frame (no emission
+     over 2.0 s). Each particle lives 8–10 s, so the cloud is fully gone by
+     10 s (barring the off-screen freeze of `effects_sounds.md` Quirk 7).
+     It is spread out within about 0.5 s: friction 0.98 per second, at most
+     about 256 u per horizontal axis. Bounces keep 75 % of the speed (not a
+     full bounce).
+   - Ours: the placeholder cloud grows to 300 u over 2 s and fades out
+     from 8 s to 12 s (`games/combat_arms/src/game/grenades.rs:397-410`,
+     `smoke_look`). The section 11 text above says "about 12 s" and "full
+     bounce"; both are superseded here.
+   - Expect: smoke detonation at t = 0 → cloud at full size by about 0.5 s;
+     nothing of it left at t = 10.0 s; at t = 11 s the view through the
+     spot is clear.
+3. **A grenade's explosion look in mid-air** (section 8, "Where").
+   - Reference: section 8 is right. The surface sent with the detonation
+     is that of the last bounce or touch, or the grenade's own when it
+     never touched anything, and the normal is world up. Clients show that
+     surface's grenade group even in mid-air.
+   - Ours: the clients' look uses the nearest map triangle within 16 u,
+     else Air, which has no explosion group
+     (`games/combat_arms/src/game/effects/mod.rs:1010`). Section 8's rule
+     is not implemented for the look.
+   - Expect: as `effects_sounds.md` case 58.
+
 ## Test cases
 
 Common setup unless stated: server dt = 0.05 s; flat floor y = 0 with
@@ -1129,6 +1180,15 @@ from the blast point, in the open, armour points 0, no gear, no buffs.
 60. **Slack on a large character (Corrections 2).** A character whose dims
     vector is 130 units long, 300 units from a frag's blast point →
     distance 270: 60 × (1 − (270 − 112.5)/337.5) = 32.0 per hit.
+61. **Flash curve (Corrections 2026-10-22, 1).** Facing a stock XM84 at
+    200 u (T = 25 s) → screen white 1.0 at 0 s, 0.924 at 3.125 s, 0.707 at
+    6.25 s, 0.5 at 8.333 s, 0 at 12.5 s.
+62. **Smoke life (Corrections 2026-10-22, 2).** Smoke detonation on a floor
+    at t = 0 → no smoke particle left at t = 10.0 s (looking at it the
+    whole time).
+63. **Mid-air frag look (Corrections 2026-10-22, 3).** M67 exploding in the
+    air without having touched anything, seen at 500 u → the grenade's own
+    surface group (metal: `Grenade_Stone`) plus `gren.wav`.
 
 ## Open questions
 
