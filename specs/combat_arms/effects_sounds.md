@@ -28,7 +28,7 @@ surface table); Behavior (1 who makes what, 2 visibility gates, 3 muzzle
 flash, 4 tracers, 5 surface type of a hit, 6 impacts and decals, 7 blood,
 8 shell casings, 9 grenade explosion, flash and smoke looks, 10 how a sound
 is played, 11 sounds by event, 12 who hears what); Per-frame order; Edge
-cases; Quirks; Test cases; Open questions.
+cases; Quirks; Corrections (2026-10-22); Test cases; Open questions.
 
 ---
 
@@ -462,8 +462,10 @@ Computed once per weapon effect from the camera at that moment:
   c (starting at 0 when the weapon object is created or reset) advances
   once per ray:
   c ← (c + 1) mod F, with c ← 0 when F = 0; the shot gets a tracer when the
-  new c is 0. F is the `Frequency` of the **last** fitted attachment (slot
-  order) that names a tracer, else of the ammo's tracer. F = 1 and F = 0
+  new c is 0. F is the `Frequency` of the tracer of the **last fitted
+  attachment** in slot order if that attachment names one, else of the
+  ammo's tracer (a later fitted part without a tracer resets the choice:
+  Corrections 2026-10-22, 3). F = 1 and F = 0
   both give a tracer on every shot. Only the first ray of a shot can carry
   one; extra pellets advance c but cannot draw.
 - **Which shots, as others see them**: the server keeps its own counter per
@@ -734,8 +736,10 @@ into the following.
   impact is seen, the surface's `GrenadeFXName` group: `Grenade_Dirt` (dirt,
   wood, plaster, rock and unknown surfaces), `Grenade_Stone` (stone, metal, glass, most
   others), `Grenade_Water`, `Grenade_Snow`, `Grenade_Sand`. No decal (the
-  record's mark is empty), no screen tint. In mid-air the surface is Air,
-  which has no grenade group: **a mid-air frag makes only its sound.**
+  record's mark is empty), no screen tint. The surface is the grenade's
+  last bounce or touch, or the grenade's own when it never touched
+  anything, never Air (Corrections 2026-10-22, 1): **a mid-air frag still
+  shows its explosion** (the old reading "sound only" was wrong).
   - `Grenade_Stone` / `Grenade_Dirt` (0.9 s): from 0.1 s an additive core
     of 4 particles (20→60), a glow sprite (0→10) drawn on top of the
     world but hidden when blocked, 3 rising smoke columns (2/4/4 particles,
@@ -1085,8 +1089,9 @@ One weapon effect (client), in order:
 - **Impact behind you by another player**: seen only within 300 u; a frag
   exploding behind you farther away shows no explosion even if you turn at
   once (its sound plays).
-- **Mid-air frag**: sound only (Air has no grenade group). Mid-air smoke and
-  flash: full look (their groups come from the ammo).
+- **Mid-air frag**: full look, by the surface of its last bounce or its
+  own surface (Corrections 2026-10-22, 1). Mid-air smoke and flash: full
+  look (their groups come from the ammo).
 - **Grenade in water**: impact point + normal inside liquid → under-water
   records (none for grenades) and half-volume sound; on the water surface
   from above → `Grenade_Water`.
@@ -1143,6 +1148,245 @@ One weapon effect (client), in order:
     they fall. Keep.
 16. **Empty sound slots**: random slot choice includes undefined slots
     (impact sounds silent 25–50 % of the time on some surfaces). Keep.
+17. **Compounding casing spin**: a casing's orientation is turned each
+    frame by its accumulated spin angle, so it tumbles faster with age and
+    with frame rate (Corrections 2026-10-22, 11). Keep.
+
+## Corrections (2026-10-22)
+
+A second pass over the reference's client weapon-effect, casing, tracer,
+character-sound, view-bob, sound-manager and kill-message code and the
+server's projectile, weapon and player-damage code, compared with this
+spec and with our implementation (`games/combat_arms/src/game/effects/`,
+`games/combat_arms/src/ui/`). Each entry: what the original does, what ours
+does (file:line), and a testable expectation. Ordered by what a player
+would notice first. Where the body above disagrees, the entry here wins;
+section 9, the Edge cases and test case 32 are amended in place.
+
+1. **A grenade that goes off in mid-air still shows its explosion**
+   (section 9, Edge cases "Mid-air frag", case 32).
+   - Original: a grenade detonates only at its fuse, and the server then
+     names the grenade itself as the thing it "hit". So the null-object
+     branch that turns an unknown surface into Air is never taken for a
+     thrown grenade. The surface sent to clients is the surface of the
+     grenade's **last bounce or touch**; a grenade that never touched
+     anything gets its own object surface (`grenades.md` 8: metal), never
+     Air. The normal is always world up. Clients therefore create that
+     surface's grenade group (`GrenadeFXName`) whenever the impact is seen,
+     mid-air included. A mid-air frag that never bounced shows Metal's
+     `Grenade_Stone`. One that last bounced off a wooden wall shows Wood's
+     `Grenade_Dirt`, even though it is now far from the wall.
+   - Ours: `grenade_effects` takes the nearest tagged triangle within 16 u
+     of the blast and otherwise uses Air (1), which has no grenade group, so
+     a mid-air frag makes only its sound (`effects/mod.rs:1010`). The body
+     of this spec said the same; that was wrong.
+   - Expect: an M67 thrown straight up in the open, exploding before it
+     lands, 500 u in front of you → `gren.wav` (gain 0.8772) **and**
+     `Grenade_Stone` with its camera jitter (39 u at the start). An M67
+     that bounces once off a Wood wall (30) and goes off 200 u from it in
+     the air → `Grenade_Dirt`. A frag resting on Desert_Sand (60) after
+     bouncing there → `Grenade_Sand`. The effect frame's +Z is world up in
+     every case.
+
+2. **Fly-bys are also heard for shots that hit nothing** (section 11
+   Fly-by).
+   - Original: every weapon effect from another player's bullet weapon
+     runs the fly-by test after the impact part, whether or not the ray
+     hit anything. A miss is a sky impact at the ray's end, and the 0.75 ×
+     sound-radius guard measures to that end point.
+   - Ours: `shot_effects` leaves the shot at `let Some(hit) = hit else
+     { continue }` (`effects/mod.rs:743`) before the fly-by test
+     (`effects/mod.rs:780`). Shots into the sky or out of the map, and
+     rounds absorbed by a spawn-protected player (the `continue` right after
+     it), never make a fly-by.
+   - Expect: an enemy 1500 u away fires over your head into the open sky,
+     the shot's line passing 200 u from your camera → one `bulletflyby`
+     sound (played as `original_flyby` says). The same shot hitting a wall
+     2000 u behind you → also one fly-by (as now).
+
+3. **Own tracer cadence comes from the last fitted part, tracer or not**
+   (section 4, case 12, Open question 14).
+   - Original: the shooter's client walks the five slots in order (muzzle,
+     scope, magazine, bullet, mechanical sight) and keeps the tracer record
+     of **every fitted part it passes**, so a later fitted part with no
+     tracer resets the choice to none. If the last fitted part names a
+     tracer, its `Frequency` is used; otherwise the ammo's. The look is
+     still the muzzle part's tracer, else the ammo's, and the server's
+     cadence is still the ammo's.
+   - Ours: `own_tracer_frequency` keeps the last fitted part that **names**
+     a tracer (`effects/mod.rs:425-436`).
+   - Expect: M4A1 (ammo AR02, F 4) with an A silencer (AR01, F 3) and a
+     magazine part that names no tracer → own tracers on shots 4 and 8
+     (F 4), with the AR01 look. With the A silencer alone → shots 3, 6, 9
+     (as now). With a sight (AR01) and then a bullet part that names no
+     tracer → shots 4, 8.
+   - Not determined: whether the mechanical-sight slot always holds a part.
+     If it does, part tracers never set the own cadence.
+
+4. **Others hear a weapon's misc key sounds to 2000 u** (section 11,
+   "Reload / draw keys").
+   - Original: view-model `sound_key` 10–14 (the weapon's misc sounds) go
+     to the server like reload and draw keys, and other clients play them
+     through the weapon-sound routine. For misc sounds it sets no radius,
+     so the weapon default of **2000 u** applies. Reload keys use
+     `ReloadSndRadius`, select and deselect `SelectSndRadius`. No key sound
+     of any kind is sent while the player is dead.
+   - Ours: `key_sound` gives misc keys the reload radius
+     (`effects/data.rs:398`).
+   - Expect: another player's misc key sound at 1000 u → gain 0.7166 (R
+     2000, r 140), not silent. A reload key at the same distance → silent
+     (R 300).
+
+5. **Your own footstep rhythm restarts after you stop** (section 11,
+   Footsteps "You").
+   - Original: the sway phase advances every frame while the view bob's
+     amplitude is non-zero. The bob ramps from 0 to full over 0.1 s once
+     you move and decays to 0 over 0.1 s once you stop, each on a smooth
+     curve. So the phase keeps running for that 0.1 s after you stop, and
+     is reset to 0 on any frame the amplitude is 0. Foot crossings during
+     the decay use up that foot without a sound. On a new start the
+     amplitude is still 0 for the first two frames, so the phase starts
+     moving on the third frame. The immediate start step comes from the
+     movement **key** being pressed (the control flag turning on, or
+     crouch pressed from a standstill: silent, the run flag being off),
+     not from actual displacement.
+   - Ours: `OwnSteps::step` keeps the phase across stops and advances it
+     only while moving (`effects/rules.rs:538-576`). The start step needs
+     more than 0.1 u of movement with a key held (`effects/mod.rs:1218`).
+     After a stop the first periodic step can come one frame after the
+     start step, and pushing into a wall from rest makes no start step.
+   - Expect: run, stop for 0.5 s, run again at 60 fps → a step at once,
+     the next 0.179 s + 2 frames later (≈ 0.21 s), then every 0.357 s.
+     Stop for 0.05 s and go again → no reset (the phase carries on). From
+     rest, hold forward while facing a wall → one step on the press.
+
+6. **Ghillie-type models' footsteps are at half volume, and every step
+   sounds from the body's centre** (section 11, Footsteps; case 4).
+   - Original: after the perk adjustments, the step volume gets the
+     model's `FootprintSndVolume` share added (volume += volume × share;
+     −0.5 for the 65 ghillie-type models). Others' steps play at the
+     character object's position (the centre of its box). Only the surface
+     ray starts at the foot node.
+   - Ours: no model share (`effects/mod.rs:1268`; it is not read
+     anywhere), and the sound plays at the bottom of the hull
+     (`effects/mod.rs:1194`).
+   - Expect: case 4. A running ghillie enemy at 500 u on Metal → gain
+     0.4025 (ours today 0.8049). A step from a player whose centre is 500 u
+     from your camera is heard at d = 500, not at the distance to their
+     feet.
+
+7. **Awareness adds the perk's own sound and overrides Specter**
+   (`gear_perks.md` Awareness, section 11 Footsteps).
+   - Original: when the listener's Awareness is on and the walker is on
+     another team, the step volume and radius are scaled by the perk and
+     the walker's Specter quieting is **not** applied: the perk routine
+     returns before it. The extra sound is one file drawn at random from
+     the perk's own effect-sound list (four files), not a footstep. It is
+     played at the step's volume **before** the perk scaling, with the
+     perk-scaled radius, at the same position.
+   - Ours: the extra sound is the surface's footstep again, and Specter ×
+     Awareness are multiplied (`effects/mod.rs:1268-1285`).
+   - Expect: a Specter enemy (`FootSoundVolume` v) heard by an Awareness
+     user (1.0, radius × 0.9) → the step at volume 100 × 1.0 (not × v),
+     radius 1080, plus one of the perk's four sounds at volume 100, radius
+     1080. The same enemy heard without Awareness → volume 100 × v.
+
+8. **Missing local voice sounds: kill, sprint, idle, heartbeat** (section
+   11; `hud_crosshair.md` D2).
+   - Original: the client has a local auto-cast list, played in your head
+     in your model's sound template. In order its entries are dash, enemy
+     kill, medic kit, idle, infected, stamina, first-aid kit, jump and
+     heartbeat; this spec has only jump, medic kit and stamina. Four more
+     are played:
+     - **Enemy kill**: when a kill message names you as the killer and the
+       killing hit was not a groin hit (no check for suicide or team kill),
+       one file of the kill entry, unless the previous kill voice is still
+       playing.
+     - **Sprint**: every HUD frame while you are sprinting, the dash entry
+       starts again as soon as the previous one has ended, so it repeats
+       for as long as you sprint.
+     - **Idle**: while your control flags are exactly "run" (no movement,
+       jump, crouch or walk key) and movement is allowed, a 5 s timer runs.
+       When it expires the idle entry plays and then repeats back to back.
+       Any other flag stops the timer and kills the playing idle sound. An
+       empty entry stops the timer.
+     - **Heartbeat**: the low-health beat of `hud_crosshair.md` D2 plays the
+       heartbeat entry.
+   - Ours: none of the four is played. The heartbeat is counted with no
+     file (`ui/hud.rs:107-108`, `ui/hud.rs:961-964`), and the effects module
+     has no kill, sprint or idle sound.
+   - Expect: kill an enemy with a body shot → one kill voice, local. A
+     second kill 0.2 s later while it still plays → none. A groin kill →
+     none. Sprint for 3 s → the dash sound repeated back to back for 3 s.
+     Stand still with no keys for 5 s → the idle sound starts at 5.0 s and
+     stops the frame you press a key. At 25 % health → heartbeats ≈ 1 s
+     apart, each a file of the heartbeat entry.
+
+9. **Hurt sounds sound from the victim's centre** (section 11, Hurt).
+   - Original: both hurt sounds play at the victim object's position, not
+     at the hit point. Each kind takes its own radius from its 3D auto-cast
+     record. Burn, poison and bleed damage count as a torso hit, so they
+     never add a head or groin sound. Bleed uses the burn kind and shares
+     its one-at-a-time limit.
+   - Ours: plays at the damage point (`effects/mod.rs:1150`), with one
+     shared radius.
+   - Expect: a head hit on a victim whose centre is 400 u from you and
+     whose head is 370 u from you → both sounds at d = 400. Burning damage
+     to the head → only the burn sound.
+
+10. **Shotgun pellets each re-create the shot's fire effects** (section 1;
+    Edge cases "Many impacts at once").
+    - Original: after the first pellet, the shooter's client and the server
+      mark the fire sound, casing, light, muzzle and tracer as ignored for
+      the other pellets of the round. The flag that gates the whole fire
+      part is not among them. So every pellet's weapon effect creates the
+      muzzle group again at the same point: the third-person muzzle for
+      others, your own FireFX group (`test` smoke and its 256 u light) for
+      you. The flash groups' own lights are part of those groups, so they
+      stack too. The fire sound plays once; the casing and tracer come once.
+    - Ours: one muzzle or FireFX group per round (`effects/mod.rs`
+      `Fired` handling).
+    - Expect: an enemy's 8-pellet SPAS-12 shot seen from the front → 8
+      `WEAPON_HH` groups created in the same frame at the muzzle (additive,
+      so brighter), one fire sound, one casing. Your own shot → 8 `test`
+      smoke puffs.
+    - Not checked against a running game; low priority.
+
+11. **Casings tumble faster and faster** (section 8; Quirk).
+    - Original: each frame, until the casing rests, its current orientation
+      is turned about its own up axis by the yaw angle **accumulated so
+      far**, then about its right axis by the accumulated pitch. The
+      rotation therefore compounds: the turn per frame grows with age, and
+      the visible spin depends on frame rate. On coming to rest it turns by
+      the accumulated yaw once more. Keep (Quirk 17).
+    - Ours: the orientation is the accumulated angles themselves
+      (`effects/rules.rs:442`, `effects/mod.rs:1358`): a steady spin.
+    - Expect: yaw spin 6 rad/s at 60 fps → after 0.1 s the casing turns
+      about 0.6 rad per frame (≈ 36 rad/s); after 0.2 s about 1.2 rad per
+      frame. Ours: 6 rad/s throughout.
+
+12. **Third-person flash-hider groups** (section 3).
+    - Original: when the muzzle part names no third-person group of its
+      own and has `FlashHiderLevel` h in 1 … (max − 1), others see the
+      weapon's third-person flash-hider group h−1 instead of
+      `HHMuzzleFXName`. This mirrors the first-person rule already
+      implemented.
+    - Ours: `hh_muzzle` ignores the flash-hider level
+      (`effects/mod.rs:450`).
+    - Expect: unused by stock parts (no stock muzzle part sets a level), so
+      no visible change with stock data. A data test with h = 1 → the
+      weapon's first third-person flash-hider group.
+
+13. **Hit-confirm dings on teammates** (Open question 7, answered).
+    - Original: the shooter's client does not skip teammates in its hit
+      test, and the server clears the ding only when the hit object is not
+      a character (or the game is not multiplayer). So a hit on a teammate
+      dings, with friendly fire on or off.
+    - Ours: `Hit` events are sent for teammates (`game/weapons.rs:2896`),
+      so the ding plays. No code change; the open question is closed.
+    - Expect: friendly fire off, shoot a teammate → one ding, no damage.
+
+Cases 58–66 below test entries 1–9.
 
 ## Test cases
 
@@ -1235,8 +1479,9 @@ section 10 with V = 100 and default sliders. Detail: effect detail high.
     once, then steps every 0.357 s; holding the walk key → none.
 32. **Frag on stone, 500 u away, seen**: `Grenade_Stone`; camera jitter
     amplitude 60 × 0.65 = 39 u at its start, 0 at 800 u; light radius
-    peaks at 256 u 0.199 s after detonation. The same frag in mid-air →
-    `gren.wav` only.
+    peaks at 256 u 0.199 s after detonation. The same frag in mid-air,
+    never having bounced → `gren.wav` and `Grenade_Stone` (its own metal
+    surface; Corrections 2026-10-22, 1).
 33. **Frag behind you, 500 u**: `gren.wav` at gain 0.8772, no explosion
     look.
 34. **Smoke cloud** on a floor: 10 particles at the first frame; each
@@ -1324,6 +1569,35 @@ map objects and model files of an older extracted client release;
     turn between about 0.4 and 5.3 s while the map camera shows them; no
     camera jitter and no damage to players at the site.
 
+**Corrections (2026-10-22) cases.**
+
+58. **Mid-air frag (logic).** An M67 thrown up in the open, never touching
+    anything, explodes 500 u in front of you → `gren.wav` at gain 0.8772 and
+    `Grenade_Stone` with its frame's +Z world up; one that bounced off a
+    Wood wall last → `Grenade_Dirt`.
+59. **Fly-by of a miss (logic).** Another player's rifle shot that hits
+    nothing, its line 200 u from your camera and its ray end 3000 u away →
+    one fly-by.
+60. **Own tracer cadence (logic).** M4A1, A silencer + a magazine part
+    without a tracer, 8 shots → own tracers on shots 4 and 8 with the AR01
+    look; A silencer alone → shots 3, 6 (as case 13).
+61. **Misc key radius (logic).** Another player's misc key sound (key 10) at
+    1000 u → gain 0.7166 (R 2000); dead players send none.
+62. **Own step restart (logic).** Run, stop 0.5 s, run at 60 fps → steps at
+    0 s, ≈ 0.212 s, ≈ 0.569 s; stop 0.05 s → no restart.
+63. **Ghillie step (data; install).** As case 4 → gain 0.4025, heard from the
+    walker's centre.
+64. **Awareness (logic).** Specter enemy, listener's Awareness on → step at
+    volume 100 (Specter ignored), radius 1080, plus one of the perk's four
+    sounds at volume 100.
+65. **Local voices (logic; install for files).** A body-shot kill → one kill
+    voice; a groin kill → none; 5 s idle with no keys → idle sound starts,
+    stops on the next key; sprinting → dash sound back to back; low health
+    → heartbeat entry files about 1 s apart.
+66. **Hurt sound place (logic).** Head hit, victim centre 400 u away, head
+    370 u → both hurt sounds at d = 400; burn damage to the head → only the
+    burn kind.
+
 ## Open questions
 
 1. **Beyond the outer radius**: the game's gain is not recomputed beyond R,
@@ -1361,6 +1635,7 @@ map objects and model files of an older extracted client release;
    (section 5, What other clients learn); case 45.
 7. **Hit confirm on teammates**: whether the server sends the hit event (and
    so a ding) for hits on teammates with friendly fire off.
+   **Answered:** yes, any character hit dings (Corrections 2026-10-22, 13).
 8. **Others' footstep keys while unseen**: footsteps of characters you
    cannot see depend on their animation being advanced on your client; not
    traced.
@@ -1440,3 +1715,21 @@ map objects and model files of an older extracted client release;
 25. **Bomb detonation look and dry fire.**
     **Answered:** section 9 (map effects and camera, no weapon effect);
     dry fire never plays (section 11, Quirk 13 withdrawn); cases 48, 57.
+26. **Damage screen effects by damage type** (from Corrections 2026-10-22).
+    The client has a data-driven table of damage effects keyed by damage
+    type, started by progressive damage (burn, poison, bleed and the like).
+    Each can tint the screen (several active tints combine by the per-channel
+    maximum), scale the scene's light (per-channel minimum), lock movement or
+    input, spawn particles on the player and play sounds. The stock records
+    were not readable on this box, so which damage types have a visible
+    effect, and how strong, is open. Read the damage-effect attribute file
+    from the install.
+27. **Local auto-cast files** (Corrections 2026-10-22, 8): the files of the
+    kill, dash, idle and heartbeat entries per sound template, and each 3D
+    hurt kind's own radius, are to be read from the install's auto-cast
+    attribute data.
+28. **Mechanical-sight slot** (Corrections 2026-10-22, 3): whether every
+    weapon always has a part in the last slot; if so, attachment tracers
+    never set the shooter's own cadence.
+29. **Idle-sound flags** (Corrections 2026-10-22, 8): whether holding fire
+    sets a movement control flag (which would also stop the idle sound).

@@ -318,3 +318,69 @@ fn shots_on_a_map() {
     eprintln!("particles: {particles}");
     assert!(particles > 0, "the burst's and the muzzle's particles");
 }
+
+/// The `Male_Snd#` files of an autocast record `[section]` of the install's
+/// autocastsound.txt (lower case, `/` separators).
+fn autocast(text: &str, section: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut inside = false;
+    for line in text.lines() {
+        let l = line.trim();
+        if l.starts_with('[') {
+            inside = l == format!("[{section}]");
+        } else if inside && l.starts_with("Male_Snd") {
+            let file = l.split('"').nth(1).unwrap_or("").replace('\\', "/").to_lowercase();
+            if !file.is_empty() {
+                out.push(file);
+            }
+        }
+    }
+    out
+}
+
+/// Corrections 2026-10-22, 8 and 7: the local voices' files (male
+/// template) and the Awareness perk's four sounds are the install's, and
+/// each hurt kind's radius is 500; case 65 (files).
+#[test]
+fn c65_voice_files_are_the_installs() {
+    let Some(mount) = mount() else { return };
+    let text = String::from_utf8_lossy(&mount.read("attributes/autocastsound.txt").unwrap()).into_owned();
+    let t = CaFxTables::built_in();
+    assert_eq!(autocast(&text, "AutoCastLocalsound0"), t.sounds.dash, "BreathingDash");
+    assert_eq!(autocast(&text, "AutoCastLocalsound1"), t.sounds.kill, "EnemyKill");
+    assert_eq!(autocast(&text, "AutoCastLocalsound3"), t.sounds.idle, "Idle (empty for the male template)");
+    assert_eq!(autocast(&text, "AutoCastLocalsound8"), t.sounds.heartbeat, "Heartbeat");
+    for section in ["AutoCast3DSound0", "AutoCast3DSound1", "AutoCast3DSound2", "AutoCast3DSound6", "AutoCast3DSound10"] {
+        let radius = text
+            .lines()
+            .skip_while(|l| l.trim() != format!("[{section}]"))
+            .find(|l| l.starts_with("3DsoundRadius"))
+            .and_then(|l| l.split('=').nth(1))
+            .and_then(|v| v.trim().parse::<f32>().ok());
+        assert_eq!(radius, Some(t.sounds.hurt_radius), "{section}");
+    }
+    let perks = String::from_utf8_lossy(&mount.read("attributes/perkskillinfo.txt").unwrap()).into_owned();
+    let awareness: Vec<String> = perks
+        .lines()
+        .filter(|l| l.trim_start().starts_with("EffectSnd") && l.to_lowercase().contains("awareness"))
+        .filter_map(|l| l.split('"').nth(1))
+        .map(|f| f.replace('\\', "/").to_lowercase())
+        .collect();
+    assert_eq!(awareness, t.sounds.awareness);
+    for f in t.sounds.kill.iter().chain(&t.sounds.dash).chain(&t.sounds.heartbeat).chain(&t.sounds.awareness) {
+        assert!(library::sound_clip(f, &mount).is_some(), "{f} doesn't decode");
+    }
+}
+
+/// Corrections 2026-10-22, 6; case 63 (install): the models file gives
+/// the ghillie-type bodies a `FootprintSndVolume` of -0.5.
+#[test]
+fn c63_ghillie_models_have_the_share() {
+    let Some(_) = install() else { return };
+    let data = CaData::install();
+    let models = data.attributes().and_then(|a| a.models.as_ref()).expect("the models file");
+    let ghillie = models.bodies.iter().filter(|b| b.footprint_volume == -0.5).count();
+    eprintln!("{ghillie} of {} bodies with -0.5", models.bodies.len());
+    assert!(ghillie > 0, "some bodies are ghillie-type");
+    assert!(models.bodies.iter().all(|b| b.footprint_volume == 0.0 || b.footprint_volume == -0.5));
+}

@@ -24,7 +24,7 @@ use std::time::Duration;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use chimera_core::core::{
-    Blinded, Damage, DamageKind, Damageable, FriendlyFire, Health, Hitgroup, Intent, MovementState,
+    LocalPlayer, Blinded, Damage, DamageKind, Damageable, FriendlyFire, Health, Hitgroup, Intent, MovementState,
     PLAYER_CLIP_LAYER, PropSurface, RoundRestarts, SightBlocker, TRACE_ONLY_LAYER, Team,
 };
 use chimera_net::{harness::NetSim, net::memory::LinkConditions, net::predict::NetGraph};
@@ -41,6 +41,7 @@ use combat_arms::{
             self, CaFlashProtection, CaFlashed, CaGrenade, CaServerFrames, G7A, M18, M23F, M67, XM84, bounce,
             character_touches, flash_white, throw_perturb,
         },
+        effects::{self, CaFxRequest, FxKind, sounds::CaSound},
         movement,
         volumes::CaVolume,
         weapons::{CaArmor, DEFAULT_BODY_GEAR, MALE, body_geometry, gear},
@@ -72,11 +73,29 @@ fn log_booms(mut d: MessageReader<Detonated>, frames: Res<CaServerFrames>, mut l
     }
 }
 
+/// The explosion looks and sounds the effects made (`game::effects`).
+#[derive(Resource, Default)]
+struct Looks(Vec<CaFxRequest>);
+
+#[derive(Resource, Default)]
+struct Heard(Vec<CaSound>);
+
 /// An open world: a floor at y = 0 (the grenade surfaces' default
 /// hardness), nothing else.
 fn sim() -> Sim {
     let mut sim = Sim::with(CaSim, |app| {
-        app.init_resource::<Booms>().add_systems(FixedPostUpdate, log_booms);
+        app.init_resource::<Booms>()
+            .init_resource::<Looks>()
+            .init_resource::<Heard>()
+            .add_systems(FixedPostUpdate, log_booms)
+            .add_systems(
+                Update,
+                (
+                    |mut r: MessageReader<CaFxRequest>, mut l: ResMut<Looks>| l.0.extend(r.read().cloned()),
+                    |mut r: MessageReader<CaSound>, mut h: ResMut<Heard>| h.0.extend(r.read().cloned()),
+                )
+                    .after(effects::CaEffectsSet),
+            );
     });
     sim.set_tick_interval(TICK_INTERVAL);
     sim.app.add_weapon_data(&[("m67_exact", M67_EXACT)]).unwrap();
@@ -1543,4 +1562,117 @@ fn t60_slack_on_a_large_character() {
     let per_hit = 60.0 * grenades::falloff(450.0, d);
     assert!((per_hit - 32.0).abs() < 1e-3, "{per_hit}");
     assert_eq!(grenades::blast_distance(300.0, Vec3::new(15.0, 50.0, 15.0)), 300.0);
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-22): cases 61-63
+
+/// 61. The flash fades on a cosine on the client's screen, not Chimera's
+/// straight line.
+#[test]
+fn t61_flash_curve() {
+    let mut sim = sim();
+    let thrower = far_thrower(&mut sim, 0);
+    let victim = player(&mut sim, 0.0, 0.0, 0.0, 0);
+    let (time, _) = flashed(&mut sim, victim, thrower, 200.0, true).expect("flashed");
+    assert!((time - 25.0).abs() < 1e-3);
+    let b = *sim.app.world().get::<Blinded>(victim).unwrap();
+    for (t, white, linear) in [(0.0, 1.0, 1.0), (3.125, 0.924, 0.75), (6.25, 0.7071, 0.5), (8.333, 0.5, 0.333), (12.5, 0.0, 0.0)] {
+        let now = b.fade_start + t;
+        assert!((grenades::blinded_alpha(&b, now) - white).abs() < 1e-3, "white at {t}: {}", grenades::blinded_alpha(&b, now));
+        assert!((b.alpha_at(now) - linear).abs() < 1e-3, "Chimera's own fade stays linear");
+    }
+    // Before the fade starts it is full white; after the end none.
+    assert_eq!(grenades::blinded_alpha(&b, b.fade_start - 1.0), 1.0);
+    assert_eq!(grenades::blinded_alpha(&b, b.end + 1.0), 0.0);
+    // Facing away (T = 6.25 s): 0.707 at 1.5625 s (linear: 0.5).
+    let (time, _) = flashed(&mut sim, victim, thrower, 200.0, false).expect("flashed");
+    let b = *sim.app.world().get::<Blinded>(victim).unwrap();
+    assert!((time - 6.25).abs() < 1e-3);
+    assert!((grenades::blinded_alpha(&b, b.fade_start + 1.5625) - 0.7071).abs() < 1e-3);
+}
+
+/// 62. The smoke cloud is spread by 0.5 s and nothing is left of it at
+/// 10 s.
+#[test]
+fn t62_smoke_life() {
+    use chimera_sim::weapon::grenade::SmokeCloud;
+    let mut sim = sim();
+    let thrower = far_thrower(&mut sim, 0);
+    explode_at(&mut sim, M18, Some(thrower), Vec3::new(0.0, 1.0, 0.0));
+    let world = sim.app.world_mut();
+    let cloud = world.query::<&SmokeCloud>().iter(world).next().expect("the cloud").clone();
+    assert!((cloud.radius(0.5) - cloud.smoke.max_radius).abs() < 1e-5, "full size by 0.5 s");
+    assert!(cloud.radius(0.25) < cloud.smoke.max_radius);
+    assert_eq!(cloud.alpha(10.0), 0.0, "nothing of it at 10 s");
+    assert!(cloud.alpha(9.0) > 0.0);
+    sim.seconds(9.4);
+    let world = sim.app.world_mut();
+    assert_eq!(world.query::<&SmokeCloud>().iter(world).count(), 1, "still there at about 9.5 s");
+    sim.seconds(1.5);
+    let world = sim.app.world_mut();
+    assert_eq!(world.query::<&SmokeCloud>().iter(world).count(), 0, "gone by 11 s");
+}
+
+/// The explosion looks (`FxKind::Grenade`) and the sounds the frag made.
+fn grenade_look(sim: &mut Sim) -> (Vec<String>, Vec<CaSound>) {
+    sim.ticks(3);
+    let looks = std::mem::take(&mut sim.app.world_mut().resource_mut::<Looks>().0);
+    let heard = std::mem::take(&mut sim.app.world_mut().resource_mut::<Heard>().0);
+    let groups = looks.iter().filter(|r| r.kind == FxKind::Grenade).map(|r| r.group.clone()).collect();
+    (groups, heard)
+}
+
+/// 63. An M67 exploding in the air without having touched anything, seen
+/// at 500 u: its own surface's group (metal: `Grenade_Stone`) and
+/// `gren.wav`.
+#[test]
+fn t63_mid_air_frag_look() {
+    let mut sim = sim();
+    let me = player(&mut sim, 0.0, 0.0, 0.0, 0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let at = in_front(&mut sim, me, 500.0, true);
+    explode_at(&mut sim, M67, None, at);
+    let (groups, heard) = grenade_look(&mut sim);
+    assert_eq!(groups, ["Grenade_Stone"]);
+    assert!(heard.iter().any(|s| s.file == "guns_snd_impacts/explosions/gren.wav" && s.at.is_some()), "{heard:?}");
+}
+
+/// Corrections 1 (effects_sounds.md, case 58): the look is that of the
+/// surface of the grenade's last bounce, even when it goes off in the air
+/// far from it.
+#[test]
+fn t63_last_bounce_decides_the_look() {
+    // Off a Wood wall, then in the air.
+    let mut sim = sim();
+    solid(&mut sim, Vec3::new(-10.0, -1.0, 50.0 * U), Vec3::new(10.0, 10.0, 2.0), Some("30"));
+    let me = player(&mut sim, 0.0, 545.0, 0.0, 0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 60.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
+    let s = to_step(&mut sim, g, 1);
+    assert_eq!(s.contacts.len(), 1, "the wall");
+    assert_eq!(s.last_surface.as_deref(), Some("30"));
+    sim.app.world_mut().get_mut::<CaGrenade>(g).unwrap().params.fuse = 0.0;
+    until_boom(&mut sim, 1.0);
+    let (groups, _) = grenade_look(&mut sim);
+    assert_eq!(groups, ["Grenade_Dirt"], "Wood's, in the air");
+}
+
+/// ... and a frag resting on Desert_Sand after bouncing there shows
+/// `Grenade_Sand`.
+#[test]
+fn t63_resting_on_sand() {
+    let mut sim = sim();
+    let x = 110.0 / U;
+    solid(&mut sim, Vec3::new(100.0, -1.0, -10.0), Vec3::new(120.0, 0.0, 10.0), Some("60"));
+    let me = player(&mut sim, x, 500.0, 0.0, 0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let g = grenade(&mut sim, M67, None, Vec3::new(x, 60.0, 0.0), Vec3::ZERO);
+    let s = to_step(&mut sim, g, 6);
+    assert!(s.resting, "{s:?}");
+    assert_eq!(s.last_surface.as_deref(), Some("60"));
+    sim.app.world_mut().get_mut::<CaGrenade>(g).unwrap().params.fuse = 0.0;
+    until_boom(&mut sim, 1.0);
+    let (groups, _) = grenade_look(&mut sim);
+    assert_eq!(groups, ["Grenade_Sand"]);
 }

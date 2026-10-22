@@ -1563,6 +1563,11 @@ impl Blinded {
         }
     }
 
+    /// `alpha_at` as a plain function (a default fade curve).
+    pub fn alpha_at_now(b: &Blinded, now: f64) -> f32 {
+        b.alpha_at(now)
+    }
+
     /// The stronger of this blindness and `other` (a new flash only
     /// raises what is left of the current one).
     pub fn raised(self, other: Blinded, now: f64) -> Blinded {

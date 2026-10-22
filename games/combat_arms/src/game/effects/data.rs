@@ -118,6 +118,15 @@ pub struct EventSounds {
     pub groin: Vec<String>,
     pub enemy_down: Vec<String>,
     pub enemy_down_radius: f32,
+    /// The local auto-cast entries (Corrections 2026-10-22, 8), played in
+    /// your head: the kill voice (not on a groin kill), the sprint
+    /// (`dash`) sound, the idle sound and the low-health heartbeat's.
+    pub kill: Vec<String>,
+    pub dash: Vec<String>,
+    pub idle: Vec<String>,
+    pub heartbeat: Vec<String>,
+    /// The Awareness perk's own step sounds (Corrections 2026-10-22, 7).
+    pub awareness: Vec<String>,
 }
 
 /// One surface record.
@@ -272,6 +281,11 @@ impl CaFxTables {
             &s.head,
             &s.groin,
             &s.enemy_down,
+            &s.kill,
+            &s.dash,
+            &s.idle,
+            &s.heartbeat,
+            &s.awareness,
         ] {
             out.extend(list.iter().map(String::as_str));
         }
@@ -334,6 +348,10 @@ pub struct CaWeaponFx {
     /// `HHMuzzleFXName` (the first person's is the view model's
     /// `muzzle_fx`).
     pub hh_muzzle: String,
+    /// The third-person flash-hider groups (`HHFlashHiderFXName`): a muzzle
+    /// part of `FlashHiderLevel` h shows entry h-1 to others when it names
+    /// no third-person group of its own (Corrections 2026-10-22, 12).
+    pub hh_flash_hider: Vec<String>,
     /// `FireSnd` and `FireSndRadius` (when the weapon has no attachment
     /// data: else the attachments' `fire_sound_radius`).
     pub fire_sound: String,
@@ -359,6 +377,7 @@ impl Default for CaWeaponFx {
             fire: String::new(),
             tracer: String::new(),
             hh_muzzle: String::new(),
+            hh_flash_hider: Vec::new(),
             fire_sound: String::new(),
             fire_radius: 2000.0,
             silenced_sounds: Vec::new(),
@@ -395,10 +414,20 @@ impl CaWeaponFx {
             10..=14 => self.misc_sounds.get(n as usize - 10),
             _ => None,
         }?;
-        let radius = if matches!(n, 4 | 5) { self.select_radius } else { self.reload_radius };
+        // Misc keys set no radius of their own: the weapon default
+        // (Corrections 2026-10-22, 4).
+        let radius = match n {
+            4 | 5 => self.select_radius,
+            10..=14 => MISC_KEY_RADIUS,
+            _ => self.reload_radius,
+        };
         (!s.is_empty()).then_some((s.as_str(), radius))
     }
 }
+
+/// The radius (u) of a weapon's misc key sounds (10-14): the weapon
+/// default.
+pub const MISC_KEY_RADIUS: f32 = 2000.0;
 
 /// The weapon data's hook name.
 pub const EFFECTS: &str = "combat_arms:effects";

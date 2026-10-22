@@ -1655,6 +1655,53 @@ fn t84_heartbeat() {
     assert_eq!(hud(&sim).heartbeats, before + 1);
 }
 
+/// effects_sounds.md Corrections 2026-10-22, 8: each low-health beat plays
+/// a file of the heartbeat entry, in your head.
+#[test]
+fn heartbeat_plays_its_sound() {
+    use combat_arms::game::effects::sounds::CaSound;
+    #[derive(Resource, Default)]
+    struct Sounds(Vec<CaSound>);
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.app
+        .init_resource::<Sounds>()
+        .add_systems(Update, |mut r: MessageReader<CaSound>, mut s: ResMut<Sounds>| s.0.extend(r.read().cloned()));
+    set_health(&mut sim, me, 25.0);
+    sim.seconds(2.05);
+    let beats = sim
+        .app
+        .world()
+        .resource::<Sounds>()
+        .0
+        .iter()
+        .filter(|s| s.file == "ui_snd/heartbeat.wav" && s.at.is_none())
+        .count();
+    assert_eq!(beats, 2, "a beat about every second, local");
+}
+
+/// grenades.md Corrections 2026-10-22, 1: Combat Arms' screen draws the
+/// flash's white on a cosine; the shell's own fade (CS:S's) stays linear.
+#[test]
+fn flash_overlay_fades_on_a_cosine() {
+    use chimera_client::client::senses::{FlashFade, overlay_amounts, overlay_amounts_with};
+    use chimera_core::core::Blinded;
+    // T = 25 s: white until T/2 = 12.5 s.
+    let b = Blinded {
+        alpha: 1.0,
+        fade_start: 10.0,
+        end: 22.5,
+    };
+    let ca = FlashFade(combat_arms::game::grenades::blinded_alpha);
+    for (t, white, linear) in [(0.0, 1.0, 1.0), (3.125, 0.924, 0.75), (6.25, 0.7071, 0.5), (8.333, 0.5, 0.333), (12.5, 0.0, 0.0)] {
+        let now = 10.0 + t;
+        let (w, after) = overlay_amounts_with(ca, Some(&b), now, true);
+        assert!((w - white).abs() < 1e-3 && after == w, "Combat Arms at {t}: {w}");
+        let (w, _) = overlay_amounts(Some(&b), now, true);
+        assert!((w - linear).abs() < 1e-3, "the shell's default at {t}: {w}");
+    }
+    assert_eq!(overlay_amounts_with(ca, None, 0.0, true), (0.0, 0.0));
+}
+
 fn died(sim: &mut Sim, entity: Entity, attacker: Option<Entity>, kind: DamageKind, weapon: Option<&'static str>, hitgroup: Hitgroup) {
     sim.app.world_mut().write_message(Died {
         entity,

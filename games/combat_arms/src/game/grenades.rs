@@ -111,10 +111,10 @@
 //!   walls and sky surfaces of the map; colliders named "invisible" and
 //!   "sky" behave as the spec says. Doors don't move (`world`), so "wherever they are in their
 //!   motion" is where they stand.
-//! - The screen draws Chimera's white overlay over `Blinded` (a linear
-//!   fade to T/2, no screen capture or first-frame HUD hiding);
-//!   `flash_white` gives the spec's cosine for Combat Arms' own overlay when
-//!   it is drawn. Gear is known by its flash entries only.
+//! - The screen draws Chimera's white overlay over `Blinded` (no first-frame
+//!   HUD hiding) with Combat Arms' cosine fade (`blinded_alpha`, set as the
+//!   shell's `senses::FlashFade` by `ui::CaUiPlugin`; Chimera's own fade is
+//!   linear and CS:S keeps it). Gear is known by its flash entries only.
 //! - No drop-grenade perk (Q13); no debug bounce cap; no map cameras (a
 //!   grenade going off while one is on would be removed without effect);
 //!   a new round still ends a flash (Chimera's restart clears `Blinded`);
@@ -394,15 +394,16 @@ pub struct CaFlashed {
     pub time: f32,
 }
 
-/// The clients' smoke cloud's look (11): a PLACEHOLDER sphere growing to
-/// 3 m over 2 s, gone by 12 s (the 10 sprites of 200-300 u living 8-10 s
-/// after a 2 s emission).
+/// The clients' smoke cloud's look (11; Corrections 2026-10-22, 2): a
+/// PLACEHOLDER sphere spread out to 3 m within 0.5 s (one burst of 10
+/// sprites of 200-300 u, friction 0.98 per second), gone by 10 s (each
+/// sprite lives 8-10 s).
 pub fn smoke_look() -> Smoke {
     Smoke {
         max_radius: 300.0 * UNIT,
-        expand_time: 2.0,
+        expand_time: 0.5,
         fade_start: 8.0,
-        fade_end: 12.0,
+        fade_end: 10.0,
         pop_speed: 0.0,
         sight_radius: 0.0,
         sound: None,
@@ -525,6 +526,15 @@ pub struct Contact {
     pub loudness: f32,
 }
 
+/// The surface a detonating grenade last bounced off or touched
+/// (`CaGrenade::last_surface`), sent with its `Detonated` for the clients'
+/// explosion look (`effects`): the projectile it belongs to.
+#[derive(Message, Clone, Debug, PartialEq)]
+pub struct CaBlastSurface {
+    pub projectile: Entity,
+    pub surface: Option<String>,
+}
+
 /// A bounce sound's loudness: min(1, |v''| h / 200) (6, step 4).
 pub fn bounce_loudness(v: Vec3, n: Vec3, h: f32) -> f32 {
     let h = h.clamp(0.0, 1.0);
@@ -560,6 +570,11 @@ pub struct CaGrenade {
     /// Creation order (updates run in it).
     pub seq: u64,
     pub contacts: Vec<Contact>,
+    /// The surface (the map's tag; "6" for a character) of its last bounce
+    /// or touch: what clients see it detonate on, even in mid-air
+    /// (`effects_sounds.md` Corrections 2026-10-22, 1). None: it never
+    /// touched anything (its own metal).
+    pub last_surface: Option<String>,
     /// Its hit points are gone (13): it goes off on the next frame.
     pub destroyed: bool,
     /// Visual spin, rad/s.
@@ -759,6 +774,17 @@ pub fn blinded_white(b: &Blinded, now: f64) -> f32 {
     flash_white((now - b.fade_start) as f32, time)
 }
 
+/// The white the client overlay draws for a flash (Corrections
+/// 2026-10-22, 1): the cosine curve instead of Chimera's linear fade,
+/// scaled by the blindness's alpha (1 for the flashes this module sends).
+/// The client shell's `FlashFade` for Combat Arms.
+pub fn blinded_alpha(b: &Blinded, now: f64) -> f32 {
+    if now >= b.end || b.end <= b.fade_start {
+        return if now >= b.end { 0.0 } else { b.alpha };
+    }
+    b.alpha * blinded_white(b, now.max(b.fade_start))
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 
@@ -774,6 +800,7 @@ impl Plugin for CaGrenadesPlugin {
             .init_resource::<CaGrenadeEffects>()
             .insert_resource(CaGrenadeSurfaces::built_in())
             .add_message::<Detonated>()
+            .add_message::<CaBlastSurface>()
             .add_message::<Damage>()
             .add_message::<Died>()
             // Predicted with the throw: sprint holds a grenade's fire.
@@ -951,6 +978,7 @@ pub fn spawn_grenade(
             health: data.params.health,
             seq,
             contacts: Vec::new(),
+            last_surface: None,
             destroyed: false,
             spin,
         },
@@ -1218,6 +1246,7 @@ impl Frame {
 pub(crate) struct Out<'w, 's> {
     pub(crate) damage: MessageWriter<'w, Damage>,
     pub(crate) detonated: MessageWriter<'w, Detonated>,
+    pub(crate) blast_surface: MessageWriter<'w, CaBlastSurface>,
     pub(crate) rules: DamageRules<'w, 's>,
     pub(crate) armour: Query<'w, 's, &'static mut CaArmor>,
     pub(crate) effects: ResMut<'w, CaGrenadeEffects>,
@@ -1568,6 +1597,7 @@ fn step(f: &Frame, me: Entity, g: &mut CaGrenade, world: &GrenadeWorld, others: 
         }
         g.velocity *= flesh.powi(n as i32);
         g.touched = true;
+        g.last_surface = Some("6".to_string());
         // Snapped to where the step enters a sphere (the short trace).
         let entry = b
             .spheres
@@ -1607,6 +1637,7 @@ fn step(f: &Frame, me: Entity, g: &mut CaGrenade, world: &GrenadeWorld, others: 
     g.pos = at + n * SKIN;
     g.velocity = v2;
     g.touched = true;
+    g.last_surface = Some(surface.clone().unwrap_or_else(|| "0".to_string()));
     g.last_dir = dir;
     g.contacts.push(Contact {
         step: g.steps,
@@ -1655,6 +1686,10 @@ fn detonations(f: &mut Frame, grenades: &mut Grenades, world: &GrenadeWorld, out
             ground: None,
             projectile: e,
             shake: None,
+        });
+        out.blast_surface.write(CaBlastSurface {
+            projectile: e,
+            surface: g.last_surface.clone(),
         });
         if p.area_damage > 0.0 && p.area_radius > 0.0 {
             match p.area_type {

@@ -41,6 +41,11 @@ pub struct ModelRecord {
     /// index (none given: `CharacterData::body_render_styles`).
     #[serde(default)]
     pub render_styles: Vec<String>,
+    /// `FootprintSndVolume`: the share added to the body's footstep volume
+    /// (-0.5 for the ghillie-type models; effects_sounds.md Corrections
+    /// 2026-10-22, 6). Only the install's models file gives it.
+    #[serde(default)]
+    pub footprint_volume: f32,
 }
 
 /// A head piece (`Hair#`): its file per skeleton index and its skins by
@@ -376,6 +381,7 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
         if !r.faces.is_empty() {
             m.faces = r.faces.clone();
         }
+        m.footprint_volume = r.footprint_volume;
     }
     for (i, r) in models.hair_pieces.iter().enumerate() {
         let id = i as i32;

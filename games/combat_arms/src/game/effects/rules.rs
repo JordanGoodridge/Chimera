@@ -384,6 +384,9 @@ pub struct Casing {
     /// Spin about up and right (rad/s) and the angles so far.
     pub spin: Vec2,
     pub angles: Vec2,
+    /// Its turn so far (the engine compounds it: Corrections 2026-10-22,
+    /// 11).
+    pub orientation: Quat,
     pub bounces: u32,
     pub age: f32,
     pub resting: bool,
@@ -440,6 +443,10 @@ impl Casing {
         }
         self.velocity.y += 0.5 * g * dt;
         self.angles += self.spin * dt;
+        // Each frame the current orientation is turned about its own up
+        // axis by the yaw angle accumulated so far, then about its right
+        // axis by the accumulated pitch: the turn per frame grows with age.
+        self.orientation = self.orientation * Quat::from_rotation_y(self.angles.x) * Quat::from_rotation_x(self.angles.y);
         let Some(hit) = trace(from, to) else {
             self.at = to;
             return CasingStep::Flying;
@@ -459,6 +466,8 @@ impl Casing {
         if self.bounces >= SHELL_BOUNCES || floor_rest {
             self.resting = true;
             self.velocity = Vec3::ZERO;
+            // On coming to rest it turns by the accumulated yaw once more.
+            self.orientation *= Quat::from_rotation_y(self.angles.x);
             return if first { CasingStep::FirstBounce } else { CasingStep::Rested };
         }
         if first { CasingStep::FirstBounce } else { CasingStep::Bounced }
@@ -505,23 +514,37 @@ pub enum Foot {
     Left,
 }
 
-/// Your own steps (first person): the sway phase φ advancing by
-/// 2π·1.4·Δ with the run flag (2π·0.6 without) while moving and able to
-/// step; a right step when φ enters (π/2, 3π/2], a left one when it
-/// passes 3π/2; starting to move, jumping and landing each add one at
-/// once. Silent without the run flag.
+/// How long the view bob takes to ramp up once you move and to decay once
+/// you stop (s).
+pub const STEP_RAMP: f32 = 0.1;
+
+/// Your own steps (first person; Corrections 2026-10-22, 5): the sway
+/// phase φ advances by 2π·1.4·Δ with the run flag (2π·0.6 without) every
+/// frame the view bob's amplitude is non-zero, and is reset to 0 on any
+/// frame it is 0. The amplitude ramps up over 0.1 s once a movement key is
+/// held (it is still 0 for the first two frames, so φ starts moving on the
+/// third) and decays over 0.1 s once none is, so φ keeps running for 0.1 s
+/// after you stop (the foot crossings of the decay use up that foot
+/// without a sound). A right step sounds when φ enters (π/2, 3π/2], a left
+/// one when it passes 3π/2; pressing a movement key (from rest), jumping
+/// and landing each add one at once. Silent without the run flag.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct OwnSteps {
     pub phase: f32,
     pub was_moving: bool,
     pub next: Option<Foot>,
+    /// The bob's amplitude as the seconds of ramp left (0..`STEP_RAMP`).
+    pub ramp: f32,
+    /// Frames of a start so far with the amplitude still 0.
+    pub lag: u8,
 }
 
 /// One frame of your own movement for `OwnSteps`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct StepInputs {
     pub dt: f32,
-    /// Moved more than 0.1 u this frame with a movement key held.
+    /// A movement key is held (the control flag: no displacement needed,
+    /// pushing into a wall counts).
     pub moving: bool,
     /// On the ground, on a ladder, or within 150 u above ground and not
     /// jumping.
@@ -553,7 +576,7 @@ impl OwnSteps {
             let f = foot(self);
             out.push(f);
         }
-        if moving {
+        if self.ramp > 0.0 {
             let pace = TAU * if i.run { STEP_PACE_RUN } else { STEP_PACE_WALK };
             let before = self.phase;
             let after = before + pace * i.dt;
@@ -563,14 +586,35 @@ impl OwnSteps {
             while k * TAU <= after {
                 for (mark, f) in [(FRAC_PI_2, Foot::Right), (1.5 * PI, Foot::Left)] {
                     let at = k * TAU + mark;
-                    if before <= at && at < after && audible {
-                        out.push(f);
+                    if before <= at && at < after {
+                        // The decay's crossings use the foot up unheard.
+                        if audible && moving {
+                            out.push(f);
+                        }
                         self.next = Some(if f == Foot::Right { Foot::Left } else { Foot::Right });
                     }
                 }
                 k += 1.0;
             }
             self.phase = after % TAU;
+        } else {
+            self.phase = 0.0;
+        }
+        // The amplitude for the next frame.
+        if moving {
+            if self.ramp > 0.0 {
+                self.ramp = (self.ramp + i.dt).min(STEP_RAMP);
+            } else {
+                self.lag += 1;
+                if self.lag >= 2 {
+                    self.ramp = i.dt.min(STEP_RAMP);
+                }
+            }
+        } else {
+            self.ramp = (self.ramp - i.dt).max(0.0);
+            if self.ramp <= 0.0 {
+                self.lag = 0;
+            }
         }
         self.was_moving = moving;
         out

@@ -278,7 +278,8 @@ flyby = ["guns_snd_etc/flyby.wav"]
 flyby_radii = [100, 300]
 # Your jump voice (the auto-cast `Jump` list), local.
 jump = ["chars_snd/jump1.wav", "chars_snd/jump2.wav"]
-# Hurt sounds at the victim, radius 500 (male template).
+# Hurt sounds at the victim's centre, radius 500 for every kind (the
+# install's AutoCast3DSound records; male template).
 hurt_radius = 500
 guns = ["chars_snd/male/hurtpain_a_male_1.wav", "chars_snd/male/hurtpain_a_male_2.wav", "chars_snd/male/hurtpain_a_male_3.wav"]
 explosions = ["chars_snd/male/hurtpain_b_male_1.wav", "chars_snd/male/hurtpain_b_male_2.wav", "chars_snd/male/hurtpain_b_male_3.wav"]
@@ -287,6 +288,17 @@ falling = ["chars_snd/male/hurtfalling_male.wav"]
 gas = ["chars_snd/male/cough_male_1.wav", "chars_snd/male/cough_male_2.wav", "chars_snd/male/cough_male_3.wav"]
 head = ["chars_snd/male/headshot.wav"]
 groin = ["chars_snd/male/nutpain.wav"]
+# Your local voices, male template (the install's autocastsound.txt:
+# AutoCastLocalsound0 BreathingDash, 1 EnemyKill, 3 Idle, 8 Heartbeat;
+# effects_sounds.md Corrections 2026-10-22, 8). The male template's Idle
+# list is empty in the install (only the Q_ templates have one), so no
+# idle sound plays for it.
+kill = ["chars_snd/male/enemykill.wav"]
+dash = ["chars_snd/male/breath_a_male_1.wav", "chars_snd/male/breath_a_male_2.wav", "chars_snd/male/breath_a_male_3.wav"]
+idle = []
+heartbeat = ["ui_snd/heartbeat.wav"]
+# The Awareness perk's own step sounds (perkskillinfo.txt EffectSnd0..3).
+awareness = ["ui_snd/perk/awareness/step1.wav", "ui_snd/perk/awareness/step2.wav", "ui_snd/perk/awareness/step3.wav", "ui_snd/perk/awareness/step4.wav"]
 # The killer's team's call-out at the killer (radius 1000).
 enemy_down = ["chars_snd/male/vma_enemydown_ma.wav"]
 enemy_down_radius = 1000
