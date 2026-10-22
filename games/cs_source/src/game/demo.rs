@@ -1202,9 +1202,8 @@ fn add_sounds(world: &mut World, files: &[String]) {
     if missing.is_empty() {
         return;
     }
-    let Some(mount) = crate::mount::config::LocalConfig::load()
-        .ok()
-        .and_then(|c| c.game_path(super::GAME))
+    let Some(mount) = super::INFO
+        .install()
         .and_then(|p| super::mount::open(&p).ok())
     else {
         return;

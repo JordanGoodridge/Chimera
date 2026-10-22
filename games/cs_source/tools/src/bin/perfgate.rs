@@ -88,7 +88,7 @@ fn scenario(name: &str) -> Option<Sim> {
 fn installed() -> bool {
     LocalConfig::load()
         .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
+        .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
         .is_some_and(|p| p.join("cstrike").is_dir())
 }
 

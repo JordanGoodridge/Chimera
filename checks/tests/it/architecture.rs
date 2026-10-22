@@ -59,6 +59,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Every game's respawn (chimera/sim): the dead held, a character
     // revived at a place (out of a toggled noclip).
     ("spawning", &["core", "movement"]),
+    // The test kit (chimera/sim, feature `testkit`): a weapon set as data
+    // and the base on the greybox, for tests; nothing outside the crate's
+    // frameworks.
+    ("testkit", &["lib", "movement", "weapon"]),
     // Round objectives (bomb, hostages): zones from the map, NPCs as
     // characters, the bomb as a weapon.
     (

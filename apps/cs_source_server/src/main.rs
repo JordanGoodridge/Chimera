@@ -234,9 +234,8 @@ fn follow_map_cycle(name: Option<Res<LoadedMapName>>, mut cycle: ResMut<cs_sourc
     let Some(name) = name.filter(|n| n.is_changed()) else { return };
     cycle.current = net::maps::map_name(&name.0).to_string();
     if cycle.maps.is_empty() {
-        cycle.maps = cs_source_app::mount::config::LocalConfig::load()
-            .ok()
-            .and_then(|c| c.game_path(cs_source::GAME))
+        cycle.maps = Some(&cs_source::INFO)
+            .and_then(|g| g.install())
             .and_then(|path| cs_source::mount::open(&path).ok())
             .map(|mount| cs_source::map_cycle(&mount))
             .unwrap_or_default();

@@ -10,7 +10,7 @@ use chimera_core::mount::config::LocalConfig;
 fn load(level: u8) -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()?
-        .game_path(cs_source::GAME)
+        .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !installed {
         eprintln!("skipping: no CS:S install configured");
@@ -20,7 +20,7 @@ fn load(level: u8) -> Option<MapData> {
 }
 
 fn bsp_bytes() -> Vec<u8> {
-    let install = LocalConfig::load().unwrap().game_path(cs_source::GAME).unwrap();
+    let install = LocalConfig::load().unwrap().game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()).unwrap();
     cs_source::mount::open(&install)
         .unwrap()
         .read("maps/de_dust2.bsp")
@@ -83,7 +83,7 @@ fn level_two_loads_hdr_lighting_sky_and_tonemap_bounds() {
 fn maps_without_hdr_lighting_load_ldr_at_any_level() {
     let installed = LocalConfig::load()
         .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
+        .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !installed {
         return;

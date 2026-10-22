@@ -9,6 +9,7 @@
 //! ticks at the game's tick (15 ms), the spec's frames are 60 fps, and "+-f" tolerances are
 //! the spec's frames (1/60 s).
 
+use crate::common::{active, active_id};
 use bevy::{ecs::system::RunSystemOnce, prelude::*};
 use chimera_core::core::{Damage, DamageKind, Health, Hitgroup, MovementState, SimTick};
 use chimera_sim::weapon::{
@@ -171,16 +172,8 @@ fn sel(sim: &Sim, p: Entity) -> CaSelection {
     sim.app.world().get::<CaSelection>(p).unwrap().clone()
 }
 
-fn active(sim: &Sim, p: Entity) -> Option<Entity> {
-    inv(sim, p).active
-}
-
 fn id(sim: &Sim, w: Entity) -> &'static str {
     sim.app.world().get::<Weapon>(w).unwrap().id
-}
-
-fn active_id(sim: &Sim, p: Entity) -> &'static str {
-    id(sim, active(sim, p).expect("nothing in hand"))
 }
 
 /// The first weapon `p` carries with this id.

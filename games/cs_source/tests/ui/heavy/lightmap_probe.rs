@@ -35,7 +35,7 @@ fn bilinear(s: &lightmap::FaceSamples, at: Vec2) -> [f32; 3] {
 fn lightmap_at_point() {
     let point = Vec3::new(-295.36871, 1575.36877, 86.58576);
     let config = LocalConfig::load().unwrap();
-    let m = mount::open(&config.game_path("cs_source").unwrap()).unwrap();
+    let m = mount::open(&config.game_path_in("cs_source", cs_source::game::INFO.steam.as_ref()).unwrap()).unwrap();
     let bytes = m.read("maps/de_dust2.bsp").unwrap();
     let bsp = vbsp::Bsp::read(&bytes).unwrap();
     let lump = lightmap::lighting_lump(&bytes, false);
@@ -102,7 +102,7 @@ fn lightmap_at_points() {
     let points: Vec<serde_json::Value> =
         serde_json::from_str(&std::fs::read_to_string(chimera_core::env::var("CHIMERA_POINTS").unwrap()).unwrap()).unwrap();
     let config = LocalConfig::load().unwrap();
-    let m = mount::open(&config.game_path("cs_source").unwrap()).unwrap();
+    let m = mount::open(&config.game_path_in("cs_source", cs_source::game::INFO.steam.as_ref()).unwrap()).unwrap();
     let bytes = m.read("maps/de_dust2.bsp").unwrap();
     let bsp = vbsp::Bsp::read(&bytes).unwrap();
     let lump = lightmap::lighting_lump(&bytes, false);
@@ -167,7 +167,7 @@ fn lightmap_at_points() {
 fn lightmap_block_at_point() {
     let point = Vec3::new(-295.36871, 1575.36877, 86.58576);
     let config = LocalConfig::load().unwrap();
-    let m = mount::open(&config.game_path("cs_source").unwrap()).unwrap();
+    let m = mount::open(&config.game_path_in("cs_source", cs_source::game::INFO.steam.as_ref()).unwrap()).unwrap();
     let bytes = m.read("maps/de_dust2.bsp").unwrap();
     let bsp = vbsp::Bsp::read(&bytes).unwrap();
     let lump = lightmap::lighting_lump(&bytes, false);
@@ -215,7 +215,7 @@ fn lightmap_block_at_point() {
 fn lightmap_face_raw() {
     let point = Vec3::new(-295.36871, 1575.36877, 86.58576);
     let config = LocalConfig::load().unwrap();
-    let m = mount::open(&config.game_path("cs_source").unwrap()).unwrap();
+    let m = mount::open(&config.game_path_in("cs_source", cs_source::game::INFO.steam.as_ref()).unwrap()).unwrap();
     let bytes = m.read("maps/de_dust2.bsp").unwrap();
     let bsp = vbsp::Bsp::read(&bytes).unwrap();
     let lump = lightmap::lighting_lump(&bytes, false);

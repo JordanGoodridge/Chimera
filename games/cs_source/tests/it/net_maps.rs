@@ -200,6 +200,7 @@ pub(crate) fn add_client(sim: &mut NetSim, install: &Path, cache: Option<&Path>)
             let m = m.clone();
             Arc::new(move |id: &str| std::fs::read(m.file(id)).ok())
         };
+        w.get_resource_or_insert_with(chimera_core::game_registry::Games::default).register(&crate::stack::games::cs_source::INFO);
         w.insert_resource(MapFiles {
             read,
             cache: m.cache.clone(),
@@ -230,7 +231,7 @@ pub(crate) fn loaded(sim: &NetSim, i: usize) -> Option<MapFile> {
 fn changelevel_takes_two_clients_along() {
     let dir = scratch("changelevel");
     let install = server_install(&dir);
-    let mut sim = server(install.clone(), "test:alpha", 71);
+    let mut sim = server(install.clone(), "cs_source:alpha", 71);
     run(sim.server.app.world_mut(), "chimera_rounds 1");
     for _ in 0..2 {
         add_client(&mut sim, &install, None);
@@ -252,20 +253,20 @@ fn changelevel_takes_two_clients_along() {
     assert_eq!(sim.clients[0].app.world().get::<NetScore>(me).unwrap().kills, 2);
 
     // The server starts changing level: its clients hear it.
-    harness::begin_level_change(sim.server.app.world_mut(), "test:beta");
+    harness::begin_level_change(sim.server.app.world_mut(), "cs_source:beta");
     sim.ticks(20);
     for i in 0..2 {
         assert_eq!(progress(&sim, i).stage, JoinStage::ChangingLevel, "client {i} told");
     }
     // In: every client loads it and plays on, on the same connection.
-    harness::load_level(sim.server.app.world_mut(), "test:beta", None).unwrap();
+    harness::load_level(sim.server.app.world_mut(), "cs_source:beta", None).unwrap();
     let ok = sim.until(600, |s| {
         (0..2).all(|i| {
             s.clients[i]
                 .app
                 .world()
                 .get_resource::<Joined>()
-                .is_some_and(|j| j.map == "test:beta")
+                .is_some_and(|j| j.map == "cs_source:beta")
         })
     });
     assert!(ok, "both clients followed to beta");
@@ -340,7 +341,7 @@ fn changelevel_takes_two_clients_along() {
 fn a_late_joiner_gets_the_whole_state() {
     let dir = scratch("late");
     let install = server_install(&dir);
-    let mut sim = server(install.clone(), "test:beta", 72);
+    let mut sim = server(install.clone(), "cs_source:beta", 72);
     run(sim.server.app.world_mut(), "chimera_rounds 1; bot_add 1; bot_add 2");
     sim.ticks(200);
     // A game under way: the round score, a bot's score.
@@ -432,7 +433,7 @@ fn joins_without_the_map(sim: &mut NetSim, dir: &Path) -> (usize, PathBuf) {
 fn a_client_without_the_map_downloads_it_over_the_connection() {
     let dir = scratch("download");
     let install = server_install(&dir);
-    let mut sim = server(install.clone(), "test:beta", 73);
+    let mut sim = server(install.clone(), "cs_source:beta", 73);
     let (i, cache) = joins_without_the_map(&mut sim, &dir);
     let mut most = 0;
     let ok = sim.until(2000, |s| {
@@ -507,7 +508,7 @@ fn a_client_downloads_the_map_from_sv_downloadurl() {
     let beta = std::fs::read(install.join("maps/beta.bsp")).unwrap();
     let packed = bz2(&beta);
     let (port, asked) = http_server(vec![("/fastdl/maps/beta.bsp.bz2".into(), packed.clone())]);
-    let mut sim = server(install.clone(), "test:beta", 74);
+    let mut sim = server(install.clone(), "cs_source:beta", 74);
     // HTTP only: the server itself sends nothing.
     run(
         sim.server.app.world_mut(),
@@ -540,7 +541,7 @@ fn wrong_or_refused_downloads_end_the_join_with_reasons() {
     // A web copy that isn't the server's (another version, plain .bsp).
     let other = file_bytes("beta", 2, 220_000);
     let (port, asked) = http_server(vec![("/dl/maps/beta.bsp".into(), other)]);
-    let mut sim = server(install.clone(), "test:beta", 75);
+    let mut sim = server(install.clone(), "cs_source:beta", 75);
     run(
         sim.server.app.world_mut(),
         &format!("sv_allowdownload 0; sv_downloadurl \"http://127.0.0.1:{port}/dl\""),
@@ -653,7 +654,7 @@ fn hurts(sim: &mut NetSim, i: usize) -> bool {
 fn a_client_loading_the_map_is_out_of_the_game_until_it_has_it() {
     let dir = scratch("loading");
     let install = server_install(&dir);
-    let mut sim = server(install.clone(), "test:alpha", 73);
+    let mut sim = server(install.clone(), "cs_source:alpha", 73);
     // Deathmatch: a slow client (its load takes 150 frames).
     let slow = add_client(&mut sim, &install, None);
     sim.clients[slow].app.insert_resource(harness::MapLoadDelay(150));
@@ -681,9 +682,9 @@ fn a_client_loading_the_map_is_out_of_the_game_until_it_has_it() {
     sim.ticks(300);
     sim.clients[quick].app.insert_resource(harness::MapLoadDelay(30));
     sim.clients[slow].app.insert_resource(harness::MapLoadDelay(400));
-    harness::begin_level_change(sim.server.app.world_mut(), "test:beta");
+    harness::begin_level_change(sim.server.app.world_mut(), "cs_source:beta");
     sim.ticks(5);
-    harness::load_level(sim.server.app.world_mut(), "test:beta", None).unwrap();
+    harness::load_level(sim.server.app.world_mut(), "cs_source:beta", None).unwrap();
     sim.ticks(3);
     for i in [quick, slow] {
         let state = in_game(&mut sim, i);
@@ -695,7 +696,7 @@ fn a_client_loading_the_map_is_out_of_the_game_until_it_has_it() {
             .app
             .world()
             .get_resource::<Joined>()
-            .is_some_and(|j| j.map == "test:beta")
+            .is_some_and(|j| j.map == "cs_source:beta")
     };
     assert!(sim.until(200, |s| joined(s, quick)), "the quick client has the map");
     sim.ticks(10);
@@ -743,7 +744,7 @@ fn a_client_loading_the_map_is_out_of_the_game_until_it_has_it() {
 fn changelevel_to_the_same_map_makes_clients_reload_it() {
     let dir = scratch("samemap");
     let install = server_install(&dir);
-    let mut sim = server(install.clone(), "test:beta", 74);
+    let mut sim = server(install.clone(), "cs_source:beta", 74);
     run(sim.server.app.world_mut(), "chimera_rounds 1");
     add_client(&mut sim, &install, None);
     sim.until_joined(600);
@@ -756,10 +757,10 @@ fn changelevel_to_the_same_map_makes_clients_reload_it() {
     let before = loads(sim.clients[0].app.world());
     let id = sim.clients[0].app.world().resource::<LocalClientId>().0;
     // `changelevel beta` on beta: the server loads it again.
-    harness::load_level(sim.server.app.world_mut(), "test:beta", None).unwrap();
+    harness::load_level(sim.server.app.world_mut(), "cs_source:beta", None).unwrap();
     let ok = sim.until(600, |s| {
         let w = s.clients[0].app.world();
-        loads(w) > before && w.get_resource::<Joined>().is_some_and(|j| j.map == "test:beta")
+        loads(w) > before && w.get_resource::<Joined>().is_some_and(|j| j.map == "cs_source:beta")
     });
     assert!(ok, "the client loaded beta again and is back in");
     let p = progress(&sim, 0);
@@ -783,7 +784,7 @@ fn a_late_joiner_gets_the_decals() {
     use crate::stack::map::{DecalGroup, PlaceDecal};
     let dir = scratch("decals");
     let install = server_install(&dir);
-    let mut sim = server(install.clone(), "test:alpha", 75);
+    let mut sim = server(install.clone(), "cs_source:alpha", 75);
     // Shots marked the walls before anyone joined (as the impact effects
     // ask for decals); one hit a prop-less spot on the world, one is a
     // knife slash.
@@ -824,7 +825,7 @@ fn a_late_joiner_gets_the_decals() {
     assert_eq!(placed[0].point, Vec3::new(0.0, 1.0, 5.0));
     assert!(matches!(&placed[3].group, DecalGroup::Named(n) if n == "ManhackCut"));
     // A new map starts the log over.
-    harness::load_level(sim.server.app.world_mut(), "test:beta", None).unwrap();
+    harness::load_level(sim.server.app.world_mut(), "cs_source:beta", None).unwrap();
     sim.ticks(3);
     assert!(sim.server.app.world().resource::<crate::stack::net::decals::DecalLog>().decals.is_empty());
     let _ = std::fs::remove_dir_all(&dir);

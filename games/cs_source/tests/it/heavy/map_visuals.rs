@@ -23,7 +23,7 @@ use crate::stack::{
 fn load(name: &str) -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()?
-        .game_path(cs_source::GAME)
+        .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !installed {
         eprintln!("skipping: no CS:S install configured");
@@ -318,7 +318,7 @@ fn detail_props_load() {
 #[test]
 fn slime_splash_systems_load_from_the_install() {
     use cs_source::impact_effects::{SLIME_SPLASH_FILE, SLIME_SPLASHES};
-    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(cs_source::GAME)) else {
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())) else {
         eprintln!("skipping: no CS:S install configured");
         return;
     };
@@ -373,7 +373,7 @@ fn slime_splash_colours_take_the_light_where_they_start() {
     let Some(map) = load("de_aztec") else { return };
     let install = LocalConfig::load()
         .ok()
-        .and_then(|c| c.game_path(cs_source::GAME))
+        .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
         .expect("install");
     let mount = cs_source::mount::open(&install).expect("mount");
     let bytes = mount.read("maps/de_aztec.bsp").expect("de_aztec");

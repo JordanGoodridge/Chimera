@@ -76,7 +76,7 @@ fn the_scoreboard_spectator_bars_and_bomb_look_load() {
     }
     // GameUI: the loading dialog and the interface sounds.
     let config = LocalConfig::load().unwrap();
-    let install = config.game_path("cs_source").unwrap();
+    let install = config.game_path_in("cs_source", cs_source::INFO.steam.as_ref()).unwrap();
     let ui = cs_source::gameui::load(&cs_source::mount::open(&install).unwrap()).expect("GameUI");
     let loading = ui.loading.as_ref().expect("the loading dialog");
     assert_eq!(loading.get("LoadingDialog").map(|c| (c.wide, c.tall)), Some((380.0, 112.0)));
@@ -145,7 +145,7 @@ fn the_games_buy_and_team_menus_load() {
 fn dust2() -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()?
-        .game_path(cs_source::GAME)
+        .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !installed {
         eprintln!("skipping: no CS:S install configured");
@@ -320,7 +320,7 @@ fn lightmaps_agree_at_shared_edges() {
     if dust2().is_none() {
         return;
     }
-    let install = LocalConfig::load().unwrap().game_path(cs_source::GAME).unwrap();
+    let install = LocalConfig::load().unwrap().game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()).unwrap();
     let mount = cs_source::mount::open(&install).unwrap();
     let bytes = mount.read("maps/de_dust2.bsp").unwrap();
     let lump = lightmap::lighting_lump(&bytes, false);
@@ -509,7 +509,7 @@ fn prop_lighting_model_predicts_lightmaps() {
     use crate::stack::games::cs_source::{ambient, bsp};
 
     let Some(map) = dust2() else { return };
-    let install = LocalConfig::load().unwrap().game_path(cs_source::GAME).unwrap();
+    let install = LocalConfig::load().unwrap().game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()).unwrap();
     let mount = cs_source::mount::open(&install).unwrap();
     let bytes = mount.read("maps/de_dust2.bsp").unwrap();
     let source = vbsp::Bsp::read(&bytes).unwrap();
@@ -1047,7 +1047,7 @@ fn sky_visibility_by_leaf() {
 fn ambient_samples_lie_in_their_leaf() {
     let Some(_) = dust2() else { return };
     let config = LocalConfig::load().unwrap();
-    let mount = cs_source::mount::open(&config.game_path(cs_source::GAME).unwrap()).unwrap();
+    let mount = cs_source::mount::open(&config.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()).unwrap()).unwrap();
     let bytes = mount.read("maps/de_dust2.bsp").unwrap();
     let bsp = vbsp::Bsp::read(&bytes).unwrap();
     let leaves = cs_source::ambient::raw_leaves(&bytes);

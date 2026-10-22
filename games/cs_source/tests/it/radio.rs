@@ -3,6 +3,7 @@
 //! CS:S install (skipped without one), that every call has a loaded sound
 //! entry and the game's text.
 
+use crate::common::sim;
 use bevy::{
     ecs::message::{MessageCursor, Messages},
     prelude::*,
@@ -15,11 +16,10 @@ use crate::stack::{
         cs_source::{
             TICK_INTERVAL,
             grenades::{DRAW_TIME, HEGRENADE},
-            weapons::CsWeaponsPlugin,
         },
     },
-    greybox::{self, GreyboxMapPlugin},
-    harness::{CsSim, Sim},
+    greybox::{self},
+    harness::Sim,
     map::MapData,
     mount::config::LocalConfig,
     movement::placeholder,
@@ -29,7 +29,7 @@ use crate::stack::{
 fn dust2() -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()?
-        .game_path(cs_source::GAME)
+        .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
         .is_some_and(|p| p.join("cstrike").is_dir());
     if !installed {
         eprintln!("skipping: no CS:S install configured");
@@ -69,12 +69,6 @@ fn every_radio_call_has_a_loaded_sound_and_the_games_text() {
     }
     assert_eq!(radio.get("fireinhole").unwrap().variants[0].1, "Fire in the hole!");
     assert!(radio.format.contains("(RADIO)"));
-}
-
-fn sim() -> Sim {
-    let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin));
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim
 }
 
 /// Radio calls since the cursor last read.

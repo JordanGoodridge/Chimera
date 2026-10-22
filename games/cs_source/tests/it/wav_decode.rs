@@ -5,7 +5,7 @@ use chimera_core::mount::config::LocalConfig;
 
 fn read(path: &str) -> Option<Vec<u8>> {
     let config = LocalConfig::load().ok()?;
-    mount::open(&config.game_path(cs_source::GAME)?).ok()?.read(path).ok()
+    mount::open(&config.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())?).ok()?.read(path).ok()
 }
 
 #[test]

@@ -71,7 +71,7 @@ migration of each; section 11 orders them for parallel agents):
 | P1 | Split `map/mod.rs`, `spawn_map` in phases | **done** | `chimera/world/src/map/mod.rs` 368 lines, `map/spawn.rs` 872, drawn phases in `chimera/present/src/render/spawn.rs` (1,901); the spawn dump tool kept (`heavy/map_spawn_dump.rs`) |
 | P2 | Docs diet: one line per module and debt | **done, regressing** | ARCHITECTURE.md 133 KB to 22 KB on 10-13, 62 KB now; tech-debt.md 15 KB then, 34 KB now; both still top conflict files (2.6); T5 |
 | P3 | Sort `map` and `client` into modules | **done** (became crates) | `chimera_present` (render, audio), `chimera_client`, `chimera_world`; `simulation_builds_no_drawn_parts` checks it |
-| P4 | Test support module | **partial** | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
+| P4 | Test support module | **partial** (X8: `sim()` and readers lifted where identical) | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
 | P4b | Heavy tier: measure, split, more slots, cache | **steps 1, 3, 4 done; 2 open** | full suite 1,812 s to 1,009 s (10-14), then 1,757 s with Combat Arms (10-19); the lean load path is in (N3, 10-21: servers' and tests' memory halved, time saved per load 0.4-1.3 s); no cache yet |
 | P5 | Game composition as plugin groups | **partial** | `CsSourcePlugins`, `CombatArmsPlugins`, `CsSim`, `CaSim` exist; the materials (`chimera_present::PresentationPlugins`) and the physics (`chimera_world::physics_plugins`) are one group each since N7; the tick and log layer still per app; A4 |
 | P6 | One VGUI dialog layer | **open, lower** | 7 copies of the UI scale clamp, no shared `Hit<T>`; Combat Arms built its own canvas (`client::canvas`), so this is CS:S-internal now |
@@ -376,8 +376,8 @@ third game or an original minigame would hit next:
 | `weapon::economy` (chimera/sim/src/weapon/economy.rs:75, 353, 360) | `Money`, `DefuseKit`, `NightVision` as engine types | the shop stays Chimera's; the kit and goggles become CS:S's items (`ItemParts` already exists for that) |
 | `core::Intent` (chimera/core/src/core.rs:87) | a fixed set of buttons (Source's: walk, use, secondary, lastinv) | named actions (`ActionRegistry`: a game or minigame registers `throw`, `ability`, `emote`; binds name actions; `Intent` carries a bit set beside today's fields, which become aliases) |
 | `core::Hitgroup` (core.rs:266) | Source's seven hit groups | keep as the normalised damage vocabulary, add `Other(u8)` for a game's own zones |
-| `mount::install::STEAM_GAMES` (chimera/core/src/mount/install.rs:43) | CS:S's Steam app and files in Chimera's base | a `steam: Option<SteamGame>` field on `GameInfo` |
-| `net::maps` (chimera/net/src/net/maps.rs:227) | the map offer is a BSP file (`maps/<name>.bsp`, `.bsp.bz2`, `sv_downloadurl`) | a `MapLoader` names its map's file (if one exists) and layout; maps without a downloadable file (Combat Arms') are by id and hash only |
+| `mount::install::STEAM_GAMES` (chimera/core/src/mount/install.rs:43) | CS:S's Steam app and files in Chimera's base | a `steam: Option<SteamGame>` field on `GameInfo` (**done**, X6) |
+| `net::maps` (chimera/net/src/net/maps.rs:227) | the map offer is a BSP file (`maps/<name>.bsp`, `.bsp.bz2`, `sv_downloadurl`) | a `MapLoader` names its map's file (if one exists) and layout; maps without a downloadable file (Combat Arms') are by id and hash only | (**done**, X6)
 | `map::MapLoader::load(name, hdr_level)` (chimera/world/src/map/sources.rs:33) | Source's `mat_hdr_level` in the engine's loader interface | a `MapLoadOptions` struct (done in N3 with `hdr_level` and `textures`; `models` and `sounds` when something turns them off) |
 | 80 `0.0254` literals in 30 Chimera files (most: `render/water.rs` 8, `weapon/drop.rs` 7, `render/emitters.rs` 7, `map/ragdoll.rs` 6); `net::quant`'s 1/32-inch grid | Source's numbers as engine defaults (drop distances, ragdoll pushes, effect sizes, third-person camera, shadows, audio distances) | each becomes a named constant of the game that measured it, passed as data; the net grid stays (it is a precision, 0.79 mm) but named in metres |
 | `logic::LogicSet` (source/logic/src/logic/bridge.rs:103) in the tick's order | the map-logic stages are Source's crate's | `SimSet::{LogicPre, LogicPost, LogicDamage}` in `chimera_core`; Source's logic and Combat Arms' world objects (Wave 5, item 23) both use them |
@@ -1237,11 +1237,36 @@ by the same method but not those of the first two passes.
 | X3 **done** | Process-wide state into resources: Combat Arms' data, effects and model caches, then weapon sets (E2) (done 10-21, partly: `CaData` resource for the install-derived data, `WeaponCatalog` for weapon lookups, the global `weapon::data::lookup`/`publish` and `BUILTIN_ONLY` gone; the loader-filled caches below remain) | X2 | `games/combat_arms/src/game/{data,effects,characters,view_model}`, `chimera/sim/src/weapon/data.rs` | M | Combat Arms' suite; a two-`Sim`s isolation test |
 | X4 **done** | (done 10-21, note below) `OwnState` parts; CS:S's money, kit and night vision and Combat Arms' armour as parts; `net_order` sorted once (A3, E6) | none | `chimera/net/src/net/{mod,server,client,predict}.rs`, `games/*/src/game/net.rs`, `chimera/core/src/core.rs` (predicted registry only) | S-M | both games' network suites; `NET_VERSION` bump |
 | X5 **done** | (done 10-21, note below) Named `Intent` actions; binds by action; `POLLED` from the game (A3) | none | `chimera/core/src/core.rs` (`Intent`), `chimera/client/src/client/{binds,input}.rs`, `chimera/net` command encoding | M | both suites; bind migration tests; `NET_VERSION` bump |
-| X6 | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
+| X6 **done** | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) (done 10-21: `GameInfo::steam`, `map_file -> Option`, `net::maps::offer_file`) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
 | X7 **done** | (done 2026-10-21, note below) `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
-| X8 | Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
+| X8 **done** | (done 10-21, note below) Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
 | X9 | BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
 | X10 | A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |
+
+X8, done (10-21): the kit is `chimera_sim::testkit` (feature `testkit`,
+on through dev-dependencies only; smaller than a new crate, so no layering
+or hakari change): a TOML weapon set in round numbers (`kit:pistol`,
+`kit:rifle`, `kit:shotgun`), `kit_sim()`, `with_player`, `active`,
+`active_id`, `feet`, `aim_at`. Contract tests: `chimera/sim/tests/it/
+{weapon_frame,map_lifetime}.rs` (trigger timing, magazines, reloads,
+pellets, damage, draw; greybox spawn points and unload) and
+`chimera/net/tests/it/prediction.rs` (zero prediction errors and
+bit-for-bit agreement at 50/100/150 ms, loss and jitter converge, own-state
+parts round-trip). Moved down: three of `cs_source`'s `noclip_damage`
+tests (bullet through noclip, suicide, kill height) to
+`chimera/sim/tests/it/noclip_damage.rs` on the kit's rifle; the HE blast
+stays. Test support (T4, the smallest sweep): `cs_source`'s
+`tests/common::sim()` replaces six identical `fn sim()`; Combat Arms got
+`tests/common/` (`sim`, `active`, `active_id`) replacing one `fn sim()` and
+two pairs of readers. The other `sim`/`load`/`feet` variants differ in
+setup (maps, resources, signatures) and stay; a later sweep lifts them as
+tests are touched. `SimBasePlugins` is `Clone` for `NetSim`. Counts
+(`cargo nextest list --features dev`): 3,837 before, 3,852 after; per
+crate `chimera_sim` 39 to 54 (the contract tests plus the three moved),
+`chimera_net` 38 to 41, `cs_source::it` 852 to 849, the rest unchanged; the
+only tests missing by name are the three moved. The affected selection
+does not yet skip a game's heavy tier for changes the contract tests
+cover (a later decision, T2).
 
 X4, done (10-21): `net::parts::OwnParts` (`NetAppExt::own_part(name,
 encode, decode)`, sorted by name as registered); `OwnState::parts` is one
@@ -1322,3 +1347,21 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
 | L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4), `bevy` without default features for servers (A5) | none | S each |
+
+X6, done (10-21), with these choices. `GameInfo::steam` is an
+`Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and
+`resolve`/`resolve_with` take the `SteamGame` as an argument, so the mount
+layer stays below the games. `LocalConfig::game_path(id)` now searches only
+the config and the saved settings (no Steam); `game_path_in(id, steam)` and
+`GameInfo::install()` add Steam, and CS:S's own code uses the latter (the
+CS:S's tests and tools call `game_path_in(GAME, INFO.steam.as_ref())`, so
+they still find a Steam-only install). `GameInfo::map_file` returns `Option<String>`: the map's downloadable
+file under a content folder, None for a map offered by id and hash only.
+Combat Arms returns None, which replaces its `worlds/<name>.dat`
+approximation (its worlds live in several `worlds*` archives and are read
+through the mount: `world::find`). `net::maps` finds the file with
+`offer_file` (the id's game prefix, else the default game, from `Games`);
+cache path, `.part`, HTTP URLs (`<url>/<file>.bz2`) and messages derive from
+it. A map with no file is served without bytes, never cached or
+downloaded, and a client missing it fails as missing. A net-only app with no
+`Games` registered cannot download maps.

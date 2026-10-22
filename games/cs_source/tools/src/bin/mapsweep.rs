@@ -448,7 +448,7 @@ fn main() -> ExitCode {
     let dir = if args.stock {
         LocalConfig::load()
             .ok()
-            .and_then(|c| c.game_path(cs_source::GAME))
+            .and_then(|c| c.game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref()))
             .map(|p| p.join("cstrike").join("maps"))
     } else {
         content_dir(cs_source::GAME).map(|d| d.join("maps"))

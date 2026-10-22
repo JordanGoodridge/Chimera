@@ -54,6 +54,26 @@ in the lowest crate whose public API it needs:
   (chimera/client/tests/it/): scenario tests of the engine's movement,
   weapons or shell parts on the greybox (`chimera_world::greybox`) with
   the engine's base, `Sim::new(SimBasePlugins, ..)`;
+  The **test kit** (`chimera_sim::testkit`, feature `testkit`, turned
+  on by dev-dependencies only) is what these run on instead of a game's
+  data: a weapon set as TOML in round numbers (`kit:pistol`, `kit:rifle`,
+  `kit:shotgun`), `kit_sim()` (the base on the greybox with those
+  loaded), `with_player`, `active`, `active_id`, `feet`, `aim_at`. A test
+  that needs nothing of a game goes down onto it: **contract tests** per
+  Chimera crate (the weapon frame's timing, magazines and damage:
+  `chimera/sim/tests/it/weapon_frame.rs`; a code-built map's spawn points
+  and unload: `map_lifetime.rs`; noclip's damage rules: `noclip_damage.rs`;
+  prediction with zero errors for a scripted run, loss and jitter, and
+  own-state parts over `NetSim`: `chimera/net/tests/it/prediction.rs`).
+  When a lift moves code into Chimera, the generic part of its tests moves
+  down with it (`cargo test -p chimera_sim -p chimera_net` checks the lift
+  in seconds, before the games' suites). A test that names a game's
+  weapon, hook, map or rules stays in the game;
+- each game's tests share one support module (`games/cs_source/tests/common/`,
+  `games/combat_arms/tests/common/`): the install skip rule and map
+  loading by id (CS:S), the usual `sim()` builder, the weapon in hand
+  (`active`, `active_id`). A helper a second test file needs goes there,
+  not into another copy of `fn sim(`;
 - `chimera_present` (chimera/present/tests/it/): the renderer's and
   audio's spec cases with nothing of a game, and what it draws on a
   `Sim` with `core` and the console as the base (prop LODs, shadows);

@@ -40,7 +40,7 @@ use source_logic::logic::{Logic, classes::Class, movers::pusher};
 /// both installs.
 fn load(name: &str) -> Option<MapData> {
     let config = LocalConfig::load().ok()?;
-    let css = config.game_path(cs_source::game::GAME).filter(|p| p.join("cstrike").is_dir());
+    let css = config.game_path_in(cs_source::game::GAME, cs_source::game::INFO.steam.as_ref()).filter(|p| p.join("cstrike").is_dir());
     let ca = config.game_path(combat_arms::game::GAME).filter(|p| p.join("Game").is_dir());
     if css.is_none() || ca.is_none() {
         eprintln!("skipping: needs both the CS:S and the Combat Arms installs");

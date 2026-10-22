@@ -84,10 +84,17 @@ impl LocalConfig {
     }
 
     /// Install path for `game` (e.g. `cs_source`), with `~` expanded:
-    /// this file's, else the one the user saved, else Steam's
-    /// (`install::resolve`, which also says how it was found).
+    /// this file's, else the one the user saved. Steam is searched only
+    /// for a game that names its Steam app (`game_path_in`;
+    /// `GameInfo::install` does).
     pub fn game_path(&self, game: &str) -> Option<PathBuf> {
-        super::install::resolve(self, game).install.map(|i| i.path)
+        self.game_path_in(game, None)
+    }
+
+    /// `game_path`, then Steam's for a game with a Steam app
+    /// (`install::resolve`, which also says how it was found).
+    pub fn game_path_in(&self, game: &str, steam: Option<&super::install::SteamGame>) -> Option<PathBuf> {
+        super::install::resolve(self, game, steam).install.map(|i| i.path)
     }
 }
 
