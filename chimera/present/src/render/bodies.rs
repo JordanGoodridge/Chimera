@@ -128,12 +128,12 @@ pub fn attach_bodies(
                 Option<&BodySkin>,
                 Option<&BodyNumber>,
             ),
-            &ColliderAabb,
+            Option<&ColliderAabb>,
             &GlobalTransform,
             Option<&Children>,
-            Has<crate::core::LocalPlayer>,
+            (Has<crate::core::LocalPlayer>, Option<&Corpse>),
         ),
-        (With<crate::core::Intent>, Without<ragdoll::Ragdolled>),
+        (Or<(With<crate::core::Intent>, With<Corpse>)>, Without<ragdoll::Ragdolled>),
     >,
     existing: Query<&CharacterBody>,
     show_local: Res<ShowLocalBody>,
@@ -143,7 +143,7 @@ pub fn attach_bodies(
     let (Some(models), Some(bodies)) = (models, bodies) else {
         return;
     };
-    for (e, (team, name, class, skin, number), aabb, at, children, local) in &characters {
+    for (e, (team, name, class, skin, number), aabb, at, children, (local, corpse)) in &characters {
         let Some((index, _)) = models.for_character(team.copied(), name, class) else {
             continue;
         };
@@ -158,7 +158,11 @@ pub fn attach_bodies(
             Some((old, _)) => commands.entity(old).despawn(),
             None => {}
         }
-        let feet = aabb.min.y - at.translation().y;
+        let feet = match (corpse, aabb) {
+            (Some(c), _) => c.feet,
+            (None, Some(aabb)) => aabb.min.y - at.translation().y,
+            (None, None) => continue,
+        };
         let assets = &bodies.bodies[index];
         let body = commands
             .spawn((

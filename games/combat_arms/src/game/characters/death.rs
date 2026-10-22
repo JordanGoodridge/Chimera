@@ -103,8 +103,10 @@ pub fn choose(i: &DeathInputs, exists: impl Fn(&str) -> bool) -> String {
                 pick("DT", "DT_1")
             }
         }
-        // Front-left hits use the head animation (Quirk 5).
-        _ if front && left => "DLSH".into(),
+        // Front-left: the head case is `DLSH`; the body case looks up a
+        // handle that is never set, so the missing-animation `DC` plays
+        // (Corrections 2).
+        _ if front && left => (if i.head { "DLSH" } else { "DC" }).into(),
         _ if front => (if i.head { "DRSH" } else { "DRT" }).into(),
         _ if cf > c45 => {
             if i.head {

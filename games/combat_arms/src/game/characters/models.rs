@@ -62,6 +62,13 @@ pub fn family(c: i32, teammate: bool) -> i32 {
     (c * 2 + usize::from(teammate)) as i32
 }
 
+/// Whether a character shows the team mark (2): a teammate does, except
+/// in Quarantine (the infection mode), where every mark is transparent
+/// (Corrections 11).
+pub fn shows_mark(teammate: bool, quarantine: bool) -> bool {
+    teammate && !quarantine
+}
+
 fn rigs() -> &'static Mutex<HashMap<String, Arc<Rig>>> {
     static RIGS: OnceLock<Mutex<HashMap<String, Arc<Rig>>>> = OnceLock::new();
     RIGS.get_or_init(Default::default)

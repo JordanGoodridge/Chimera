@@ -318,18 +318,14 @@ fn t12_firing() {
     assert_eq!(at(&d).0, "URFRFiS");
     assert!(!d.upper.looping);
     assert_eq!(length(&d, &d.upper), 100);
-    // Restarts each time it is done while fire stays held: done after
-    // 105 ms of 15 ms ticks, restarted in that update.
-    let mut restarts = Vec::new();
-    for k in 1..=30 {
-        let before = d.upper.time;
+    // Held fire plays the animation once and holds its last frame
+    // (Corrections 1): no restart while the posture and name stay.
+    for _ in 1..=30 {
         d.update(TICK, &fire);
-        if d.upper.time < before {
-            restarts.push(k);
-        }
         assert_eq!(at(&d).0, "URFRFiS");
     }
-    assert_eq!(&restarts[..3], &[7, 14, 21], "{restarts:?}");
+    assert!(d.upper.done(&d.list));
+    assert!(d.upper.time >= 100);
     // Running forward: no moving rifle fire in the library, the aim plays.
     let mut d = drv();
     let fwd = Inputs { forward: true, ..rifle() };
@@ -964,7 +960,9 @@ fn t37_back_deaths() {
 #[test]
 fn t38_side_deaths() {
     let a = Vec3::new(0.94, 0.0, -0.34);
-    assert_eq!(death_of(DeathKind::Other, a, false, false, true, false), "DLSH");
+    // Front-left: the head case `DLSH`, the body case the missing-handle
+    // fallback `DC` (Corrections 2).
+    assert_eq!(death_of(DeathKind::Other, a, false, false, true, false), "DC");
     assert_eq!(death_of(DeathKind::Other, a, true, false, true, false), "DLSH");
     let b = Vec3::new(0.94, 0.0, 0.34);
     assert_eq!(death_of(DeathKind::Other, b, false, false, true, false), "DLT");
@@ -1460,7 +1458,8 @@ fn t52_hit_kick() {
     assert_eq!(k, 0, "the counter restarted");
 }
 
-/// 53. An emote: both trackers play it; pressing forward ends it.
+/// 53. An emote: the upper tracker keeps it, the legs return at once
+/// (Corrections 9); pressing forward ends it.
 #[test]
 fn t53_emote() {
     let mut d = drv();
@@ -1468,7 +1467,7 @@ fn t53_emote() {
     assert!(!d.start_emote("Salute"), "the US male has no Salute");
     assert!(d.start_emote("Surrender"));
     run(&mut d, &rifle(), 2);
-    assert_eq!((d.name_of(&d.upper), d.name_of(&d.lower)), ("Surrender", "Surrender"));
+    assert_eq!((d.name_of(&d.upper), d.name_of(&d.lower)), ("Surrender", "LST"));
     run(&mut d, &Inputs { forward: true, ..rifle() }, 1);
     assert_eq!(d.emote, None);
     assert_ne!(d.name_of(&d.upper), "Surrender");
@@ -1542,4 +1541,384 @@ fn t56_death_types() {
     // Quirk 6's coin: the C library's first draw for a seed, mod 2.
     assert!(!death::coin(0), "seed 0: first draw 38");
     assert!(death::coin(1), "seed 1: first draw 41");
+}
+
+// ---------------------------------------------------------------------
+// Corrections (2026-10-22): characters.md, one test each (`c01_` is
+// correction 1).
+
+fn sniper() -> Inputs {
+    Inputs {
+        class: 5,
+        ..default()
+    }
+}
+
+/// 1. A held fire button plays the fire animation once and holds its last
+/// frame; a release for one update and a new press start it again; the
+/// knife likewise; running forward keeps `URFRAmF`.
+#[test]
+fn c01_held_fire_plays_once() {
+    let mut d = drv();
+    run(&mut d, &rifle(), 2);
+    let fire = Inputs { fire: true, ..rifle() };
+    d.update(TICK, &fire);
+    assert_eq!(at(&d).0, "URFRFiS");
+    // 1000 ms held: no second start, the last frame held.
+    let mut prev = d.upper.time;
+    for _ in 0..66 {
+        d.update(TICK, &fire);
+        assert!(d.upper.time >= prev, "restarted at {prev}");
+        prev = d.upper.time;
+        assert_eq!(at(&d).0, "URFRFiS");
+    }
+    assert!(d.upper.done(&d.list));
+    // Released for one update, pressed again: from 0.
+    d.update(TICK, &rifle());
+    assert_eq!(at(&d).0, "URFRAmS");
+    d.update(TICK, &fire);
+    assert_eq!(at(&d).0, "URFRFiS");
+    assert!(d.upper.time <= TICK);
+    // The knife, held 2 s.
+    let mut d = drv();
+    let knife = Inputs { class: 14, fire: true, ..default() };
+    run(&mut d, &Inputs { class: 14, ..default() }, 2);
+    d.update(TICK, &knife);
+    assert_eq!(at(&d).0, "UKRFiS");
+    let mut prev = d.upper.time;
+    for _ in 0..133 {
+        d.update(TICK, &knife);
+        assert!(d.upper.time >= prev);
+        prev = d.upper.time;
+    }
+    assert!(d.upper.done(&d.list));
+    // Running forward with fire held: the looping aim.
+    let mut d = drv();
+    let run_fwd = Inputs { forward: true, ..rifle() };
+    run(&mut d, &run_fwd, 3);
+    run(&mut d, &Inputs { fire: true, ..run_fwd }, 20);
+    assert_eq!(at(&d).0, "URFRAmF");
+    assert!(d.upper.looping);
+}
+
+/// 2. A front-left body hit plays `DC`; with the jaw `DLSH`; the other
+/// sides as before.
+#[test]
+fn c02_front_left_body_death_is_dc() {
+    let a = Vec3::new(0.94, 0.0, -0.34);
+    assert_eq!(death_of(DeathKind::Other, a, false, false, true, false), "DC");
+    assert_eq!(death_of(DeathKind::Other, a, false, false, false, false), "DC");
+    assert_eq!(death_of(DeathKind::Other, a, true, false, true, false), "DLSH");
+    let b = Vec3::new(0.94, 0.0, 0.34);
+    assert_eq!(death_of(DeathKind::Other, b, false, false, true, false), "DLT");
+    assert_eq!(death_of(DeathKind::Other, b, true, false, true, false), "DLSH");
+    let c = Vec3::new(-0.94, 0.0, -0.34);
+    assert_eq!(death_of(DeathKind::Other, c, false, false, true, false), "DRT");
+}
+
+/// 3. Falling, on the driver: with the footing test failed the legs are
+/// `LST` and the upper `URFRAmS` until the landing.
+#[test]
+fn c03_walking_off_a_drop_driver() {
+    let mut d = drv();
+    let fwd = Inputs { forward: true, ..rifle() };
+    run(&mut d, &fwd, 5);
+    assert_eq!((at(&d).1.as_str(), at(&d).0.as_str()), ("LRF", "URFRAmF"));
+    let off = Inputs { no_footing: true, ..fwd.clone() };
+    run(&mut d, &off, 3);
+    assert_eq!(d.jump, Jump::Falling);
+    assert_eq!((at(&d).1.as_str(), at(&d).0.as_str()), ("LST", "URFRAmS"));
+    // Still falling once a floor is near again (the status stays) ...
+    run(&mut d, &fwd, 3);
+    assert_eq!(at(&d).1, "LST");
+    // ... until the landing.
+    run(&mut d, &Inputs { grounded: true, ..fwd.clone() }, 2);
+    assert_eq!((at(&d).1.as_str(), at(&d).0.as_str()), ("LRF", "URFRAmF"));
+}
+
+/// 3. On the greybox: a run off a 300 u drop shows standing legs in the
+/// air; an 80 u step (below the feet) keeps the run legs.
+#[test]
+fn c03_walking_off_a_drop_in_play() {
+    let air = |drop: f32| {
+        let mut sim = sim();
+        let p = player(&mut sim, Vec3::new(0.0, 1.0, 12.0), 0.0);
+        weapon::give(sim.app.world_mut(), p, RIFLE).unwrap();
+        sim.seconds(1.3);
+        sim.intent(p).move_axis = Vec2::Y;
+        sim.seconds(0.4);
+        assert_eq!(playing(&sim, p).1, "LRF");
+        // The hull's centre `drop` u (below the feet) above where it stood.
+        let w = sim.app.world_mut();
+        let stood = w.get::<Transform>(p).unwrap().translation.y;
+        w.get_mut::<Transform>(p).unwrap().translation.y = stood + drop * UNIT;
+        w.get_mut::<chimera_core::core::Velocity>(p).unwrap().0.y = 0.0;
+        w.get_mut::<movement::CaMovement>(p).unwrap().standing = None;
+        sim.ticks(2);
+        (sim, p)
+    };
+    let (sim, p) = air(300.0);
+    assert!(!sim.state(p).on_ground);
+    assert_eq!((playing(&sim, p).1.as_str(), playing(&sim, p).0.as_str()), ("LST", "URFRAmS"));
+    let (mut sim, p) = air(300.0);
+    sim.seconds(3.0);
+    assert!(sim.state(p).on_ground, "landed");
+    assert_eq!((playing(&sim, p).1.as_str(), playing(&sim, p).0.as_str()), ("LRF", "URFRAmF"));
+    let (sim, p) = air(80.0);
+    assert!(!sim.state(p).on_ground);
+    assert_eq!(playing(&sim, p).1, "LRF");
+}
+
+/// 4. A bolt sniper's fire pose follows the accepted shots, not the
+/// trigger.
+#[test]
+fn c04_sniper_fire_pose_follows_shots() {
+    let mut d = drv();
+    run(&mut d, &sniper(), 2);
+    let held = Inputs { fire: true, ..sniper() };
+    let shot = Inputs { shot: true, ..held.clone() };
+    let mut starts = Vec::new();
+    for k in 0..200 {
+        // 3 s of 15 ms updates, shots at 0 and 1.5 s.
+        let i = if k == 0 || k == 100 { &shot } else { &held };
+        let before = (at(&d).0, d.upper.time);
+        d.update(TICK, i);
+        if at(&d).0.contains("Fi") && (before.0 != at(&d).0 || d.upper.time < before.1) {
+            starts.push(k);
+        }
+        if k == 50 {
+            assert_eq!(at(&d).0, "USNRAmS", "aim in between");
+        }
+    }
+    assert_eq!(starts, vec![0, 100], "{starts:?}");
+    // The button alone never fires.
+    let mut d = drv();
+    run(&mut d, &held, 20);
+    assert_eq!(at(&d).0, "USNRAmS");
+}
+
+/// 5. No fire pose while the legs play the sprint.
+#[test]
+fn c05_no_fire_pose_while_sprinting() {
+    let mut d = drv();
+    let sprint = Inputs { sprint: true, forward: true, ..rifle() };
+    run(&mut d, &sprint, 3);
+    let held = Inputs { fire: true, ..sprint.clone() };
+    run(&mut d, &held, 10);
+    assert_eq!(d.last.posture, Posture::Aim);
+    assert_eq!(at(&d).0, "URFRRAmF");
+    assert!(d.upper.looping);
+    // Alt fire too (the knife).
+    let mut d = drv();
+    let knife = Inputs { class: 14, sprint: true, forward: true, ..default() };
+    run(&mut d, &knife, 3);
+    run(&mut d, &Inputs { alt_fire: true, ..knife }, 5);
+    assert_eq!(d.last.posture, Posture::Aim);
+}
+
+/// 6. The "ammo 0" is the total.
+#[test]
+fn c06_ammo_zero_is_the_total() {
+    assert!(!driver::ammo_exhausted(0, 90));
+    assert!(!driver::ammo_exhausted(5, 0));
+    assert!(driver::ammo_exhausted(0, 0));
+    let mut d = drv();
+    run(&mut d, &rifle(), 2);
+    let fire = Inputs { fire: true, empty: driver::ammo_exhausted(0, 90), ..rifle() };
+    run(&mut d, &fire, 20);
+    assert_eq!(d.last.posture, Posture::Fire, "clip 0, 90 in reserve: still fire");
+    let none = Inputs { fire: true, empty: driver::ammo_exhausted(0, 0), ..rifle() };
+    run(&mut d, &none, 1);
+    assert_eq!(d.last.posture, Posture::Aim, "total 0, the animation done: aim");
+}
+
+/// 7. Crouching in the air clears the jump and fall status for good.
+#[test]
+fn c07_crouch_in_the_air_clears_the_jump() {
+    let mut d = drv();
+    let fwd = Inputs { forward: true, ..rifle() };
+    run(&mut d, &fwd, 3);
+    d.update(TICK, &Inputs { jumped: true, ..fwd.clone() });
+    assert_eq!(at(&d).1, "LJJ");
+    run(&mut d, &fwd, 12); // 200 ms
+    assert_eq!(at(&d).1, "LJJ");
+    let crouch = Inputs { crouch_key: true, crouch: 0.5, ..fwd.clone() };
+    run(&mut d, &crouch, 13); // to 400 ms
+    assert_eq!(d.jump, Jump::None);
+    assert_eq!(at(&d).1, "LRF");
+    assert_eq!(at(&d).2, "LCF");
+    // Released in the air: the jump legs do not come back.
+    run(&mut d, &fwd, 30);
+    assert_eq!(at(&d).1, "LRF");
+    // A drop (item 3) then crouch: locomotion at once.
+    let mut d = drv();
+    run(&mut d, &fwd, 3);
+    run(&mut d, &Inputs { no_footing: true, ..fwd.clone() }, 2);
+    assert_eq!(at(&d).1, "LST");
+    d.update(TICK, &Inputs { no_footing: true, crouch_key: true, ..fwd.clone() });
+    assert_eq!(at(&d).1, "LRF");
+}
+
+/// 8. Forward and back held together give backward; with a strafe the
+/// forward key is tested first.
+#[test]
+fn c08_forward_and_back_give_backward() {
+    use driver::Direction as D;
+    assert_eq!(D::of(true, true, false, false), D::B);
+    assert_eq!(D::of(true, true, false, true), D::FR);
+    assert_eq!(D::of(true, true, true, false), D::FL);
+    assert_eq!(D::of(false, false, true, true), D::L);
+    let mut d = drv();
+    run(&mut d, &Inputs { forward: true, back: true, ..rifle() }, 3);
+    assert_eq!((at(&d).1.as_str(), at(&d).0.as_str()), ("LRB", "URFRAmB"));
+    let mut d = drv();
+    run(&mut d, &Inputs { forward: true, back: true, right: true, ..rifle() }, 3);
+    assert_eq!(at(&d).1, "LRFR");
+    let mut d = drv();
+    run(&mut d, &Inputs { forward: true, back: true, left: true, ..rifle() }, 3);
+    assert_eq!(at(&d).1, "LRFL");
+}
+
+/// 9. An emote is on the upper body only: the legs are back within one
+/// update; the upper keeps the emote, and its last pose after it ends,
+/// until the player moves, fires, reloads or switches.
+#[test]
+fn c09_emote_is_upper_body_only() {
+    let mut d = drv();
+    run(&mut d, &rifle(), 3);
+    assert!(d.start_emote("Insult_Dance"));
+    assert_eq!(d.name_of(&d.lower), "Insult_Dance");
+    d.update(TICK, &rifle());
+    assert_eq!((d.name_of(&d.upper), d.name_of(&d.lower)), ("Insult_Dance", "LST"));
+    assert!(d.emote.is_some(), "the weapon stays hidden while it plays");
+    // Until it ends, then its final frame stays.
+    let len = d.list.entries[d.upper.current].length();
+    run(&mut d, &rifle(), (len / TICK) as usize + 10);
+    assert!(d.emote.is_none());
+    assert_eq!(d.name_of(&d.upper), "Insult_Dance");
+    run(&mut d, &rifle(), 50);
+    assert_eq!(d.name_of(&d.upper), "Insult_Dance", "held until something changes");
+    // Moving starts the aim again.
+    d.update(TICK, &Inputs { forward: true, ..rifle() });
+    assert_eq!(d.name_of(&d.upper), "URFRAmF");
+    // Firing too.
+    let mut d = drv();
+    run(&mut d, &rifle(), 3);
+    d.start_emote("Surrender");
+    run(&mut d, &rifle(), 3);
+    d.update(TICK, &Inputs { fire: true, ..rifle() });
+    assert_eq!(d.name_of(&d.upper), "URFRFiS");
+}
+
+/// 10. "Died in a jump" is the jump legs' first ~667 ms and never turns
+/// the body for a blast.
+#[test]
+fn c10_died_in_a_jump() {
+    let body_after = |wait: f64, kind: DamageKind| {
+        let mut sim = sim();
+        let p = player(&mut sim, Vec3::new(0.0, 1.0, 12.0), 0.0);
+        weapon::give(sim.app.world_mut(), p, RIFLE).unwrap();
+        sim.seconds(1.3);
+        sim.intent(p).jump = true;
+        sim.ticks(1);
+        sim.intent(p).jump = false;
+        sim.seconds(wait);
+        kill(&mut sim, p, Vec3::new(1.0, 0.0, 0.5), Hitgroup::Chest, kind);
+        sim.ticks(2);
+        let world = sim.app.world_mut();
+        let mut q = world.query::<&CaBody>();
+        q.single(world).expect("a body").clone()
+    };
+    let turned = |b: &CaBody| b.yaw.abs() > 0.1;
+    let b = body_after(0.3, DamageKind::Bullet);
+    assert!(turned(&b), "turned away from the shot: {}", b.yaw);
+    let b = body_after(0.8, DamageKind::Bullet);
+    assert!(!turned(&b), "falling: not turned: {}", b.yaw);
+    let b = body_after(0.3, DamageKind::Blast);
+    assert!(!turned(&b), "a blast never turns the body: {}", b.yaw);
+}
+
+/// 11. No team mark in Quarantine.
+#[test]
+fn c11_no_team_mark_in_quarantine() {
+    assert!(models::shows_mark(true, false));
+    assert!(!models::shows_mark(true, true));
+    assert!(!models::shows_mark(false, false));
+    let d = builtin();
+    let family = |teammate, quarantine| models::family(3, models::shows_mark(teammate, quarantine));
+    assert_eq!(family(true, false), 7);
+    assert_eq!(family(true, true), family(false, false), "a teammate in Quarantine looks like an enemy");
+    assert_eq!(d.team_mark(models::shows_mark(true, true), false), "CHARS_T_BODY\\Alpha.dtx");
+    assert_eq!(d.team_mark(models::shows_mark(true, false), false), "CHARS_T_BODY\\RED_Tie.dtx");
+}
+
+/// 12. The body outlives its owner's respawn by 5 s (Team Deathmatch).
+#[test]
+fn c12_corpse_outlives_the_respawn() {
+    use chimera_core::core::{Dead, Health, SimClock, Team};
+    let mut sim = Sim::new(CaSim, GreyboxMapPlugin);
+    sim.set_tick_interval(TICK_INTERVAL);
+    combat_arms::harness::with_mode(sim.app.world_mut(), "TDM");
+    let a = sim.spawn_character(Vec3::new(0.0, 1.0, 12.0), movement::ID);
+    let b = sim.spawn_character(Vec3::new(0.0, 1.0, -20.0), movement::ID);
+    sim.app.world_mut().entity_mut(a).insert(Team(1));
+    sim.app.world_mut().entity_mut(b).insert(Team(2));
+    sim.seconds(4.0);
+    for p in [a, b] {
+        combat_arms::game::rules::spawns::unprotect(sim.app.world_mut(), p);
+    }
+    sim.app.world_mut().write_message(Damage {
+        target: a,
+        attacker: Some(b),
+        amount: 500.0,
+        point: Vec3::ZERO,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Chest,
+        kind: DamageKind::Bullet,
+        weapon: Some(RIFLE),
+        force: Vec3::ZERO,
+    });
+    sim.ticks(2);
+    let bodies = |sim: &mut Sim| {
+        let w = sim.app.world_mut();
+        w.query::<&CaBody>().iter(w).filter(|b| b.owner == a).cloned().collect::<Vec<_>>()
+    };
+    let died_at = bodies(&mut sim)[0].since;
+    // Until the owner respawns.
+    let alive = |sim: &Sim| {
+        let w = sim.app.world();
+        w.get::<Dead>(a).is_none() && w.get::<Health>(a).is_some_and(|h| h.current > 0.0)
+    };
+    let mut guard = 0;
+    while !alive(&sim) {
+        sim.ticks(1);
+        guard += 1;
+        assert!(guard < 1500, "never respawned");
+    }
+    sim.ticks(2);
+    let now = sim.app.world().resource::<SimClock>().now;
+    let respawned = bodies(&mut sim)[0].respawned.expect("the respawn is noted");
+    assert!(respawned > died_at + 1.0 && respawned <= now + 1e-6);
+    // Still there 4 s after the respawn ...
+    sim.seconds(4.0);
+    assert_eq!(bodies(&mut sim).len(), 1, "the body outlives the respawn");
+    // ... and gone 5 s after it.
+    sim.seconds(1.5);
+    assert!(bodies(&mut sim).is_empty(), "removed 5 s after the respawn");
+}
+
+/// 13. A leg set without the crouch name crouches on the legs' own
+/// animation.
+#[test]
+fn c13_missing_crouch_name_falls_back_to_the_legs() {
+    let mut list = (*driver::spec_library(false)).clone();
+    list.entries.retain(|e| e.name() != "LCFR");
+    let mut d = Driver::new(Arc::new(list));
+    run(&mut d, &Inputs { forward: true, right: true, crouch: 0.5, ..rifle() }, 3);
+    assert_eq!(at(&d).1, "LRFR");
+    assert_eq!(at(&d).2, "LRFR", "the crouch tracker plays the lower name");
+    assert_eq!(d.crouch.multiplier, 0.5);
+    let mut d = Driver::new(driver::spec_library(false));
+    run(&mut d, &Inputs { forward: true, right: true, ..rifle() }, 3);
+    assert_eq!(at(&d).2, "LCFR");
 }

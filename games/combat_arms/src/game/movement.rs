@@ -654,6 +654,10 @@ pub struct CaMovement {
     pub free_movement: bool,
     /// Movement disallowed this tick (`MovementLocked`, a bomb plant).
     pub locked: bool,
+    /// The footing test failed this tick (characters.md Corrections 3):
+    /// not on the ground, not jumped, not in free movement, and no floor
+    /// within the footing ray (150 u) below the hull centre.
+    pub no_footing: bool,
     /// What the integrator used last tick (gravity included), the
     /// gravity and ground friction, and whether the volumes stopped the
     /// braking: a locked tick reuses them.
@@ -727,6 +731,10 @@ impl TickClock {
         self.accumulator_ms / self.tick_ms as f64
     }
 }
+
+/// The footing ray's reach below the hull centre (u): a fall starts when
+/// no floor lies this close (view_models.md 6; characters.md Corrections 3).
+pub const FOOTING_RAY: f32 = 150.0;
 
 /// The world as the movement sees it, in world units.
 struct Space<'a, 'w, 's> {
@@ -1435,6 +1443,15 @@ fn step(
             }
             me.on_ground = !me.in_jump
                 && me.standing.is_some_and(|g| !g.character && g.normal.y >= d.on_ground_normal);
+            me.no_footing = !me.on_ground
+                && !me.in_jump
+                && !free
+                && !dead
+                && space
+                    .mover
+                    .spatial_query
+                    .cast_ray(transform.translation, Dir3::NEG_Y, FOOTING_RAY * s, true, &space.filter)
+                    .is_none();
 
             // 7d. Speed limit and clamp (on a ladder only the upward speed
             // is capped); leaving free movement by the eye stops the

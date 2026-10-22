@@ -92,9 +92,11 @@ impl Direction {
         } else {
             None
         };
+        // The keys apply forward, then backward (which overrides it), then
+        // the strafes; within a strafe the forward key is tested first.
         match (side, forward, back) {
-            (None, true, _) => Direction::F,
-            (None, false, true) => Direction::B,
+            (None, _, true) => Direction::B,
+            (None, true, false) => Direction::F,
             (None, false, false) => Direction::None,
             (Some(l), true, _) => {
                 if l {
@@ -191,6 +193,15 @@ pub struct Inputs {
     /// A jump started, or the player landed, since the last update.
     pub jumped: bool,
     pub landed: bool,
+    /// The footing test failed this movement tick (characters.md
+    /// Corrections 3): the client did not jump, and no floor lies within
+    /// 150 u below the hull centre; it marks the character falling.
+    pub no_footing: bool,
+    /// On the ground now (a falling character landed).
+    pub grounded: bool,
+    /// The server accepted a shot (or a throw) since the last update
+    /// (Corrections 4: the sniper's and land mine's fire pose).
+    pub shot: bool,
     pub crouch_key: bool,
     pub forward: bool,
     pub back: bool,
@@ -225,6 +236,9 @@ impl Default for Inputs {
             zoomed: false,
             jumped: false,
             landed: false,
+            no_footing: false,
+            grounded: false,
+            shot: false,
             crouch_key: false,
             forward: false,
             back: false,
@@ -282,6 +296,12 @@ pub const SERVER_RELOAD_FALLBACK: u32 = 500;
 /// not empty).
 pub fn fire_held(fire: bool, use_key: bool, server: bool, magazine: bool, reloading: bool, empty: bool) -> bool {
     fire && !use_key && (server || !(magazine && (reloading || empty)))
+}
+
+/// The driver's "ammo count 0" (Corrections 6): the weapon's total
+/// ammunition (the clip and the reserve together), not the clip.
+pub fn ammo_exhausted(clip: u32, reserve: u32) -> bool {
+    clip + reserve == 0
 }
 
 /// The upper rate (7): L r_w / F for a weapon whose `HHAniFrame` for the
@@ -454,8 +474,13 @@ pub struct Driver {
     reload_finished: bool,
     /// The body (file) is new: the next update starts every tracker.
     fresh: bool,
-    /// The emote playing on the upper and lower trackers (9), its entry.
+    /// The emote playing on the upper tracker (9), its entry. The lower
+    /// tracker's copy is replaced by the legs on the next update.
     pub emote: Option<usize>,
+    /// The entry of the last upper animation the driver started (the
+    /// upper tracker is started again only when the class or posture
+    /// changed, or this name differs while aiming or firing).
+    started: Option<usize>,
 }
 
 /// The emote menu's choices 1-4 (9: Hunted only; `DT` is disabled).
@@ -493,6 +518,7 @@ impl Driver {
             reload_finished: false,
             fresh: true,
             emote: None,
+            started: None,
         }
     }
 
@@ -513,6 +539,7 @@ impl Driver {
             t.looping = false;
         }
         self.emote = Some(e);
+        // Same-name aim after it must not restart the upper tracker.
         true
     }
 
@@ -599,6 +626,13 @@ impl Driver {
         // 4. The firing choice.
         if self.status == Status::None {
             posture = self.firing(i, posture);
+            // No fire pose while the legs play the sprint (Corrections 5).
+            if matches!(posture, Posture::Fire | Posture::AltFire)
+                && self.last.movement == Movement::Sprint
+                && !self.done(&self.lower)
+            {
+                posture = Posture::Aim;
+            }
             if i.empty && self.done(&self.upper) {
                 posture = Posture::Aim;
             }
@@ -610,8 +644,10 @@ impl Driver {
         let last = self.last.posture;
         let wait = |p: Posture| matches!(last, Posture::Reload | Posture::Select | Posture::AltFire) && self.running(last) && p != last;
         match i.class {
+            // The fire pose follows each accepted shot, not the button
+            // (Corrections 4).
             5 | 20 => {
-                if i.fire || self.running(Posture::Fire) {
+                if i.shot || self.running(Posture::Fire) {
                     Posture::Fire
                 } else {
                     Posture::Aim
@@ -644,11 +680,22 @@ impl Driver {
         if i.landed {
             self.jump = Jump::None;
         }
+        if i.grounded && self.jump == Jump::Falling && !i.jumped {
+            self.jump = Jump::None;
+        }
         if i.jumped {
             self.jump = Jump::Jumped;
+        } else if i.no_footing && self.jump != Jump::Falling {
+            // Walking off a real drop (Corrections 3).
+            self.jump = Jump::Falling;
+        }
+        // Crouching in the air clears the status; only a new jump sets it
+        // again (Corrections 7).
+        if self.jump != Jump::None && i.crouch_key {
+            self.jump = Jump::None;
         }
         match self.jump {
-            Jump::Jumped if !i.crouch_key => {
+            Jump::Jumped => {
                 if self.last.movement == Movement::Jump && self.done(&self.lower) {
                     self.jump = Jump::Falling;
                     return (Movement::Walk, Direction::None);
@@ -695,24 +742,17 @@ impl Driver {
         let (lower, crouch) = leg_names(i.legs, movement, direction);
         // Sprint in a direction without legs: nothing started or kept.
         let Some(lower) = lower else { return };
-        // An emote holds both trackers until it is done or the player
-        // moves, fires, reloads, draws or jumps (9).
+        // An emote stays on the upper tracker alone: the legs below replace
+        // the lower tracker's copy at once, and after it ends the upper
+        // tracker keeps its last pose until the driver next starts an
+        // upper animation (9, Corrections 9).
         if let Some(e) = self.emote {
             let quiet = posture == Posture::Aim
                 && direction == Direction::None
                 && matches!(movement, Movement::Walk | Movement::Run);
-            if quiet && self.upper.current == e && !self.done(&self.upper) {
-                self.crouch.multiplier = i.crouch.clamp(0.0, 1.0);
-                self.last = Decided {
-                    class,
-                    posture,
-                    movement,
-                    direction,
-                };
-                return;
+            if !quiet || self.upper.current != e || self.done(&self.upper) {
+                self.emote = None;
             }
-            self.emote = None;
-            self.fresh = true;
         }
         let (run, walk, sprint) = upper_names(class, posture, direction);
         let exists = |n: &Option<String>| n.as_deref().and_then(|n| self.find(n));
@@ -723,29 +763,45 @@ impl Driver {
         };
         let list = self.list.clone();
         let fresh = std::mem::take(&mut self.fresh);
-        if let Some(c) = self.find(&crouch) {
+        let lower_entry = self.find(&lower);
+        // A leg set without the crouch name crouches on the legs' own
+        // animation (Corrections 13).
+        if let Some(c) = self.find(&crouch).or(lower_entry) {
             self.crouch.looping = true;
             Self::start(&list, &mut self.crouch, c, true);
         }
-        if let Some(l) = self.find(&lower) {
+        if let Some(l) = lower_entry {
             self.lower.looping = movement != Movement::Jump;
             Self::start(&list, &mut self.lower, l, true);
         }
         let changed = fresh || class != self.last.class || posture != self.last.posture;
         if let Some(u) = upper {
-            self.upper.looping = posture.looping();
             let free = matches!(posture, Posture::Aim | Posture::Fire | Posture::AltFire);
             // The grenade class never restarts a finished animation.
             let restart = !thrown(class);
-            let started = if changed || free {
-                Self::start(&list, &mut self.upper, u, restart)
+            // A held fire button plays its animation once (Corrections 1):
+            // the tracker starts again only on a class or posture change,
+            // a new accepted shot, or a different name while aiming or
+            // firing.
+            let shot = i.shot && matches!(class, 5 | 20) && posture == Posture::Fire;
+            let go = changed || shot || (free && self.started != Some(u));
+            if go {
+                self.upper.looping = posture.looping();
+            }
+            let started = if changed || shot {
+                Self::start(&list, &mut self.upper, u, restart || shot)
+            } else if go {
+                Self::start(&list, &mut self.upper, u, false)
             } else {
                 false
             };
+            if go {
+                self.started = Some(u);
+            }
             if started || (changed && self.upper.current == u) {
                 self.playing = Some(posture);
             }
-            if changed && started {
+            if (changed || shot) && started {
                 let length = list.entries[u].length();
                 let frame = i.frames.get(posture.frame_index()).copied().unwrap_or(0);
                 let rate = match posture {

@@ -69,6 +69,18 @@
 //! keys all 13 draw their own models with the hands, textured
 //! (`heavy::view_model::keyed_view_models_with_hands`).
 //!
+//! The 2026-10-22 corrections (view_models.md Corrections 1-6): a press
+//! during `postfire` refires on the update that sees it done and a
+//! semi-automatic cancel starts the whole sequence (`prefire` first); a
+//! sprint cuts a knife swing or double-barrel shot at once (`PreRush`,
+//! nothing hit after the cut), drops a grenade request that has not
+//! reached its pin pull, and the full idle after `PostRush` starts from 0;
+//! the fire rate is 1 + the weapon's `FireAniRate` (`CaItem::fire_rate`,
+//! `attachments::fire_animation_rate`, also the shot cycle) + the parts',
+//! the draw and reload add the vest's `SelectAniRate` / `ReloadAniRate`
+//! (`gear` vests; the picture only: the weapon's own reload and draw
+//! times don't add them yet).
+//!
 //! The follow-up answers (view_models.md Open questions 9-16): the
 //! machine plays `reload_1` for the double barrel with rounds left, a
 //! file's `deselect` on a holster (`ViewMachine::holster`; no stock file
@@ -131,7 +143,7 @@ use self::{
     sway::{Sway, SwayInputs},
 };
 use super::{
-    attachments::{CaMods, animation_rate},
+    attachments::{CaMods, animation_rate, fire_animation_rate},
     inventory::{CaItem, UNIT},
     model,
     volumes::{CaVolume, in_liquid},
@@ -520,7 +532,7 @@ type WeaponParts<'a> = (
 );
 
 /// The machine's setup for a weapon.
-fn setup_of(parts: &WeaponParts) -> Setup {
+fn setup_of(parts: &WeaponParts, (model_reload, model_select): (f32, f32)) -> Setup {
     let (w, magazine, trigger, shells, throwable, (_, _, mods, item, hitscan)) = parts;
     let (fire, reload, select) = mods.map_or((0.0, 0.0, 0.0), |m| m.rates());
     Setup {
@@ -529,9 +541,9 @@ fn setup_of(parts: &WeaponParts) -> Setup {
         shells: shells.is_some(),
         clip_size: magazine.map_or(if throwable.is_some() { 1 } else { 0 }, |m| m.size),
         rates: Rates {
-            fire: animation_rate(1.0 + fire),
-            reload: animation_rate(1.0 + reload),
-            draw: animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + select),
+            fire: fire_animation_rate(item.map_or(0.0, |i| i.fire_rate), fire),
+            reload: animation_rate(1.0 + model_reload + reload),
+            draw: animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + model_select + select),
         },
         ..Setup::default()
     }
@@ -571,8 +583,10 @@ fn drive(
             Option<&mut ViewModelOffset>,
             Has<OwnViewAnim>,
             Has<LocalPlayer>,
+            Option<&super::characters::records::Selection>,
         ),
     )>,
+    gear: Option<Res<super::gear::CaGearData>>,
     weapons: Query<WeaponParts>,
     states: Query<&chimera_sim::weapon::WeaponState>,
     mut events: MessageReader<WeaponEvent>,
@@ -588,7 +602,7 @@ fn drive(
     if models.as_ref().is_some_and(|m| m.is_changed()) {
         tables.clear();
     }
-    for (e, inventory, intent, (state, health, velocity, transform, movement), (view, vm, offset, owned, local)) in &mut characters {
+    for (e, inventory, intent, (state, health, velocity, transform, movement), (view, vm, offset, owned, local, look)) in &mut characters {
         // Another game's gun in hand (a mashup's): its view model is
         // Chimera's generic driver's, with that game's rules
         // (`weapon::view_anim`). Ours lets go of the character until a gun
@@ -619,6 +633,14 @@ fn drive(
             continue;
         };
         let alive = health.is_none_or(|h| h.current > 0.0);
+        // The character model's reload and select bonuses (Corrections 6).
+        let model = gear.as_deref().map_or((0.0, 0.0), |g| {
+            let vests = &g.0.vests;
+            vests
+                .get(&look.map_or(0, |l| l.model))
+                .or(vests.get(&0))
+                .map_or((0.0, 0.0), |v| (v.reload_ani_rate, v.select_ani_rate))
+        });
         let active = inventory.active.filter(|_| alive);
         let parts = active.and_then(|w| weapons.get(w).ok());
         let key = parts.as_ref().map(|p| p.0.id);
@@ -643,7 +665,7 @@ fn drive(
                     .or_insert_with(|| Arc::new(anim_infos(&set)))
                     .clone();
                 let seed = vm.roll().to_bits();
-                let mut m = ViewMachine::draw(table, setup_of(p), seed);
+                let mut m = ViewMachine::draw(table, setup_of(p, model), seed);
                 let (clip, total) = p.1.map_or((0, 0), |m| (m.clip, m.clip + m.reserve));
                 m.draw_ammo(clip, total);
                 vm.machine = Some(m);
@@ -716,7 +738,7 @@ fn drive(
             moving,
         };
         if let Some(m) = vm.machine.as_mut() {
-            m.set_rates(setup_of(&parts).rates);
+            m.set_rates(setup_of(&parts, model).rates);
             m.set_weapon_reloading(active.and_then(|w| states.get(w).ok()).is_some_and(|s| s.reloading()));
             let out = m.update(&inputs);
             if out.reloaded {
