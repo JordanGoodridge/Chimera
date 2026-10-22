@@ -32,7 +32,10 @@
 //!   time limit, a single round whose winner wins the match, then the
 //!   match over (`minigame_restart` plays it again).
 //! - `MinigameEvent`: named events (`rung_up`, `rung_down`, `match_won`)
-//!   for a HUD or an announcer.
+//!   for a HUD or an announcer; `hud::MinigameHud` is what the local
+//!   player's HUD shows of the minigame (status lines from the rules
+//!   module, the match's time, notices from the events): data a game's HUD
+//!   draws.
 //! - Console: `minigames` (the definitions, the playing one marked),
 //!   `minigame <id>`, `minigame_load <file>`, `minigame_status`,
 //!   `minigame_restart`.
@@ -42,11 +45,12 @@
 //! (the character kit isn't a slot yet), `movement` is set on each
 //! player at its spawn; teams other than the mode's are refused, not
 //! adapted; no objective primitives (zones, carriables), scoring table
-//! beyond kills and deaths, or built-in modifiers yet; nothing binds the
-//! events to a HUD; definitions travel to network clients by id only
+//! beyond kills and deaths, or built-in modifiers yet; the HUD data is the
+//! local player's only (never a spectated player's); definitions travel to network clients by id only
 //! (their hash and bytes are L3's).
 
 pub mod def;
+pub mod hud;
 pub mod ladder;
 pub mod runtime;
 
@@ -84,6 +88,11 @@ pub struct RulesModule {
     /// The weapons a life gets from the rules (after the kit; the last
     /// given is drawn).
     pub loadout: fn(&World, Entity) -> Vec<&'static str>,
+    /// The lines the HUD shows the viewer of the match's standing
+    /// (`hud::MinigameHud`).
+    pub status: fn(&mut World, Entity) -> Vec<hud::HudLine>,
+    /// A notice for the viewer from one of the module's events.
+    pub notice: fn(&World, Entity, &MinigameEvent) -> Option<hud::HudLine>,
 }
 
 /// A modifier a definition turns on by name with a value.
@@ -314,6 +323,8 @@ impl Plugin for MinigamePlugin {
             .init_resource::<Match>()
             .add_message::<MinigameEvent>()
             .add_message::<crate::core::Died>()
+            .init_resource::<hud::MinigameHud>()
+            .add_systems(Update, hud::update)
             .add_minigame_rules(ladder::RULES);
         runtime::plugin(app);
         app.console_command(

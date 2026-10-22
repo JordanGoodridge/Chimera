@@ -34,9 +34,12 @@
 //! Known shortcuts: maps load by id only (no downloaded map files); the
 //! minigame's map pool isn't rotated (its first map plays); the bots fight
 //! with whatever their ladder gives but keep the reach of their first
-//! life's weapons; the HUD is Combat Arms' without the minigame's state
-//! (the ladder's rung shows as the weapon in hand; `minigame_status`
-//! prints the match).
+//! life's weapons; Combat Arms' guns show their ids as names (no item
+//! table yet: BERETTA_M92FS). The HUD shows the minigame's state
+//! (`chimera_sim::minigame::hud`: rung, next gun, leader, time, notices),
+//! CS:S's guns' names from CS:S's strings (`weapons::display_names`) and
+//! their view models by Chimera's driver with CS:S's rules
+//! (`PartyPartsPlugin`), on CS:S's maps only.
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
 use chimera_core::game_registry::GameAppExt;
@@ -128,6 +131,10 @@ pub struct PartyPartsPlugin;
 impl Plugin for PartyPartsPlugin {
     fn build(&self, app: &mut App) {
         app.register_game(&cs_source::game::INFO);
+        // CS:S's guns' view models: Chimera's generic driver with CS:S's
+        // rules plays them (Combat Arms' driver lets go of a character
+        // holding another game's gun).
+        app.insert_resource(cs_source::game::view_anim::rules());
         app.add_plugins((
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,

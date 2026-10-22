@@ -1552,9 +1552,15 @@ read CS:S's guns' AI rows from the app's data
 free point. Tests: the server on the greybox (fast) and, heavy, on
 de_dust2 from the installs (soldiers at dust2's points, a Glock kill and
 the Beretta next); Combat Arms' bots play the gun game on the greybox and
-kill each other. Left for later: the HUD shows nothing of the minigame
-(no rung, leader or `MinigameEvent`), CS:S's guns have no view model under
-Combat Arms' driver (the mashup's shortcut), the bots keep their first
+kill each other. Polish (10-22): the HUD shows the minigame
+(`minigame::hud::MinigameHud`: the rules module's status lines, time,
+notices from `MinigameEvent`s, `{player}`/`{weapon}` placeholders the HUD
+fills; Combat Arms' `draw_minigame`), CS:S's guns show CS:S's own names
+(`weapons::display_names` into `ItemNames`), have view models (Combat Arms'
+driver lets go of a character holding another game's gun, Chimera's
+generic driver plays it with CS:S's `ViewAnimRules`) and the kill feed
+names the local player by the `name` setting (never "Character"). Left
+for later: Combat Arms' guns show their ids as names, the bots keep their first
 life's reach, the map pool doesn't rotate, a client joins a party server
 by id only (L3's match manifest), objective primitives and modifiers
 (D2) and more original minigames.

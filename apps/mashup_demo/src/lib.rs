@@ -48,8 +48,9 @@
 //! Known shortcuts: maps load by id only (no downloaded map files, no map
 //! offer to network clients); CS:S's guns have Combat Arms' effects only
 //! where Combat Arms' code reads Chimera's events (no impact effects; their
-//! view model doesn't show under Combat Arms' view-model driver; the HUD
-//! names them by CS:S's localization token; their sounds are the map's
+//! view model is driven by Chimera's generic driver with CS:S's rules
+//! (Combat Arms' lets go of it), the HUD names them from CS:S's strings
+//! (`weapons::display_names`); their sounds are the map's
 //! CS:S entries); their held models are CS:S's, on Combat Arms' bodies only
 //! where the bones match; on a Combat Arms map they have no view model.
 
@@ -157,6 +158,10 @@ pub struct MashupPartsPlugin;
 impl Plugin for MashupPartsPlugin {
     fn build(&self, app: &mut App) {
         app.register_game(&cs_source::game::INFO);
+        // CS:S's guns' view models: Chimera's generic driver with CS:S's
+        // rules plays them (Combat Arms' driver lets go of a character
+        // holding another game's gun).
+        app.insert_resource(cs_source::game::view_anim::rules());
         app.add_plugins((
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,
@@ -234,8 +239,21 @@ impl Plugin for ClientPlugin {
                 hooks: client_hooks(),
             }
             .build(),
-        ));
+        ))
+        .add_systems(Startup, cs_source_names);
     }
+}
+
+/// CS:S's guns' names for Combat Arms' HUD (`ItemNames`), from CS:S's own
+/// strings in its install (`weapons::display_names`).
+fn cs_source_names(
+    games: Res<chimera_core::game_registry::Games>,
+    mut names: ResMut<combat_arms::ui::hud::ItemNames>,
+) {
+    let Some(mount) = games.get(cs_source::game::GAME).and_then(|g| g.mount()) else {
+        return;
+    };
+    names.0.extend(cs_source::game::weapons::display_names(&mount));
 }
 
 /// The command line as the app plays it: `DEFAULT_MAP` without `--map`,

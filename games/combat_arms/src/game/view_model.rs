@@ -23,7 +23,9 @@
 //!
 //! Playing (`drive`, each rendered frame in `map::DriveAnimation`; the
 //! character carries `OwnViewAnim`, so Chimera's generic driver leaves it
-//! alone): per character, a fresh `machine::ViewMachine` at each draw (7:
+//! alone; with another game's gun in hand, a mashup's, it lets go of the
+//! character and Chimera's driver plays that gun's view model): per
+//! character, a fresh `machine::ViewMachine` at each draw (7:
 //! `select`, `idle_0` and the full idle `idle_1` after 5-15 s still,
 //! `prefire` but for pistols, knives and shotguns, `fire_0` /
 //! `alt_fire_0`, `postfire` and the semi-automatic cancel, `reload` or
@@ -305,6 +307,14 @@ impl Plugin for CaViewModelPlugin {
     }
 }
 
+/// Whether weapon `id` is another game's (`cs_source:weapon_glock`): one
+/// whose game prefix names another registered game. An id without a
+/// prefix, or with an unregistered one (a test's), is ours.
+fn is_foreign(id: &str, games: Option<&chimera_core::game_registry::Games>) -> bool {
+    id.split_once(':')
+        .is_some_and(|(game, _)| game != super::GAME && games.is_some_and(|g| g.get(game).is_some()))
+}
+
 /// The animations of a view model as the machine sees them: length (ms)
 /// and keys from each sequence's events.
 pub fn anim_infos(set: &crate::map::anim::AnimSet) -> Vec<AnimInfo> {
@@ -571,6 +581,7 @@ fn drive(
     mut commands: Commands,
     volumes: Query<&CaVolume>,
     spatial: avian3d::prelude::SpatialQuery,
+    games: Option<Res<chimera_core::game_registry::Games>>,
 ) {
     let (dt, now) = (time.delta_secs_f64(), time.elapsed_secs_f64());
     let events: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
@@ -578,6 +589,23 @@ fn drive(
         tables.clear();
     }
     for (e, inventory, intent, (state, health, velocity, transform, movement), (view, vm, offset, owned, local)) in &mut characters {
+        // Another game's gun in hand (a mashup's): its view model is
+        // Chimera's generic driver's, with that game's rules
+        // (`weapon::view_anim`). Ours lets go of the character until a gun
+        // of ours is back.
+        if inventory
+            .active
+            .and_then(|w| weapons.get(w).ok())
+            .is_some_and(|p| is_foreign(p.0.id, games.as_deref()))
+        {
+            if owned {
+                commands.entity(e).remove::<OwnViewAnim>();
+                if let Some(mut offset) = offset {
+                    *offset = ViewModelOffset::default();
+                }
+            }
+            continue;
+        }
         let (Some(mut view), Some(mut vm), Some(mut offset), true) = (view, vm, offset, owned) else {
             commands.entity(e).insert((
                 ViewAnimator::default(),

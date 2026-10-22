@@ -22,7 +22,7 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::{ActiveMinigame, MinigameDef, MinigameEvent, RulesModule, runtime};
+use super::{ActiveMinigame, MinigameDef, MinigameEvent, RulesModule, hud::HudLine, runtime};
 use crate::{
     core::{DamageKind, Died, Score, Team},
     mode::{Death, DeathKind, Hooks, Match, Mode, NO_HOOKS, Teams},
@@ -38,6 +38,8 @@ pub const RULES: RulesModule = RulesModule {
     check,
     start,
     loadout,
+    status,
+    notice,
 };
 
 /// The mode on the runtime.
@@ -254,4 +256,59 @@ pub fn standing(world: &World, e: Entity) -> Option<String> {
     let ladder = world.get_resource::<Ladder>()?;
     let rung = world.get::<Rung>(e).map_or(0, |r| r.0);
     Some(format!(", rung {}/{} ({})", rung + 1, ladder.rungs.len(), ladder.rungs.get(rung).unwrap_or(&"?")))
+}
+
+/// The HUD's lines for `viewer`: their rung and gun, the next one, who
+/// leads (the highest rung, then the most kills; "tied" when level).
+fn status(world: &mut World, viewer: Entity) -> Vec<HudLine> {
+    let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return Vec::new() };
+    let total = ladder.rungs.len();
+    let rung = world.get::<Rung>(viewer).map_or(0, |r| r.0).min(total.saturating_sub(1));
+    let mut lines = Vec::new();
+    if let Some(w) = ladder.rungs.get(rung) {
+        lines.push(HudLine::new(format!("Rung {}/{total}: {{weapon}}", rung + 1)).weapon(w));
+    }
+    match ladder.rungs.get(rung + 1) {
+        Some(w) => lines.push(HudLine::new("Next: {weapon}").weapon(w)),
+        None => lines.push(HudLine::new("Last rung: a kill wins")),
+    }
+    let mut best: Option<((usize, i32), Entity)> = None;
+    let mut tied = false;
+    for (e, _) in runtime::players(world) {
+        let key = (world.get::<Rung>(e).map_or(0, |r| r.0), world.get::<Score>(e).map_or(0, |s| s.kills));
+        match best {
+            Some((b, _)) if key == b => tied = true,
+            Some((b, _)) if key < b => {}
+            _ => {
+                best = Some((key, e));
+                tied = false;
+            }
+        }
+    }
+    if let Some(((r, _), who)) = best {
+        lines.push(if tied {
+            HudLine::new("Tied for the lead")
+        } else if who == viewer {
+            HudLine::new("You lead")
+        } else {
+            HudLine::new(format!("Leader: {{player}}, rung {}/{total}", r + 1)).player(who)
+        });
+    }
+    lines
+}
+
+/// The viewer's own rung changes (`rung_up`, `rung_down`).
+fn notice(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<HudLine> {
+    if event.player != Some(viewer) {
+        return None;
+    }
+    let ladder = world.get_resource::<Ladder>()?;
+    let total = ladder.rungs.len();
+    let weapon = ladder.rungs.get(usize::try_from(event.value).ok()?).copied()?;
+    let text = match event.name {
+        "rung_up" => format!("Rung up! {}/{total}: {{weapon}}", event.value + 1),
+        "rung_down" => format!("Knifed! Down to {}/{total}: {{weapon}}", event.value + 1),
+        _ => return None,
+    };
+    Some(HudLine::new(text).weapon(weapon))
 }
