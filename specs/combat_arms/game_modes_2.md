@@ -406,6 +406,24 @@ Consequences:
 11. **Snowballs kill instead of freezing in the ticket variant** (only the snow grenade freezes there). Keep together with Quirk 10's decision.
 12. **Friendly fire and AI:** mercenaries ignore the friendly-fire setting: same-team AI damage is always 0, both ways. Keep.
 
+## Corrections (2026-10-22): match flow
+
+Checked against the reference's Hired Guns and VIP Escort rule sets and our runtime (`chimera/sim/src/mode/flow.rs`, `games/combat_arms/src/game/rules/`). The shared findings are GM's Corrections (2026-10-22); these are the parts that touch this spec.
+
+1. **An empty team ends the match after a warm-up too** (GM Corrections 1).
+   - Reference: VIP Escort and Hired Guns run their match-end test at the end of every intermission, the warm-up's included: a team with no players ends the match (VIP Escort: more round wins, else Bravo; Hired Guns: the non-empty team). For VIP Escort this includes the warm-up replayed after each side swap (M13.7).
+   - Ours: `chimera/sim/src/mode/flow.rs:302` skips the match end after any warm-up, so a real round (VIP Escort 180 s, Hired Guns 300 s) is played with one team empty.
+   - Expect: VIP Escort, the whole Bravo team leaves during the post-swap warm-up after round 3 (round wins 2–1) → the warm-up ends, then match over at the end of the following intermission, winner Alpha (2 > 1); round 4 never starts.
+
+2. **VIP Escort's "3 or more players" counts the joiner** (GM Corrections 3).
+   - Reference: the joiner is counted (with observers and game masters), the round must have been live for at least one whole second, never in a warm-up.
+   - Ours: `games/combat_arms/src/game/rules/flow.rs:327-331` counts only the players already in, from the first live instant.
+   - Expect: a real round live 20 s with 2 players in, a third joins → held until the next round's setup (M13.1). Joining 0.5 s after the round went live → spawns at once.
+
+3. **Assist sums don't cross rounds** (GM Corrections 5). VIP Escort and the clan modes drop every damage sum after each real round, so damage dealt in round k never earns an assist in round k + 1. Ours keeps them (`games/combat_arms/src/game/rules/scoring.rs:177`, cleared only at a match reset). Expect: escort player A deals 60 to B in round 1, both survive; in round 2 C kills B → no assist for A.
+
+Not determined: whether the clan modes (M18) also end the match on an empty team after their warm-ups; their own leaving rule (the match ends at once for the other clan) makes this unreachable in practice.
+
 ## Test cases
 
 Common setup unless stated: server file client copy (`ObjectStart` 0, `ObjectEnd` 3 s, `MissionEnd` 3 s), 20 Hz, US room data, friendly fire off, spawn protection and respawn waits as GM.
