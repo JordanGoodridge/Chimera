@@ -274,6 +274,9 @@ pub struct CaItem {
     /// Summed select-rate bonuses (mods, model, sets; 6.4): the draw
     /// plays at `played_rate(1 + this)`.
     pub select_rate: f32,
+    /// The weapon record's `FireAniRate`: added to the fire animation
+    /// rate (view_models.md Corrections 6; weapon_firing.md r_fire).
+    pub fire_rate: f32,
 }
 
 impl Default for CaItem {
@@ -284,6 +287,7 @@ impl Default for CaItem {
             infinite: false,
             sprint_out: 0.0,
             select_rate: 0.0,
+            fire_rate: 0.0,
         }
     }
 }

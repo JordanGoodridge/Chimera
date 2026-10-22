@@ -3,7 +3,7 @@
 Source basis: reference material the user pointed the spec session to on the game's player characters: the shared character-model attribute manager and the per-player model selection record, the player object's model building, attachments, death and body code on the server, the client's character effect (aim twisting, hit-sphere display), the shared third-person animation driver and its animation-set tables, the client and server animation updaters, the body object and its states, and the client hit-sphere test. Data was read from a US-region attribute data set (the model, attachment, mark and weapon attribute files) and, where it differs, compared with a BR-region set. Model numbers were measured with a throwaway reader written from `models_ltb.md` and `animation.md` on the character archives of the US reference client (build 1501.04), whose character archives are not keyed. The Steam install on the Windows PC (manifest build id 25595979) keys its character archives (`V2_RESOURCES_KEY`), so those numbers are marked "install" in Test cases and must be re-measured there. A follow-up session (Open questions 13–22) added the server's reload, weapon-fire and hit-box code, the client's shot filter, emote and body effects, and measured the female numbers and third-person weapon sockets on an older extracted client release (its male files reproduce the US 1501.04 numbers).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Behaviour (1 character records and model choice, 2 assembling the model: pieces, skins, head and face, attachments, 3 skeleton and sockets, 4 trackers and layering, 5 deciding the animation state, 6 building the animation names, 7 starting, restarting, syncing, rates and blend times, 8 aim pitch and twist, 9 hit reactions, emotes, 10 death and bodies, 11 hit-sphere placement); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Behaviour (1 character records and model choice, 2 assembling the model: pieces, skins, head and face, attachments, 3 skeleton and sockets, 4 trackers and layering, 5 deciding the animation state, 6 building the animation names, 7 starting, restarting, syncing, rates and blend times, 8 aim pitch and twist, 9 hit reactions, emotes, 10 death and bodies, 11 hit-sphere placement); Per-tick order; Edge cases; Quirks; Corrections (2026-10-22); Test cases; Open questions.
 
 ---
 
@@ -537,6 +537,75 @@ The female table has no neck sphere, no groin sphere and no 7.0 shoulder spheres
 10. **Server and client aim poses differ** (the server does not pitch `Torso`), so the server's own sphere tests see arms and head pitched less than drawn. Keep, and see Open question 5.
 11. **Upper and lower trackers resync on every movement change** (the torso's time is set to the legs'), which restarts the aim cycle when the legs change animation. Keep.
 
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's shared third-person driver and its client and server feeds, the player object's death, body and model-skin code and the client character effect, against this spec and our implementation (`games/combat_arms/src/game/characters.rs` and `characters/`, at the commit this section was written on). Ordered by what a player notices. Where a correction contradicts a section above, the correction wins.
+
+1. **A held fire button does not repeat the third-person fire animation** (corrects 7, "Starting an animation", the sentence "this is how a fire animation repeats once per shot cycle while firing", and Test case 12).
+   - Reference: the upper tracker is only (re)started when the class or posture changed, or the chosen upper name differs from the last one started while the posture is aim, fire or alt-fire. The restart-when-done rule belongs to that start; it is never reached while posture, class and name stay the same. So with the fire button held continuously (the server's raw flag), the fire animation plays once, then the upper tracker holds its last frame until the posture or name changes (button released for at least one driver update, a move that changes the name, a reload, a draw, a hit). The legs, by contrast, are started every update and do restart when done (looping names never are).
+   - Ours: `characters/driver.rs:737-744` calls the start for aim, fire and alt-fire postures every update with restart allowed, so a finished `URFRFiS` (and `UKRFiS`, `USNRFiS`, ...) restarts on the next update while fire is held.
+   - Expect: M4A1, standing, fire held 1000 ms on the server copy: upper `URFRFiS` starts once at t = 0, reports done at 101 ms and is still `URFRFiS` at its end time at 1000 ms (no second start). Release for one update and press again: it starts again from 0. Knife held 2 s: `UKRFiS` once, held at its last frame. Running forward with fire held keeps `URFRAmF` looping (unchanged).
+
+2. **A front-left body hit plays `DC`, not `DLSH`** (corrects 10, the "front, side: left" bullet, Quirk 5 and Test case 38).
+   - Reference: in the front-side-left branch, the head case picks `DLSH`, but the non-head case looks up `DLSH` and then returns the character's cached handle for `DLT`. That cache is cleared every time the player is (re)spawned and is only filled by a back-side-left body death of the same life, which cannot have happened, so the handle is always unset and the "missing animation" fallback plays `DC`.
+   - Ours: `characters/death.rs:107` returns `DLSH` for every front-left side hit.
+   - Expect: bullet death, d = (0.94, 0, −0.34) (from the left, slightly in front), last sphere `Upper_torso` → `DC` (1900 ms, US male); same d with `Face_Jaw` → `DLSH`; d = (0.94, 0, 0.34) unchanged (`DLT` / `DLSH`); right-side cases unchanged.
+
+3. **Walking off a real drop shows standing legs in the air** (corrects Edge cases, "Walking off a ledge").
+   - Reference: on any movement tick where the client did not jump, is not already falling, is not on a ladder, in a free-movement volume or spectating, and the footing test of `view_models.md` 6 fails (no floor within 150 u below the hull centre, i.e. 100 u below the standing feet), the client marks itself falling and sends the "falling" motion status. The driver then sets nothing for the legs (walk, no direction: `LST`) and the upper body uses the no-direction aim until the "landed" status arrives. Drops shallower than 100 u below the feet never fall, so the run legs continue there.
+   - Ours: the driver's jumped/landed come only from the jump flag (`characters.rs:832-833`), so walking off any ledge keeps `LRF` (and `URFRAmF`) through the fall.
+   - Expect: run forward off a 300 u drop: from the first tick with no floor within 150 u below the hull centre until the landing tick, lower `LST`, upper `URFRAmS`; after landing `LRF` / `URFRAmF` again. Off an 80 u step (80 u below the feet): `LRF` throughout.
+
+4. **The sniper and land-mine fire pose follows the shots, not the button** (corrects 5 step 4, first bullet, and the "Fire held" paragraph for these two classes).
+   - Reference: for classes 5 and 20 the per-update choice is called with "not firing"; the fire posture comes only from the server's per-shot fire notice (each shot the server accepts, and each throw notice), which sets the posture to fire for the next update. It is kept while that fire animation plays and becomes aim once it is done. The held button plays no part.
+   - Ours: `characters/driver.rs:613-619` uses the held fire flag (the raw one on the server), so holding the trigger of a bolt-action sniper keeps the fire posture between shots (and, with item 1's restart, replays the fire animation continuously).
+   - Expect: bolt sniper, trigger held 3 s, shots accepted at 0 and 1.5 s: upper fire animation starts at 0 and at 1.5 s (one start per shot), aim (`USNRAmS`) in between once each fire animation is done.
+
+5. **No fire pose while sprinting** (missing from 5; the build defines the option that disables firing poses during sprint, in the US, EU and BR configurations alike).
+   - Reference: after the fire / alt-fire choice, if the lower tracker is still playing the sprint leg animation (last movement sprint, not done; sprint legs loop, so: while sprinting), the posture is forced to aim.
+   - Ours: `characters/driver.rs:629-637` keeps fire or alt-fire while sprinting.
+   - Expect: sprint forward with the fire flag held (the server's raw flag) → posture aim, upper `URFRRAmF` **looping**; the last posture recorded is aim, so a direction change during the sprint copies the legs' time to the torso (7 step 3).
+
+6. **The driver's "ammo count 0" is the weapon's total ammunition, not the clip** (corrects 5 step 4, last bullet).
+   - Reference: both the client's and the server's value is the player's whole ammunition count for the current weapon (the reserve pool that includes the clip).
+   - Ours: `characters.rs:830` uses the clip.
+   - Expect: M4A1 with clip 0 and 90 in reserve, fire flag held before the reload status arrives → posture stays fire (item 1: held at the last frame), not aim. With total 0 → aim once the upper animation is done.
+
+7. **Crouch in the air clears the jump and fall status** (corrects 5, "Movement").
+   - Reference: when the motion status is jumped or falling and the crouch key is held, the status is reset to none and the normal locomotion of the keys is used; it does not come back when crouch is released in the air (only a new "jumped" sets it).
+   - Ours: `characters/driver.rs:650-660` keeps "jumped" while crouch is held (so releasing crouch mid-air brings the jump legs back) and plays the falling `LST` whatever the crouch key.
+   - Expect: jump forward at t = 0, crouch held from 200 to 400 ms, still airborne at 400 ms: legs `LRF` (run forward, crouch tracker by r) from 200 ms on, and no `LJJ` after 400 ms. Walking off a drop (item 3) then pressing crouch: locomotion legs at once.
+
+8. **Forward and backward held together give backward** (corrects 5, "Direction from the keys").
+   - Reference: the keys are applied in order forward, backward (overrides), right strafe, left strafe; within a strafe the forward key is tested before the backward one.
+   - Ours: `characters/driver.rs:95-96` lets forward win.
+   - Expect: forward + back → `LRB`, `URFRAmB`; forward + back + right → `LRFR`; forward + back + left → `LRFL`; left + right → left (unchanged).
+
+9. **An emote plays on the upper body only; the legs return at once** (answers Open question 20's open detail, as read; corrects 9 "Playing").
+   - Reference: the emote is put on both trackers once, but the driver keeps running on every client movement frame and starts its leg animation each time, which replaces the emote on the lower tracker on the next movement frame. The upper tracker keeps the emote because the driver's upper name and posture have not changed. When the emote ends, nothing restarts the upper tracker either: it keeps the emote's last pose until the driver next starts an upper animation (a posture, class or upper-name change).
+   - Ours: `characters/driver.rs:700-716` holds both trackers on the emote and restarts the trackers when it ends.
+   - Expect: Hunted, standing still, `Insult_Dance`: lower tracker back on `LST` within one movement frame; upper on `Insult_Dance` until done (weapon hidden); after it ends the upper still shows the emote's final frame until the player moves, fires, reloads or switches. Check live (Open question 20's measurement).
+
+10. **A death "in a jump" means the jump legs, and only for non-blast deaths** (corrects 10, the jump bullet).
+    - Reference: the jump test is the driver's movement being the jump (status "jumped", crouch key up, the jump leg animation not yet done: the first ~667 ms of a jump), not "airborne". The coin is forced to 0 and the body turned only in the non-blast branch; explosion, claymore and land-mine deaths are never turned.
+    - Ours: `characters.rs:611` uses the airborne flag for the whole flight and `characters.rs:637` turns the body for every kind.
+    - Expect: bullet death 300 ms after a jump starts → turned away from the shot, c = 0; 800 ms after (falling) → not turned, coin as drawn; grenade death 300 ms after → not turned.
+
+11. **No team mark at all in Quarantine** (2, "Team mark": the infection mode is the Quarantine game type).
+    - Reference: in Quarantine every character's slot 2 is mark 0 (transparent), teammates included, on the client and on server-made bodies.
+    - Ours: `characters/models.rs:301` always passes "not infection", and `characters.rs:1024` gives teammates the tie in every mode.
+    - Expect: Quarantine, a teammate's slot 2 = `CHARS_T_BODY\Alpha.dtx` (nothing drawn); any other team mode = `RED_Tie.dtx`.
+
+12. **The corpse is a separate object that outlives the respawn** (10; restates for implementers a shortcut that players see).
+    - Reference: at death the player object itself is made invisible and loses its attachments; the body object shows the death animation at the death spot and stays until 5 s after its owner respawns in the common modes (500 s in Combat, ESL and clan-default modes).
+    - Ours: bodies (`CaBody`) are not drawn; the dead player's own model plays the death animation, so the corpse vanishes the moment its owner respawns.
+    - Expect: TDM, death at 0 with `DT`, respawn at 10 s → one body model visible at the death spot until 15 s while the respawned player is drawn at its spawn.
+
+13. **Missing crouch names fall back to the leg animation** (4 and 6, minor).
+    - Reference: if the leg set has no crouch name for the direction, the crouch tracker is given the lower tracker's animation instead of being left alone.
+    - Ours: `characters/driver.rs:726-729` starts nothing.
+    - Expect: a library without `LCFR`: crouch tracker plays the lower name (`LRFR` or `LWFR`) with weight r.
+
 ## Test cases
 
 "Install" marks values that depend on the character archives: they were measured on the US reference client 1501.04 and must be re-checked on the Steam install, build 25595979, after decryption of `CHARS_M_BODY.rez` (the Steam body files have the same sizes as the US ones, 429,442 and 237,832 bytes, but the Steam libraries differ: `ST_M_CHILD.LTB` 66,900,324 vs 63,225,013 bytes, `ST_W_CHILD.LTB` 95,232,495 vs 91,210,809). "Data" marks values from the US attribute data set. Positions in u, model space, left-handed; tolerance 0.01. The "stand" pose is the layered pose of 4 at t = 0 for every tracker: main entry 0, upper `URFRAmS`, lower `LST`, crouch `LC` with multiplier 0; "crouch" is the same with multiplier 1.
@@ -656,3 +725,4 @@ The female table has no neck sphere, no groin sphere and no 7.0 shoulder spheres
     **Answered:** `D_W` = the `EndlessFall` damage kind, `D_P` = `Poison`, `D_S` = `Melee`; the coin (Quirk 6) is a fresh C-library generator seeded with the clock in **seconds** before every death choice; the floor snap moves the player object itself. Applied in 10; cases 54, 56.
 22. **Third-person weapons.**
     **Answered:** `HHModel` of the weapon record, on `RightHand`, zero offset, identity rotation, scale 1 (`HHModelScale` unread); no back or holster display. Applied in 2; case 57.
+23. **Left open by the 2026-10-22 corrections.** (a) A jump-pad launch sends its own motion status, which the driver treats like "falling" (standing legs until landing); whether the client also reports an ordinary "jumped" for it was not traced, so whether a pad launch shows the jump legs is open. (b) Item 9's frozen upper pose after an emote follows from the start rules as read; confirm live. (c) Item 1: whether the stock fire animations' last frame differs visibly from the aim pose (how a held trigger looks to others) needs the libraries.
