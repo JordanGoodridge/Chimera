@@ -16,7 +16,7 @@ use crate::stack::{
 fn the_scoreboard_spectator_bars_and_bomb_look_load() {
     use crate::stack::map::hud::{UiKind, UiSound};
     let Some(map) = dust2() else { return };
-    let hud = map.hud.as_ref().expect("CS:S has a HUD");
+    let hud = map.kit.hud.as_ref().expect("CS:S has a HUD");
     let menus = hud.menus.as_ref().expect("CS:S has its VGUI menus");
     let board = &menus.layouts[menus.scoreboard.as_ref().expect("scoreboard.res")];
     let background = board.get("ScoreboardBackground").unwrap();
@@ -50,7 +50,7 @@ fn the_scoreboard_spectator_bars_and_bomb_look_load() {
     assert_eq!(screen.pixels, Vec2::new(200.0, 100.0));
     assert_eq!(screen.colors.get("C4Panel_Armed"), Some(&[255, 30, 13, 200]));
     assert_eq!(screen.font.as_ref().map(|f| f.family.as_str()), Some("Courier New"));
-    let c4 = map.view_models.iter().find(|v| v.key == cs_source::objectives::C4).unwrap();
+    let c4 = map.kit.view_models.iter().find(|v| v.key == cs_source::objectives::C4).unwrap();
     let (_, _, size) = crate::stack::map::view_model::screen_corners(c4).expect("the C4's screen attachments");
     assert!((size.x - 2.7).abs() < 0.01 && (size.y - 1.25).abs() < 0.01, "{size}");
     // The press-button sequence types the code on the screen (model event
@@ -91,7 +91,7 @@ fn the_scoreboard_spectator_bars_and_bomb_look_load() {
 fn the_games_buy_and_team_menus_load() {
     use crate::stack::map::hud::{UiKind, layout_key};
     let Some(map) = dust2() else { return };
-    let hud = map.hud.as_ref().expect("CS:S has a HUD");
+    let hud = map.kit.hud.as_ref().expect("CS:S has a HUD");
     let menus = hud.menus.as_ref().expect("CS:S has its VGUI menus");
     for team in [1, 2] {
         let main = &menus.layouts[menus.buy_page(Some(team)).unwrap()];
@@ -1005,11 +1005,11 @@ fn sprites_load() {
 #[test]
 fn dust_motes_load() {
     let Some(map) = dust2() else { return };
-    assert_eq!(map.dust.len(), 2);
-    let mut rates: Vec<f32> = map.dust.iter().map(|d| d.rate).collect();
+    assert_eq!(map.source_fx().dust.len(), 2);
+    let mut rates: Vec<f32> = map.source_fx().dust.iter().map(|d| d.rate).collect();
     rates.sort_by(f32::total_cmp);
     assert_eq!(rates, vec![50.0, 300.0]);
-    for d in &map.dust {
+    for d in &map.source_fx().dust {
         assert!(d.texture.is_some(), "particle/sparkles");
         assert_eq!((d.life, d.size), ((3.0, 5.0), (15.0, 15.0)));
         assert!((d.fade_distance - 512.0 * 0.0254).abs() < 1e-4);
@@ -1256,7 +1256,7 @@ fn sounds_load() {
         assert!(!e.waves.is_empty(), "{name} has no waves");
     }
     // The announcer's round sounds.
-    let r = &map.round_sounds;
+    let r = &map.kit.round_sounds;
     for name in [&r.attackers_win, &r.defenders_win, &r.draw].into_iter().flatten().chain(&r.start) {
         let e = s.entry(name).unwrap_or_else(|| panic!("no round sound {name}"));
         assert!(!e.waves.is_empty(), "{name} has no waves");
@@ -1488,7 +1488,7 @@ fn bot_walks_the_nav_mesh_to_an_enemy() {
         weapons::CsWeaponsPlugin,
     };
     let Some(map) = dust2() else { return };
-    let nav = map.nav.clone().expect("dust2 has a nav mesh");
+    let nav = map.kit.nav.clone().expect("dust2 has a nav mesh");
     let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin, CsWeaponsPlugin));
     sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
     sim.app
@@ -1661,10 +1661,10 @@ fn character_models_and_hitboxes() {
     let Some(map) = dust2() else { return };
     // The two teams' first classes, then the six other classes' models
     // (the class menu: `core::PlayerClass`).
-    assert_eq!(map.characters.len(), 8);
-    let classes: Vec<Option<u8>> = map.characters.iter().map(|c| c.class).collect();
+    assert_eq!(map.kit.characters.len(), 8);
+    let classes: Vec<Option<u8>> = map.kit.characters.iter().map(|c| c.class).collect();
     assert_eq!(classes, [None, None, Some(2), Some(3), Some(4), Some(6), Some(7), Some(8)]);
-    for c in &map.characters {
+    for c in &map.kit.characters {
         assert!(!c.model.meshes.is_empty());
         assert_eq!(c.hitboxes.len(), 19);
         let count = |g: Hitgroup| c.hitboxes.iter().filter(|h| h.group == g).count();
@@ -1784,7 +1784,7 @@ fn every_gun_has_its_body_animations() {
         weapon::{Inventory, Magazine, give},
     };
     let Some(map) = dust2() else { return };
-    let set = map.characters[0].animations.clone().expect("player animations");
+    let set = map.kit.characters[0].animations.clone().expect("player animations");
     for g in guns() {
         let x = suffix(Some(g.id.as_str()));
         for seq in [format!("Idle_Upper_{x}"), format!("Run_Upper_{x}"), format!("Crouch_Idle_Upper_{x}")] {
@@ -1882,7 +1882,7 @@ fn bodies_animate_with_movement() {
         map::anim::Animator,
     };
     let Some(map) = dust2() else { return };
-    assert!(map.characters[0].animations.is_some(), "player animations");
+    assert!(map.kit.characters[0].animations.is_some(), "player animations");
     let mut sim = Sim::new(CsSim, (
         MapPlugin::new(map.clone()),
         SourceMovementPlugin,
@@ -1926,7 +1926,7 @@ fn bodies_animate_with_movement() {
         sim.app.world().get::<crate::stack::map::Held>(c).map(|h| h.0.clone()),
         Some(Some(crate::stack::games::cs_source::weapons::AK47.to_string()))
     );
-    let keys: Vec<&str> = map.held.iter().map(|h| h.key.as_str()).collect();
+    let keys: Vec<&str> = map.kit.held.iter().map(|h| h.key.as_str()).collect();
     let all = crate::stack::games::cs_source::weapons::world_models().len()
         + crate::stack::games::cs_source::weapons::silenced_world_models().len()
         + crate::stack::games::cs_source::objectives::WORLD_MODELS.len();
@@ -2348,7 +2348,7 @@ fn view_models_load_with_their_sequences() {
     use crate::stack::games::cs_source::weapons::{AK47, KNIFE};
     let Some(map) = dust2() else { return };
     let ak = map
-        .view_models
+        .kit.view_models
         .iter()
         .find(|v| v.key == AK47)
         .expect("AK-47 view model");
@@ -2421,7 +2421,7 @@ fn view_models_load_with_their_sequences() {
         assert!(a.0.angle_between(b.0) < 0.01 && a.1.distance(b.1) < 0.01);
     }
     let knife = map
-        .view_models
+        .kit.view_models
         .iter()
         .find(|v| v.key == KNIFE)
         .expect("knife view model");
@@ -2437,7 +2437,7 @@ fn view_models_load_with_their_sequences() {
 fn game_hud_loads() {
     use crate::stack::map::hud::HudCoord;
     let Some(map) = dust2() else { return };
-    let hud = map.hud.as_ref().expect("a HUD");
+    let hud = map.kit.hud.as_ref().expect("a HUD");
     let health = &hud.panels["HudHealth"];
     assert_eq!((health.x, health.y), (HudCoord::Start(8.0), HudCoord::Start(446.0)));
     assert_eq!(hud.panels["HudAmmo"].x, HudCoord::End(157.0));
@@ -2457,7 +2457,7 @@ fn view_model_handedness_in_the_files() {
     use crate::stack::games::cs_source::weapons::{AK47, KNIFE};
     let Some(map) = dust2() else { return };
     let side = |key: &str, bone: &str| {
-        let v = map.view_models.iter().find(|v| v.key == key).unwrap();
+        let v = map.kit.view_models.iter().find(|v| v.key == key).unwrap();
         let set = v.animations.as_ref().unwrap();
         let mut pose = set.defaults.clone();
         let params = set.default_params();
@@ -2496,7 +2496,7 @@ fn view_model_handedness_in_the_files() {
 fn held_ak_has_a_muzzle_ahead_of_the_grip() {
     use crate::stack::games::cs_source::weapons::AK47;
     let Some(map) = dust2() else { return };
-    let ak = map.held.iter().find(|h| h.key == AK47).expect("held AK");
+    let ak = map.kit.held.iter().find(|h| h.key == AK47).expect("held AK");
     let m = ak.muzzle.expect("muzzle attachment");
     let fwd = m.rotation * Vec3::X;
     eprintln!("muzzle at {} forward {fwd}", m.translation);
@@ -2600,17 +2600,17 @@ fn running_over_terrain_keeps_speed() {
 fn gun_models_icons_and_handedness() {
     use crate::stack::games::cs_source::weapons::{ELITE, guns, silenced_key, silenced_world_models, view_models};
     let Some(map) = dust2() else { return };
-    let hud = map.hud.as_ref().expect("a HUD");
+    let hud = map.kit.hud.as_ref().expect("a HUD");
     for (id, _) in silenced_world_models() {
-        assert!(map.held.iter().any(|h| h.key == silenced_key(id)), "{id} silenced world model");
+        assert!(map.kit.held.iter().any(|h| h.key == silenced_key(id)), "{id} silenced world model");
     }
     for g in guns() {
         let short = g.id.rsplit("weapon_").next().unwrap();
         assert!(hud.icons.contains_key(&format!("d_{short}")), "no d_{short} icon");
-        assert!(map.held.iter().any(|h| h.key == g.id), "{} world model", g.id);
+        assert!(map.kit.held.iter().any(|h| h.key == g.id), "{} world model", g.id);
         // Every gun has its view model (the AWP's is MDL version 48).
         let v = map
-            .view_models
+            .kit.view_models
             .iter()
             .find(|v| v.key == g.id)
             .unwrap_or_else(|| panic!("{} view model: {:?}", g.id, map.warnings));
@@ -2645,7 +2645,7 @@ fn gun_models_icons_and_handedness() {
     }
     // The Elites: left shots the primary activity, right the secondary,
     // each hand's last round its own.
-    let elite = map.view_models.iter().find(|v| v.key == ELITE).unwrap();
+    let elite = map.kit.view_models.iter().find(|v| v.key == ELITE).unwrap();
     let set = elite.animations.as_ref().unwrap();
     for act in ["ACT_VM_PRIMARYATTACK", "ACT_VM_SECONDARYATTACK", "ACT_VM_DRYFIRE", "ACT_VM_DRYFIRE_LEFT"] {
         assert!(set.activity(act).is_some(), "elite {act}");
@@ -2665,7 +2665,7 @@ fn overview_lines_up_with_the_world() {
         }
         t.rgba8[((p.y as u32 * t.width + p.x as u32) * 4 + 1) as usize] as f32
     };
-    let nav = map.nav.as_ref().unwrap();
+    let nav = map.kit.nav.as_ref().unwrap();
     let on_floor = nav.areas.iter().map(|a| green(o.pixel(a.center))).sum::<f32>() / nav.areas.len() as f32;
     let image = t.rgba8.chunks(4).map(|p| p[1] as f32).sum::<f32>() / (t.width * t.height) as f32;
     assert!(on_floor > image * 1.4, "nav areas average {on_floor}, image {image}");
@@ -2711,7 +2711,7 @@ fn bot_objectives_are_the_bomb_sites() {
         scale: map.entity_scale,
     });
     assert_eq!(goals.len(), 2, "{goals:?}");
-    let nav = map.nav.as_ref().expect("nav mesh");
+    let nav = map.kit.nav.as_ref().expect("nav mesh");
     let mut places: Vec<String> = goals
         .iter()
         .filter_map(|g| nav.area_at(*g + Vec3::Y * 0.5).and_then(|a| nav.places.get(nav.areas[a].place?).cloned()))
@@ -2732,12 +2732,12 @@ fn grenade_models_and_sequences() {
         weapons::view_models,
     };
     let Some(map) = dust2() else { return };
-    let hud = map.hud.as_ref().expect("a HUD");
+    let hud = map.kit.hud.as_ref().expect("a HUD");
     assert!(hud.icons.contains_key("d_hegrenade"));
     for id in &[HEGRENADE, FLASHBANG, SMOKEGRENADE] {
-        assert!(map.held.iter().any(|h| h.key == *id), "{id} world model: {:?}", map.warnings);
+        assert!(map.kit.held.iter().any(|h| h.key == *id), "{id} world model: {:?}", map.warnings);
         let v = map
-            .view_models
+            .kit.view_models
             .iter()
             .find(|v| v.key == *id)
             .unwrap_or_else(|| panic!("{id} view model: {:?}", map.warnings));
@@ -2895,7 +2895,7 @@ fn walking_into_a_tunnel_switches_soundscape_and_room() {
 fn view_models_face_outward() {
     let Some(map) = dust2() else { return };
     let mut knives = 0;
-    for v in &map.view_models {
+    for v in &map.kit.view_models {
         for m in &v.model.meshes {
             let p: Vec<Vec3> = m.positions.iter().map(|p| Vec3::from(*p)).collect();
             let centre = p.iter().copied().sum::<Vec3>() / p.len().max(1) as f32;

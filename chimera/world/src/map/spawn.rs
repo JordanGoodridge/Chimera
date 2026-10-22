@@ -794,7 +794,7 @@ fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: 
     commands.insert_resource(surface_color::SurfaceColors::new(data));
     commands.insert_resource(particles::ParticleMaterials(data.particles.clone()));
     D::insert_drawn(drawn, commands, s, DrawnResource::Particles);
-    if let Some(h) = &data.hud {
+    if let Some(h) = &data.kit.hud {
         let images = h
             .sprites
             .values()
@@ -809,16 +809,16 @@ fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: 
     }
     D::insert_drawn(drawn, commands, s, DrawnResource::Decals);
     commands.insert_resource(sound::SoundBank(data.sounds.clone()));
-    if !data.characters.is_empty() {
-        commands.insert_resource(CharacterModels(Arc::new(data.characters.clone())));
+    if !data.kit.characters.is_empty() {
+        commands.insert_resource(CharacterModels(Arc::new(data.kit.characters.clone())));
     }
-    if !data.view_models.is_empty() {
-        commands.insert_resource(ViewModels(Arc::new(data.view_models.clone())));
+    if !data.kit.view_models.is_empty() {
+        commands.insert_resource(ViewModels(Arc::new(data.kit.view_models.clone())));
     }
     if let Some(field) = &data.light_field {
         commands.insert_resource(LightField(field.clone()));
     }
-    if let Some(nav) = &data.nav {
+    if let Some(nav) = &data.kit.nav {
         commands.insert_resource((**nav).clone());
     }
     commands.insert_resource(sound::SurfaceGrid::new(data));
@@ -847,11 +847,11 @@ fn insert_resources<D: MapDrawer>(commands: &mut Commands, s: &MapSpawn, drawn: 
                 .collect(),
         ));
         D::insert_drawn(drawn, commands, s, DrawnResource::Fog);
-        commands.insert_resource(data.round_sounds.clone());
-        if let Some(r) = &data.radio {
+        commands.insert_resource(data.kit.round_sounds.clone());
+        if let Some(r) = &data.kit.radio {
             commands.insert_resource(r.clone());
         }
-        if let Some(p) = &data.bot_profiles {
+        if let Some(p) = &data.kit.bot_profiles {
             commands.insert_resource(p.clone());
         }
     }

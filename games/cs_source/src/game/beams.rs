@@ -94,7 +94,7 @@ pub fn add_strikes(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData
         };
         let rgb = prop(&e, "rendercolor").and_then(parse3).unwrap_or(Vec3::splat(255.0)) / 255.0;
         let brightness = num("renderamt").unwrap_or(255.0).clamp(0.0, 255.0) / 255.0;
-        data.strikes.push(MapStrike {
+        data.source_fx_mut().strikes.push(MapStrike {
             entity: index,
             material,
             width: num("BoltWidth").unwrap_or(1.0).clamp(0.0, 102.3) * METERS_PER_UNIT,

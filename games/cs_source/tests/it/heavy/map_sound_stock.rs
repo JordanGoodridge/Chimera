@@ -61,8 +61,8 @@ fn scrape_and_gib_bounce_entries_load_with_the_map() {
 #[test]
 fn de_nuke_steam_jets_puff_when_turned_on() {
     let Some(map) = load("de_nuke") else { return };
-    assert!(!map.steam.is_empty(), "de_nuke's env_steam jets");
-    for j in &map.steam {
+    assert!(!map.source_fx().steam.is_empty(), "de_nuke's env_steam jets");
+    for j in &map.source_fx().steam {
         let e = &map.entities[j.entity.unwrap()];
         eprintln!(
             "{} {:?} at {:?} dir {:?}: on {} speed {:.2} m/s length {:.2} m rate {} sizes {:.3}-{:.3} m alpha {:.2} ramp {:?} texture {}",
@@ -96,13 +96,13 @@ fn de_nuke_steam_jets_puff_when_turned_on() {
             .collect()
     };
     let before = counts(&mut sim);
-    assert_eq!(before.len(), map.steam.len());
+    assert_eq!(before.len(), map.source_fx().steam.len());
     for (entity, on, n) in &before {
         assert_eq!(*n > 0, *on, "entity {entity}: puffs only while on");
     }
     // Turn every jet on through the logic.
     let names: Vec<String> = map
-        .steam
+        .source_fx().steam
         .iter()
         .filter_map(|j| map.entities[j.entity.unwrap()].get("targetname").map(str::to_string))
         .collect();

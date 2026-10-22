@@ -275,7 +275,7 @@ pub fn load_level_bytes_with(
         &super::detail::model_entries(&detail),
         detail_fade,
     );
-    data.detail_props = super::detail::detail_props(&detail, &bsp, |m| materials.resolve(m).texture);
+    data.source_fx_mut().detail_props = super::detail::detail_props(&detail, &bsp, |m| materials.resolve(m).texture);
     timer.lap("props");
     super::ropes::add_ropes(&bsp, &mut materials, &lighting, &occluders, &mut data);
     // The same query at run time, for view models (spec view_models.md 9).
@@ -300,7 +300,7 @@ pub fn load_level_bytes_with(
         (CLASS_MODELS[4], None),
     ] {
         match super::props::load_character(&mut materials, &surfaces, path, team) {
-            Ok(c) => data.characters.push(c),
+            Ok(c) => data.kit.characters.push(c),
             Err(e) => data.warnings.push(e),
         }
     }
@@ -309,7 +309,7 @@ pub fn load_level_bytes_with(
         match super::props::load_character(&mut materials, &surfaces, path, Some(team)) {
             Ok(mut c) => {
                 c.class = Some(i as u8 + 1);
-                data.characters.push(c);
+                data.kit.characters.push(c);
             }
             Err(e) => data.warnings.push(e),
         }
@@ -320,19 +320,19 @@ pub fn load_level_bytes_with(
             match super::props::load_character(&mut materials, &surfaces, path, None) {
                 Ok(mut c) => {
                     c.name = Some(path.to_string());
-                    data.characters.push(c);
+                    data.kit.characters.push(c);
                 }
                 Err(e) => data.warnings.push(e),
             }
         }
     }
-    data.decals = super::decals::impact_decals(&mut materials);
-    super::decals::spray_logos(&mut materials, &mut data.decals);
-    data.hud = super::hud::load(&mut materials, name).map(std::sync::Arc::new);
-    data.round_sounds = super::sound::round_sounds();
-    data.radio = super::radio::load(&materials);
+    data.kit.decals = super::decals::impact_decals(&mut materials);
+    super::decals::spray_logos(&mut materials, &mut data.kit.decals);
+    data.kit.hud = super::hud::load(&mut materials, name).map(std::sync::Arc::new);
+    data.kit.round_sounds = super::sound::round_sounds();
+    data.kit.radio = super::radio::load(&materials);
     // Bots' names (the install's botprofile.db).
-    data.bot_profiles = materials
+    data.kit.bot_profiles = materials
         .read("botprofile.db")
         .map(|b| crate::map::bot_profiles::BotProfiles::parse(&String::from_utf8_lossy(&b)))
         .filter(|p| !p.0.is_empty());
@@ -354,20 +354,20 @@ pub fn load_level_bytes_with(
     data.camera_texture = materials.camera_texture;
     timer.lap("characters, hud, particles");
     // What characters hold: the weapons' world models.
-    if let Some(skeleton) = data.characters.first().map(|c| c.bones.clone()) {
+    if let Some(skeleton) = data.kit.characters.first().map(|c| c.bones.clone()) {
         for (weapon, path) in super::weapons::world_models()
             .iter()
             .chain(super::objectives::WORLD_MODELS)
         {
             match super::props::load_held(&mut materials, path, weapon, &skeleton) {
-                Ok(h) => data.held.push(h),
+                Ok(h) => data.kit.held.push(h),
                 Err(e) => data.warnings.push(e),
             }
         }
         for (weapon, path) in super::weapons::silenced_world_models() {
             let key = super::weapons::silenced_key(weapon);
             match super::props::load_held(&mut materials, path, &key, &skeleton) {
-                Ok(h) => data.held.push(h),
+                Ok(h) => data.kit.held.push(h),
                 Err(e) => data.warnings.push(e),
             }
         }
@@ -375,14 +375,14 @@ pub fn load_level_bytes_with(
     // What the local player sees of them: the view models.
     for (weapon, path, right_handed) in super::weapons::view_models() {
         match super::props::load_view_model(&mut materials, path, weapon, right_handed) {
-            Ok(v) => data.view_models.push(v),
+            Ok(v) => data.kit.view_models.push(v),
             Err(e) => data.warnings.push(e),
         }
     }
-    data.muzzle_flash = Some(super::view_anim::muzzle_flash(&mut materials));
+    data.kit.muzzle_flash = Some(super::view_anim::muzzle_flash(&mut materials));
     for (key, path, bounce) in super::view_anim::SHELLS {
         match super::props::load_shell(&mut materials, path) {
-            Ok(model) => data.shells.push(crate::map::shells::MapShell {
+            Ok(model) => data.kit.shells.push(crate::map::shells::MapShell {
                 key: key.to_string(),
                 model,
                 bounce: Some(bounce.to_string()),
@@ -390,7 +390,7 @@ pub fn load_level_bytes_with(
             Err(e) => data.warnings.push(e),
         }
     }
-    data.shell_physics = Some(super::view_anim::shell_physics());
+    data.kit.shell_physics = Some(super::view_anim::shell_physics());
     // Props' break pieces are in already (`props::add_static_props`).
     // Breakable brushes' propdata templates first: one may name a gib
     // list.
@@ -431,7 +431,7 @@ pub fn load_level_bytes_with(
     timer.lap("sounds");
     if let Some(bytes) = materials.read(&format!("maps/{}.nav", name.to_lowercase())) {
         match super::nav::parse(&bytes) {
-            Ok((nav, _)) => data.nav = Some(std::sync::Arc::new(nav)),
+            Ok((nav, _)) => data.kit.nav = Some(std::sync::Arc::new(nav)),
             Err(e) => data.warnings.push(e),
         }
     }

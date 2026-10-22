@@ -51,8 +51,8 @@ fn dust2() -> Option<MapData> {
 #[test]
 fn dust2_is_dressed_for_combat_arms() {
     let Some(map) = dust2() else { return };
-    assert!(map.radio.is_none() && map.hud.is_none() && map.nav.is_none(), "CS:S's parts taken off");
-    let keys: Vec<&str> = map.view_models.iter().map(|v| v.key.as_str()).collect();
+    assert!(map.kit.radio.is_none() && map.kit.hud.is_none() && map.kit.nav.is_none(), "CS:S's parts taken off");
+    let keys: Vec<&str> = map.kit.view_models.iter().map(|v| v.key.as_str()).collect();
     assert!(
         keys.iter().any(|k| k.contains("m4a1")) || map.warnings.iter().any(|w| w.contains("view model")),
         "Combat Arms' view models (or why not): {keys:?}"

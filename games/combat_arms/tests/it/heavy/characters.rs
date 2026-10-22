@@ -97,7 +97,7 @@ fn drawn_body_skins_in_its_frame() {
     let file = |p: &str| mount.read(p).ok();
     let mut map = MapData::default();
     models::add_character_models(&mut map, &combat_arms::game::data::CaData::install(), &file);
-    let Some(body) = map.characters.iter().find(|c| c.name.as_deref() == Some(models::body_name(0).as_str())) else {
+    let Some(body) = map.kit.characters.iter().find(|c| c.name.as_deref() == Some(models::body_name(0).as_str())) else {
         eprintln!("skipping: no character bodies (V2 key)");
         return;
     };
@@ -353,7 +353,7 @@ fn warehouse_players_wear_their_bodies() {
     }
     let mount = (INFO.open)(&install).unwrap();
     let map = world::load_from(&mount, "warehouse").unwrap();
-    let names: Vec<_> = map.characters.iter().filter_map(|c| c.name.clone()).collect();
+    let names: Vec<_> = map.kit.characters.iter().filter_map(|c| c.name.clone()).collect();
     if !names.contains(&models::body_name(0)) {
         eprintln!("skipping: no character bodies ({:?})", map.warnings.iter().find(|w| w.contains("character")));
         return;
@@ -420,7 +420,7 @@ fn default_bodies_wear_face_and_head() {
         assert!(group.faces.len() >= 3, "the sex's faces");
         assert_eq!(group.heads.first(), Some(&-1));
         let body = map
-            .characters
+            .kit.characters
             .iter()
             .find(|c| c.name.as_deref() == Some(models::body_name(id).as_str()))
             .unwrap_or_else(|| panic!("body {id} not loaded: {:?}", map.warnings));
@@ -507,7 +507,7 @@ fn default_bodies_wear_face_and_head() {
         .collect();
     assert!(with_model.len() >= 10, "{with_model:?}");
     for id in &with_model {
-        let held = map.held.iter().find(|h| &h.key == id).unwrap_or_else(|| panic!("{id}: no held model: {:?}", map.warnings));
+        let held = map.kit.held.iter().find(|h| &h.key == id).unwrap_or_else(|| panic!("{id}: no held model: {:?}", map.warnings));
         assert!(!held.model.meshes.is_empty(), "{id}");
         assert!(held.model.meshes.iter().any(|m| m.texture.is_some()), "{id}: untextured (the grey box)");
     }

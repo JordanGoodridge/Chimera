@@ -42,9 +42,9 @@ pub fn build_assets(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<PropMaterial>,
 ) -> Option<ShellAssets> {
-    let physics = data.shell_physics?;
+    let physics = data.kit.shell_physics?;
     let models = data
-        .shells
+        .kit.shells
         .iter()
         .map(|s| {
             let parts = s

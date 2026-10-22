@@ -103,7 +103,7 @@ pub fn add_steam(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
         }
         // Normal jets' sizes are whole units, 0-255.
         let size = |k: &str| num(k, 0.0).trunc().clamp(0.0, 255.0) * METERS_PER_UNIT;
-        data.steam.push(MapSteam {
+        data.source_fx_mut().steam.push(MapSteam {
             origin: o,
             forward: dir(forward),
             right: dir(right),

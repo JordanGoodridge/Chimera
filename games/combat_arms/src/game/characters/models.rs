@@ -197,7 +197,7 @@ pub fn add_character_models(map: &mut MapData, ca: &CaDataInner, file: &dyn Fn(&
             .filter(|r| r.skeleton == *skeleton)
             .collect();
         match body_group(&records, scale, map, file) {
-            Ok(c) => map.characters.push(c),
+            Ok(c) => map.kit.characters.push(c),
             Err(e) => failed.push(e),
         }
     }
@@ -215,7 +215,7 @@ pub fn add_character_models(map: &mut MapData, ca: &CaDataInner, file: &dyn Fn(&
         let Some(path) = w.models.world.as_deref() else { continue };
         let look = data.weapon(Some(&w.id));
         match held(path, &w.id, &look, hand, map, file) {
-            Ok(h) => map.held.push(h),
+            Ok(h) => map.kit.held.push(h),
             Err(e) => map.warnings.push(format!("{} third-person model: {e}", w.id)),
         }
     }
@@ -276,11 +276,11 @@ pub fn append_shared(map: &mut MapData, models: &SharedModels) {
         }
     };
     map.textures.extend(models.data.textures.iter().cloned());
-    map.characters.extend(models.data.characters.iter().cloned().map(|mut c| {
+    map.kit.characters.extend(models.data.kit.characters.iter().cloned().map(|mut c| {
         shift(&mut c.model);
         c
     }));
-    map.held.extend(models.data.held.iter().cloned().map(|mut h| {
+    map.kit.held.extend(models.data.kit.held.iter().cloned().map(|mut h| {
         shift(&mut h.model);
         h
     }));

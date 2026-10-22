@@ -60,7 +60,7 @@ fn data_view_models_load_skinned() {
     for w in &map.warnings {
         eprintln!("warning: {w}");
     }
-    for v in &map.view_models {
+    for v in &map.kit.view_models {
         let set = v.animations.as_ref().unwrap();
         eprintln!(
             "{}: {} meshes ({} textured), {} bones, sockets {:?}, animations {:?}",
@@ -98,7 +98,7 @@ fn data_view_models_load_skinned() {
         assert_eq!(textured, readable, "{}: skins", v.key);
     }
     for id in [M92FS, "combat_arms:remington_870", "combat_arms:m60"] {
-        assert!(map.view_models.iter().any(|v| v.key == id), "{id}");
+        assert!(map.kit.view_models.iter().any(|v| v.key == id), "{id}");
     }
 }
 
@@ -143,7 +143,7 @@ fn keyed_view_models_with_hands() {
         "remington_870",
     ] {
         let id = format!("combat_arms:{id}");
-        let v = map.view_models.iter().find(|v| v.key == id).unwrap_or_else(|| panic!("{id}: no view model"));
+        let v = map.kit.view_models.iter().find(|v| v.key == id).unwrap_or_else(|| panic!("{id}: no view model"));
         let d = set.get(&id).unwrap();
         let untextured: Vec<&str> =
             v.model.meshes.iter().filter(|m| m.texture.is_none()).map(|m| m.material.as_str()).collect();
@@ -320,7 +320,7 @@ fn playing(sim: &Sim, p: Entity) -> Option<String> {
 #[test]
 fn m92fs_in_play() {
     let Some((_, map)) = loaded() else { return };
-    let m92fs = map.view_models.iter().find(|v| v.key == M92FS).unwrap().clone();
+    let m92fs = map.kit.view_models.iter().find(|v| v.key == M92FS).unwrap().clone();
     let mut sim = Sim::with(CaSim, |app| {
         app.add_plugins(GreyboxMapPlugin);
     });
