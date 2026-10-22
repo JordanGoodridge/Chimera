@@ -1017,6 +1017,7 @@ fn autoexec(
         console.submit("binddefaults new");
     }
     console.submit("execifexists autoexec.cfg");
+    console.log_output = true;
     for line in &args.0.console {
         console.submit(line.clone());
     }
