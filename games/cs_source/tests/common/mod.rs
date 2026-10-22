@@ -54,7 +54,10 @@ pub fn load_map_lean(id: &str) -> Result<MapData, String> {
 /// `load_map_level` without textures.
 #[allow(dead_code)]
 pub fn load_map_level_lean(id: &str, hdr_level: u8) -> Result<MapData, String> {
-    let options = chimera_world::map::MapLoadOptions { hdr_level, textures: false };
+    let options = chimera_world::map::MapLoadOptions {
+        hdr_level,
+        textures: false,
+    };
     load_map_with(id, &options)
 }
 
@@ -84,4 +87,15 @@ pub fn spawn_still(sim: &mut chimera_world::harness::Sim, at: bevy::math::Vec3) 
     let p = sim.spawn_character(at, chimera_sim::movement::noclip::ID);
     sim.app.world_mut().entity_mut(p).remove::<chimera_core::core::Noclip>();
     p
+}
+
+/// The scenario tests' usual `Sim`: CS:S's base (`CsSim`), the greybox map
+/// and CS:S's weapons, at CS:S's tick (0.015 s). Per-test variants (a
+/// seeded bot config, stand-in materials) start from it.
+#[allow(dead_code)]
+pub fn sim() -> chimera_world::harness::Sim {
+    use cs_source::{game::TICK_INTERVAL, game::weapons::CsWeaponsPlugin, harness::CsSim};
+    let mut sim = chimera_world::harness::Sim::new(CsSim, (chimera_world::greybox::GreyboxMapPlugin, CsWeaponsPlugin));
+    sim.set_tick_interval(TICK_INTERVAL);
+    sim
 }

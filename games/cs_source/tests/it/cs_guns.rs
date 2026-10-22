@@ -4,6 +4,7 @@
 //! ("CS:S values (measured)": M3 recoil, M4/M8 timing, M5-M7 damage, M15
 //! zoom, M16 fire modes). What the HUD prints of them: tests/ui/cs_guns.rs.
 
+use crate::common::sim;
 use bevy::prelude::*;
 use crate::stack::{
     bot::{BotConfig, add_bot},
@@ -12,12 +13,12 @@ use crate::stack::{
     games::cs_source::{
         TICK_INTERVAL,
         weapons::{
-            AK47, AUG, AWP, CsWeaponsPlugin, DEAGLE, ELITE, FAMAS, FIVESEVEN, G3SG1, GALIL, GLOCK, AccuracyKeys, AccuracyParams, Inaccuracy,
+            AK47, AUG, AWP, DEAGLE, ELITE, FAMAS, FIVESEVEN, G3SG1, GALIL, GLOCK, AccuracyKeys, AccuracyParams, Inaccuracy,
             M3, M4A1, M249, MAC10, MP5NAVY, P90, P228, SCOUT, SG550, SG552, TMP, UMP45, USP, XM1014, guns,
         },
     },
-    greybox::{self, GreyboxMapPlugin},
-    harness::{CsSim, Sim},
+    greybox::{self},
+    harness::Sim,
     movement::placeholder,
     weapon::{
         AltModes, Armor, Hitscan, Inventory, Magazine, SpreadShape, ViewPunch, Weapon, WeaponEvent, WeaponEventKind,
@@ -26,12 +27,6 @@ use crate::stack::{
 };
 
 const UNIT: f32 = 0.0254;
-
-fn sim() -> Sim {
-    let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin));
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim
-}
 
 /// A gun's values as its data gives them (games/cs_source/data/weapons),
 /// under the script's names.

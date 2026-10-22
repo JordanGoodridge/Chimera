@@ -10,6 +10,9 @@
 //! cases (specs/combat_arms/) get their own files here as each subsystem
 //! is implemented.
 
+#[path = "../common/mod.rs"]
+mod common;
+
 mod aim_points;
 mod attachments;
 mod attribute_data;

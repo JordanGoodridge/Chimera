@@ -3,6 +3,7 @@
 //! target) and switches to the knife. These check the wiring, not Combat
 //! Arms' behaviour: the numbers are the placeholder data's.
 
+use crate::common::{active, active_id};
 use bevy::prelude::*;
 use chimera_core::{
     core::Health,
@@ -31,15 +32,6 @@ fn player(sim: &mut Sim, at: Vec3) -> Entity {
     let p = sim.spawn_character(at, movement::ID);
     sim.seconds(0.5);
     p
-}
-
-fn active(sim: &Sim, p: Entity) -> Option<Entity> {
-    sim.app.world().get::<Inventory>(p)?.active
-}
-
-fn active_id(sim: &Sim, p: Entity) -> &'static str {
-    let w = active(sim, p).expect("no active weapon");
-    sim.app.world().get::<Weapon>(w).unwrap().id
 }
 
 fn clip(sim: &Sim, p: Entity) -> u32 {

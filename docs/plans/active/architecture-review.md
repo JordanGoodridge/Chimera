@@ -71,7 +71,7 @@ migration of each; section 11 orders them for parallel agents):
 | P1 | Split `map/mod.rs`, `spawn_map` in phases | **done** | `chimera/world/src/map/mod.rs` 368 lines, `map/spawn.rs` 872, drawn phases in `chimera/present/src/render/spawn.rs` (1,901); the spawn dump tool kept (`heavy/map_spawn_dump.rs`) |
 | P2 | Docs diet: one line per module and debt | **done, regressing** | ARCHITECTURE.md 133 KB to 22 KB on 10-13, 62 KB now; tech-debt.md 15 KB then, 34 KB now; both still top conflict files (2.6); T5 |
 | P3 | Sort `map` and `client` into modules | **done** (became crates) | `chimera_present` (render, audio), `chimera_client`, `chimera_world`; `simulation_builds_no_drawn_parts` checks it |
-| P4 | Test support module | **partial** | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
+| P4 | Test support module | **partial** (X8: `sim()` and readers lifted where identical) | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
 | P4b | Heavy tier: measure, split, more slots, cache | **steps 1, 3, 4 done; 2 open** | full suite 1,812 s to 1,009 s (10-14), then 1,757 s with Combat Arms (10-19); the lean load path is in (N3, 10-21: servers' and tests' memory halved, time saved per load 0.4-1.3 s); no cache yet |
 | P5 | Game composition as plugin groups | **partial** | `CsSourcePlugins`, `CombatArmsPlugins`, `CsSim`, `CaSim` exist; the materials (`chimera_present::PresentationPlugins`) and the physics (`chimera_world::physics_plugins`) are one group each since N7; the tick and log layer still per app; A4 |
 | P6 | One VGUI dialog layer | **open, lower** | 7 copies of the UI scale clamp, no shared `Hit<T>`; Combat Arms built its own canvas (`client::canvas`), so this is CS:S-internal now |
@@ -1212,9 +1212,34 @@ by the same method but not those of the first two passes.
 | X5 **done** | (done 10-21, note below) Named `Intent` actions; binds by action; `POLLED` from the game (A3) | none | `chimera/core/src/core.rs` (`Intent`), `chimera/client/src/client/{binds,input}.rs`, `chimera/net` command encoding | M | both suites; bind migration tests; `NET_VERSION` bump |
 | X6 | `GameInfo` carries its Steam app and map files; the network map offer per loader (A3) | N3 | `chimera/core/src/{game_registry,mount/install}.rs`, `chimera/net/src/net/maps.rs`, `games/*/src/game/mod.rs` | S-M | install tests; map download tests |
 | X7 | `MapData` split into the world and the gameplay's kit; `take_game_parts` deleted; Source-only effect lists behind an extension (A2 3) | N3, N4, N2 | `chimera/world/src/map/{data,sources,spawn}.rs`, both loaders, `chimera/present/src/render/spawn.rs` | M | spawn dumps; both heavy map suites; the mashup's heavy test |
-| X8 | Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
+| X8 **done** | (done 10-21, note below) Chimera test kit and contract tests; generic tests moved down; per-game test support (T2, T4) | N1 | `chimera/sim` (feature) or `chimera/testkit`, `chimera/*/tests/`, `games/*/tests/*/support` | M | test counts before and after |
 | X9 | BC textures (F3) | N3 | `chimera/present/src/render/images.rs`, the loaders' texture output | M | refcmp on dust2 and de_nuke; Combat Arms screenshots |
 | X10 | A neutral VFS crate under both format crates (A5) | none | `source/formats/src/fs.rs` to a new crate, `chimera/core/src/mount/` | S | `workspace_crates`; format crates' tests |
+
+X8, done (10-21): the kit is `chimera_sim::testkit` (feature `testkit`,
+on through dev-dependencies only; smaller than a new crate, so no layering
+or hakari change): a TOML weapon set in round numbers (`kit:pistol`,
+`kit:rifle`, `kit:shotgun`), `kit_sim()`, `with_player`, `active`,
+`active_id`, `feet`, `aim_at`. Contract tests: `chimera/sim/tests/it/
+{weapon_frame,map_lifetime}.rs` (trigger timing, magazines, reloads,
+pellets, damage, draw; greybox spawn points and unload) and
+`chimera/net/tests/it/prediction.rs` (zero prediction errors and
+bit-for-bit agreement at 50/100/150 ms, loss and jitter converge, own-state
+parts round-trip). Moved down: three of `cs_source`'s `noclip_damage`
+tests (bullet through noclip, suicide, kill height) to
+`chimera/sim/tests/it/noclip_damage.rs` on the kit's rifle; the HE blast
+stays. Test support (T4, the smallest sweep): `cs_source`'s
+`tests/common::sim()` replaces six identical `fn sim()`; Combat Arms got
+`tests/common/` (`sim`, `active`, `active_id`) replacing one `fn sim()` and
+two pairs of readers. The other `sim`/`load`/`feet` variants differ in
+setup (maps, resources, signatures) and stay; a later sweep lifts them as
+tests are touched. `SimBasePlugins` is `Clone` for `NetSim`. Counts
+(`cargo nextest list --features dev`): 3,837 before, 3,852 after; per
+crate `chimera_sim` 39 to 54 (the contract tests plus the three moved),
+`chimera_net` 38 to 41, `cs_source::it` 852 to 849, the rest unchanged; the
+only tests missing by name are the three moved. The affected selection
+does not yet skip a game's heavy tier for changes the contract tests
+cover (a later decision, T2).
 
 X4, done (10-21): `net::parts::OwnParts` (`NetAppExt::own_part(name,
 encode, decode)`, sorted by name as registered); `OwnState::parts` is one

@@ -2,24 +2,19 @@
 //! greybox map, at CS:S's tick (0.015 s). Expectations come from
 //! specs/cs_source/weapons.md's test cases (T5, T6, T8, T10, T11).
 
+use crate::common::sim;
 use bevy::prelude::*;
 use crate::stack::{
     core::{Health, Intent, MaxSpeed},
     games::cs_source::{
         TICK_INTERVAL,
-        weapons::{AK47, CsWeaponsPlugin, KNIFE},
+        weapons::{AK47, KNIFE},
     },
-    greybox::{self, GreyboxMapPlugin},
-    harness::{CsSim, Sim},
+    greybox::{self},
+    harness::Sim,
     movement::placeholder,
     weapon::{Inventory, Magazine, Weapon},
 };
-
-fn sim() -> Sim {
-    let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin));
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim
-}
 
 fn active(sim: &Sim, p: Entity) -> Entity {
     sim.app

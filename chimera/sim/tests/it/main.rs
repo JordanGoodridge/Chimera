@@ -5,4 +5,7 @@
 //! `cargo test -p chimera_sim --features dev --test it`; where tests go:
 //! docs/OBSERVABILITY.md, section 1.
 
+mod map_lifetime;
 mod movement;
+mod noclip_damage;
+mod weapon_frame;

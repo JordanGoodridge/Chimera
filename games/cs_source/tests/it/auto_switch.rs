@@ -5,26 +5,18 @@
 //! local player's setting reaches its `UserInfo` from the console. The
 //! network version is in games/cs_source/tests/it/net_weapons.rs.
 
+use crate::common::sim;
 use avian3d::prelude::Position;
 use bevy::prelude::*;
 use crate::stack::{
     console::Console,
     core::{LocalPlayer, UserInfo},
-    games::cs_source::{
-        TICK_INTERVAL,
-        weapons::{AK47, AWP, CsWeaponsPlugin, DEAGLE, KNIFE, USP},
-    },
-    greybox::{self, GreyboxMapPlugin},
-    harness::{CsSim, Sim},
+    games::cs_source::weapons::{AK47, AWP, DEAGLE, KNIFE, USP},
+    greybox::{self},
+    harness::Sim,
     movement::placeholder,
     weapon::{Inventory, Weapon, drop::drop_this, give},
 };
-
-fn sim() -> Sim {
-    let mut sim = Sim::new(CsSim, (GreyboxMapPlugin, CsWeaponsPlugin));
-    sim.set_tick_interval(TICK_INTERVAL);
-    sim
-}
 
 fn ids(sim: &Sim, p: Entity) -> Vec<&'static str> {
     let w = sim.app.world();

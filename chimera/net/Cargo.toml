@@ -37,6 +37,12 @@ sha2.workspace = true
 bzip2.workspace = true
 workspace-hack.workspace = true
 
+# The integration tests (tests/it/): prediction and replication on `NetSim`
+# with the engine's base alone, nothing of a game.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
 [features]
 # Bevy as a dynamic library, as the game's `dev` (which turns this on):
 # `cargo test -p chimera_net --features dev` shares the game's Bevy build.
