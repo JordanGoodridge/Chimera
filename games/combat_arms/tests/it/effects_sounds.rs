@@ -464,6 +464,7 @@ fn t25_casing() {
         velocity: Vec3::new(70.0, 50.0, 30.0),
         spin: Vec2::new(5.0, 5.0),
         angles: Vec2::ZERO,
+        orientation: Quat::IDENTITY,
         bounces: 0,
         age: 0.0,
         resting: false,
@@ -509,6 +510,7 @@ fn t26_casing_rest() {
         velocity: down,
         spin: Vec2::ZERO,
         angles: Vec2::ZERO,
+        orientation: Quat::IDENTITY,
         bounces: 0,
         age: 0.0,
         resting: false,
@@ -642,9 +644,12 @@ fn t32_frag_on_stone() {
     assert_eq!(stone.burst.as_deref(), Some("Grenade_Stone"));
     assert_eq!(stone.sound.as_ref().unwrap().0, "guns_snd_impacts/explosions/gren.wav");
     assert!(stone.mark.is_none(), "Mark empty: no scorch");
-    // Mid-air: Air has no grenade group.
+    // Air has no grenade group, but a thrown grenade never has Air's
+    // surface: mid-air it is its own Metal's (Corrections 2026-10-22, 1;
+    // case 58).
     let air = on(1, true);
     assert!(air.burst.is_none() && air.sound.is_some());
+    assert_eq!(on(effects::GRENADE_OWN_SURFACE, true).burst.as_deref(), Some("Grenade_Stone"));
     assert_eq!(on(0, true).burst.as_deref(), Some("Grenade_Dirt"));
 }
 
@@ -1232,4 +1237,528 @@ fn t56_camera_rise() {
     // snap within the last 1 u (ours).
     assert!((0.02..=0.03).contains(&climb(4.0)), "{}", climb(4.0));
     assert_eq!(climb(1.0), 0.0);
+}
+
+// ---------------------------------------------------------------------
+// Corrections (2026-10-22): cases 58-66.
+
+use chimera_core::core::{Died, Team};
+use chimera_sim::weapon::grenade::{Detonated, GrenadeKind};
+use combat_arms::game::{
+    attachments::{MAGAZINE, ModRecord},
+    characters::records::{CharacterData, Selection},
+    effects::voice::{self, IdleAction, Voices},
+    grenades::CaBlastSurface,
+    perks::CaPerkEffects,
+    view_model::{CaViewKey, machine::ViewKey},
+};
+
+fn fx_requests(sim: &mut Sim) -> Vec<CaFxRequest> {
+    std::mem::take(&mut sim.app.world_mut().resource_mut::<Requested>().0)
+}
+
+/// The camera of a local player (m) and its forward.
+fn eye_of(sim: &Sim, p: Entity) -> Vec3 {
+    sim.position(p) + sim.state(p).eye_offset
+}
+
+/// 58. A grenade that goes off in mid-air shows the explosion of its last
+/// bounce's surface (its own Metal when it never touched anything), 500 u
+/// in front of you, with `gren.wav`; the frame's +Z is world up.
+#[test]
+fn c58_mid_air_frag_shows_its_explosion() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    sim.ticks(2);
+    let at = eye_of(&sim, me) + Vec3::NEG_Z * 500.0 * UNIT;
+    let blast = |sim: &mut Sim, surface: Option<&str>, told: bool| -> (Vec<CaFxRequest>, Vec<CaSound>) {
+        heard(sim);
+        fx_requests(sim);
+        let projectile = sim.app.world_mut().spawn_empty().id();
+        sim.app.world_mut().write_message(Detonated {
+            kind: GrenadeKind::Blast,
+            weapon: "combat_arms:m67",
+            thrower: None,
+            at,
+            ground: None,
+            projectile,
+            shake: None,
+        });
+        if told {
+            sim.app.world_mut().write_message(CaBlastSurface {
+                projectile,
+                surface: surface.map(str::to_string),
+            });
+        }
+        sim.app.update();
+        (fx_requests(sim), heard(sim))
+    };
+    let look = |req: &[CaFxRequest]| -> Vec<String> {
+        req.iter().filter(|r| r.kind == FxKind::Grenade).map(|r| r.group.clone()).collect()
+    };
+    // Never touched anything: its own metal.
+    let (req, sounds) = blast(&mut sim, None, true);
+    assert_eq!(look(&req), ["Grenade_Stone"], "{req:?}");
+    assert_eq!(req.iter().find(|r| r.kind == FxKind::Grenade).unwrap().normal, Vec3::Y, "world up");
+    let gren = sounds.iter().find(|s| s.file == "guns_snd_impacts/explosions/gren.wav").expect("its sound");
+    assert_eq!(gren.radii.1, 1500.0);
+    close(g(500.0, 1500.0), 0.8772, 1e-4, "gain");
+    // Last bounced off a Wood wall, now far from it.
+    assert_eq!(look(&blast(&mut sim, Some("30"), true).0), ["Grenade_Dirt"]);
+    // Resting on Desert_Sand after bouncing there.
+    assert_eq!(look(&blast(&mut sim, Some("60"), true).0), ["Grenade_Sand"]);
+    // Without the server's word (a network client) and no map: metal, not Air.
+    assert_eq!(look(&blast(&mut sim, None, false).0), ["Grenade_Stone"]);
+}
+
+/// 59. A shot that hits nothing still flies by (and one into a wall far
+/// behind you too).
+#[test]
+fn c59_flyby_of_a_miss() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let other = player(&mut sim, Vec3::new(40.0, 1.0, 60.0), 0.0);
+    let w = arm(&mut sim, other, "combat_arms:m4a1");
+    let cam = eye_of(&sim, me);
+    heard(&mut sim);
+    let shot = |sim: &mut Sim, from: Vec3, to: Vec3, hit: Option<Entity>| {
+        sim.app.world_mut().write_message(WeaponEvent {
+            owner: other,
+            weapon: w,
+            kind: WeaponEventKind::Shot {
+                from,
+                to,
+                hit,
+                normal: hit.map(|_| Vec3::Y),
+            },
+            replay: false,
+        });
+        sim.app.update();
+        heard(sim).into_iter().filter(|s| s.file == "guns_snd_etc/flyby.wav").count()
+    };
+    // The line passes 200 u from the camera; its end is 3000 u away.
+    let from = cam + Vec3::new(200.0 * UNIT, 0.0, -1500.0 * UNIT);
+    let to = cam + Vec3::new(200.0 * UNIT, 0.0, 3000.0 * UNIT);
+    assert_eq!(shot(&mut sim, from, to, None), 1, "a miss");
+    // Into a wall 2000 u behind you.
+    let wall = sim.app.world_mut().spawn_empty().id();
+    let to = cam + Vec3::new(200.0 * UNIT, 0.0, 2000.0 * UNIT);
+    assert_eq!(shot(&mut sim, from, to, Some(wall)), 1, "a hit, as before");
+    // Not inside the guard (impact 600 u from you), nor for your own shot.
+    let near = cam + Vec3::new(200.0 * UNIT, 0.0, 300.0 * UNIT);
+    assert_eq!(shot(&mut sim, from, near, None), 0);
+}
+
+/// 60. The shooter's own tracer cadence comes from the last fitted part,
+/// whether it names a tracer or not.
+#[test]
+fn c60_own_tracer_cadence() {
+    let m4 = wfx("combat_arms:m4a1");
+    let mut m = mods(&["Silencer_A_AR"], 2000, 1400);
+    // A magazine part that names no tracer, after the muzzle part in slot
+    // order.
+    m.parts[MAGAZINE] = Some(Part {
+        id: 0,
+        variant: Some(0),
+        record: ModRecord {
+            name: "Test_Magazine".into(),
+            kinds: Some(MAGAZINE as i32),
+            ..Default::default()
+        },
+        default: false,
+    });
+    assert!(t().attachment("Test_Magazine").is_none());
+    let f = effects::own_tracer_frequency(t(), &m4, Some(&m)).unwrap();
+    assert_eq!(f, 4, "the ammo's: the later part resets the choice");
+    assert_eq!(cadence(f, 8), [4, 8]);
+    assert_eq!(effects::tracer_look(t(), &m4, Some(&m)).unwrap(), t().tracer("AR01").unwrap(), "the muzzle part's look");
+    // The silencer alone: its own F 3.
+    let a = mods(&["Silencer_A_AR"], 2000, 1400);
+    assert_eq!(cadence(effects::own_tracer_frequency(t(), &m4, Some(&a)).unwrap(), 9), [3, 6, 9]);
+    // A sight, then a bullet part that names none: the ammo's.
+    let mut s = mods(&["DotSight_A_AR"], 2000, 1400);
+    s.parts[combat_arms::game::attachments::BULLET] = m.parts[MAGAZINE].clone();
+    assert_eq!(cadence(effects::own_tracer_frequency(t(), &m4, Some(&s)).unwrap(), 8), [4, 8]);
+}
+
+/// 61. Others hear a weapon's misc key sounds to 2000 u (a reload key's
+/// stop at 300); no key sound comes from a dead player.
+#[test]
+fn c61_misc_key_radius() {
+    let mut m4 = wfx("combat_arms:m4a1");
+    m4.misc_sounds = vec!["guns_snd_ar/m4a1/misc1.wav".into()];
+    assert_eq!(m4.key_sound(10), Some(("guns_snd_ar/m4a1/misc1.wav", 2000.0)));
+    close(g(1000.0, 2000.0), 0.7166, 1e-4, "misc at 1000 u");
+    assert_eq!(g(1000.0, m4.key_sound(1).unwrap().1), 0.0, "a reload key at 1000 u: silent");
+    // A dead player sends none.
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let other = player(&mut sim, Vec3::new(24.0, 1.0, 20.0), 0.0);
+    arm(&mut sim, other, "combat_arms:m4a1");
+    heard(&mut sim);
+    let key = |sim: &mut Sim| {
+        sim.app.world_mut().write_message(CaViewKey {
+            owner: other,
+            key: ViewKey::Sound(1),
+        });
+        sim.app.update();
+        heard(sim).iter().filter(|s| s.file.ends_with("reload1.wav")).count()
+    };
+    assert_eq!(key(&mut sim), 1);
+    sim.app.world_mut().get_mut::<Health>(other).unwrap().current = 0.0;
+    assert_eq!(key(&mut sim), 0, "dead: none");
+}
+
+/// 62. Your own steps restart after you stop for longer than the bob's
+/// decay: a step at once, the next about 0.21 s later, then every 0.357 s;
+/// a pause of 0.05 s keeps the phase.
+#[test]
+fn c62_own_step_restart() {
+    let dt = 1.0 / 60.0;
+    let run = StepInputs {
+        dt,
+        moving: true,
+        can_step: true,
+        run: true,
+        jumped: false,
+        landed: false,
+        alive: true,
+    };
+    let stop = StepInputs { moving: false, ..run };
+    let mut s = OwnSteps::default();
+    let frame = |s: &mut OwnSteps, i: &StepInputs| s.step(i).len();
+    for _ in 0..120 {
+        frame(&mut s, &run);
+    }
+    for _ in 0..30 {
+        assert_eq!(frame(&mut s, &stop), 0, "no step while stopped");
+    }
+    assert_eq!(s.phase, 0.0, "reset once the amplitude reached 0");
+    let mut times = Vec::new();
+    for i in 0..60 {
+        for _ in 0..frame(&mut s, &run) {
+            times.push(i as f32 * dt);
+        }
+    }
+    assert_eq!(times[0], 0.0, "a step on the key press");
+    close(times[1], 0.212, 0.02, "the next step");
+    close(times[2], 0.569, 0.02, "and the one after");
+    // A short pause: the phase carries on.
+    let mut s = OwnSteps::default();
+    for _ in 0..40 {
+        frame(&mut s, &run);
+    }
+    let before = s.phase;
+    assert!(before > 0.0);
+    for _ in 0..3 {
+        frame(&mut s, &stop);
+    }
+    assert!(s.phase > 0.0 && s.ramp > 0.0, "0.05 s: no reset");
+    frame(&mut s, &run);
+    assert!(s.phase > 0.0);
+    // The key press itself makes the start step (nothing about
+    // displacement in the inputs): pressing again after a pause too.
+    let mut s = OwnSteps::default();
+    assert_eq!(frame(&mut s, &run), 1);
+    assert_eq!(frame(&mut s, &StepInputs { run: false, ..run }), 0, "walking: silent");
+}
+
+/// 63. Ghillie-type models' steps are at half volume, and sound from the
+/// body's centre.
+#[test]
+fn c63_ghillie_step() {
+    let (volume, radius, extra) = effects::footstep_sound(None, 1.0, -0.5);
+    assert_eq!((volume, radius, extra), (50.0, 1200.0, None));
+    close(rules::gain(500.0, 84.0, radius, volume), 0.4025, 1e-4, "at 500 u on Metal");
+    // The share comes from the model record (the install's models file).
+    let mut data = CharacterData::clone(combat_arms::game::characters::records::builtin());
+    assert_eq!(data.effective(&Selection::default()).0.footprint_volume, 0.0, "stock bodies: none");
+    data.model[0].footprint_volume = -0.5;
+    assert_eq!(data.effective(&Selection::default()).0.footprint_volume, -0.5);
+    // Others' steps sound at the character's centre, not its feet.
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let other = player(&mut sim, Vec3::new(28.0, 1.0, 20.0), 0.0);
+    type_everything(&mut sim, 20);
+    heard(&mut sim);
+    sim.intent(other).move_axis = Vec2::Y;
+    sim.seconds(1.0);
+    let centre_y = sim.position(other).y;
+    let steps: Vec<CaSound> = heard(&mut sim).into_iter().filter(|s| s.at.is_some() && s.file.contains("footsteps/metal")).collect();
+    assert!(steps.len() >= 2, "{steps:?}");
+    for s in &steps {
+        close(s.at.unwrap().y, centre_y, 0.01, "the body's centre");
+    }
+}
+
+/// 64. Awareness plays an enemy's step at the perk's volume and radius
+/// without Specter, plus one of its own four sounds.
+#[test]
+fn c64_awareness() {
+    // Specter v = 0.4 on the walker.
+    let (volume, radius, extra) = effects::footstep_sound(Some((1.0, 0.9)), 0.4, 0.0);
+    assert_eq!((volume, extra), (100.0, Some(100.0)));
+    close(radius, 1080.0, 1e-3, "radius");
+    assert_eq!(effects::footstep_sound(None, 0.4, 0.0), (40.0, 1200.0, None), "without Awareness: Specter");
+    assert_eq!(t().sounds.awareness.len(), 4);
+    // In play: a running Specter enemy heard by an Awareness user.
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert((
+        LocalPlayer,
+        Team(1),
+        CaPerkEffects {
+            awareness: true,
+            aware_volume: 1.0,
+            aware_radius: 0.9,
+            ..Default::default()
+        },
+    ));
+    let enemy = player(&mut sim, Vec3::new(28.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(enemy).insert((
+        Team(2),
+        CaPerkEffects {
+            step_volume: 0.4,
+            ..Default::default()
+        },
+    ));
+    type_everything(&mut sim, 20);
+    heard(&mut sim);
+    sim.intent(enemy).move_axis = Vec2::Y;
+    sim.seconds(1.0);
+    let s = heard(&mut sim);
+    let steps: Vec<&CaSound> = s.iter().filter(|s| s.at.is_some() && s.file.contains("footsteps/metal")).collect();
+    let perk: Vec<&CaSound> = s.iter().filter(|s| s.file.starts_with("ui_snd/perk/awareness/")).collect();
+    assert!(steps.len() >= 2, "{s:?}");
+    assert_eq!(steps.len(), perk.len(), "one perk sound per step");
+    assert!(steps.iter().all(|s| s.volume == 100.0 && (s.radii.1 - 1080.0).abs() < 1e-3), "{steps:?}");
+    assert!(perk.iter().all(|s| s.volume == 100.0 && (s.radii.1 - 1080.0).abs() < 1e-3), "{perk:?}");
+}
+
+/// 65. Your local voices: the kill voice (not on a groin kill, not while
+/// the last still plays), the dash sound back to back while sprinting, the
+/// idle sound after 5 s with no keys, stopped by the next key.
+#[test]
+fn c65_local_voices() {
+    // The state machine.
+    let mut v = Voices::default();
+    assert!(v.kill(Hitgroup::Chest, 0.0, 1.0), "a body shot");
+    assert!(!v.kill(Hitgroup::Chest, 0.2, 1.0), "the last still plays");
+    assert!(!v.kill(Hitgroup::Stomach, 2.0, 1.0), "a groin kill: none");
+    assert!(v.kill(Hitgroup::Head, 2.0, 1.0));
+    let mut v = Voices::default();
+    let plays: Vec<f64> = (0..180).map(|i| i as f64 / 60.0).filter(|&t| v.dash(true, t, 1.0)).collect();
+    assert_eq!(plays.len(), 3, "back to back for 3 s: {plays:?}");
+    let mut v = Voices::default();
+    let mut first = None;
+    for i in 0..400 {
+        let now = i as f64 / 60.0;
+        if v.idle(true, true, 1.0 / 60.0, now, 1.0) == IdleAction::Play && first.is_none() {
+            first = Some(now);
+        }
+    }
+    close(first.unwrap() as f32, 5.0, 0.03, "idle starts at 5 s");
+    assert_eq!(v.idle(false, true, 0.016, 7.0, 1.0), IdleAction::Stop, "the next key kills it");
+    assert_eq!(v.idle(false, true, 0.016, 7.1, 1.0), IdleAction::Nothing);
+    assert_eq!(v.idle(true, false, 0.016, 8.0, 1.0), IdleAction::Nothing, "an empty entry: no timer");
+    assert!(voice::flags_idle(&Default::default()));
+    assert!(!voice::flags_idle(&chimera_core::core::Intent {
+        crouch: true,
+        ..Default::default()
+    }));
+    // The stock files (male template; its idle entry is empty).
+    assert_eq!(t().sounds.kill, ["chars_snd/male/enemykill.wav"]);
+    assert_eq!(t().sounds.dash.len(), 3);
+    assert_eq!(t().sounds.heartbeat, ["ui_snd/heartbeat.wav"]);
+    assert!(t().sounds.idle.is_empty());
+    // In play.
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let foe = player(&mut sim, Vec3::new(30.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().resource_mut::<CaFxTables>().sounds.idle = vec!["chars_snd/q_male/idle_male.wav".into()];
+    sim.ticks(2);
+    heard(&mut sim);
+    let kill = |sim: &mut Sim, zone: Hitgroup| {
+        sim.app.world_mut().write_message(Died {
+            entity: foe,
+            attacker: Some(me),
+            damage: Damage {
+                target: foe,
+                attacker: Some(me),
+                amount: 1.0,
+                point: Vec3::ZERO,
+                dir: Vec3::Z,
+                hitgroup: zone,
+                kind: DamageKind::Bullet,
+                weapon: None,
+                force: Vec3::ZERO,
+            },
+        });
+        sim.ticks(1);
+        heard(sim).iter().filter(|s| s.file.ends_with("enemykill.wav")).count()
+    };
+    assert_eq!(kill(&mut sim, Hitgroup::Chest), 1, "one kill voice, local");
+    assert_eq!(kill(&mut sim, Hitgroup::Chest), 0, "while it still plays");
+    sim.seconds(1.5);
+    heard(&mut sim);
+    assert_eq!(kill(&mut sim, Hitgroup::Stomach), 0, "a groin kill");
+    // Idle: nothing for 4.5 s, the sound by 5.1 s, a key stops it.
+    sim.seconds(1.0);
+    heard(&mut sim);
+    let idle = |sim: &mut Sim| heard(sim).iter().filter(|s| s.file.ends_with("idle_male.wav")).cloned().collect::<Vec<_>>();
+    sim.seconds(2.0);
+    assert!(idle(&mut sim).is_empty(), "before 5 s");
+    sim.seconds(1.0);
+    let started = idle(&mut sim);
+    assert!(started.iter().any(|s| s.at.is_none() && s.volume > 0.0), "{started:?}");
+    sim.intent(me).move_axis = Vec2::Y;
+    sim.ticks(2);
+    let stopped = idle(&mut sim);
+    assert!(stopped.iter().any(|s| s.volume == 0.0), "killed by a silent copy: {stopped:?}");
+}
+
+/// 66. A hurt sound plays at the victim's centre (not the hit point), and
+/// burning to the head makes no head sound.
+#[test]
+fn c66_hurt_sound_place() {
+    let mut sim = sim();
+    let victim = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.ticks(2);
+    heard(&mut sim);
+    let centre = sim.position(victim);
+    let head = centre + Vec3::new(0.0, 0.6, 0.0);
+    let hurt = |kind, hitgroup| Damage {
+        target: victim,
+        attacker: None,
+        amount: 0.1,
+        point: head,
+        dir: Vec3::Z,
+        hitgroup,
+        kind,
+        weapon: None,
+        force: Vec3::ZERO,
+    };
+    sim.app.world_mut().write_message(hurt(DamageKind::Bullet, Hitgroup::Head));
+    sim.app.update();
+    let s = heard(&mut sim);
+    let pain = s.iter().find(|s| s.file.contains("hurtpain_a")).expect("the gun pain");
+    let shout = s.iter().find(|s| s.file.ends_with("headshot.wav")).expect("the head sound");
+    assert_eq!(pain.at, Some(centre));
+    assert_eq!(shout.at, Some(centre));
+    assert_eq!(effects::hurt_radius(t(), HurtKind::Head), 500.0);
+    // Burning damage to the head: only the burn sound (after the first
+    // sounds ended).
+    sim.seconds(3.0);
+    heard(&mut sim);
+    sim.app.world_mut().write_message(hurt(DamageKind::Burn, Hitgroup::Head));
+    sim.app.update();
+    let s = heard(&mut sim);
+    assert!(s.iter().any(|s| s.file.contains("hurtfire")), "{s:?}");
+    assert!(s.iter().all(|s| !s.file.ends_with("headshot.wav")), "{s:?}");
+    assert_eq!(effects::hurt_kinds(DamageKind::Burn, Hitgroup::Stomach, false), [Some(HurtKind::Burning), None]);
+    assert_eq!(effects::hurt_kinds(DamageKind::Generic, Hitgroup::Head, true)[1], None, "poison too");
+}
+
+/// Corrections 10: every further pellet makes the muzzle group again; the
+/// fire sound and the casing come once.
+#[test]
+fn corrections_10_pellets_repeat_the_muzzle_group() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let w = arm(&mut sim, me, "combat_arms:m4a1");
+    sim.ticks(4);
+    let cam = eye_of(&sim, me);
+    heard(&mut sim);
+    fx_requests(&mut sim);
+    let fired = WeaponEvent {
+        owner: me,
+        weapon: w,
+        kind: WeaponEventKind::Fired {
+            origin: cam,
+            yaw: 0.0,
+            pitch: 0.0,
+            seed: 1,
+            spread: chimera_sim::weapon::SpreadShape::Template(0.0),
+            mode: 0,
+        },
+        replay: false,
+    };
+    let pellet = WeaponEvent {
+        kind: WeaponEventKind::Shot {
+            from: cam,
+            to: cam + Vec3::NEG_Z * 200.0 * UNIT,
+            hit: None,
+            normal: None,
+        },
+        ..fired.clone()
+    };
+    let mut events = vec![fired];
+    // The round's traces are re-made from its `Fired` (a client's re-trace
+    // of a shot: one `Shot` for this single-pellet weapon); 7 more here.
+    events.extend((0..7).map(|_| pellet.clone()));
+    sim.app.world_mut().write_message_batch(events);
+    sim.app.update();
+    let reqs = fx_requests(&mut sim);
+    let own = reqs.iter().filter(|r| r.kind == FxKind::OwnFire).count();
+    assert_eq!(own, 8, "one group per pellet (the first with the round)");
+    let fire = heard(&mut sim).iter().filter(|s| s.file == "guns_snd_ar/m4a1/fire.wav").count();
+    assert_eq!(fire, 1, "one fire sound");
+}
+
+/// Corrections 11: a casing's turn compounds with its age.
+#[test]
+fn corrections_11_casings_tumble_faster() {
+    let mut c = Casing {
+        at: Vec3::new(0.0, 1000.0, 0.0),
+        velocity: Vec3::ZERO,
+        spin: Vec2::new(6.0, 0.0),
+        angles: Vec2::ZERO,
+        orientation: Quat::IDENTITY,
+        bounces: 0,
+        age: 0.0,
+        resting: false,
+        in_water: false,
+        first_person: false,
+    };
+    let dt = 1.0 / 60.0;
+    let mut turns = Vec::new();
+    for _ in 0..13 {
+        let before = c.orientation;
+        c.step(dt, Vec3::ZERO, |_, _| None);
+        turns.push((before.inverse() * c.orientation).to_axis_angle().1);
+    }
+    // After 0.1 s about 0.6 rad per frame; after 0.2 s about 1.2.
+    close(turns[5], 6.0 * 6.0 * dt, 0.01, "frame 6");
+    assert!(turns[11] > turns[5] * 1.9, "{turns:?}");
+}
+
+/// Corrections 12: others see the weapon's flash-hider group for a muzzle
+/// part of that level that names none.
+#[test]
+fn corrections_12_third_person_flash_hider() {
+    let mut m4 = wfx("combat_arms:m4a1");
+    m4.hh_flash_hider = vec!["FH_A".into(), "FH_B".into()];
+    let mut c = mods(&[], 2000, 1400);
+    c.parts[combat_arms::game::attachments::MUZZLE] = Some(Part {
+        id: 0,
+        variant: Some(0),
+        record: ModRecord {
+            name: "Test_Hider".into(),
+            kinds: Some(0),
+            flash_hider_level: 1,
+            ..Default::default()
+        },
+        default: false,
+    });
+    assert_eq!(effects::hh_muzzle(t(), &m4, Some(&c)), "FH_A");
+    c.parts[combat_arms::game::attachments::MUZZLE].as_mut().unwrap().record.flash_hider_level = 2;
+    assert_eq!(effects::hh_muzzle(t(), &m4, Some(&c)), "FH_B");
+    c.parts[combat_arms::game::attachments::MUZZLE].as_mut().unwrap().record.flash_hider_level = 0;
+    assert_eq!(effects::hh_muzzle(t(), &m4, Some(&c)), "M4_HH_Muzz");
 }

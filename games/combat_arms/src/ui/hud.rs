@@ -104,9 +104,9 @@
 //! - Not driven by anything yet (the model has them): crosshair items,
 //!   video and AI freeze, infection, dot-sight mode (A6, A8: no sight has
 //!   `Type` 2), revealing items, the state viewer, the pickup prompt's
-//!   non-human, buff, VIP and Spy Hunt conditions, the heartbeat's sound
-//!   (counted in `CaHud::heartbeats`, no sound file). The crosshair is
-//!   never toggled off (Q12): `HudOptions::crosshair_on` is a test hook.
+//!   non-human, buff, VIP and Spy Hunt conditions. The heartbeat is
+//!   counted in `CaHud::heartbeats` and sounds by `heartbeat_sound`. The
+//!   crosshair is never toggled off (Q12): `HudOptions::crosshair_on` is a test hook.
 //! - The score panel, round and bomb timers and the action gauge (D6, D7,
 //!   D9) are `score`'s, from the match (`game::rules::CaMatchView`); see
 //!   its own shortcuts; the bomb prompts `action`'s.
@@ -364,14 +364,37 @@ impl Plugin for CaHudStatePlugin {
             .add_message::<Damage>()
             .add_message::<DamageTaken>()
             .add_message::<Died>()
+            .add_message::<crate::game::effects::sounds::CaSound>()
             .add_plugins(radar::CaRadarStatePlugin)
             .add_systems(
                 Update,
-                (track, update, action::prompts, minigame_view, score::update_score, hide_panels)
+                (track, update, heartbeat_sound, action::prompts, minigame_view, score::update_score, hide_panels)
                     .chain()
                     .in_set(HudUpdate),
             );
     }
+}
+
+/// The low-health beat's sound (hud_crosshair.md D2; effects_sounds.md
+/// Corrections 2026-10-22, 8): a file of the heartbeat entry, local, for
+/// each beat the HUD counted.
+fn heartbeat_sound(
+    hud: Res<CaHud>,
+    tables: Option<Res<crate::game::effects::data::CaFxTables>>,
+    mut played: Local<u32>,
+    mut rolls: Local<crate::game::effects::Rolls>,
+    mut sounds: MessageWriter<crate::game::effects::sounds::CaSound>,
+) {
+    let beats = hud.heartbeats;
+    // The count restarts with a new HUD (a session); only new beats sound.
+    for _ in (*played).min(beats)..beats {
+        if let Some(t) = &tables
+            && let Some(f) = crate::game::effects::rules::draw_any(&t.sounds.heartbeat, rolls.next())
+        {
+            sounds.write(crate::game::effects::sounds::CaSound::local(f));
+        }
+    }
+    *played = beats;
 }
 
 /// The HUD on/off key (options.md H): off hides every layout-built panel

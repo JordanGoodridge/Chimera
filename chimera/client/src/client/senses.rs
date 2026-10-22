@@ -44,6 +44,7 @@ impl Plugin for SensesPlugin {
         embedded_asset!(app, "flash.wgsl");
         app.add_plugins(UiMaterialPlugin::<FlashMaterial>::default())
             .init_resource::<AfterImage>()
+            .init_resource::<FlashFade>()
             .init_resource::<ViewShake>()
             // The map logic's shakes (Source's logic writes them; a game
             // without that logic has none, and `shake` still reads).
@@ -176,7 +177,24 @@ pub struct AfterImage {
 /// blindness's alpha (spec 6.3: both added at the current flash alpha),
 /// the after-image only once a frame was captured.
 pub fn overlay_amounts(blind: Option<&Blinded>, now: f64, captured: bool) -> (f32, f32) {
-    let a = blind.map_or(0.0, |b| b.alpha_at(now));
+    overlay_amounts_with(FlashFade::default(), blind, now, captured)
+}
+
+/// How a flash's white fades: the whiteness of a `Blinded` at `now`. The
+/// default is the blindness's own linear fade (Counter-Strike: Source's);
+/// a game with another curve (Combat Arms' cosine) inserts its own.
+#[derive(Resource, Clone, Copy)]
+pub struct FlashFade(pub fn(&Blinded, f64) -> f32);
+
+impl Default for FlashFade {
+    fn default() -> Self {
+        Self(Blinded::alpha_at_now)
+    }
+}
+
+/// `overlay_amounts` with a game's fade curve.
+pub fn overlay_amounts_with(fade: FlashFade, blind: Option<&Blinded>, now: f64, captured: bool) -> (f32, f32) {
+    let a = blind.map_or(0.0, |b| (fade.0)(b, now));
     (a, if captured { a } else { 0.0 })
 }
 
@@ -221,6 +239,7 @@ fn flash_overlay(
     overlay: Query<&MaterialNode<FlashMaterial>, With<FlashOverlay>>,
     mut materials: ResMut<Assets<FlashMaterial>>,
     mut after: ResMut<AfterImage>,
+    fade: Res<FlashFade>,
     time: Res<Time>,
     mut commands: Commands,
 ) {
@@ -246,7 +265,7 @@ fn flash_overlay(
         );
         return;
     }
-    let (white, image) = overlay_amounts(blind.as_deref(), now, after.image.is_some());
+    let (white, image) = overlay_amounts_with(*fade, blind.as_deref(), now, after.image.is_some());
     if white <= 0.0 && after.image.is_some() {
         after.image = None;
     }
