@@ -5,6 +5,23 @@
 //! rewards, a win bonus and a loss bonus that grows with a losing streak;
 //! buying is open during the freeze and the buy period.
 //!
+//! The rounds run on Chimera's mode runtime (`chimera_sim::mode`): three
+//! modes by the map's objectives (`BOMB`, `HOSTAGE`, `ELIMINATION`, the
+//! rule modules' names; none in deathmatch) on one match (`Match`), and
+//! CS:S's side (`FLOW`: stepped every tick by `run_rounds`, exact
+//! comparisons, a game started at once, rounds numbered as they start, the
+//! outcome decided each tick by the `decide` hook and the round over in
+//! the same tick, round over straight into the next freeze). The hooks
+//! hold CS:S's own: the start money and the bonuses (`event`), the
+//! round's setup (`round_setup`), the money, the win panel and a limit
+//! reached as a round ends (`round_over`), the game's end or team balance
+//! as its pause runs out (`match_end`, `after_round`). `run_rounds` keeps
+//! `mp_restartgame`, the map's clock, the game end's intermission and
+//! deathmatch around the step, then shows the match as `RoundState` (the
+//! HUD's, `NetRound`'s and the tests' view: phase, number, wins; round
+//! wins written into it outside the rules are taken back at the next
+//! step) and sets the buy window, the freeze and `RoundOpen` from it.
+//!
 //! Objectives (`objectives`, specs/cs_source/objectives.md 7-8): on bomb
 //! maps the bomb ends the round once planted (exploded: terrorists,
 //! defused: counter-terrorists) and the defenders win on time; on hostage
@@ -39,6 +56,10 @@
 //! (`games/cs_source/tests/it/heavy/map_flows.rs`).
 
 use bevy::prelude::*;
+use chimera_sim::mode::{
+    self as runtime, Flow, FlowEvent, FlowOptions, Hooks, Match, Mode, ModeAppExt, ModeGame, NO_HOOKS, Span,
+    Teams,
+};
 
 use super::{Dead, game_end::GameLimits, put_at_spawn};
 use crate::{
@@ -441,6 +462,16 @@ pub(super) fn plugin(app: &mut App) {
     app.init_resource::<RoundSettings>()
         .init_resource::<RoundState>()
         .init_resource::<RoundStats>()
+        .init_resource::<Match>()
+        .init_resource::<RoundStart>()
+        .add_modes(
+            ModeGame {
+                game: crate::objectives::GAME,
+                chosen,
+                flow: FLOW,
+            },
+            &[&BOMB, &HOSTAGE, &ELIMINATION],
+        )
         .add_message::<RoundEnded>()
         .add_message::<ObjectiveEvent>()
         .add_systems(
@@ -515,13 +546,27 @@ fn restart_when_due(world: &mut World, rounds: bool, now: f64) {
     if rounds {
         // Phase::Off: the next step starts a game with the start money.
         *world.resource_mut::<RoundState>() = RoundState::default();
+        reset_match(world);
     } else {
         world.resource_mut::<RoundState>().restart_at = None;
         super::respawn_everyone(world);
     }
 }
 
-/// Advance the round: start, freeze, play, decide, pause, restart.
+/// The match from the start (`Phase::Waiting`): the next step starts a
+/// fresh game.
+pub(super) fn reset_match(world: &mut World) {
+    if let Some(mut m) = world.get_resource_mut::<Match>() {
+        *m = Match::default();
+    }
+}
+
+/// Advance the round: start, freeze, play, decide, pause, restart. The
+/// phases are the mode runtime's (`chimera_sim::mode::flow::step_game`,
+/// `FLOW`); around the step, CS:S's own: `mp_restartgame`, the map's
+/// clock, the game end's intermission, deathmatch, money, and after it
+/// `RoundState` (the view) and the buy window, the freeze and
+/// `RoundOpen` from it.
 pub(super) fn run_rounds(world: &mut World) {
     let settings = world.resource::<RoundSettings>().clone();
     let now = world.resource::<Time>().elapsed_secs_f64();
@@ -553,6 +598,7 @@ pub(super) fn run_rounds(world: &mut World) {
             world.insert_resource(BuyWindow::default());
             world.insert_resource(FreezeTime(false));
             world.insert_resource(RoundOpen(true));
+            reset_match(world);
         }
         let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
         if super::game_end::reached(limits, state, now, false) {
@@ -568,54 +614,32 @@ pub(super) fn run_rounds(world: &mut World) {
     for e in broke {
         world.entity_mut(e).insert(Money(settings.start_money));
     }
-    match phase {
-        Phase::Off => {
-            // A fresh game.
-            *world.resource_mut::<RoundState>() = RoundState::default();
-            let all: Vec<Entity> = world
-                .query_filtered::<Entity, (With<Intent>, With<Health>, Without<Hostage>)>()
-                .iter(world)
-                .collect();
-            for e in all {
-                world.entity_mut(e).insert(Money(settings.start_money));
-            }
-            start_round(world, &settings, now, true);
-        }
-        Phase::Freeze { until } if now >= until => {
-            world.resource_mut::<RoundState>().phase = Phase::Live {
-                since: now,
-                ends: now + settings.round_time as f64 * 60.0,
-            };
-        }
-        Phase::Live { ends, since } => {
-            if let Some((winner, reason)) = live_outcome(world, now >= ends) {
-                end_round(world, &settings, now, winner, reason);
-                let summary = summarize(world, winner, reason, (now - since).max(0.0) as f32);
-                world.write_message(RoundEnded {
-                    winner,
-                    reason,
-                    summary,
-                });
-                // A limit reached: the intermission starts as the round
-                // ends, as CS:S's (its "Intermission_Time_Limit" in the
-                // same second as "Round_End"; parity-gaps.md C9).
-                let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
-                if super::game_end::reached(limits, state, now, true) {
-                    super::game_end::begin(world, now);
-                }
-            }
-        }
-        Phase::Over { until, .. } if now >= until => {
-            let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
-            if super::game_end::reached(limits, state, now, true) {
-                super::game_end::begin(world, now);
-                hold_intermission(world);
-                return;
-            }
-            super::balance_teams(world);
-            start_round(world, &settings, now, false)
-        }
-        _ => {}
+    // A fresh game shown (`Phase::Off`) starts the match over: one left in
+    // another state (another game's, after a gameplay switch) too.
+    if phase == Phase::Off
+        && !matches!(
+            world.resource::<Match>().phase,
+            runtime::Phase::Waiting | runtime::Phase::Starting
+        )
+    {
+        reset_match(world);
+    }
+    // Round wins written outside the rules (map logic's game_score, a
+    // test) count from now.
+    let wins = world.resource::<RoundState>().wins;
+    if world.resource::<Match>().round_wins != wins {
+        world.resource_mut::<Match>().round_wins = wins;
+    }
+    // The phases: a fresh game at once (`Prepare { first }`), the freeze
+    // (`Span::Setup`), live (`Span::Round`: the outcome decided each tick,
+    // `decide`), over (`Span::RoundOver`), then the next round's freeze
+    // in the same step, or the game's end (`match_end`, `after_round`).
+    runtime::flow::step_game(world, crate::objectives::GAME, now);
+    show(world);
+    // The game ended as the last round's pause ran out (`after_round`):
+    // held from now.
+    if world.resource::<Match>().phase == runtime::Phase::MatchOver {
+        return;
     }
     // Buying: during the freeze and the buy period after it.
     let window = match world.resource::<RoundState>().phase {
@@ -728,7 +752,10 @@ fn team_counts(world: &mut World) -> ([u32; 2], [u32; 2]) {
     (alive, present)
 }
 
-fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team>, reason: RoundEndReason) {
+/// The round's end for the money: the draws, the losing streaks and what
+/// the next round's start pays (the round wins are the match's, counted
+/// by the runtime).
+fn end_round(world: &mut World, s: &RoundSettings, winner: Option<Team>, reason: RoundEndReason) {
     let planted = world
         .get_resource::<BombState>()
         .is_some_and(|b| b.planted.is_some() || b.outcome.is_some());
@@ -741,10 +768,6 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
         .filter(|(_, h)| h.current > 0.0)
         .fold((0u32, 0u32), |(a, l), (h, _)| (a + 1, l + h.taken as u32));
     let mut state = world.resource_mut::<RoundState>();
-    state.phase = Phase::Over {
-        until: now + s.end_delay as f64,
-        winner,
-    };
     // Bonuses (spec 8, measured): the winners' by the reason, the losers'
     // growing with the streak; a draw pays nobody (measured) and leaves the
     // streaks. Paid as the next round starts.
@@ -756,7 +779,6 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
     }
     for (i, team) in [ATTACKERS, DEFENDERS].into_iter().enumerate() {
         if winner == Some(team) {
-            state.wins[i] += 1;
             state.losses[i] = 0;
             bonus[i] = match reason {
                 RoundEndReason::TargetBombed => s.win_bomb,
@@ -799,27 +821,97 @@ fn end_round(world: &mut World, s: &RoundSettings, now: f64, winner: Option<Team
     world.resource_mut::<RoundState>().payouts = payouts;
 }
 
-fn start_round(world: &mut World, s: &RoundSettings, now: f64, fresh: bool) {
-    // The last round's bonuses, as the new one starts (before anyone buys).
-    let payouts = std::mem::take(&mut world.resource_mut::<RoundState>().payouts);
-    for (e, amount) in payouts {
-        add_money(world, e, amount as i64, s.max_money);
+/// CS:S's round modes on the mode runtime (`chimera_sim::mode`), one per
+/// rule module that plays rounds (`game::rules::MODULES`; deathmatch,
+/// `chimera_rounds 0`, is no mode: the runtime idles and `rules`
+/// respawns the dead). They differ only by name: the map's objectives
+/// decide (`live_outcome`, `end_round`).
+pub static ELIMINATION: Mode = Mode {
+    id: "cs_source:elimination",
+    key: "elimination",
+    shown_as: "Elimination",
+    description: "rounds with money, won by eliminating the other team (the defenders on time)",
+    respawns: false,
+    warmup: false,
+    warmup_revives: false,
+    forced_setup: None,
+    teams: Teams::AsJoined,
+    on_death: |_, _| {},
+    time_out: |_| {},
+    match_end,
+    hooks: Hooks {
+        setup: round_setup,
+        decide,
+        round_over,
+        after_round,
+        ..NO_HOOKS
+    },
+};
+
+pub static BOMB: Mode = Mode {
+    id: "cs_source:bomb",
+    key: "bomb",
+    shown_as: "Bomb",
+    description: "rounds with money: the terrorists plant the bomb, the counter-terrorists defend or defuse",
+    ..ELIMINATION
+};
+
+pub static HOSTAGE: Mode = Mode {
+    id: "cs_source:hostage",
+    key: "hostage",
+    shown_as: "Hostage",
+    description: "rounds with money: the counter-terrorists rescue the hostages, the terrorists guard them",
+    ..ELIMINATION
+};
+
+/// The round mode to play: by the map's objectives with rounds on, none
+/// in deathmatch.
+fn chosen(world: &World) -> Option<&'static str> {
+    if world.get_resource::<RoundSettings>().is_none_or(|r| r.enabled == 0) {
+        return None;
     }
-    {
-        let mut state = world.resource_mut::<RoundState>();
-        state.number += 1;
-        state.phase = Phase::Freeze {
-            until: now + s.freeze_time as f64,
-        };
-    }
-    let team_killers = std::mem::take(&mut world.resource_mut::<RoundStats>().team_killers);
-    world.insert_resource(RoundStats::default());
-    // The map's entities as they spawned (logic and map layers).
-    world.get_resource_or_init::<crate::core::RoundRestarts>().0 += 1;
-    // Everyone back at their spawns: the dead (or everyone, at the start
-    // of a game) with fresh weapons, survivors with theirs.
-    let all: Vec<(Entity, bool)> = world
-        .query_filtered::<(Entity, Has<Dead>), (
+    Some(match world.get_resource::<MapObjectives>().map_or(MapKind::Neither, |o| o.kind()) {
+        MapKind::Bomb => BOMB.key,
+        MapKind::Hostage => HOSTAGE.key,
+        MapKind::Neither => ELIMINATION.key,
+    })
+}
+
+/// CS:S's side of the mode runtime: stepped every tick by `run_rounds`
+/// with exact comparisons, a game started at once (no waiting for
+/// players), the outcome decided each tick (`decide`), round over
+/// straight into the next round's freeze, rounds numbered as they start.
+pub const FLOW: Flow = Flow {
+    frame: 0.0,
+    players,
+    respawn,
+    length,
+    event,
+    options: FlowOptions {
+        slack: 0.0,
+        wait_for_players: false,
+        timer_ends_round: false,
+        direct: true,
+        count_at_start: true,
+    },
+};
+
+/// What the round's start knows between its steps: a fresh game, and
+/// last round's team killers (`mp_tkpunish`).
+#[derive(Resource, Clone, Debug, Default)]
+struct RoundStart {
+    fresh: bool,
+    team_killers: Vec<Entity>,
+    /// Why the round under way ended (set by `decide`).
+    reason: Option<RoundEndReason>,
+}
+
+/// Who a round's start puts back at a spawn: every character in the game
+/// (not a hostage, connecting, spectating or choosing a class), team or
+/// not (0).
+fn players(world: &mut World) -> Vec<(Entity, u8)> {
+    world
+        .query_filtered::<(Entity, Option<&Team>, Has<Dead>), (
             With<Intent>,
             With<Health>,
             Without<Hostage>,
@@ -828,13 +920,171 @@ fn start_round(world: &mut World, s: &RoundSettings, now: f64, fresh: bool) {
             Without<crate::core::ChoosingClass>,
         )>()
         .iter(world)
-        .collect();
-    for (e, dead) in all {
-        put_at_spawn(world, e, fresh || dead);
+        .map(|(e, t, _)| (e, t.map_or(0, |t| t.0)))
+        .collect()
+}
+
+/// Back at a spawn: the dead (or everyone, at the start of a game) with
+/// fresh weapons, survivors with theirs.
+fn respawn(world: &mut World, e: Entity) {
+    let fresh = world.resource::<RoundStart>().fresh || world.get::<Dead>(e).is_some();
+    put_at_spawn(world, e, fresh);
+}
+
+/// The phases' lengths: the freeze (mp_freezetime), the round
+/// (mp_roundtime), the pause after it; no warm-up, intermission or
+/// revives.
+fn length(world: &mut World, span: Span) -> Option<f64> {
+    let s = world.resource::<RoundSettings>();
+    match span {
+        Span::Setup => Some(s.freeze_time as f64),
+        Span::Round => Some(s.round_time as f64 * 60.0),
+        Span::RoundOver => Some(s.end_delay as f64),
+        Span::Warmup | Span::Intermission | Span::Revive => None,
     }
+}
+
+/// CS:S's work at the runtime's steps: a fresh game's start money, the
+/// last round's bonuses and a new round's counters.
+fn event(world: &mut World, event: FlowEvent) {
+    match event {
+        FlowEvent::Prepare { first } => {
+            world.resource_mut::<RoundStart>().fresh = first;
+            if first {
+                // A fresh game.
+                *world.resource_mut::<RoundState>() = RoundState::default();
+                let start = world.resource::<RoundSettings>().start_money;
+                let all: Vec<Entity> = world
+                    .query_filtered::<Entity, (With<Intent>, With<Health>, Without<Hostage>)>()
+                    .iter(world)
+                    .collect();
+                for e in all {
+                    world.entity_mut(e).insert(Money(start));
+                }
+            }
+        }
+        FlowEvent::MissionStart => {
+            // The last round's bonuses, as the new one starts (before
+            // anyone buys).
+            let max = world.resource::<RoundSettings>().max_money;
+            let payouts = std::mem::take(&mut world.resource_mut::<RoundState>().payouts);
+            for (e, amount) in payouts {
+                add_money(world, e, amount as i64, max);
+            }
+            let team_killers = std::mem::take(&mut world.resource_mut::<RoundStats>().team_killers);
+            world.resource_mut::<RoundStart>().team_killers = team_killers;
+            world.insert_resource(RoundStats::default());
+            // The map's entities as they spawned (logic and map layers).
+            world.get_resource_or_init::<crate::core::RoundRestarts>().0 += 1;
+        }
+        _ => {}
+    }
+}
+
+/// The live round's outcome, each tick (spec 7's table): a decided round
+/// ends now.
+fn decide(world: &mut World, time_up: bool) {
+    let Some((winner, reason)) = live_outcome(world, time_up) else { return };
+    world.resource_mut::<RoundStart>().reason = Some(reason);
+    let mut m = world.resource_mut::<Match>();
+    match winner {
+        Some(team) => m.win(team.0),
+        None => m.end_without_winner(),
+    }
+}
+
+/// The round is over: the money, the win panel's summary (`RoundEnded`)
+/// and, with a limit reached, the game's end at once (as CS:S's: its
+/// "Intermission_Time_Limit" in the same second as "Round_End";
+/// parity-gaps.md C9).
+fn round_over(world: &mut World) {
+    let s = world.resource::<RoundSettings>().clone();
+    let now = world.resource::<Time>().elapsed_secs_f64();
+    let (winner, since) = {
+        let m = world.resource::<Match>();
+        (m.winner.map(Team), m.live_since)
+    };
+    let reason = world.resource_mut::<RoundStart>().reason.take().unwrap_or(RoundEndReason::Draw);
+    show(world);
+    end_round(world, &s, winner, reason);
+    let summary = summarize(world, winner, reason, (now - since).max(0.0) as f32);
+    world.write_message(RoundEnded {
+        winner,
+        reason,
+        summary,
+    });
+    let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
+    if super::game_end::reached(limits, state, now, true) {
+        super::game_end::begin(world, now);
+    }
+}
+
+/// As the round's pause runs out: a limit reached ends the game on the
+/// map (the match's result: the side with more round wins, None on a
+/// tie).
+fn match_end(world: &World) -> Option<Option<u8>> {
+    let now = world.resource::<Time>().elapsed_secs_f64();
+    let (limits, state) = (world.resource::<GameLimits>(), world.resource::<RoundState>());
+    if !super::game_end::reached(limits, state, now, true) {
+        return None;
+    }
+    let [a, d] = state.wins;
+    Some((a != d).then_some(if a > d { ATTACKERS.0 } else { DEFENDERS.0 }))
+}
+
+/// After the round's end: the game's end begins (held from now), or the
+/// teams are balanced for the next round.
+fn after_round(world: &mut World) {
+    if world.resource::<Match>().result.is_some() {
+        let now = world.resource::<Time>().elapsed_secs_f64();
+        super::game_end::begin(world, now);
+        hold_intermission(world);
+    } else {
+        super::balance_teams(world);
+    }
+}
+
+/// `RoundState` from the match (`Match`): the phase (kept while the game
+/// is over), the round's number and the round wins. Written only when
+/// they change.
+fn show(world: &mut World) {
+    let m = world.resource::<Match>();
+    let phase = match m.phase {
+        runtime::Phase::Waiting | runtime::Phase::Starting => Some(Phase::Off),
+        runtime::Phase::Setup { until } => Some(Phase::Freeze { until }),
+        runtime::Phase::Live => Some(Phase::Live {
+            since: m.live_since,
+            ends: m.round_ends.unwrap_or(f64::INFINITY),
+        }),
+        runtime::Phase::RoundOver { until } => Some(Phase::Over {
+            until,
+            winner: m.winner.map(Team),
+        }),
+        runtime::Phase::Intermission { .. } | runtime::Phase::MatchOver => None,
+    };
+    let (number, wins) = (m.round, m.round_wins);
+    let state = world.resource::<RoundState>();
+    if phase.is_some_and(|p| p != state.phase) || state.number != number || state.wins != wins {
+        let mut state = world.resource_mut::<RoundState>();
+        if let Some(p) = phase {
+            state.phase = p;
+        }
+        state.number = number;
+        state.wins = wins;
+    }
+}
+
+/// A round's setup, after everyone is back at a spawn: `mp_tkpunish`,
+/// the bots' shopping, last round's loose weapons gone, the objectives'
+/// round start.
+fn round_setup(world: &mut World) {
+    let (fresh, team_killers) = {
+        let mut start = world.resource_mut::<RoundStart>();
+        (start.fresh, std::mem::take(&mut start.team_killers))
+    };
     // `mp_tkpunish`: last round's team killers die now (by the world, as
     // a fall would kill them; how CS:S counts it is unmeasured).
-    if s.tk_punish != 0 && !fresh {
+    if world.resource::<RoundSettings>().tk_punish != 0 && !fresh {
         for e in team_killers {
             if world.get::<Health>(e).is_some_and(|h| h.current > 0.0) {
                 let at = world.get::<Transform>(e).map_or(Vec3::ZERO, |t| t.translation);
