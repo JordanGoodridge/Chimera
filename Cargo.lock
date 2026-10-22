@@ -5710,6 +5710,7 @@ dependencies = [
 name = "originals"
 version = "0.1.0"
 dependencies = [
+ "avian3d",
  "bevy",
  "chimera_sim",
  "workspace-hack",
