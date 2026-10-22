@@ -207,6 +207,7 @@ fn edge_mask_atlas(materials: &mut MaterialLoader) -> Option<(usize, u8)> {
         width: size * n as u32,
         height: size,
         rgba8,
+        bc: None,
     });
     Some((materials.textures.len() - 1, n as u8))
 }

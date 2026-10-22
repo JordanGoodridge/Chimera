@@ -1,0 +1,18 @@
+[package]
+name = "chimera_vfs"
+version = "0.1.0"
+description = "A read-only virtual filesystem over archives and loose files: no Bevy, no format, no game"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The neutral layer under both format crates (`source_formats`' VPK,
+# `lithtech_formats`' `.rez`) and Chimera's `mount`: no dependencies at
+# all, so an archive reader needs nothing of the engine or of the other
+# loader (checks/tests/it/architecture.rs, `workspace_crates`).
+[dependencies]

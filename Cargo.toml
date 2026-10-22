@@ -18,6 +18,7 @@ members = [
     "chimera/client",
     "chimera/net",
     "chimera/tools",
+    "chimera/vfs",
     "source/formats",
     "source/logic",
     "source/tools",
@@ -43,6 +44,7 @@ default-members = [
     "chimera/client",
     "chimera/net",
     "chimera/tools",
+    "chimera/vfs",
     "source/formats",
     "source/logic",
     "source/tools",
@@ -77,6 +79,7 @@ chimera_present = { path = "chimera/present" }
 chimera_sim = { path = "chimera/sim" }
 chimera_client = { path = "chimera/client" }
 chimera_net = { path = "chimera/net" }
+chimera_vfs = { path = "chimera/vfs" }
 source_formats = { path = "source/formats" }
 source_logic = { path = "source/logic" }
 # LithTech's formats as plain data (Combat Arms' `.rez` archives).

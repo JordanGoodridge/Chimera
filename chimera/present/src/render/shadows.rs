@@ -550,6 +550,7 @@ pub fn shed_unread_textures(data: &mut MapData) {
     }
     for (t, read) in data.textures.iter_mut().zip(read) {
         t.mips = Vec::new();
+        t.bc = None;
         if !read {
             t.rgba8 = Vec::new();
         }

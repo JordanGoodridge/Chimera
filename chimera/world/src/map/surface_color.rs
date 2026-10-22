@@ -257,6 +257,7 @@ mod tests {
             width: 2,
             height: 1,
             rgba8: vec![255, 0, 0, 255, 0, 0, 255, 255],
+            bc: None,
         });
         data.lightmap = Some(MapLightmap {
             width: 1,

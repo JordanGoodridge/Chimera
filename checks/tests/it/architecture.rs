@@ -843,6 +843,7 @@ fn workspace_crates() {
     const NO_HACK: &[&str] = &[
         "chimera/workspace-hack",
         "chimera/dev",
+        "chimera/vfs",
         "source/formats",
         "lithtech/formats",
         "source/tools",
@@ -924,9 +925,28 @@ fn workspace_crates() {
         the architecture tests and the hooks' test selection build in seconds in a fresh clone and never \
         depend on the code they check. Read what is needed from files or `cargo metadata` instead.";
     const FORBIDDEN: &[(&str, &[&str], &str)] = &[
-        ("source/formats", &["bevy", "avian", "mashup", "lithtech_"], PURE_DATA),
+        // The neutral VFS under both format crates: no dependency at all.
+        (
+            "chimera/vfs",
+            &[
+                "bevy",
+                "avian",
+                "mashup",
+                "source_",
+                "lithtech_",
+                "chimera_",
+                "cs_source",
+                "combat_arms",
+                "games",
+                "workspace-hack",
+            ],
+            PURE_DATA,
+        ),
+        // Source's formats may use the VFS (`chimera_vfs`) and no other
+        // Chimera crate.
+        ("source/formats", &["bevy", "avian", "mashup", "lithtech_", "chimera_"], PURE_DATA),
         // LithTech's loader layer, like Source's: plain data (the VFS from
-        // `source_formats` only).
+        // `chimera_vfs` only).
         (
             "lithtech/formats",
             &[
@@ -1142,7 +1162,11 @@ fn workspace_crates() {
             } else {
                 ui_only(dep)
             };
-            if forbidden.iter().any(|f| dep.starts_with(f)) && !allowed {
+            // `chimera_vfs` is the neutral layer under the format crates, so
+            // the `chimera_` prefix in their rules doesn't cover it (its own
+            // rules do list the whole prefix, and it has no dependencies).
+            let neutral = dep == "chimera_vfs" && *krate != "chimera/vfs";
+            if forbidden.iter().any(|f| dep.starts_with(f) && !(neutral && *f == "chimera_")) && !allowed {
                 errors.push(format!("{path} depends on `{dep}`: {krate} {why}"));
             }
         }

@@ -118,6 +118,8 @@ pub struct MapAssets<'w> {
     bindposes: Option<ResMut<'w, Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>>,
     beam_materials: Option<ResMut<'w, Assets<super::beams::BeamMaterial>>>,
     detail_materials: Option<ResMut<'w, Assets<super::detail::DetailMaterial>>>,
+    /// Which compressed texture formats the device takes (`bc_wanted`).
+    compressed: Option<Res<'w, bevy::image::CompressedImageFormatSupport>>,
 }
 
 /// Render handles the drawn phases make and the props and resources use
@@ -166,12 +168,13 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
         bindposes,
         beam_materials,
         detail_materials,
+        compressed,
     } = a;
     let (Some(meshes), Some(materials), Some(images)) = (meshes.as_mut(), materials.as_mut(), images.as_mut()) else {
         return drawn;
     };
     let (data, view) = (s.data, s.view);
-    let (textures, cubemaps) = load_images(commands, data, images);
+    let (textures, cubemaps) = load_images(commands, data, images, super::images::bc_wanted(compressed.as_deref()));
     drawn.cubemaps = cubemaps.clone();
     drawn.textures = textures.clone();
     // Character bodies, drawn by `attach_bodies`: skinned when the
@@ -278,12 +281,27 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
     drawn
 }
 
+/// How many of `textures` are block compressed images, and their texel
+/// bytes in all (what goes to the GPU).
+fn image_sizes(images: &Assets<Image>, textures: &[Handle<Image>]) -> (usize, usize) {
+    textures
+        .iter()
+        .filter_map(|h| images.get(h))
+        .fold((0, 0), |(n, bytes), i| {
+            (
+                n + i.texture_descriptor.format.is_compressed() as usize,
+                bytes + i.data.as_ref().map_or(0, Vec::len),
+            )
+        })
+}
+
 /// The map's textures and cubemaps as images (the monitor screen's
 /// texture is its render target), and the resources that name them.
 fn load_images(
     commands: &mut Commands,
     data: &MapData,
     images: &mut Assets<Image>,
+    bc: bool,
 ) -> (Vec<Handle<Image>>, Vec<Handle<Image>>) {
     // HUD pictures are clamped at their edges: wrapped, the scope
     // ring's outer edge blends with its clear centre and lets the
@@ -301,13 +319,19 @@ fn load_images(
             if Some(i) == data.camera_texture {
                 return monitor::screen_image(images);
             }
-            let mut image = to_image(t, &data.look);
+            let mut image = to_image(t, &data.look, bc);
             if hud.contains(&i) {
                 clamp_edges(&mut image);
             }
             images.add(image)
         })
         .collect();
+    let (compressed, bytes) = image_sizes(images, &textures);
+    info!(
+        "textures: {compressed} of {} uploaded block compressed, {:.1} MiB",
+        textures.len(),
+        bytes as f32 / (1 << 20) as f32
+    );
     if let Some(i) = data.camera_texture {
         commands.insert_resource(monitor::MonitorScreen(textures[i].clone()));
     }

@@ -4,7 +4,7 @@
 use std::io::ErrorKind;
 
 use lithtech_formats::rez::{RezArchive, RezCipher, RezHeader, RezKeys, decode_type, encode_type, open_dir};
-use source_formats::fs::FileSource;
+use chimera_vfs::FileSource;
 
 use crate::fixture::{Dir, build, put_number};
 
@@ -246,7 +246,7 @@ fn first_name_wins_and_lookups_ignore_case() {
         .file("SAME", "TXT", b"second".to_vec());
     let rez = open(build("LithTech Resource File", top)).unwrap();
     assert_eq!(rez.entries().len(), 1);
-    let mut mount = source_formats::fs::Mount::default();
+    let mut mount = chimera_vfs::Mount::default();
     mount.push(rez);
     assert_eq!(mount.read("TEST\\Same.TXT").unwrap(), b"first");
 }
