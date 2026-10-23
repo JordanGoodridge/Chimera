@@ -42,4 +42,5 @@ ladder = [
 ]
 advance_on = "kill"
 demote_on = "melee_death"
+refill_ammo = true   # the ladder gives each gun once: 200 rounds of M60 run out
 win = { kind = "ladder_end" }

@@ -232,6 +232,32 @@ fn combat_arms_bots_play_the_gun_game() {
     assert!(bots.iter().any(|b| rung(&sim, *b) > 0), "and climb");
 }
 
+/// A ladder gun never runs dry: shooting a rung's gun (the M60's 200
+/// rounds, misses included) empties neither its clip nor its reserve for
+/// good; the reserve is topped up, so the last rungs stay playable.
+#[test]
+fn a_rungs_gun_keeps_its_reserve() {
+    use chimera_sim::weapon::Magazine;
+    let mut sim = party();
+    let a = soldier(&mut sim);
+    let _b = soldier(&mut sim);
+    sim.seconds(1.5);
+    sim.app.world_mut().entity_mut(a).insert(Rung(8));
+    chimera_sim::weapon::give(sim.app.world_mut(), a, "combat_arms:m60");
+    sim.seconds(2.0);
+    assert_eq!(held(&sim, a), Some("combat_arms:m60"));
+    let gun = testkit::active(sim.app.world(), a).unwrap();
+    {
+        let mut m = sim.app.world_mut().get_mut::<Magazine>(gun).unwrap();
+        m.clip = 0;
+        m.reserve = 0;
+    }
+    sim.seconds(0.5);
+    let m = sim.app.world().get::<Magazine>(gun).unwrap();
+    assert_eq!(m.reserve, m.reserve_max, "the reserve is full again: {m:?}");
+    assert!(m.reserve > 0);
+}
+
 /// A soldier holding CS:S's gun has its view model driven by Chimera's
 /// generic driver (CS:S's rules, the party's `ViewAnimRules`); Combat
 /// Arms' lets go of it, and takes it back with a Combat Arms gun.

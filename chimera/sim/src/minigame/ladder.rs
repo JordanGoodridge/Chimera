@@ -14,6 +14,7 @@
 //! ladder = ["cs_source:weapon_glock", "combat_arms:m4a1"]   # the rungs, in order
 //! advance_on = "kill"              # the only one so far
 //! demote_on = "melee_death"        # or "none" (the default)
+//! refill_ammo = true               # a rung's gun never runs dry (default: false)
 //! win = { kind = "ladder_end" }    # the only one so far
 //! ```
 //!
@@ -26,7 +27,7 @@ use super::{ActiveMinigame, MinigameDef, MinigameEvent, RulesModule, hud::HudLin
 use crate::{
     core::{DamageKind, Died, Score, Team},
     mode::{Death, DeathKind, Hooks, Match, Mode, NO_HOOKS, Teams},
-    weapon::{Inventory, Weapon, data::WeaponCatalog, give},
+    weapon::{Inventory, Magazine, Weapon, data::WeaponCatalog, give},
 };
 
 /// The module's name.
@@ -59,6 +60,7 @@ pub static MODE: Mode = Mode {
     hooks: Hooks {
         died,
         before_spawns,
+        update: refill,
         ..NO_HOOKS
     },
 };
@@ -76,6 +78,8 @@ struct Params {
     demote_on: Demote,
     #[serde(default)]
     win: Win,
+    #[serde(default)]
+    refill_ammo: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
@@ -112,6 +116,8 @@ enum WinKind {
 pub struct Ladder {
     pub rungs: Vec<&'static str>,
     pub demote_on_melee: bool,
+    /// The rungs' guns keep a full reserve (a ladder has no ammo to find).
+    pub refill_ammo: bool,
 }
 
 /// A player's rung (0: the first).
@@ -144,6 +150,7 @@ fn start(world: &mut World, def: &MinigameDef) {
     world.insert_resource(Ladder {
         rungs,
         demote_on_melee: p.demote_on == Demote::MeleeDeath,
+        refill_ammo: p.refill_ammo,
     });
 }
 
@@ -152,6 +159,23 @@ fn loadout(world: &World, e: Entity) -> Vec<&'static str> {
     let Some(ladder) = world.get_resource::<Ladder>() else { return Vec::new() };
     let rung = world.get::<Rung>(e).map_or(0, |r| r.0);
     ladder.rungs.get(rung.min(ladder.rungs.len().saturating_sub(1))).copied().into_iter().collect()
+}
+
+/// With `refill_ammo`, a held rung gun's reserve is topped up every tick:
+/// the ladder gives each gun once, and a 200-round machine gun used up
+/// (misses count) would otherwise end the climb.
+fn refill(world: &mut World) {
+    let Some(ladder) = world.get_resource::<Ladder>() else { return };
+    if !ladder.refill_ammo {
+        return;
+    }
+    let rungs = ladder.rungs.clone();
+    let mut guns = world.query::<(&Weapon, &mut Magazine)>();
+    for (w, mut m) in guns.iter_mut(world) {
+        if w.owner.is_some() && m.reserve < m.reserve_max && rungs.contains(&w.id) {
+            m.reserve = m.reserve_max;
+        }
+    }
 }
 
 /// Everyone back to the first rung as the match starts.
