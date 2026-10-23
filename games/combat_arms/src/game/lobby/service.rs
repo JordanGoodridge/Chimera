@@ -710,7 +710,8 @@ impl Lobby {
     fn ready(&mut self, from: PlayerId, on: bool) -> Result<(), Refusal> {
         let id = self.room_id(from)?;
         let room = &self.rooms[&id];
-        if room.host == from {
+        // Only while the room is waiting; later a host's ready is a join.
+        if room.host == from && room.state == RoomState::Waiting {
             return Err(Refusal::HostCannotReady);
         }
         let seat = room.seat(from).unwrap();
@@ -770,10 +771,9 @@ impl Lobby {
     fn start(&mut self, from: PlayerId) -> Result<(), Refusal> {
         let id = self.room_id(from)?;
         let room = &self.rooms[&id];
-        if room.host == from {
-            if room.state != RoomState::Waiting {
-                return Err(Refusal::NotWaiting);
-            }
+        // Corrections 2026-10-22 (1): the room's state decides, not who is
+        // host; the host's start path is only for a waiting room.
+        if room.host == from && room.state == RoomState::Waiting {
             if !self.start_rule_met(room) {
                 return Err(Refusal::NotEnoughPlayers);
             }

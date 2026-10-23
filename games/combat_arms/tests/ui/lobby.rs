@@ -48,6 +48,25 @@ fn sim() -> Sim {
     s
 }
 
+/// `sim()` with the options screen's state too.
+fn sim_with_options() -> Sim {
+    let mut s = Sim::with(CaSim, |app| {
+        app.add_plugins((GreyboxMapPlugin, CaMenuStatePlugin, CaLobbyStatePlugin, combat_arms::ui::options::CaOptionsStatePlugin));
+    });
+    {
+        let mut host = s.app.world_mut().resource_mut::<CaLobbyHost>();
+        host.enabled = true;
+        host.tick_secs = 0.1;
+        host.result_secs = 0.3;
+        host.drop_leavers = false;
+    }
+    combat_arms::game::options::flow::load(s.app.world_mut(), None);
+    let me = s.spawn_character(chimera_world::greybox::SPAWNS[0], combat_arms::game::movement::ID);
+    s.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    s.seconds(0.5);
+    s
+}
+
 fn screen(sim: &Sim) -> &LobbyScreen {
     sim.app.world().resource::<LobbyScreen>()
 }
@@ -668,4 +687,45 @@ fn room_chat_goes_through_the_repeat_lock() {
     s.seconds(0.3);
     let said = client(&s).chat.iter().filter(|l| l.text.ends_with("hello") && !l.system).count();
     assert_eq!(said, 3);
+}
+
+/// Corrections 2026-10-22 (options 1): the lobby's start menu opens the
+/// options screen as a modal over the room, and closing it changes nothing
+/// of the player's room state.
+#[test]
+fn corr_options_open_from_the_start_menu_without_touching_the_room() {
+    let mut s = sim_with_options();
+    their_room(&mut s, 11, create_spec("TDM", 16, "room", ""));
+    enter_room_by_clicks(&mut s, 0);
+    click(&mut s, "button_game_ready");
+    s.seconds(0.3);
+    assert_eq!(client(&s).seat().unwrap().state, PlayerState::Ready);
+    assert!(!screen(&s).start_menu, "the menu is closed");
+    click(&mut s, "StartButton");
+    assert!(screen(&s).start_menu);
+    click(&mut s, "button_start_option");
+    s.seconds(0.2);
+    let opts = s.app.world().resource::<combat_arms::game::options::CaOptions>();
+    assert!(opts.open, "the options screen is up");
+    assert_eq!(opts.tab, combat_arms::game::options::Tab::Graphic);
+    assert!(!screen(&s).start_menu);
+    // The room underneath takes no clicks while it is up.
+    let before = client(&s).outbox.len();
+    click(&mut s, "button_game_ready");
+    assert_eq!(client(&s).outbox.len(), before, "modal");
+    combat_arms::game::options::flow::cancel(s.app.world_mut());
+    s.seconds(0.3);
+    assert_eq!(screen(&s).page, Page::Room);
+    assert_eq!(client(&s).seat().unwrap().state, PlayerState::Ready, "still ready");
+}
+
+/// The same from the room list.
+#[test]
+fn corr_options_open_from_the_room_list() {
+    let mut s = sim_with_options();
+    assert_eq!(screen(&s).page, Page::List);
+    click(&mut s, "StartButton");
+    click(&mut s, "button_start_option");
+    s.seconds(0.2);
+    assert!(s.app.world().resource::<combat_arms::game::options::CaOptions>().open);
 }

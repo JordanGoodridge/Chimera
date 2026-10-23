@@ -307,6 +307,12 @@ impl ChatClient {
             }
             // Not settings: the whole line goes out as chat (Quirk 4).
             Some((Cmd::WhisperEnable | Cmd::WhisperIgnore | Cmd::WhisperUnignore, _)) => Route::Tab(text.clone()),
+            // A remainder of only spaces is no setting: the whole typed line
+            // goes out as chat (corrections 2026-10-22, 3). A Whisper alias
+            // followed by only spaces sends nothing, below.
+            Some((Cmd::WhisperAutoAnswer | Cmd::Block | Cmd::UnBlock, rem)) if !short(&rem) && rem.trim().is_empty() => {
+                Route::Tab(text.clone())
+            }
             Some((Cmd::WhisperAutoAnswer, rem)) => {
                 if short(&rem) {
                     self.settings.auto_reply.clear();

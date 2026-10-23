@@ -6,7 +6,7 @@
 //! its labels and up to 20 death marks.
 //!
 //! - F1: held (`+fulltacticalmap`) and no chat line open, no in-game menu,
-//!   the round not over; shown while dead too; the radar keeps drawing.
+//!   (held through round end and intermission); shown while dead too; the radar keeps drawing.
 //! - F2: frame (90, 93) 844 x 584, legend panel (101, 103) 252 x 562, map
 //!   panel (361, 103) 562 x 562, image (397, 139) at alpha 230 showing
 //!   u, v in [0.125, 0.875]; the grid `DotGuide` at (392, 134) 523 x 523
@@ -14,7 +14,9 @@
 //!   13 (x 371, y = 144 + 40 i); the legend rows 400 x 32 at (101, 109 +
 //!   37 i), the icon, its wedge over it and the text at (+69, +11).
 //! - F4: what is shown: the radar's things less the heartbeat contacts
-//!   (`scene`), the dead allies as death icons at their place, the death
+//!   (`scene`), the dead allies as death icons (a dead VIP as the VIP icon)
+//!   and revealed dead enemies with their living icon, at the place they
+//!   died (no wedge), the death
 //!   marks, the names (centred under the icon: the box's (+16, +24), bold
 //!   11, white, black outline).
 //!
@@ -48,7 +50,6 @@ use crate::{
             look::{self, Look},
             maths::{self, FullMap},
         },
-        rules::{CaMatchView, Phase},
     },
     ui::{
         CaUi,
@@ -121,9 +122,10 @@ fn icon_box(centre: (i32, i32), s: Screen) -> PxRect {
 }
 
 /// F1: whether the map shows.
-fn shown(keys: &RadarKeys, chat: Option<&ChatInput>, menu: bool, view: Option<&CaMatchView>) -> bool {
-    let ended = view.is_some_and(|v| matches!(v.phase, Phase::RoundOver { .. } | Phase::Intermission { .. } | Phase::MatchOver));
-    keys.map && chat.is_none_or(|c| c.open.is_none()) && !menu && !ended
+/// The map's own per-frame check has no round-end condition (corrections
+/// 2026-10-22, 3): held, it stays through round end and intermission.
+fn shown(keys: &RadarKeys, chat: Option<&ChatInput>, menu: bool) -> bool {
+    keys.map && chat.is_none_or(|c| c.open.is_none()) && !menu
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -132,7 +134,6 @@ pub fn update_full_map(
     keys: Res<RadarKeys>,
     chat: Option<Res<ChatInput>>,
     menu: Option<Res<crate::ui::menu::InGameMenu>>,
-    view: Option<Res<CaMatchView>>,
     round: Res<CaRadarRound>,
     offset: Res<CaWorldOffset>,
     marks: Res<DeathMarks>,
@@ -141,7 +142,7 @@ pub fn update_full_map(
     mut map: ResMut<CaFullMap>,
 ) {
     let s = screen.0;
-    let visible = shown(&keys, chat.as_deref(), menu.as_ref().is_some_and(|m| m.open), view.as_deref());
+    let visible = shown(&keys, chat.as_deref(), menu.as_ref().is_some_and(|m| m.open));
     let mut next = CaFullMap {
         screen: s,
         visible,

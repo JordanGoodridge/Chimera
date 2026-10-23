@@ -36,9 +36,6 @@
 //!   (Open question 2): the string table's are unread. Notices that are
 //!   string ids in the spec (`$BlockWhisper`, `$UserSpamBlockWhisper`) are
 //!   kept as ids in the lines, resolved by the panel.
-//! - Within one text command the *longest* matching alias counts, not the
-//!   first (T1 says the first; its case 24 has `/w` listed before
-//!   `/whisper` and still reads `/whisper Bob hi` as a whisper to Bob).
 //! - The radio file is the install's `attributes/radiomsgsound.txt` when
 //!   it reads (the name is a guess, `heavy::radio` checks it), else ours:
 //!   silent. A voice set comes from `CaVoice` (nothing sets it yet:

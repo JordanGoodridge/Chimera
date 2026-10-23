@@ -149,3 +149,26 @@ fn t52_the_large_map_attribute_file() {
     assert!(!lists.is_empty(), "icon lists");
     assert_eq!(lists[0].items.len(), 6, "Elimination's six rows");
 }
+
+/// Corrections 2026-10-22 (5): the install's `[HUDLargeMap]` section (in
+/// the HUD layout attributes) carries the correct Bravo flag badge key and
+/// no misspelt one (two letters of `LargeMapBravoFlagMove` swapped), so the
+/// radar's Alpha carriers have an empty badge (`look::radar_player`).
+#[cfg(feature = "ui")]
+#[test]
+fn t53_the_radars_misspelt_flag_badge_key() {
+    let Some(m) = install() else { return };
+    if !v1(true) {
+        return;
+    }
+    let layout = m.read(combat_arms::ui::install::LAYOUT_ATTRIBUTES).expect("the layout attribute file");
+    let doc = Document::parse(&layout).unwrap();
+    let section = doc.section("HUDLargeMap").expect("[HUDLargeMap]");
+    let right: Vec<char> = "largemapbravoflagmove".chars().collect();
+    let swapped = |k: &str| {
+        let a: Vec<char> = k.to_lowercase().chars().collect();
+        a.len() == right.len() && a.iter().zip(&right).filter(|(x, y)| x != y).count() == 2
+    };
+    assert!(section.get("LargeMapBravoFlagMove").is_some(), "the correct key");
+    assert!(!section.iter().any(|(k, _)| swapped(k)), "no misspelt key: the radar's lookup finds nothing");
+}

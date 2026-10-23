@@ -128,7 +128,7 @@ fn nav(x: &mut X) {
     x.button("button_lobby", (10, 40), (100, 24), "opt_tab_", "Lobby");
     x.button("button_gameroom", (114, 40), (100, 24), "opt_tab_", "Gameroom");
     x.button("button_character", (218, 40), (110, 24), "opt_tab_", "My Character");
-    x.button("button_option", (332, 40), (80, 24), "opt_tab_", "option");
+    x.button("StartButton", (332, 40), (80, 24), "opt_tab_", "menu");
 }
 
 /// The chat area and its input line.
@@ -283,6 +283,17 @@ pub fn message() -> String {
     x.window("MessageBox", (312, 300), (400, 150), "opt_back");
     x.text("message_text", (20, 24), "bold 12", TEXT_COLOUR, 360);
     x.button("button_msg_ok", (160, 104), (80, 26), "opt_btn_", "OK");
+    x.close();
+    x.finish()
+}
+
+/// The start menu popup (`StartButton`, POPUP_STARTMENU.XML): the option
+/// entry opens the options screen.
+pub fn start_menu() -> String {
+    let mut x = X::new();
+    x.window("StartMenu", (332, 66), (200, 90), "opt_back");
+    x.button("button_start_option", (20, 14), (160, 26), "opt_btn_", "Option");
+    x.button("button_start_close", (20, 50), (160, 26), "opt_btn_", "Close");
     x.close();
     x.finish()
 }

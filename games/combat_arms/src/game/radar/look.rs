@@ -46,7 +46,8 @@ pub struct Look {
     pub icon: String,
     /// The facing wedge (none for a dead player's mark).
     pub view: Option<String>,
-    /// A flag carrier's badge (`character_flag_A.dtx`).
+    /// A flag carrier's badge (`character_flag_A.dtx`); empty on the radar
+    /// for an Alpha carrier (it draws nothing).
     pub badge: Option<String>,
     pub arrow: bool,
 }
@@ -68,6 +69,9 @@ pub struct Subject {
     pub alive: bool,
     pub carry: CaCarry,
     pub vip: bool,
+    /// The mode is Arms Race: the radar's enemy rules stop at the
+    /// last-stage test (the scan rules are not consulted there).
+    pub arms_race: bool,
     /// Arms Race: it has entered the last stage.
     pub last_stage: bool,
     /// A shared scan is on for the viewer's team (satellite, system).
@@ -120,13 +124,21 @@ pub fn radar_player(v: &Viewer, s: &Subject) -> Option<Look> {
     if !s.alive {
         return None;
     }
-    if s.ally {
-        return Some(ally(s));
+    let mut look = if s.ally { ally(s) } else { enemy(v, s, true)? };
+    // Corrections 2026-10-22 (5): the radar looks Bravo's flag badge up
+    // under a key the install's layout attributes do not carry
+    // (`heavy::radar::t53`), so an Alpha carrier gets an empty badge: the
+    // badge stays `Some` (the carrier is a flag carrier, with its arrow)
+    // but names no image. The full map is unaffected.
+    if look.badge.as_deref() == Some(&*badge(2)) {
+        look.badge = Some(String::new());
     }
-    enemy(v, s, true)
+    Some(look)
 }
 
-fn enemy(v: &Viewer, s: &Subject, heartbeat: bool) -> Option<Look> {
+/// `radar`: the radar's rules (heartbeat contacts count; Arms Race's
+/// scans do not) rather than the full map's.
+fn enemy(v: &Viewer, s: &Subject, radar: bool) -> Option<Look> {
     let plain = |file: &str, view: &str, badge: Option<String>, arrow: bool| Look {
         icon: icon(file),
         view: Some(icon(view)),
@@ -145,20 +157,37 @@ fn enemy(v: &Viewer, s: &Subject, heartbeat: bool) -> Option<Look> {
     if s.carry.bomb {
         return Some(plain("character_enemy_bomb.dtx", "character_enemy_view.dtx", None, true));
     }
-    if s.last_stage || s.shared_scan || (heartbeat && (s.contact || s.team_contact)) {
+    // Corrections 2026-10-22 (1): on the radar Arms Race stops at the
+    // last-stage test; the full map still shows a shared scan's enemies.
+    let revealed = if radar && s.arms_race {
+        s.last_stage
+    } else {
+        s.last_stage || s.shared_scan || (radar && (s.contact || s.team_contact))
+    };
+    if revealed {
         return Some(plain("character_enemy.dtx", "character_enemy_view.dtx", None, false));
     }
     None
 }
 
 /// F4: how the full map shows another player `s` to the viewer: allies
-/// always (dead ones as a death icon); enemies by the radar's reasons but
-/// the heartbeat contacts.
+/// always (dead ones as a death icon, the VIP icon for a dead VIP); enemies
+/// by the radar's reasons but the heartbeat contacts, dead ones too while a
+/// rule still reveals them (their living icon, no wedge).
 pub fn map_player(v: &Viewer, s: &Subject) -> Option<Look> {
     if s.ally {
         if !s.alive {
+            // The VIP icon is chosen after the death icon and replaces it,
+            // the bomb's after that (it is dropped on death in play).
+            let file = if s.carry.bomb {
+                "character_ally_bomb.dtx"
+            } else if s.vip {
+                "character_VIP.dtx"
+            } else {
+                "area_death_ally.DTX"
+            };
             return Some(Look {
-                icon: icon("area_death_ally.DTX"),
+                icon: icon(file),
                 view: None,
                 badge: None,
                 arrow: false,
@@ -169,11 +198,11 @@ pub fn map_player(v: &Viewer, s: &Subject) -> Option<Look> {
         look.arrow = false;
         return Some(look);
     }
-    if !s.alive {
-        return None;
-    }
     let mut look = enemy(v, s, false)?;
     look.arrow = false;
+    if !s.alive {
+        look.view = None;
+    }
     Some(look)
 }
 

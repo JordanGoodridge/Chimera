@@ -193,6 +193,32 @@ fn radio_menu_window_and_keys() {
     assert!(calls.is_some(), "the cooldown is stamped");
 }
 
+/// Corrections 2026-10-22 (1): only the keys 1 to 6 pick a radio entry;
+/// 7 to 9 do nothing and the menu stays open (the line is shown, though).
+#[test]
+fn radio_keys_seven_to_nine_pick_nothing() {
+    let mut sim = sim();
+    {
+        let mut radio = sim.app.world_mut().resource_mut::<chat::CaRadio>();
+        let class = &mut radio.0.classes[radio::REPORT as usize];
+        let first = class.entries[0].clone();
+        class.entries = vec![first; 9];
+    }
+    chat::radio_key(sim.app.world_mut(), radio::REPORT);
+    sim.ticks(1);
+    assert_eq!(talk(&sim).radio.as_ref().map(|m| m.lines.len()), Some(9));
+    for (code, c) in [(KeyCode::Digit7, "7"), (KeyCode::Digit8, "8"), (KeyCode::Digit9, "9")] {
+        key(&mut sim, code, Key::Character(c.into()));
+        assert!(talk(&sim).radio.is_some(), "{c} leaves the menu open");
+        assert!(sim.app.world().resource::<CaChat>().last_radio.is_none(), "{c} sent nothing");
+    }
+    let w = sim.app.world_mut();
+    w.resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Digit6);
+    sim.ticks(3);
+    assert!(talk(&sim).radio.is_none(), "6 picks entry 6");
+    assert!(sim.app.world().resource::<CaChat>().last_radio.is_some());
+}
+
 /// The install's radio data lists its entries by string id
 /// (`$RadioMsg_Report_list_N`): the menu shows the table's text (the
 /// number the text carries once), and a built-in line where the table has
