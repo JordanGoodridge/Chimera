@@ -433,6 +433,7 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
         set(&["hooks", HANDLING, "move_penalty"], w.move_penalty),
         set(&["hooks", INVENTORY, "infinite"], w.infinite_ammo != 0),
         set(&["hooks", INVENTORY, "drop_on_death"], w.drop_by_player_dead),
+        set(&["hooks", INVENTORY, "fire_rate"], w.fire_ani_rate),
         set(&["hooks", HUD, "crosshair"], i64::from(w.cross_hair_type.clamp(0, 255))),
         set(&["hooks", HUD, "disable_crosshair"], w.disable_crosshair != 0),
         set(&["hooks", HUD, "duck_perturb"], i64::from(w.duck_perturb)),

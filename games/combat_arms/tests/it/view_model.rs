@@ -1616,3 +1616,201 @@ fn an_emptied_magazine_reloads_once_when_the_clip_fills_late() {
         empty_then_reload_once(true, lag);
     }
 }
+
+// ---------------------------------------------------------------------
+// Corrections (2026-10-22): view_models.md, one test each (`v01_` is
+// correction 1).
+
+/// An M4A1-like table with a 150 ms `postfire` and a `prefire` of
+/// `pre` ms.
+fn rifle_table(pre: u32) -> Arc<Vec<AnimInfo>> {
+    Arc::new(vec![
+        a("select", 1200, &[]),
+        a("idle_0", 1833, &[]),
+        a("idle_1", 1833, &[]),
+        a("prefire", pre, &[]),
+        a("fire_0", 105, &[(0, "FIRE_KEY")]),
+        a("postfire", 150, &[]),
+        a("reload", 2300, &[]),
+        a("PreRush", 233, &[]),
+        a("rush", 620, &[]),
+        a("PostRush", 367, &[]),
+    ])
+}
+
+/// Fire once and release; run until `postfire` plays.
+fn into_postfire(r: &mut Run) {
+    r.frame(FIRE);
+    for _ in 0..80 {
+        if r.m.playing() == Some("postfire") {
+            return;
+        }
+        r.frame(NONE);
+    }
+    panic!("no postfire: {:?}", r.starts);
+}
+
+/// 1. A new press 50 ms into `postfire` of a full-automatic gun refires on
+/// the update that sees `postfire` done, with no idle between.
+#[test]
+fn v01_press_during_postfire_refires_on_the_same_update() {
+    let mut r = Run::draw(rifle_table(0), setup(Class::Primary, 0, 30), 30, 90);
+    r.settle();
+    into_postfire(&mut r);
+    let post = r.n - 1;
+    r.frames(2, NONE); // 50 ms in with the one before
+    r.frames(60, FIRE);
+    // 150 ms + 1 over 16.67 ms frames: seen done on the 10th update.
+    let again = r.started("prefire");
+    assert_eq!(again.len() >= 2, true, "{:?}", r.starts);
+    assert_eq!(again[1], post + 10, "{:?}", r.starts);
+    assert!(r.started("idle_0").is_empty() || r.started("idle_0")[0] > post + 10, "{:?}", r.starts);
+    // The full-automatic gun still waits while `postfire` plays: no
+    // restart before it is done.
+    assert!(!r.starts.iter().any(|(u, n)| n == "prefire" && *u > post && *u < post + 10));
+}
+
+/// 1 and 2. A semi-automatic pistol (no pre-fire) refires with `fire_0`
+/// on the pressing update; a semi-automatic rifle with a `prefire` goes
+/// through `prefire` first.
+#[test]
+fn v02_semi_automatic_cancel_goes_through_prefire() {
+    let mut r = Run::draw(rifle_table(100), setup(Class::Primary, 1, 30), 30, 90);
+    r.settle();
+    into_postfire(&mut r);
+    r.frames(2, NONE);
+    assert_eq!(r.m.playing(), Some("postfire"));
+    let press = r.n;
+    r.frame(FIRE);
+    assert_eq!(r.m.playing(), Some("prefire"), "on the pressing update: {:?}", r.starts);
+    assert!(r.started("prefire").contains(&press), "{:?}", r.starts);
+    r.frames(12, NONE);
+    let fire_0 = r.started("fire_0");
+    assert!(fire_0.last().is_some_and(|u| *u > press), "{:?}", r.starts);
+    assert_eq!(r.shots.len(), 2, "{:?}", r.shots);
+}
+
+/// 3. Sprinting cuts a knife slash and stab at once: `PreRush` from that
+/// update, no hit after the cut.
+#[test]
+fn v03_sprint_cuts_a_knife_swing() {
+    let mut r = Run::draw(m9(), setup(Class::Melee, 0, 0), 1, 1);
+    r.infinite = true;
+    r.settle();
+    r.frame(FIRE);
+    r.frames(5, NONE); // 100 ms into the slash
+    let at = r.n;
+    r.frames(1, SPRINT);
+    assert_eq!(r.started("PreRush"), vec![at], "{:?}", r.starts);
+    r.frames(40, SPRINT);
+    assert!(r.shots.is_empty(), "a cut slash hits nothing: {:?}", r.shots);
+    // The stab, cut at 300 ms.
+    let mut r = Run::draw(m9(), setup(Class::Melee, 0, 0), 1, 1);
+    r.infinite = true;
+    r.settle();
+    r.frame(Inputs { alt_fire: true, ..NONE });
+    r.frames(17, NONE);
+    let at = r.n;
+    r.frames(40, SPRINT);
+    assert_eq!(r.started("PreRush").first(), Some(&at), "{:?}", r.starts);
+    assert!(r.shots.is_empty(), "{:?}", r.shots);
+    // A rifle's `fire_0` plays out under sprint, then `PreRush`.
+    let mut r = Run::draw(rifle_table(0), setup(Class::Primary, 0, 30), 30, 90);
+    r.settle();
+    r.frames(3, FIRE);
+    let fire = *r.started("fire_0").first().expect("fired");
+    r.frames(30, SPRINT);
+    let rush = *r.started("PreRush").first().expect("sprinted");
+    assert!(rush >= fire + 7, "fire {fire}, PreRush {rush}: {:?}", r.starts);
+}
+
+/// 3. A double barrel caught in `fire_0` is cut too.
+#[test]
+fn v03_sprint_cuts_a_double_barrel() {
+    let s = Setup { double_barrel: true, ..setup(Class::Shotgun, 1, 2) };
+    let mut r = Run::draw(rifle_table(0), s, 2, 20);
+    r.settle();
+    r.frame(FIRE);
+    r.frames(1, NONE);
+    assert_eq!(r.m.playing(), Some("fire_0"));
+    let at = r.n;
+    r.frames(3, SPRINT);
+    assert_eq!(r.started("PreRush").first(), Some(&at), "{:?}", r.starts);
+}
+
+/// 4. A grenade asked to fire but not yet in its pin pull goes to the
+/// sprint pose and the request is dropped.
+#[test]
+fn v04_grenade_request_under_sprint_is_dropped() {
+    let mut r = Run::draw(m67(), grenade(), 1, 2);
+    r.settle();
+    r.frame(FIRE); // state "firing", the idle still showing
+    r.frame(Inputs { fire: true, ..SPRINT });
+    assert_eq!(r.m.playing(), Some("PreRush"), "{:?}", r.starts);
+    assert!(r.started("prefire").is_empty(), "{:?}", r.starts);
+    r.frames(10, SPRINT);
+    r.frames(1, NONE);
+    assert_eq!(r.m.playing(), Some("PostRush"));
+    r.frames(40, NONE);
+    assert!(r.started("prefire").is_empty(), "no pin pull, ever");
+    assert!(r.started("idle_1").len() + r.started("idle_0").len() >= 1);
+}
+
+/// 5. The full idle after `PostRush` starts from 0 (no pop).
+#[test]
+fn v05_post_sprint_full_idle_starts_from_zero() {
+    let mut r = Run::draw(rifle_table(0), setup(Class::Primary, 0, 30), 30, 90);
+    r.settle();
+    r.frames(30, SPRINT);
+    for _ in 0..60 {
+        let before = r.m.playing().map(str::to_string);
+        r.clip_total_update(NONE);
+        if before.as_deref() == Some("PostRush") && r.m.playing() != Some("PostRush") {
+            assert_eq!(r.m.playing(), Some("idle_1"));
+            assert_eq!(r.m.shown().map(|(_, t)| t), Some(0.0), "idle_1 at t = 0, no pop");
+            return;
+        }
+        r.m.advance(F);
+    }
+    panic!("PostRush never ended");
+}
+
+impl Run {
+    /// One update only (no advance), for what is seen between the two.
+    fn clip_total_update(&mut self, mut i: Inputs) {
+        i.clip = self.clip;
+        i.total = self.total;
+        self.m.update(&i);
+    }
+}
+
+/// 6. The fire rate includes the weapon's `FireAniRate`: 1.25 with 0.25,
+/// a 105 ms `fire_0` taking 84 ms, one shot per 6 frames instead of 7;
+/// the draw and reload sums add the character model's bonuses.
+#[test]
+fn v06_fire_animation_rate_includes_the_weapons_own() {
+    use combat_arms::game::attachments::{animation_rate, fire_animation_rate};
+    assert_eq!(fire_animation_rate(0.25, 0.0), animation_rate(1.25));
+    assert!((fire_animation_rate(0.25, 0.0) - 1.25).abs() < 1e-6);
+    assert!((fire_animation_rate(0.25, 0.25) - 1.5).abs() < 1e-6);
+    assert!((fire_animation_rate(0.0, 0.0) - 1.0).abs() < 1e-6);
+    assert_eq!(fire_animation_rate(1.5, 0.75), 1.0, "above 2.0 plays at 1.0");
+    let cadence = |rate: f32| {
+        let s = Setup {
+            rates: Rates { fire: rate, ..Rates::default() },
+            ..setup(Class::Primary, 0, 30)
+        };
+        let mut r = Run::draw(rifle_table(0), s, 30, 90);
+        r.settle();
+        r.frames(80, FIRE);
+        let fires = r.started("fire_0");
+        fires[2] - fires[1]
+    };
+    assert_eq!(cadence(1.0), 7);
+    assert_eq!(cadence(fire_animation_rate(0.25, 0.0)), 6);
+    // The vest's reload and select bonuses reach the machine's rates
+    // through the same sums.
+    let reload = animation_rate(1.0 + 0.2 + 0.1);
+    let draw = animation_rate(1.0 + 0.0 + 0.3 + 0.1);
+    assert!((reload - 1.3).abs() < 1e-6 && (draw - 1.4).abs() < 1e-6);
+}

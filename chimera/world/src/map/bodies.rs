@@ -4,7 +4,7 @@
 //! headless, for the server's hit tests). The drawn body, held model and
 //! their posing are `render::bodies`, which draws what these say.
 //!
-//! `CharacterModels`, `BodyModel`, `BodyName`, `BodySkin`, `BodyNumber`, `Held`,
+//! `CharacterModels`, `BodyModel`, `BodyName`, `BodySkin`, `BodyNumber`, `Corpse`, `Held`,
 //! `ShowLocalBody`;
 //! hitboxes on the skeleton (also headless), `SimAnimator`/`SimPose`.
 //!
@@ -26,6 +26,16 @@ use super::*;
 /// hand. Games set it.
 #[derive(Component, Clone, Default, Debug, PartialEq)]
 pub struct Held(pub Option<String>);
+
+/// A body drawn on an entity that is not a character: the corpse a game
+/// leaves behind. It takes the same components as a character's body
+/// (`BodyName`, `BodySkin`, `BodyNumber`, an `Animator`) and the body
+/// hangs `feet` metres below the entity's origin, turned by the entity's
+/// own rotation.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct Corpse {
+    pub feet: f32,
+}
 
 /// Which character model a character uses (index in `CharacterModels`).
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]

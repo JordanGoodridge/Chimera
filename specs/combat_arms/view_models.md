@@ -27,7 +27,7 @@ attached effects, 4 placement in camera space, 5 projection and field of
 view, 6 bob and sway, 7 animation selection per action, 8 animation key
 events, 9 muzzle flash, 10 shell ejection, 11 visibility); Grenade timings
 settled here (grenades.md Q3 and Q5); Per-frame order; Edge cases; Quirks;
-Test cases; Open questions (including contradictions with other specs).
+Corrections (2026-10-22); Test cases; Open questions (including contradictions with other specs).
 
 This spec builds on `animation.md` (tracker, sampling, key strings, the
 done-needs-L+1 rule), `models_ltb.md` (sockets, nodes), `inventory.md`
@@ -930,6 +930,110 @@ Keep all of these unless noted.
 9. **The view model ignores world depth.** It draws in its own depth slice
    and never pokes into walls. Keep.
 
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's first-person weapon state
+machine (fire, reload, idle, select and sprint animation choice), its bob
+manager and its animation-rate sums, against this spec and our
+implementation (`games/combat_arms/src/game/view_model.rs` and
+`view_model/`, at the commit this section was written on). The sway, the
+placement, the projection and the reload, draw and idle rules were found to
+match. Ordered by what a player notices.
+
+1. **A new press during or after `postfire` refires on the update that sees
+   `postfire` done, with no idle in between** (corrects 7, "Post-fire" and
+   "Semi-automatic guns").
+   - Reference: while the state is still "firing" and the current
+     animation is `postfire`, a fire request (with total ammo > 0, for a
+     weapon without `AccumPreFire`) does this: a fully automatic gun
+     (`RapidFireCount` 0) waits while `postfire` is not done; on the update
+     that sees it done (or at once for a semi-automatic gun) it starts the
+     sequence again **in that same update**: `prefire` (reset) if the weapon
+     plays one (7: not pistols, knives, primary shotguns), else `fire_0`
+     (reset). Only without a request does the end of `postfire` go to idle.
+   - Ours: `view_model/machine.rs:649-655` sends a finished `postfire` to
+     idle; the request is then seen as an idle request on the next update
+     (state "firing", no animation) and the animation starts on the update
+     after, two updates late.
+   - Expect (60 fps): a full-automatic weapon with a 150 ms `postfire`,
+     released, pressed again 50 ms into `postfire` and held: `postfire` is
+     seen done on update n, and `prefire` (or `fire_0`) starts on update n
+     (not n + 2), so the next shot comes 33.3 ms earlier than ours.
+
+2. **The semi-automatic cancel goes through `prefire` when the weapon plays
+   one** (corrects 7, "Semi-automatic guns", and Quirk 6's "starts
+   `fire_0` at once").
+   - Reference: the cancel restarts the whole sequence, so a semi-automatic
+     primary rifle (class with pre-fire, not a shotgun) plays its `prefire`
+     first; pistols and knives, which never play `prefire`, go to `fire_0`.
+   - Ours: `view_model/machine.rs:644-648` always starts `fire_0`.
+   - Expect: a semi-automatic primary (`RapidFireCount` > 0, not a
+     shotgun) whose file has a `prefire`: a new press during `postfire` →
+     `prefire` from 0 on that update, `fire_0` on the update that sees it
+     done. M92FS: `fire_0` at once (unchanged).
+
+3. **Sprinting cuts a knife swing and a double-barrel shot at once** (the
+   build's "no firing poses during sprint" option, defined in the US, EU and
+   BR configurations; corrects 7, "Sprint", third bullet).
+   - Reference: when sprint is on and the current animation belongs to the
+     fire sequence, the "done" test is forced true for the knife class and
+     the double-barrel gun type, so the sprint-in (`PreRush`, reset)
+     replaces `fire_0` / `alt_fire_0` / `postfire` on the first sprinting
+     update. Key strings after the cut never fire, so a slash cut before
+     its `FIRE_KEY` hits nothing. (A double barrel caught in `prefire`
+     still starts `fire_0`, as for rifles.) Other classes keep the old rule
+     (the fire animation plays out, then `PreRush`).
+   - Ours: `view_model/machine.rs:623-656` lets every fire stage finish
+     before the sprint-in (the post-fire cancel of item 2 even runs while
+     sprinting).
+   - Expect: M9 slash (`fire_0`, keys 155 and 402 ms), sprint starts at
+     100 ms → `PreRush` from that update, no hit at 155 or 402. Stab
+     (`alt_fire_0`, key 367) cut at 300 ms → no hit. Rifle `fire_0` under
+     sprint: plays to its end, then `PreRush` (unchanged).
+
+4. **A grenade or mine asked to fire but not yet in its pin pull goes to
+   the sprint pose** (corrects 7, "Sprint", the throw-class bullet).
+   - Reference: the throw-class hold applies only while one of their fire
+     animations is current. On the update between the request and the
+     `prefire` (state "firing", the idle still showing), sprint starts
+     `PreRush` and the state becomes the sprint state: the request is
+     dropped and no pin pull happens.
+   - Ours: `view_model/machine.rs:612-621` exempts the throw class there
+     and starts `prefire` under sprint.
+   - Expect: M67 idle, fire pressed on update n with sprint already on →
+     `PreRush` (no `prefire`, no pin sound); releasing sprint → `PostRush`,
+     then idle.
+
+5. **The post-sprint full idle starts from 0** (corrects 7, "Sprint end",
+   and Quirk 1's list).
+   - Reference: when `PostRush` is seen done the full idle is started with
+     a reset, so there is no one-frame pop; without a full idle in the file
+     nothing new starts on that update and the subtle idle follows on the
+     next.
+   - Ours: `view_model/machine.rs:707-713` starts it non-reset
+     (`full_idle`, `machine.rs:486-494`), drawing one frame of `PostRush`'s
+     next key.
+   - Expect: the frame after `PostRush` is seen done shows `idle_1` at
+     t = 0.
+
+6. **The fire animation rate includes the weapon's own `FireAniRate`, and
+   draw and reload include the character model's bonuses** (corrects 7's
+   rates; `weapon_firing.md`'s r_fire already has the term).
+   - Reference: one shared sum feeds the first-person animations and the
+     third-person driver: fire = 1 + parts' fire bonuses + the weapon
+     record's `FireAniRate` + set and conversion bonuses (then the
+     mutation buff/nerf); draw = 1 + parts + the character model's select
+     bonus + set; reload = 1 + parts + the model's reload bonus + set. Any
+     rate above 2.0 plays at 1.0 (unchanged).
+   - Ours: `view_model.rs:532-534` (and the weapon cycle,
+     `attachments.rs:1189`) use only the parts' bonuses; the weapon's
+     `FireAniRate`, read at `data/attributes.rs:384`, is never used, and no
+     model bonus is read.
+   - Expect: a weapon with `FireAniRate` 0.25 and no parts, `fire_0` of
+     105 ms → rate 1.25, 84 ms per animation (at 60 fps one shot per
+     6 frames instead of 7). Check which stock weapons carry a non-zero
+     value (attribute data).
+
 ## Test cases
 
 Each case says which data it needs. **[S]** = needs the Steam install
@@ -1213,6 +1317,13 @@ Follow-up cases (Open questions 9–16):
 16. **The flash hider.** **Answered:** it only selects another effect group
     (`PVFlashHiderFXName`h / `HHFlashHiderFXName`h); a missing key removes
     the flash. Nothing in the US data uses it. Applied in 9; case 43.
+17. **Left open by the 2026-10-22 corrections.** (a) Which stock weapons
+    carry a non-zero `FireAniRate` and which character models carry
+    select or reload bonuses (item 6 matters only for those). (b) Which
+    stock primaries are semi-automatic with a `prefire` in their file
+    (item 2). (c) Whether restarting an animation that is already current
+    without a reset rewinds it in the engine (the draw refresh of Edge
+    cases) was not traced.
 
 Contradictions with existing specs (this spec's reading of the reference
 differs; the other specs are not edited here):

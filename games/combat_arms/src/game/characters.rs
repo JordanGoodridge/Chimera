@@ -75,7 +75,24 @@
 //! the dead player itself comes down onto the floor (`snap`); corpses
 //! neither stop shots nor have spheres; a remote character's displayed
 //! pitch kicks on others' hits (`driver::hit_kick`); emotes (Hunted,
-//! `ca_emote`) play on both trackers with the weapon hidden.
+//! `ca_emote`) play on the upper tracker with the weapon hidden.
+//!
+//! The 2026-10-22 corrections (characters.md Corrections 1-13): the upper
+//! tracker starts only on a class or posture change, an accepted shot
+//! (sniper, land mine: `CaAnim::shot`, from the weapon's `Fired` /
+//! `Thrown`) or a different name while aiming or firing, so a held fire
+//! button plays once and holds its last frame; no fire pose while the
+//! legs sprint; "ammo 0" is clip plus reserve (`driver::ammo_exhausted`);
+//! walking off a drop the 150 u footing ray misses reports falling
+//! (`fell`: standing legs and the no-direction aim until the landing);
+//! crouching in the air clears the status; forward with back is backward;
+//! an emote is upper body only (the legs replace the lower copy at the
+//! next update, the upper keeps its last pose after it ends); a front-left
+//! body death plays `DC`; "in a jump" at death is the jump legs' first
+//! ~667 ms and a blast never turns the body; Quarantine shows no team mark
+//! (`models::shows_mark`); a leg set without a crouch name crouches on the
+//! legs' animation; the body is a drawn object (`corpses`: `map::Corpse`,
+//! the death animation at its age), and the dead player itself is hidden.
 //!
 //! Known shortcuts (docs/tech-debt.md; the most literal reading where the
 //! spec is unclear, listed for its open questions):
@@ -109,7 +126,12 @@
 //!   cosmetics, the clan pieces and infection overrides aren't loaded
 //!   (nothing selects them); a face's skins by camouflage index (its
 //!   colour overrides not read); render styles as `render_style` reads
-//!   them; a corpse (`CaBody`) isn't drawn. Bots' looks are ours (the
+//!   them; a corpse (`CaBody`) is drawn by Chimera's `map::Corpse` body
+//!   from the same models, posed by `corpses` at its age on the receiving
+//!   machine's own clock, hung `STAND_HEIGHT / 2` under its origin (a
+//!   crouched death stands) and without the install's models only the
+//!   data exists; the dead player itself is hidden only where it has a
+//!   body model. Bots' looks are ours (the
 //!   spec has no loadouts for them). The look a client sends is its
 //!   selection's ids only; without the install's models file a face is
 //!   known when the body's face redirect covers it and a head piece when
@@ -120,12 +142,13 @@
 //!   1; the install's weapons file gives it with the V1 key); the
 //!   weapons' classes are ours by kind (data/characters.toml) unless the
 //!   install's weapons file (V1) gives their `AniType`; the server's
-//!   reload rate is 1 (no reload bonuses read); the hit kick shows on a
+//!   reload rate is 1 (no reload bonuses read); the footing ray (Corrections
+//!   3) and the shot notice (4) are taken from the character's own tick,
+//!   not the client's movement frame; the hit kick shows on a
 //!   network client's remote characters only (a single player's world is
 //!   the server's); an emote plays no sound (the emotion files aren't
 //!   named by role) and is asked for on the local player only (no menu,
-//!   no network message); whether the per-frame leg start replaces an
-//!   emote on the lower tracker is open (we hold both).
+//!   no network message).
 //! - Aim: pitch and twist from the look and the weapon's body yaw
 //!   (`weapons::CaSpread::body_yaw`); the client's shares everywhere but
 //!   the bots' rounds.
@@ -160,7 +183,7 @@ use crate::{
         self, Damage, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, NetRole, RoundRestarts,
         SimClock, SimSet, Team,
     },
-    map::{BodyName, BodyNumber, BodySkin, CharacterModels, Held, anim::Animator},
+    map::{BodyName, BodyNumber, BodySkin, CharacterModels, Corpse, Held, anim::Animator},
     net::{NetAppExt, game::ServerTime, ordered::OrderedAppExt, server::Player},
     weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, WeaponState},
 };
@@ -188,6 +211,8 @@ pub struct CaAnim {
     pub pending: Option<Status>,
     /// The last damage was above 0.
     pub damaged: bool,
+    /// A shot or throw was accepted since the last update.
+    pub shot: bool,
     /// In a jump at the last update (for "jumped" and "landed").
     pub in_jump: bool,
     /// The aim as posed (spec frame: pitch positive down, twist positive
@@ -218,6 +243,7 @@ impl CaAnim {
             rig,
             pending: None,
             damaged: false,
+            shot: false,
             in_jump: false,
             pitch: 0.0,
             twist: 0.0,
@@ -346,7 +372,7 @@ impl Plugin for CaCharactersPlugin {
                     .after(SimSet::Weapons),
             )
             .init_resource::<CaOwnLook>()
-            .add_systems(FixedUpdate, dress.after(drive))
+            .add_systems(FixedUpdate, dress.after(drive).after(bodies))
             .add_systems(FixedUpdate, wear_looks.before(setup).run_if(core::authoritative))
             .add_systems(FixedUpdate, client_clock.before(drive).run_if(core::shows_others));
         look_cvars(app);
@@ -553,6 +579,12 @@ fn listen(
         {
             a.pending = Some(Status::Select);
         }
+        // Each accepted shot or throw (Corrections 4).
+        if matches!(ev.kind, WeaponEventKind::Fired { .. } | WeaponEventKind::Thrown)
+            && let Ok(mut a) = anims.get_mut(ev.owner)
+        {
+            a.shot = true;
+        }
     }
     for d in damage.read() {
         if let Ok(mut a) = anims.get_mut(d.target) {
@@ -590,7 +622,7 @@ fn axes(yaw: f32) -> (Vec3, Vec3) {
 #[allow(clippy::type_complexity)]
 fn die(
     mut died: MessageReader<Died>,
-    mut characters: Query<(&mut CaAnim, &Transform, &Intent, Option<&CaPose>, Option<&CaMovement>, &Selection)>,
+    mut characters: Query<(&mut CaAnim, &Transform, &Intent, Option<&CaPose>, &Selection)>,
     catalog: Res<crate::weapon::data::WeaponCatalog>,
     clock: Res<SimClock>,
     authoritative: Option<Res<NetRole>>,
@@ -598,7 +630,7 @@ fn die(
 ) {
     let server = authoritative.is_none_or(|r| *r != NetRole::Client);
     for d in died.read() {
-        let Ok((mut anim, t, intent, pose, movement, look)) = characters.get_mut(d.entity) else {
+        let Ok((mut anim, t, intent, pose, look)) = characters.get_mut(d.entity) else {
             continue;
         };
         let yaw = pose.map_or(intent.yaw, |p| p.body_yaw);
@@ -608,7 +640,10 @@ fn die(
         // Quirk 6 (Open question 21): a fresh C-library generator seeded
         // with the clock in whole seconds, one draw.
         let coin = death::coin(clock.now.floor() as u32);
-        let jumping = movement.is_some_and(|m| m.in_jump);
+        // "In a jump" is the legs' jump animation (the first ~667 ms of a
+        // jump), not the whole flight (Corrections 10).
+        let drv = &anim.driver;
+        let jumping = drv.last.movement == driver::Movement::Jump && !drv.lower.done(&drv.list);
         let inputs = death::DeathInputs {
             kind,
             dir: d.damage.dir,
@@ -634,7 +669,7 @@ fn die(
         }
         // The body: the dead player's own yaw, or turned away from the
         // shot when it died in a jump (spec yaw is ours negated).
-        let body_yaw = if jumping {
+        let body_yaw = if jumping && kind != death::DeathKind::Explosion {
             let dir = Quat::from_rotation_y(-yaw) * d.damage.dir;
             yaw - death::jump_yaw(Vec3::new(dir.x, dir.y, -dir.z))
         } else {
@@ -720,7 +755,7 @@ fn drive(
         Entity,
         (&mut CaAnim, &mut CaPose, Option<&mut CaAnimNet>),
         (&Intent, &MovementState, Option<&CaMovement>, &Health, Has<Dead>, Has<LocalPlayer>),
-        (Option<&Inventory>, Option<&CaProtected>, Option<&Transform>),
+        (Option<&Inventory>, Option<&CaProtected>, Option<&Visibility>),
         Option<&mut Animator>,
     )>,
     weapons: Query<(&Weapon, Option<&WeaponState>, Option<&Magazine>, Option<&CaZoom>, Option<&CaSpread>)>,
@@ -729,7 +764,7 @@ fn drive(
     let client = role.as_deref().is_some_and(|r| *r == NetRole::Client);
     let ms = (clock.delta.as_secs_f64() * 1000.0).round() as u32;
     let unit = unit();
-    for (e, (mut anim, mut pose, net), (intent, state, movement, health, dead, local), (inventory, protected, _), animator) in
+    for (e, (mut anim, mut pose, net), (intent, state, movement, health, dead, local), (inventory, protected, visibility), animator) in
         &mut characters
     {
         let alive = health.current > 0.0 && !dead;
@@ -738,6 +773,16 @@ fn drive(
             let list = anim.driver.list.clone();
             anim.driver.set_list(list);
             anim.death = None;
+        }
+        // The player object itself is invisible while dead: the body object
+        // shows the death (Corrections 12).
+        if anim.rig.is_some() {
+            let hidden = visibility == Some(&Visibility::Hidden);
+            if !alive && !hidden {
+                commands.entity(e).insert(Visibility::Hidden);
+            } else if alive && hidden {
+                commands.entity(e).insert(Visibility::Inherited);
+            }
         }
         let weapon = inventory.and_then(|i| i.active).and_then(|w| weapons.get(w).ok());
         let r = movement.map_or(0.0, |m| m.crouch_rate);
@@ -748,6 +793,7 @@ fn drive(
             let list = anim.driver.list.clone();
             anim.driver.main.update(&list, ms, &mut |_| {});
             anim.pending = None;
+            anim.shot = false;
         } else if followed {
             if let (Some(net), Some(clock)) = (net.as_deref(), server_time.as_deref()) {
                 follow(&mut anim, net, clock.0, clock.1);
@@ -762,7 +808,9 @@ fn drive(
             {
                 anim.driver.start_emote(name);
             }
-            let inputs = inputs(data.characters(), &mut anim, intent, movement, weapon, protected, r, !client, clock.now);
+            let mut inputs = inputs(data.characters(), &mut anim, intent, movement, weapon, protected, r, !client, clock.now);
+            inputs.no_footing = movement.is_some_and(|m| m.no_footing);
+            inputs.grounded = state.on_ground;
             anim.driver.update(ms, &inputs);
             // The aim: pitch from the look, the twist from the body yaw.
             anim.pitch = skeleton::clamp_aim(-intent.pitch);
@@ -827,7 +875,9 @@ fn inputs(
 ) -> Inputs {
     let look = characters.weapon(weapon.map(|w| w.0.id));
     let reloading = weapon.and_then(|w| w.1).is_some_and(|s| s.reloading());
-    let empty = weapon.and_then(|w| w.2).is_some_and(|m| m.clip == 0);
+    // The driver's "ammo count 0" is the weapon's total ammunition
+    // (Corrections 6), not the clip.
+    let empty = weapon.and_then(|w| w.2).is_some_and(|m| driver::ammo_exhausted(m.clip, m.reserve));
     let magazine = weapon.is_some_and(|w| w.2.is_some());
     let in_jump = movement.is_some_and(|m| m.in_jump);
     let (jumped, landed) = (in_jump && !anim.in_jump, !in_jump && anim.in_jump);
@@ -863,6 +913,9 @@ fn inputs(
         zoomed: weapon.and_then(|w| w.3).is_some_and(CaZoom::zoomed),
         jumped,
         landed,
+        shot: std::mem::take(&mut anim.shot),
+        no_footing: false,
+        grounded: false,
         crouch_key: m.crouch,
         forward: m.forward,
         back: m.back,
@@ -987,6 +1040,66 @@ fn bodies(
     }
 }
 
+/// The corpse (10, Corrections 12): the body object is a drawn model of
+/// its own, in the dead player's skin, posed by the death animation at the
+/// body's age, and stays where the player fell when its owner respawns.
+/// Without the install's models (or the selection's body) nothing is
+/// drawn; the body is still there. Run by `dress` (a system of its own
+/// would add ambiguous pairs with the exclusive rule systems).
+#[allow(clippy::type_complexity)]
+fn dress_corpses(
+    data: &CaData,
+    models: &CharacterModels,
+    now: f64,
+    bodies: &Query<(
+        Entity,
+        &CaBody,
+        (Option<&BodyName>, Option<&BodyNumber>, Option<&BodySkin>, Option<&Corpse>),
+        Option<&Animator>,
+    )>,
+    commands: &mut Commands,
+) {
+    for (e, b, (name, number, skin, corpse), animator) in bodies {
+        let Some((want, body)) = models::drawn(data, &b.look) else { continue };
+        if !models.0.iter().any(|m| m.name.as_deref() == Some(want.as_str())) {
+            continue;
+        }
+        let mut entity = commands.entity(e);
+        if name.is_none_or(|n| n.0 != want) {
+            entity.insert(BodyName(want));
+        }
+        if number.is_none_or(|n| n.0 != body) {
+            entity.insert(BodyNumber(body));
+        }
+        // No team mark on a corpse: every mark is transparent (11).
+        let family = BodySkin(models::family(b.look.camouflage, false));
+        if skin != Some(&family) {
+            entity.insert(family);
+        }
+        let corpse_here = Corpse {
+            feet: -STAND_HEIGHT * 0.5 * unit(),
+        };
+        if corpse != Some(&corpse_here) {
+            entity.insert(corpse_here);
+        }
+        let Some(rig) = body_of(data, &b.look).2 else { continue };
+        let age = ((now - b.since).max(0.0) * 1000.0) as u32;
+        // Posed once its animation has ended and held.
+        let ended = animator.is_some_and(|a| a.fixed.is_some()) && f64::from(age) > b.length * 1000.0 + 100.0;
+        if ended {
+            continue;
+        }
+        let mut pose = Animator::default();
+        let entry = rig.list.find(&b.animation);
+        let mut tracker = lithtech_formats::anim::Tracker::on(entry.unwrap_or(0), false);
+        tracker.set_time(&rig.list, age);
+        let locals: Vec<_> = (0..rig.model.nodes.len()).map(|j| tracker.pose(&rig.list, j)).collect();
+        pose.fixed = Some(Arc::new(rig.posed(&locals, 0.0).locals_rh()));
+        pose.main = Some(0);
+        entity.insert(pose);
+    }
+}
+
 /// Characters wear their body model when the map has it (`BodyName`,
 /// with the body number for their body, face and head piece:
 /// `models::drawn`), with their skin family for the local player
@@ -1006,9 +1119,19 @@ fn dress(
     local: Query<Option<&Team>, With<LocalPlayer>>,
     weapons: Query<&Weapon>,
     anims: Query<&CaAnim>,
+    view: Option<Res<super::rules::CaMatchView>>,
+    clock: Res<SimClock>,
+    bodies: Query<(
+        Entity,
+        &CaBody,
+        (Option<&BodyName>, Option<&BodyNumber>, Option<&BodySkin>, Option<&Corpse>),
+        Option<&Animator>,
+    )>,
     mut commands: Commands,
 ) {
     let Some(models) = models else { return };
+    dress_corpses(&data, &models, clock.now, &bodies, &mut commands);
+    let quarantine = view.is_some_and(|v| v.mode == super::gear::QUARANTINE);
     let mine = local.iter().next().flatten().copied();
     for (e, look, team, (name, number, skin), inventory, held) in &characters {
         let Some((want, body)) = models::drawn(&data, look) else { continue };
@@ -1021,7 +1144,7 @@ fn dress(
         if number.is_none_or(|n| n.0 != body) {
             commands.entity(e).insert(BodyNumber(body));
         }
-        let teammate = mine.is_some() && team.copied() == mine;
+        let teammate = models::shows_mark(mine.is_some() && team.copied() == mine, quarantine);
         let family = BodySkin(models::family(look.camouflage, teammate));
         if skin != Some(&family) {
             commands.entity(e).insert(family);

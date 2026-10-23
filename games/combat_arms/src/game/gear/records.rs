@@ -96,6 +96,12 @@ struct VestDef {
     mass: f32,
     #[serde(default)]
     figure: usize,
+    /// `ReloadAniRate` and `SelectAniRate`: the vest's animation rate
+    /// bonuses (view_models.md Corrections 6).
+    #[serde(default)]
+    reload_ani_rate: f32,
+    #[serde(default)]
+    select_ani_rate: f32,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -255,6 +261,8 @@ pub struct Vest {
     pub max_stamina: f32,
     pub mass: f32,
     pub figure: usize,
+    pub reload_ani_rate: f32,
+    pub select_ani_rate: f32,
 }
 
 /// A head piece, goggles or a backpack (`Hair#`, `Goggle#`, `Backpack#`).
@@ -358,6 +366,8 @@ impl GearData {
                     max_stamina: v.max_stamina,
                     mass: v.mass,
                     figure: v.figure,
+                    reload_ani_rate: v.reload_ani_rate,
+                    select_ani_rate: v.select_ani_rate,
                 },
             );
         }
@@ -583,6 +593,8 @@ impl GearInstall {
                     max_stamina: s.number("MaxStamina", s.number("Maxstamina", 0.0)) as f32,
                     mass: s.number("Mass", 2000.0) as f32,
                     figure: s.int("FigureType", 0).max(0) as usize,
+                    reload_ani_rate: s.number("ReloadAniRate", 0.0) as f32,
+                    select_ani_rate: s.number("SelectAniRate", 0.0) as f32,
                 });
             }
             for s in d.records("Hair") {

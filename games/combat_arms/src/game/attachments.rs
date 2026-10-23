@@ -974,6 +974,13 @@ pub fn animation_rate(rate: f32) -> f32 {
     }
 }
 
+/// The fire animation rate (view_models.md Corrections 6): 1 + the weapon
+/// record's `FireAniRate` + the parts' fire bonuses. It times the first-
+/// person fire animation and the weapon's shot cycle alike.
+pub fn fire_animation_rate(weapon: f32, parts: f32) -> f32 {
+    animation_rate(1.0 + weapon + parts)
+}
+
 // ---------------------------------------------------------------------------
 // The player's side
 
@@ -1165,13 +1172,14 @@ fn apply_fitted(
             Option<&mut Magazine>,
             Option<&mut Trigger>,
             (Option<&mut CaSpread>, Option<&mut CaRecoil>, Option<&mut CaDamage>, Option<&mut CaZoom>),
+            Option<&CaItem>,
         ),
         Changed<CaFitted>,
     >,
     table: Res<CaModTable>,
     last_wins: Res<RecoilLastWins>,
 ) {
-    for (slots, fitted, mut have, mag, trigger, (spread, recoil, damage, zoom)) in &mut weapons {
+    for (slots, fitted, mut have, mag, trigger, (spread, recoil, damage, zoom), item) in &mut weapons {
         let mods = mods_of(&table, slots, fitted);
         let stock = slots.stock;
         let (fire, reload, _) = mods.rates();
@@ -1186,7 +1194,8 @@ fn apply_fitted(
             }
         }
         if let Some(mut t) = trigger {
-            let cycle = stock.cycle / animation_rate(1.0 + fire);
+            // The weapon's own `FireAniRate` is part of the rate (Corrections 6).
+            let cycle = stock.cycle / fire_animation_rate(item.map_or(0.0, |i| i.fire_rate), fire);
             if t.cycle != cycle {
                 t.cycle = cycle;
             }

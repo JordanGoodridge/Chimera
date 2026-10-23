@@ -482,14 +482,15 @@ impl ViewMachine {
         out
     }
 
-    /// Start a full idle (non-reset); false without one.
-    fn full_idle(&mut self) -> bool {
+    /// Start a full idle (`reset`: from 0, else a switch with the
+    /// one-frame pop); false without one.
+    fn full_idle(&mut self, reset: bool) -> bool {
         let idles = self.full_idles();
         if idles.is_empty() {
             return false;
         }
         let pick = idles[((self.roll() * idles.len() as f64) as usize).min(idles.len() - 1)];
-        self.start_index(pick, false, 1.0, false);
+        self.start_index(pick, reset, 1.0, false);
         true
     }
 
@@ -573,6 +574,9 @@ impl ViewMachine {
         let done = self.done();
         let throw = self.setup.class == Class::Throw;
         let fire_rate = self.setup.rates.fire;
+        // Sprinting cuts a knife swing and a double-barrel shot at once
+        // (Corrections 3): their fire animations count as done.
+        let cut = i.sprinting && (self.setup.class == Class::Melee || self.setup.double_barrel);
         match self.stage {
             Stage::Drawing => {
                 if reload && self.can_reload(i) {
@@ -604,13 +608,16 @@ impl ViewMachine {
                     if due {
                         self.schedule_idle();
                     }
-                    if !(due && !i.moving && self.full_idle()) {
+                    if !(due && !i.moving && self.full_idle(false)) {
                         self.start(names::IDLE, true, 1.0);
                     }
                 }
             }
             Stage::Firing(FireStage::Requested) => {
-                if i.sprinting && !throw {
+                // Between the request and the pin pull the throw class is
+                // not yet holding a fire animation: sprint drops the
+                // request (Corrections 4).
+                if i.sprinting {
                     self.sprint_in();
                 } else if self.setup.class.plays_prefire() && self.start(names::PREFIRE, true, fire_rate) {
                     self.stage = Stage::Firing(FireStage::Pre);
@@ -629,7 +636,7 @@ impl ViewMachine {
                 }
             }
             Stage::Firing(FireStage::Main) => {
-                if done && !(throw && i.sprinting) {
+                if (done || cut) && !(throw && i.sprinting) {
                     if i.sprinting {
                         self.sprint_in();
                     } else if request && i.total > 0 && !self.reload_pending {
@@ -641,11 +648,18 @@ impl ViewMachine {
                 }
             }
             Stage::Firing(FireStage::Post) => {
-                if self.setup.per_press > 0 && request && self.press_shots == 0 {
-                    // Quirk 6: a new press cancels a semi-automatic's post-fire.
-                    self.alt = !i.fire;
-                    self.stage = Stage::Firing(FireStage::Main);
-                    self.start(self.fire_anim(), true, fire_rate);
+                if (done || cut) && i.sprinting && !throw {
+                    self.sprint_in();
+                } else if request && i.total > 0 && !self.reload_pending && !i.sprinting {
+                    // A new press refires on the update that sees `postfire`
+                    // done (a semi-automatic gun at once), with no idle
+                    // between: the whole sequence again, `prefire` first
+                    // where the weapon plays one (Corrections 1, 2).
+                    let semi = self.setup.per_press > 0 && self.press_shots == 0;
+                    if semi || done {
+                        self.alt = !i.fire;
+                        self.restart_sequence(&mut out);
+                    }
                 } else if done && !(throw && i.sprinting) {
                     if i.sprinting {
                         self.sprint_in();
@@ -696,7 +710,7 @@ impl ViewMachine {
                     self.stage = Stage::Sprint(SprintStage::Out);
                     if !self.start(names::POST_RUSH, true, 1.0) {
                         self.stage = Stage::Idle;
-                        self.full_idle();
+                        self.full_idle(false);
                     }
                 }
                 SprintStage::In if done => {
@@ -705,11 +719,11 @@ impl ViewMachine {
                 }
                 SprintStage::Out if i.sprinting => self.sprint_in(),
                 SprintStage::Out if done => {
-                    // Leaving sprint: a full idle, the wait not rescheduled.
+                    // Leaving sprint: a full idle from 0 (without one nothing
+                    // starts now; the subtle idle follows on the next
+                    // update), the wait not rescheduled (Corrections 5).
                     self.stage = Stage::Idle;
-                    if !self.full_idle() {
-                        self.start(names::IDLE, true, 1.0);
-                    }
+                    self.full_idle(true);
                 }
                 _ => {}
             },
@@ -719,6 +733,19 @@ impl ViewMachine {
             self.auto_reload = true;
         }
         out
+    }
+
+    /// The fire sequence again from its start: `prefire` (reset) when the
+    /// weapon plays one, else the fire animation.
+    fn restart_sequence(&mut self, out: &mut Update) {
+        let rate = self.setup.rates.fire;
+        if self.setup.class.plays_prefire() && self.start(names::PREFIRE, true, rate) {
+            self.stage = Stage::Firing(FireStage::Pre);
+            out.events.push(ViewKey::PreFireSound);
+        } else {
+            self.stage = Stage::Firing(FireStage::Main);
+            self.start(self.fire_anim(), true, rate);
+        }
     }
 
     /// The main fire animation ended without a repeat: post-fire if the
