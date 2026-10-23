@@ -29,7 +29,13 @@
 //! - **Changing match** (`change_match`, console `change_match <id>
 //!   [map]`): the server starts another minigame, players kept and
 //!   connected, scores anew, and changes level through the app's
-//!   `changelevel` when the map differs.
+//!   `changelevel` when the map differs; only one every connected player
+//!   can play there.
+//! - **The playable set** (`playable`, `PartyOffer`, console
+//!   `party_offer`): each registered minigame on its pool's first map
+//!   against the players' mount doctor reports (their userinfo); the
+//!   minigames every player can play go to the clients when the set or
+//!   the players change (a lobby's list).
 //!
 //! Nothing is sent while no minigame plays.
 
@@ -103,7 +109,9 @@ fn register(app: &mut App) {
         .replicate::<InMinigame>()
         .replicate::<Rung>()
         .ordered::<Rung>()
-        .add_mapped_server_message::<MinigameNews>(Channel::Ordered);
+        .add_mapped_server_message::<MinigameNews>(Channel::Ordered)
+        .add_server_message::<PartyOffer>(Channel::Ordered)
+        .make_message_independent::<PartyOffer>();
     {
         let mut hooks = app.world_mut().resource_mut::<NetHooks>();
         hooks.stopped_serving.push(stopped_serving);
@@ -119,14 +127,23 @@ fn register(app: &mut App) {
             let id = a.first().ok_or("change_match <minigame> [map]")?;
             change_match(w, id, a.get(1).map(String::as_str)).map(Some)
         },
+    )
+    .console_command(
+        "party_offer",
+        "The minigames every connected player can play (the server's mount doctor reports; a client: what \
+         its server offers), and on the server who lacks what for the others.",
+        |w, _| Ok(Some(offer_text(w))),
     );
     let server = || resource_equals(NetRole::Server);
     let client = || resource_equals(NetRole::Client);
     app.add_systems(FixedLast, write_minigame.run_if(server()))
-        .add_systems(PostUpdate, send_news.before(ServerSystems::Send).run_if(server()))
+        .add_systems(
+            PostUpdate,
+            (send_news, send_offer).chain().before(ServerSystems::Send).run_if(server()),
+        )
         .add_systems(
             PreUpdate,
-            (apply_minigame, receive_news)
+            (apply_minigame, receive_news, receive_offer)
                 .chain()
                 .after(ClientSystems::Receive)
                 .run_if(client()),
@@ -179,6 +196,140 @@ fn write_minigame(world: &mut World) {
     }
 }
 
+/// Server -> clients: the minigames every connected player can play
+/// (`playable`), by id in the registry's order; sent when it changes or
+/// players come and go. On a client, the newest heard (a lobby's list).
+#[derive(Resource, Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct PartyOffer {
+    pub minigames: Vec<String>,
+}
+
+/// Whether every connected player can play a minigame on a map
+/// (`playable`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Playable {
+    pub id: String,
+    /// The map it would play on (`change_match`'s pick; the pool's first
+    /// for the offer).
+    pub map: String,
+    /// Each player lacking a game it requires: the player's name and the
+    /// game's id.
+    pub lacking: Vec<(String, String)>,
+}
+
+impl Playable {
+    pub fn ok(&self) -> bool {
+        self.lacking.is_empty()
+    }
+}
+
+/// The remote players' mount doctor reports (name, report), from their
+/// userinfo (`manifest::MOUNTS_KEY`); a player that sent none isn't
+/// listed (taken as having everything), nor are bots.
+fn reports(world: &mut World) -> Vec<(String, manifest::MountReport)> {
+    let mut q = world.query::<(&crate::net::NetCharacter, &chimera_core::core::UserInfo)>();
+    q.iter(world)
+        .filter(|(c, _)| c.owner.is_some())
+        .filter_map(|(c, info)| {
+            let r = manifest::from_userinfo(info.0.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
+            Some((c.name.clone(), r))
+        })
+        .collect()
+}
+
+/// Whether every connected player can play `def` on `map` (None: its
+/// pool's first): each player's report against the games it requires
+/// there (the map's game; `needs`).
+pub fn playable_on(world: &mut World, def: &MinigameDef, map: Option<&str>) -> Playable {
+    let map = map
+        .map(crate::net::normalize_map)
+        .or_else(|| def.maps.first().map(|m| crate::net::normalize_map(m)))
+        .unwrap_or_else(|| GREYBOX.into());
+    let mut needs = MatchManifest::default();
+    if map != GREYBOX
+        && let Some((game, _)) = map.split_once(':')
+    {
+        needs.need(game, true);
+    }
+    let mut lacking = Vec::new();
+    for (name, report) in reports(world) {
+        for n in needs.games.iter().filter(|n| n.required && !report.has(&n.game)) {
+            lacking.push((name.clone(), n.game.clone()));
+        }
+    }
+    Playable {
+        id: def.id.clone(),
+        map,
+        lacking,
+    }
+}
+
+/// Every registered minigame, on its pool's first map, against the
+/// connected players (the lobby's playable set: `PartyOffer`).
+pub fn playable(world: &mut World) -> Vec<Playable> {
+    let defs: Vec<&'static MinigameDef> = world.get_resource::<Minigames>().map(|m| m.all().collect()).unwrap_or_default();
+    defs.into_iter().map(|d| playable_on(world, d, None)).collect()
+}
+
+/// `party_offer`'s text.
+fn offer_text(world: &mut World) -> String {
+    if world.get_resource::<NetRole>() == Some(&NetRole::Client) {
+        let offer = world.get_resource::<PartyOffer>().cloned().unwrap_or_default();
+        return if offer.minigames.is_empty() {
+            "the server offers no minigame".into()
+        } else {
+            offer.minigames.join("\n")
+        };
+    }
+    let games = world.get_resource::<Games>().cloned();
+    let lines: Vec<String> = playable(world)
+        .iter()
+        .map(|p| {
+            if p.ok() {
+                format!("{} on {}", p.id, p.map)
+            } else {
+                format!("({} on {}: {})", p.id, p.map, lacking_text(games.as_ref(), &p.lacking))
+            }
+        })
+        .collect();
+    if lines.is_empty() { "no minigames".into() } else { lines.join("\n") }
+}
+
+/// "Alice lacks CS:S (cs_source)", each player once.
+fn lacking_text(games: Option<&Games>, lacking: &[(String, String)]) -> String {
+    lacking
+        .iter()
+        .map(|(who, game)| format!("{who} lacks {}", manifest::game_name(games, game)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The server: the playable set to every client when it or the players
+/// change.
+fn send_offer(world: &mut World, mut last: Local<Option<(Vec<String>, usize)>>) {
+    let players = world.query::<&crate::net::server::Player>().iter(world).count();
+    let offer: Vec<String> = playable(world).into_iter().filter(|p| p.ok()).map(|p| p.id).collect();
+    let now = (offer, players);
+    if last.as_ref() == Some(&now) {
+        return;
+    }
+    *last = Some(now.clone());
+    if players == 0 {
+        return;
+    }
+    world.write_message(ToClients {
+        targets: SendTargets::CLIENTS_ONLY,
+        message: PartyOffer { minigames: now.0 },
+    });
+}
+
+/// A client: the server's offer, kept.
+fn receive_offer(mut offers: MessageReader<PartyOffer>, mut commands: Commands) {
+    if let Some(o) = offers.read().last() {
+        commands.insert_resource(o.clone());
+    }
+}
+
 /// `change_match <id> [map]` (M1): the server plays minigame `id` from
 /// now on, its players kept and connected: a fresh match (`minigame::
 /// start`: scores anew, everyone joins again), clients told by
@@ -201,6 +352,15 @@ pub fn change_match(world: &mut World, id: &str, map: Option<&str>) -> Result<St
         None if pool.contains(&here) => here.clone(),
         None => pool.first().cloned().unwrap_or_else(|| here.clone()),
     };
+    // Only what every player can play (the playable set, M3).
+    let p = playable_on(world, def, Some(&target));
+    if !p.ok() {
+        let games = world.get_resource::<Games>().cloned();
+        return Err(format!(
+            "not every player can play {id} on {target}: {}",
+            lacking_text(games.as_ref(), &p.lacking)
+        ));
+    }
     minigame::start(world, id)?;
     if target != here {
         world

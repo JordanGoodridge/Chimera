@@ -733,7 +733,9 @@ switches minigame with everyone connected. Party networking's NetSim
 tests (manifest, mount doctor refusals, `ChangeMatch`):
 `apps/lucker_party/tests/it/net_party.rs`; a client's
 `net::manifest::ServerManifest` is the manifest it plays, its
-`LocalMounts` the report it sent (the log's `mount doctor:` lines). `grep 'console:'` the clients' output; the
+`LocalMounts` the report it sent (the log's `mount doctor:` lines);
+`party_offer` lists what every connected player can play (the server
+names who lacks what for the rest; a client's `minigame_net::PartyOffer`). `grep 'console:'` the clients' output; the
 server prints on stdout.
 
 Votes (`games/cs_source/tests/it/net_votes.rs`): the server's

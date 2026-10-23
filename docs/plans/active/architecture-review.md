@@ -1404,7 +1404,7 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 |---|---|---|---|
 | L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (**done 2026-10-22**) |
 | L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (**done 2026-10-22**; note below) |
-| L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L  (**in progress 2026-10-23**: manifest, doctor, `ChangeMatch` done; note below) |
+| L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L  (**stages 1-3 done 2026-10-23**: manifest, doctor, `ChangeMatch`, playable set; relevance culling left; note below) |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
 | L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4) **done**, `bevy` without default features for servers (A5) **done** | none | S each (two done 10-22, note below) |
@@ -1688,6 +1688,45 @@ connected, scores reset, there and back) and `manifest`'s unit tests.
 Not done: the hash of the files the loaders read (M3: installs and builds
 only); the report is checked at join and by clients on each manifest, the
 server never re-checks a joined player.
+
+L3, stage 3 (10-23): the playable set. `minigame_net::playable` checks each
+registered minigame, on its pool's first map, against every connected
+player's report (from its userinfo; a player without one and bots don't
+count against it); the minigames every player can play go to the clients
+as `PartyOffer` (a server message, sent when the set or the players
+change; a client keeps the newest as a resource, the lobby's list) and
+console `party_offer` lists them (on the server, the others with who lacks
+what: "(originals:gun_game_dust2 on cs_source:de_dust2: <player> lacks CS:S
+(cs_source))"). `change_match` refuses a minigame not every player can
+play on its target map ("not every player can play <id> on <map>: ...").
+Choices: "can play" is the required games only (the map's), so the same
+minigame on the greybox is playable by everyone; M3's other option (let
+the party pick and make the players without the game spectators) isn't
+built, nor a lobby UI (the offer is data and a console list). Test:
+`net_party.rs`'s `the_party_offers_only_what_every_player_can_play` (one
+client lacking CS:S: the gun game not offered and refused, playable on the
+greybox, offered once that client leaves). Live (dev box, port 28961):
+`lucker_party_server +map greybox` and one `lucker_party +connect`; the
+client's mount doctor logged both installs (CS:S with its Steam build),
+`party_offer` listed the gun game on de_dust2, `minigame_load` of a short
+ladder on the server only, then `change_match test:short_ladder`: the
+client logged "the server changed match" and "playing the server's
+definition", stayed connected, and the server's `minigame_status` showed
+it on the new ladder's first rung.
+
+Left of L3 (stage 4, M5): relevance culling. Not cheap here: replicon's
+per-client visibility removes a hidden entity on the client (its body
+despawns and comes back), so culling needs the client's handling of a
+body that leaves and returns (held, drawn at once, the soak's
+bodies-heard check) and per-game rules for what a client still gets of
+players it can't see (footsteps and gunfire through walls, radar: a spec
+per game), as `server.rs`'s known shortcuts say; a lower update rate for
+distant bodies needs per-client, per-entity mutation filtering replicon
+doesn't offer (`pace_messages` drops a client's mutations per tick, not
+per entity). At party sizes (8-16) bandwidth isn't the limit (~17 KB/s a
+client at 32 players). Next step when it matters: measure per-client bytes
+on de_dust2 with 16 players (`heavy::net_capacity`), then PVS culling of
+`NetBody` with the client-side hold, per the spec.
 
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and

@@ -10,6 +10,8 @@
 //!   the server's minigame leaves before loading, told why.
 //! - `ChangeMatch` (`minigame_net::change_match`): the server plays another
 //!   minigame and the clients follow, connected, the scores anew.
+//! - The playable set (`minigame_net::playable`, `PartyOffer`): only what
+//!   every connected player can play is offered and changed to.
 
 use std::time::Duration;
 
@@ -17,6 +19,7 @@ use bevy::prelude::*;
 use chimera_core::{console::Console, core::Score};
 use chimera_net::{
     harness::NetSim,
+    minigame_net::PartyOffer,
     net::{
         LastDisconnect, NetHooks,
         client::{JoinFailure, JoinProgress, Joined},
@@ -251,4 +254,52 @@ fn change_match_keeps_the_players_and_resets_the_scores() {
     assert!(ok, "back to the gun game");
     assert!(sim.until(600, |s| held(s, 1) == Some(cs_source::game::weapons::GLOCK)));
     assert!((0..2).all(|i| sim.clients[i].app.world().contains_resource::<Joined>()));
+}
+
+/// The playable set (M3): the server offers only the minigames every
+/// connected player can play (their mount doctor reports), and refuses to
+/// change to another; once the player lacking a game leaves, it offers it.
+#[test]
+fn the_party_offers_only_what_every_player_can_play() {
+    let mut sim = party(0, Some(SHORT));
+    let full = sim.add_client(|w| w.insert_resource(mounts(&["cs_source", "combat_arms"])));
+    let partial = sim.add_client(|w| {
+        w.insert_resource(mounts(&["combat_arms"]));
+        w.resource_mut::<chimera_net::net::NetSettings>().name = "Lacking".into();
+    });
+    sim.until_joined(900);
+    sim.ticks(30);
+    let offer = |sim: &NetSim, i: usize| {
+        sim.clients[i].app.world().get_resource::<PartyOffer>().map(|o| o.minigames.clone())
+    };
+    for i in [full, partial] {
+        assert_eq!(offer(&sim, i), Some(vec!["test:short_ladder".to_string()]), "client {i}: the gun game's dust2 needs CS:S");
+    }
+    let set = chimera_net::minigame_net::playable(sim.server.app.world_mut());
+    let gun = set.iter().find(|p| p.id == DEFAULT_MINIGAME).unwrap();
+    assert_eq!(gun.map, "cs_source:de_dust2");
+    assert_eq!(gun.lacking, [("Lacking".to_string(), "cs_source".to_string())]);
+    let refused = chimera_net::minigame_net::change_match(sim.server.app.world_mut(), DEFAULT_MINIGAME, None).unwrap_err();
+    assert_eq!(
+        refused,
+        "not every player can play originals:gun_game_dust2 on cs_source:de_dust2: Lacking lacks CS:S (cs_source)"
+    );
+    assert_eq!(sim.server.app.world().resource::<ActiveMinigame>().def.id, "test:short_ladder", "still playing");
+    // On the greybox every player can.
+    chimera_net::minigame_net::change_match(sim.server.app.world_mut(), DEFAULT_MINIGAME, Some("greybox")).unwrap();
+    // The console's view on the server.
+    sim.server.app.world_mut().resource_mut::<Console>().submit("party_offer");
+    sim.ticks(2);
+    let out: Vec<String> = sim.server.app.world().resource::<Console>().output.iter().map(|l| l.text.clone()).collect();
+    assert!(
+        out.iter().any(|l| l.contains("(originals:gun_game_dust2 on cs_source:de_dust2: Lacking lacks CS:S (cs_source))")),
+        "{out:?}"
+    );
+    sim.remove_client(partial);
+    sim.ticks(30);
+    assert_eq!(
+        offer(&sim, full),
+        Some(vec![DEFAULT_MINIGAME.to_string(), "test:short_ladder".to_string()]),
+        "everyone left can play both"
+    );
 }

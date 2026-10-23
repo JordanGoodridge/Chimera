@@ -1724,3 +1724,6 @@ one still join and older servers ignore it. The server refuses a client
 whose report lacks the map's game ("This match needs CS:S (cs_source)
 ..."); a client checks every manifest before it loads anything and plays
 the server's minigame definition when its own differs or is missing.
+`minigame_net`'s `PartyOffer` (server message: the minigames every
+connected player can play, from their reports) goes to clients when the
+set or the players change.
