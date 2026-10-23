@@ -63,7 +63,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // runtime, their spawning and weapons, the gameplay switched to them.
     (
         "minigame",
-        &["core", "console", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry"],
+        &["core", "console", "map", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry"],
     ),
     // Every game's respawn (chimera/sim): the dead held, a character
     // revived at a place (out of a toggled noclip).

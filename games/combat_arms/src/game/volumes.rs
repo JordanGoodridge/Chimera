@@ -368,8 +368,27 @@ pub fn eye_volume<'a>(volumes: impl IntoIterator<Item = &'a CaVolume>, p: Vec3) 
 /// The map's volumes, made when it loads; players' damage inside them.
 pub struct CaVolumesPlugin;
 
+/// The volumes that hurt, drown or burn a player, as zones for spawns
+/// to keep out of (`map::SpawnHazards`).
+fn hazard_zones(world: &mut World) -> Vec<crate::core::MapBrush> {
+    world
+        .query::<&CaVolume>()
+        .iter(world)
+        .filter(|v| !v.hidden && (v.liquid || (v.damage > 0.0 && !v.heal && !v.locked && v.target_team.is_none())))
+        .map(|v| crate::core::MapBrush {
+            planes: v.planes.clone(),
+            min: v.min,
+            max: v.max,
+            ladder: false,
+            surface: None,
+        })
+        .collect()
+}
+
 impl Plugin for CaVolumesPlugin {
     fn build(&self, app: &mut App) {
+        use crate::map::SpawnHazardAppExt;
+        app.add_spawn_hazards(hazard_zones);
         app.init_resource::<VolumeDamage>().add_message::<PadLaunch>().add_systems(
             FixedUpdate,
             (
