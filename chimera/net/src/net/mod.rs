@@ -37,7 +37,9 @@
 //! with every update), the protocol in registration order (`Join`, `Refused`,
 //! `Welcome` (with the map's offer: hash, size, `sv_downloadurl`,
 //! `sv_allowdownload`, which the player's `cl_downloadfilter none` refuses; the
-//! server's name and players), `ChangingLevel`, `ChangeLevel`, `Loaded` (a
+//! server's name and players; the match manifest, `manifest`), `ChangingLevel`,
+//! `ChangeLevel` (with the manifest), `ChangeMatch` (the match changed on the
+//! same map: its manifest), `Loaded` (a
 //! client has the map: the server lets its player into the game), `MapRequest`,
 //! `MapAck`, `MapChunk`, `MapDenied`, `UserCmds` of `NetCmd` (one per server
 //! tick, made safe by `NetCmd::apply`, with the view tick its shots are traced
@@ -204,6 +206,7 @@ pub mod game;
 pub mod http;
 pub mod interp;
 pub mod mapfx;
+pub mod manifest;
 pub mod maps;
 pub mod memory;
 pub mod motd;
@@ -248,7 +251,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net30");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net31");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -401,6 +404,9 @@ pub struct Welcome {
     pub server_name: String,
     pub players: u32,
     pub max_players: u32,
+    /// What the match needs (`manifest`): the client checks it before it
+    /// loads anything.
+    pub manifest: manifest::MatchManifest,
 }
 
 /// Server -> clients: a map change started (`changelevel`, `map`); the
@@ -421,6 +427,17 @@ pub struct ChangeLevel {
     pub download_url: String,
     pub allow_download: bool,
     pub tick_nanos: u64,
+    /// The match on the new map (`manifest`).
+    pub manifest: manifest::MatchManifest,
+}
+
+/// Server -> clients: the match changed on the same map (another
+/// minigame: `minigame_net::change_match`): its manifest, which each client
+/// checks (`manifest::accept`) and plays on with, connected; the parts
+/// follow from what they replicate.
+#[derive(Event, Serialize, Deserialize, Clone, Debug, Default)]
+pub struct ChangeMatch {
+    pub manifest: manifest::MatchManifest,
 }
 
 /// Client -> server: I have the map loaded (`map`, the id the server
@@ -1148,6 +1165,9 @@ impl Plugin for NetPlugin {
             .make_event_independent::<ChangingLevel>()
             .add_server_event::<ChangeLevel>(Channel::Ordered)
             .make_event_independent::<ChangeLevel>()
+            // The match changed on the same map (net31).
+            .add_server_event::<ChangeMatch>(Channel::Ordered)
+            .make_event_independent::<ChangeMatch>()
             .add_client_message::<Loaded>(Channel::Ordered)
             .add_client_message::<MapRequest>(Channel::Ordered)
             .add_client_message::<MapAck>(Channel::Unreliable)
@@ -1278,6 +1298,7 @@ impl Plugin for NetPlugin {
         cheats::plugin(app);
         cvars::plugin(app);
         maps::plugin(app);
+        manifest::plugin(app);
         mapfx::plugin(app);
         decals::plugin(app);
         udp::plugin(app);

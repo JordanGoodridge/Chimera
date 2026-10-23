@@ -181,6 +181,13 @@ pub struct NetHooks {
     /// and intent set, before movement, so a part places what the player
     /// moves against at that tick (Source's movers).
     pub replay: Vec<fn(&mut World)>,
+    /// The server builds the match's manifest (`manifest::current`): each
+    /// part adds what its side of the match needs (the minigame's).
+    pub manifest: Vec<fn(&mut World, &mut super::manifest::MatchManifest)>,
+    /// A client got a manifest (`manifest::accept`): each part checks it can
+    /// play it (and readies what it needs: the server's minigame
+    /// definition); Err leaves the server with that reason.
+    pub accept: Vec<fn(&mut World, &super::manifest::MatchManifest) -> Result<(), String>>,
 }
 
 /// How a remote player comes into the game (the game's join flow; CS:S's

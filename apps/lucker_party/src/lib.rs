@@ -41,6 +41,9 @@
 //! - `requirements`, `missing`, `report`: what this machine lacks to play
 //!   (CS:S's install, Combat Arms' install and its V1 and V2 keys), told
 //!   exactly at start by both binaries; CS:S's missing stops them.
+//!   `mount_report`: the same as the network's mount doctor report
+//!   (`net::manifest::MountReport`), which the client sends when it joins
+//!   (`LocalMounts`, set by `ClientPlugin`).
 //!
 //! Known shortcuts: maps load by id only (no downloaded map files); the
 //! minigame's map pool isn't rotated (its first map plays); the bots fight
@@ -199,6 +202,11 @@ pub struct Missing {
     /// wrong).
     pub fatal: bool,
     pub text: String,
+    /// The game it is of.
+    pub game: &'static str,
+    /// The install itself is missing (or isn't the game's); else a part of
+    /// it (a key).
+    pub install: bool,
 }
 
 /// What a machine needs for the party: Counter-Strike: Source's install
@@ -207,7 +215,14 @@ pub struct Missing {
 /// configured, `V1` and `V2`). Pure: `requirements` reads the machine.
 pub fn missing(css: Option<&std::path::Path>, ca: Option<&std::path::Path>, keys: &[&str]) -> Vec<Missing> {
     let mut out = Vec::new();
-    let mut add = |fatal: bool, text: String| out.push(Missing { fatal, text });
+    let mut add = |fatal: bool, text: String| {
+        let (game, install) = if fatal {
+            (cs_source::game::GAME, true)
+        } else {
+            (combat_arms::game::GAME, !text.contains(" key isn't"))
+        };
+        out.push(Missing { fatal, text, game, install })
+    };
     match css {
         None => add(
             true,
@@ -270,6 +285,24 @@ pub fn requirements() -> Vec<Missing> {
         .map(|k| k.keys().map(String::as_str).collect())
         .unwrap_or_default();
     missing(css.as_deref(), ca.as_deref(), &keys)
+}
+
+/// The mount doctor's report for the network (`net::manifest`): each
+/// registered game's install (`manifest::examine`), with what `requirements`
+/// finds: an install that isn't the game's counts as missing, a missing key
+/// is a note on Combat Arms' line.
+pub fn mount_report(games: &chimera_core::game_registry::Games) -> chimera_net::net::manifest::MountReport {
+    let mut report = chimera_net::net::manifest::examine(games);
+    for m in requirements() {
+        if let Some(g) = report.games.iter_mut().find(|g| g.game == m.game) {
+            if m.install {
+                g.installed = false;
+            } else {
+                g.notes.push(m.text);
+            }
+        }
+    }
+    report
 }
 
 /// `requirements` told to the user: each on its own line (`error:` for what
@@ -342,6 +375,8 @@ mod tests {
         let nothing = super::missing(None, None, &[]);
         assert_eq!(nothing.len(), 2);
         assert!(nothing[0].fatal && nothing[0].text.contains("Counter-Strike: Source isn't installed"));
+        assert_eq!((nothing[0].game, nothing[0].install), ("cs_source", true));
+        assert_eq!((nothing[1].game, nothing[1].install), ("combat_arms", true));
         assert!(!nothing[1].fatal && nothing[1].text.contains("`[games.combat_arms]` `path`"));
         let here = Path::new(env!("CARGO_MANIFEST_DIR"));
         // A folder that exists but isn't the game's.
@@ -356,6 +391,7 @@ mod tests {
         let one = super::missing(Some(&dir), Some(&dir), &["V1"]);
         assert_eq!(one.len(), 1);
         assert!(one[0].text.contains("V2 key isn't in chimera.local.toml") && !one[0].fatal, "{one:?}");
+        assert_eq!((one[0].game, one[0].install), ("combat_arms", false), "a key is a note, not the install");
         assert!(super::missing(Some(&dir), Some(&dir), &both).is_empty());
         let (text, fatal) = super::report(&nothing);
         assert!(fatal && text.starts_with("error: Counter-Strike") && text.contains("\nwarning: Combat Arms"));

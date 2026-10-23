@@ -47,10 +47,11 @@
 //! are the held weapon's game's: `identity`); teams other than the mode's are refused, not
 //! adapted; no objective primitives (zones, carriables), scoring table
 //! beyond kills and deaths, or built-in modifiers yet; the HUD data is the
-//! local player's only (never a spectated player's); definitions travel to network clients by id only
-//! (their hash and bytes are L3's): a client starts the server's minigame by
-//! its id from its own definitions (`join_remote`, `minigame_net`), and
-//! can't start or restart one itself.
+//! local player's only (never a spectated player's). Over the network a
+//! client plays the server's definition: the match manifest carries its id,
+//! hash and text, which a client without the same one adds (`add`,
+//! `Minigames::text`; `chimera_net::minigame_net`); a client can't start or
+//! restart one itself.
 
 pub mod def;
 pub mod hud;
@@ -112,18 +113,25 @@ pub struct Modifier {
 /// added.
 #[derive(Resource, Clone, Default)]
 pub struct Minigames {
-    defs: Vec<&'static MinigameDef>,
+    /// Each definition with the text it was read from (what a network
+    /// server offers its clients: `chimera_net::minigame_net`).
+    defs: Vec<(&'static MinigameDef, &'static str)>,
     rules: Vec<RulesModule>,
     modifiers: Vec<Modifier>,
 }
 
 impl Minigames {
     pub fn get(&self, id: &str) -> Option<&'static MinigameDef> {
-        self.defs.iter().find(|d| d.id == id).copied()
+        self.defs.iter().find(|(d, _)| d.id == id).map(|(d, _)| *d)
+    }
+
+    /// The text definition `id` was read from.
+    pub fn text(&self, id: &str) -> Option<&'static str> {
+        self.defs.iter().find(|(d, _)| d.id == id).map(|(_, t)| *t)
     }
 
     pub fn all(&self) -> impl Iterator<Item = &'static MinigameDef> + '_ {
-        self.defs.iter().copied()
+        self.defs.iter().map(|(d, _)| *d)
     }
 
     pub fn rules(&self, name: &str) -> Option<RulesModule> {
@@ -134,13 +142,26 @@ impl Minigames {
         self.modifiers.iter().find(|m| m.name == name).copied()
     }
 
-    /// Add `def` (one of the same id replaced in place).
-    fn put(&mut self, def: &'static MinigameDef) {
-        match self.defs.iter_mut().find(|d| d.id == def.id) {
-            Some(d) => *d = def,
-            None => self.defs.push(def),
+    /// Add `def`, read from `text` (one of the same id replaced in place).
+    fn put(&mut self, def: &'static MinigameDef, text: &'static str) {
+        match self.defs.iter_mut().find(|(d, _)| d.id == def.id) {
+            Some(d) => *d = (def, text),
+            None => self.defs.push((def, text)),
         }
     }
+}
+
+/// Add a definition from its text (`name` for errors), checked against
+/// what the app registered (`check`); one of the same id is replaced.
+/// `minigame_load`'s, and a network client's for the server's minigame
+/// (`chimera_net::minigame_net`).
+pub fn add(world: &mut World, name: &str, text: &str) -> Result<&'static MinigameDef, String> {
+    let def = MinigameDef::parse(name, text)?;
+    check(world, &def)?;
+    let def: &'static MinigameDef = Box::leak(Box::new(def));
+    let text: &'static str = Box::leak(text.to_string().into_boxed_str());
+    world.get_resource_or_init::<Minigames>().put(def, text);
+    Ok(def)
 }
 
 /// The minigame playing (the server's).
@@ -310,7 +331,8 @@ impl MinigameAppExt for App {
         for (name, text) in docs {
             let def = MinigameDef::parse(name, text)?;
             let def: &'static MinigameDef = Box::leak(Box::new(def));
-            self.world_mut().get_resource_or_init::<Minigames>().put(def);
+            let text: &'static str = Box::leak(text.to_string().into_boxed_str());
+            self.world_mut().get_resource_or_init::<Minigames>().put(def, text);
         }
         Ok(self)
     }
@@ -412,11 +434,8 @@ impl Plugin for MinigamePlugin {
             |w, a| {
                 let path = a.first().ok_or("minigame_load <file>")?;
                 let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
-                let def = MinigameDef::parse(path, &text)?;
-                check(w, &def)?;
-                let id = def.id.clone();
-                w.resource_mut::<Minigames>().put(Box::leak(Box::new(def)));
-                Ok(Some(format!("added {id}")))
+                let def = add(w, path, &text)?;
+                Ok(Some(format!("added {}", def.id)))
             },
         )
         .console_command("minigame_restart", "Play the minigame's match again from the start.", |w, _| {

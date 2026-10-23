@@ -19,6 +19,24 @@
 //! - **Events** (`MinigameNews`): rung ups, a match won, for the HUD's
 //!   notices, as the index in `minigame::EVENT_NAMES`.
 //!
+//! - **The manifest** (`net::manifest`): the server's hook adds the
+//!   minigame (its id, its definition's SHA-256 and text), the games it
+//!   names (wanted; `needs`) and its weapon sets; a client's hook plays the
+//!   server's definition (its own if the hash matches, else the text, read
+//!   and checked: `minigame::add`) or leaves saying why. A client starts a
+//!   minigame only once a manifest names it. Another minigame on the
+//!   server is announced (`ChangeMatch`).
+//! - **Changing match** (`change_match`, console `change_match <id>
+//!   [map]`): the server starts another minigame, players kept and
+//!   connected, scores anew, and changes level through the app's
+//!   `changelevel` when the map differs; only one every connected player
+//!   can play there.
+//! - **The playable set** (`playable`, `PartyOffer`, console
+//!   `party_offer`): each registered minigame on its pool's first map
+//!   against the players' mount doctor reports (their userinfo); the
+//!   minigames every player can play go to the clients when the set or
+//!   the players change (a lobby's list).
+//!
 //! Nothing is sent while no minigame plays.
 
 use bevy::prelude::*;
@@ -28,13 +46,16 @@ use serde::{Deserialize, Serialize};
 use crate::{
     core::{NetRole, SimClock},
     net::{
-        NetAppExt, NetHooks,
+        GREYBOX, NetAppExt, NetHooks,
         game::{ServerTime, tick_of},
+        manifest::{self, CANT_PLAY, GameNeed, MatchManifest, MinigameOffer, ServerManifest},
+        maps::sha256,
         ordered::OrderedAppExt,
     },
-    minigame::{ActiveMinigame, EVENT_NAMES, MinigameEvent, ladder::Rung, runtime::InMinigame},
+    minigame::{self, ActiveMinigame, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame},
     mode::{Match, Phase},
 };
+use chimera_core::game_registry::Games;
 
 /// `NetMinigame::phase`.
 pub mod phase {
@@ -88,15 +109,41 @@ fn register(app: &mut App) {
         .replicate::<InMinigame>()
         .replicate::<Rung>()
         .ordered::<Rung>()
-        .add_mapped_server_message::<MinigameNews>(Channel::Ordered);
-    app.world_mut().resource_mut::<NetHooks>().stopped_serving.push(stopped_serving);
+        .add_mapped_server_message::<MinigameNews>(Channel::Ordered)
+        .add_server_message::<PartyOffer>(Channel::Ordered)
+        .make_message_independent::<PartyOffer>();
+    {
+        let mut hooks = app.world_mut().resource_mut::<NetHooks>();
+        hooks.stopped_serving.push(stopped_serving);
+        hooks.manifest.push(add_to_manifest);
+        hooks.accept.push(accept_minigame);
+    }
+    use crate::console::ConsoleAppExt;
+    app.console_command(
+        "change_match",
+        "change_match <minigame> [map]: play another minigame, the players kept and connected, its scores \
+         anew; on [map], else on this map if it is in the minigame's pool, else on the pool's first.",
+        |w, a| {
+            let id = a.first().ok_or("change_match <minigame> [map]")?;
+            change_match(w, id, a.get(1).map(String::as_str)).map(Some)
+        },
+    )
+    .console_command(
+        "party_offer",
+        "The minigames every connected player can play (the server's mount doctor reports; a client: what \
+         its server offers), and on the server who lacks what for the others.",
+        |w, _| Ok(Some(offer_text(w))),
+    );
     let server = || resource_equals(NetRole::Server);
     let client = || resource_equals(NetRole::Client);
     app.add_systems(FixedLast, write_minigame.run_if(server()))
-        .add_systems(PostUpdate, send_news.before(ServerSystems::Send).run_if(server()))
+        .add_systems(
+            PostUpdate,
+            (send_news, send_offer).chain().before(ServerSystems::Send).run_if(server()),
+        )
         .add_systems(
             PreUpdate,
-            (apply_minigame, receive_news)
+            (apply_minigame, receive_news, receive_offer)
                 .chain()
                 .after(ClientSystems::Receive)
                 .run_if(client()),
@@ -132,6 +179,7 @@ fn write_minigame(world: &mut World) {
         },
         ends: m.round_ends.filter(|_| m.phase == Phase::Live).map(|s| tick_of(&clock, s)),
     };
+    let changed = have.as_ref().is_none_or(|(_, n)| n.id != now.id);
     match have {
         Some((e, n)) => {
             if n != now {
@@ -142,6 +190,269 @@ fn write_minigame(world: &mut World) {
             world.spawn((Name::new("Minigame"), Replicated, now));
         }
     }
+    // Another minigame: clients hear the match's new manifest.
+    if changed {
+        manifest::announce(world);
+    }
+}
+
+/// Server -> clients: the minigames every connected player can play
+/// (`playable`), by id in the registry's order; sent when it changes or
+/// players come and go. On a client, the newest heard (a lobby's list).
+#[derive(Resource, Message, Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct PartyOffer {
+    pub minigames: Vec<String>,
+}
+
+/// Whether every connected player can play a minigame on a map
+/// (`playable`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Playable {
+    pub id: String,
+    /// The map it would play on (`change_match`'s pick; the pool's first
+    /// for the offer).
+    pub map: String,
+    /// Each player lacking a game it requires: the player's name and the
+    /// game's id.
+    pub lacking: Vec<(String, String)>,
+}
+
+impl Playable {
+    pub fn ok(&self) -> bool {
+        self.lacking.is_empty()
+    }
+}
+
+/// The remote players' mount doctor reports (name, report), from their
+/// userinfo (`manifest::MOUNTS_KEY`); a player that sent none isn't
+/// listed (taken as having everything), nor are bots.
+fn reports(world: &mut World) -> Vec<(String, manifest::MountReport)> {
+    let mut q = world.query::<(&crate::net::NetCharacter, &chimera_core::core::UserInfo)>();
+    q.iter(world)
+        .filter(|(c, _)| c.owner.is_some())
+        .filter_map(|(c, info)| {
+            let r = manifest::from_userinfo(info.0.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
+            Some((c.name.clone(), r))
+        })
+        .collect()
+}
+
+/// Whether every connected player can play `def` on `map` (None: its
+/// pool's first): each player's report against the games it requires
+/// there (the map's game; `needs`).
+pub fn playable_on(world: &mut World, def: &MinigameDef, map: Option<&str>) -> Playable {
+    let map = map
+        .map(crate::net::normalize_map)
+        .or_else(|| def.maps.first().map(|m| crate::net::normalize_map(m)))
+        .unwrap_or_else(|| GREYBOX.into());
+    let mut needs = MatchManifest::default();
+    if map != GREYBOX
+        && let Some((game, _)) = map.split_once(':')
+    {
+        needs.need(game, true);
+    }
+    let mut lacking = Vec::new();
+    for (name, report) in reports(world) {
+        for n in needs.games.iter().filter(|n| n.required && !report.has(&n.game)) {
+            lacking.push((name.clone(), n.game.clone()));
+        }
+    }
+    Playable {
+        id: def.id.clone(),
+        map,
+        lacking,
+    }
+}
+
+/// Every registered minigame, on its pool's first map, against the
+/// connected players (the lobby's playable set: `PartyOffer`).
+pub fn playable(world: &mut World) -> Vec<Playable> {
+    let defs: Vec<&'static MinigameDef> = world.get_resource::<Minigames>().map(|m| m.all().collect()).unwrap_or_default();
+    defs.into_iter().map(|d| playable_on(world, d, None)).collect()
+}
+
+/// `party_offer`'s text.
+fn offer_text(world: &mut World) -> String {
+    if world.get_resource::<NetRole>() == Some(&NetRole::Client) {
+        let offer = world.get_resource::<PartyOffer>().cloned().unwrap_or_default();
+        return if offer.minigames.is_empty() {
+            "the server offers no minigame".into()
+        } else {
+            offer.minigames.join("\n")
+        };
+    }
+    let games = world.get_resource::<Games>().cloned();
+    let lines: Vec<String> = playable(world)
+        .iter()
+        .map(|p| {
+            if p.ok() {
+                format!("{} on {}", p.id, p.map)
+            } else {
+                format!("({} on {}: {})", p.id, p.map, lacking_text(games.as_ref(), &p.lacking))
+            }
+        })
+        .collect();
+    if lines.is_empty() { "no minigames".into() } else { lines.join("\n") }
+}
+
+/// "Alice lacks CS:S (cs_source)", each player once.
+fn lacking_text(games: Option<&Games>, lacking: &[(String, String)]) -> String {
+    lacking
+        .iter()
+        .map(|(who, game)| format!("{who} lacks {}", manifest::game_name(games, game)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The server: the playable set to every client when it or the players
+/// change.
+fn send_offer(world: &mut World, mut last: Local<Option<(Vec<String>, usize)>>) {
+    let players = world.query::<&crate::net::server::Player>().iter(world).count();
+    let offer: Vec<String> = playable(world).into_iter().filter(|p| p.ok()).map(|p| p.id).collect();
+    let now = (offer, players);
+    if last.as_ref() == Some(&now) {
+        return;
+    }
+    *last = Some(now.clone());
+    if players == 0 {
+        return;
+    }
+    world.write_message(ToClients {
+        targets: SendTargets::CLIENTS_ONLY,
+        message: PartyOffer { minigames: now.0 },
+    });
+}
+
+/// A client: the server's offer, kept.
+fn receive_offer(mut offers: MessageReader<PartyOffer>, mut commands: Commands) {
+    if let Some(o) = offers.read().last() {
+        commands.insert_resource(o.clone());
+    }
+}
+
+/// `change_match <id> [map]` (M1): the server plays minigame `id` from
+/// now on, its players kept and connected: a fresh match (`minigame::
+/// start`: scores anew, everyone joins again), clients told by
+/// `ChangeMatch` (`manifest::announce`, from `write_minigame`). The map is
+/// `map`, else this one if it is in the minigame's pool, else the pool's
+/// first; another map is the app's `changelevel` (which takes every client
+/// along with the new match's manifest). A client can't change match.
+pub fn change_match(world: &mut World, id: &str, map: Option<&str>) -> Result<String, String> {
+    if world.get_resource::<NetRole>() == Some(&NetRole::Client) {
+        return Err("the server picks the minigame; you are a client of it".into());
+    }
+    let def = world
+        .get_resource::<Minigames>()
+        .and_then(|m| m.get(id))
+        .ok_or_else(|| format!("no minigame `{id}` (minigames lists them)"))?;
+    let here = crate::net::current_map(world);
+    let pool: Vec<String> = def.maps.iter().map(|m| crate::net::normalize_map(m)).collect();
+    let target = match map {
+        Some(m) => crate::net::normalize_map(m),
+        None if pool.contains(&here) => here.clone(),
+        None => pool.first().cloned().unwrap_or_else(|| here.clone()),
+    };
+    // Only what every player can play (the playable set, M3).
+    let p = playable_on(world, def, Some(&target));
+    if !p.ok() {
+        let games = world.get_resource::<Games>().cloned();
+        return Err(format!(
+            "not every player can play {id} on {target}: {}",
+            lacking_text(games.as_ref(), &p.lacking)
+        ));
+    }
+    minigame::start(world, id)?;
+    if target != here {
+        world
+            .resource_mut::<crate::console::Console>()
+            .submit(format!("changelevel {target}"));
+        return Ok(format!("playing {id}: {}; changing level to {target}", def.name));
+    }
+    Ok(format!("playing {id}: {} on {target}", def.name))
+}
+
+/// The games minigame `def` reads from a player's install: its first
+/// map's game required (none for the greybox), and wanted, every other
+/// registered game it names (its slots, movement, character, weapon sets
+/// and kit). Ids that aren't registered games (`chimera`) are left out;
+/// without `Games` every id counts.
+pub fn needs(def: &MinigameDef, games: Option<&Games>) -> Vec<GameNeed> {
+    let mut m = MatchManifest::default();
+    let first = def.maps.first().map(|m| crate::net::normalize_map(m)).unwrap_or_default();
+    if first != GREYBOX
+        && let Some((game, _)) = first.split_once(':')
+    {
+        m.need(game, true);
+    }
+    for g in wanted(def) {
+        m.need(&g, false);
+    }
+    m.games.retain(|n| games.is_none_or(|gs| gs.get(&n.game).is_some()));
+    m.games
+}
+
+/// The game ids a definition names besides its maps.
+fn wanted(def: &MinigameDef) -> Vec<String> {
+    let s = &def.slots;
+    let prefix = |id: &str| id.split_once(':').map(|(g, _)| g.to_string());
+    let mut out: Vec<String> = [&s.hud, &s.binds, &s.tick, &s.bots].into_iter().flatten().cloned().collect();
+    out.extend([&s.movement, &s.character].into_iter().flatten().filter_map(|id| prefix(id)));
+    out.extend(s.weapons.iter().cloned());
+    out.extend(def.spawn.kit.iter().filter_map(|id| prefix(id)));
+    out
+}
+
+/// The server's manifest hook: the playing minigame (its id, its
+/// definition's hash and text), the games it names (wanted), its weapon
+/// sets and the slots it names over the gameplay's.
+fn add_to_manifest(world: &mut World, m: &mut MatchManifest) {
+    let Some(active) = world.get_resource::<ActiveMinigame>().copied() else {
+        return;
+    };
+    let def = active.def;
+    let games = world.get_resource::<Games>();
+    // Its pool's first map's game too, wanted: the map played is the
+    // served one (`manifest::current` requires its game).
+    for n in needs(def, games) {
+        m.need(&n.game, false);
+    }
+    m.weapons = def.slots.weapons.clone();
+    for (slot, game) in [("hud", &def.slots.hud), ("binds", &def.slots.binds), ("bots", &def.slots.bots)] {
+        if let Some(g) = game
+            && let Some(s) = m.slots.iter_mut().find(|(s, _)| s == slot)
+        {
+            s.1 = g.clone();
+        }
+    }
+    let text = world.get_resource::<Minigames>().and_then(|ms| ms.text(&def.id)).unwrap_or_default();
+    m.minigame = Some(MinigameOffer {
+        id: def.id.clone(),
+        hash: sha256(text.as_bytes()),
+        text: text.to_string(),
+    });
+}
+
+/// A client's manifest hook: the server's minigame is one this build can
+/// play: its own definition with the same hash, else the server's text,
+/// read and checked against what this build registered (`minigame::add`).
+fn accept_minigame(world: &mut World, m: &MatchManifest) -> Result<(), String> {
+    let Some(offer) = &m.minigame else {
+        return Ok(());
+    };
+    let have = world.get_resource::<Minigames>().and_then(|ms| ms.text(&offer.id));
+    if have.is_some_and(|t| sha256(t.as_bytes()) == offer.hash) {
+        return Ok(());
+    }
+    if sha256(offer.text.as_bytes()) != offer.hash {
+        return Err(format!("{CANT_PLAY}{} came with a definition that doesn't match its hash.", offer.id));
+    }
+    let def = minigame::add(world, &offer.id, &offer.text)
+        .map_err(|e| format!("{CANT_PLAY}{} can't be played by this build: {e}", offer.id))?;
+    if def.id != offer.id {
+        return Err(format!("{CANT_PLAY}{}'s definition names itself {}.", offer.id, def.id));
+    }
+    info!("playing the server's definition of {}", offer.id);
+    Ok(())
 }
 
 /// The match's events, to every client.
@@ -172,6 +483,15 @@ fn apply_minigame(world: &mut World, mut refused: Local<Option<String>>) {
     let Some(n) = world.query::<&NetMinigame>().iter(world).next().cloned() else {
         return;
     };
+    // The definition comes with the match's manifest (`accept_minigame`):
+    // wait for the manifest that names it.
+    let offered = world
+        .get_resource::<ServerManifest>()
+        .and_then(|m| m.0.minigame.as_ref())
+        .is_some_and(|o| o.id == n.id);
+    if !offered {
+        return;
+    }
     if world.get_resource::<ActiveMinigame>().is_none_or(|a| a.def.id != n.id) {
         match crate::minigame::join_remote(world, &n.id) {
             Ok(def) => {

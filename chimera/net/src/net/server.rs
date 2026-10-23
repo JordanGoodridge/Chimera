@@ -3,7 +3,8 @@
 //!
 //! The server: `listen` (`udp::UdpServer`: netcode, unsecure, `maxplayers` less
 //! the host, queries on the same port), the join handshake (version, protocol,
-//! `sv_password` from the client's netcode user data, full; refused with
+//! `sv_password` from the client's netcode user data, full, the mount doctor's
+//! report in its userinfo against the match manifest (`manifest`); refused with
 //! `Refused` and dropped a second later), a character per client (team with
 //! fewer players, out of the game (`core::Connecting`: dead, not solid, no
 //! health) until its client reports the map loaded (`Loaded`, also after each
@@ -566,7 +567,17 @@ fn admit(world: &mut World, client: Entity, msg: Join) {
         Some("Bad password.".to_string())
     } else {
         let taken = world.query_filtered::<(), With<Player>>().iter(world).count();
-        (taken >= remote_slots(world)).then(|| "Server is full.".to_string())
+        if taken >= remote_slots(world) {
+            Some("Server is full.".to_string())
+        } else {
+            // The mount doctor's report (none: taken as having all).
+            let report = super::manifest::from_userinfo(msg.userinfo.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+            report.and_then(|r| {
+                let manifest = super::manifest::current(world);
+                let games = world.get_resource::<chimera_core::game_registry::Games>();
+                super::manifest::check(&manifest, &r, games).err()
+            })
+        }
     };
     let id = world.get::<NetworkId>(client).map_or(0, |n| n.get());
     if let Some(reason) = refuse {

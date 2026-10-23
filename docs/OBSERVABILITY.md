@@ -727,7 +727,15 @@ to shoot, `setpos` Alice a few units south of Bob (`getpos` on Bob) and
 the command line has run: `chimera_host_if_asked`). `minigame_load <file>`
 on the server and on the clients, then `minigame <id>` on the server only,
 tries a shorter ladder (a client can't start minigames: it plays the
-server's, `minigame_net`). `grep 'console:'` the clients' output; the
+server's, `minigame_net`; a client without the definition gets the
+server's in the match manifest). `change_match <id> [map]` on the server
+switches minigame with everyone connected. Party networking's NetSim
+tests (manifest, mount doctor refusals, `ChangeMatch`):
+`apps/lucker_party/tests/it/net_party.rs`; a client's
+`net::manifest::ServerManifest` is the manifest it plays, its
+`LocalMounts` the report it sent (the log's `mount doctor:` lines);
+`party_offer` lists what every connected player can play (the server
+names who lacks what for the rest; a client's `minigame_net::PartyOffer`). `grep 'console:'` the clients' output; the
 server prints on stdout.
 
 Votes (`games/cs_source/tests/it/net_votes.rs`): the server's

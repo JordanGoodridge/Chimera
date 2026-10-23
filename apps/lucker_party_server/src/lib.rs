@@ -13,7 +13,12 @@
 //!   its pool's first unless `+map` names one (`greybox`, `cs_source:<name>`,
 //!   `combat_arms:<name>`; a bare name is CS:S's), loaded without textures.
 //!   `minigames`, `minigame <id>`, `minigame_status`, `minigame_restart`
-//!   on the console.
+//!   on the console; `change_match <id> [map]` plays another minigame with
+//!   the players connected (`chimera_net::minigame_net`: its map, else this
+//!   one if in its pool, else its pool's first, by `changelevel`).
+//! - Joining: a client's mount doctor report is checked against the match
+//!   manifest (`net::manifest`): one lacking the map's game is refused,
+//!   told which.
 //! - `changelevel <map>` (or `map <map>`) loads another map in the
 //!   background and moves every player there, a fresh match.
 //! - Bots: Combat Arms' (`MaxPlayer`, `BotLevel`, `ca_bot_add`), as the
@@ -55,7 +60,7 @@ usage: lucker_party_server [-port <n>] [+minigame <id>] [+map <name>] [+<command
   +map <name>        greybox, cs_source:<name> or combat_arms:<name> (a bare name is CS:S's)
   +<command>         any console command or cvar, e.g. +maxplayers 8 +MaxPlayer 3 (bots)
 Type console commands on stdin: status, minigames, minigame_status, minigame_restart,
-changelevel <map>, quit.";
+change_match <minigame> [map], changelevel <map>, quit.";
 
 /// The command line: the minigame, the map, and the console lines to run
 /// first (in order; `-port <n>` is `hostport <n>`, first; the minigame's

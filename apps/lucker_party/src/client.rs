@@ -6,7 +6,9 @@
 //! gun), the map files it can read for a server's map check
 //! (`map_file_bytes`: CS:S's from its install, so a server on another map
 //! than the one loaded is joined; Combat Arms' maps load by id) and the command line as the app plays it
-//! (`with_defaults`: the default minigame and its first map).
+//! (`with_defaults`: the default minigame and its first map). At start it
+//! runs the mount doctor (`mount_report` into `net::manifest::LocalMounts`),
+//! which a server checks its match against when this client joins.
 //!
 //! CS:S's HUD here is its health, armour and ammo panels, death notices,
 //! damage sprites and weapon selection row (`ui::game_hud`,
@@ -84,8 +86,20 @@ impl Plugin for ClientPlugin {
         // What CS:S's bodies play, for a player holding a CS:S gun (the
         // gun game's `identity = "weapon"`).
         .add_plugins(cs_source::game::player_anim::PlayerAnimPlugin)
-        .add_systems(Startup, cs_source_names);
+        .add_systems(Startup, (cs_source_names, mount_doctor));
     }
+}
+
+/// The mount doctor (`net::manifest`): what this machine has of each game,
+/// which a server checks its match against when this client joins.
+fn mount_doctor(games: Res<Games>, mut commands: Commands) {
+    let report = super::mount_report(&games);
+    for g in &report.games {
+        let build = g.build.as_deref().map(|b| format!(", build {b}")).unwrap_or_default();
+        let state = if g.installed { "installed" } else { "not installed" };
+        info!("mount doctor: {} {state}{build}", g.game);
+    }
+    commands.insert_resource(chimera_net::net::manifest::LocalMounts(report));
 }
 
 /// CS:S's guns' names for Combat Arms' HUD: its weapon panel and kill feed

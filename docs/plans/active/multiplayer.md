@@ -1708,3 +1708,22 @@ events, by their place in `minigame::EVENT_NAMES`), and the characters'
 `InMinigame` and the ladder's `Rung` replicated, registered after the
 memory plugin's. A client starts the minigame the server plays
 (`minigame::join_remote`) and shows its match in the HUD.
+
+
+### net31 (2026-10-23)
+
+The match manifest and the mount doctor (architecture review L3, M1-M3;
+`net::manifest`): `Welcome` and `ChangeLevel` carry a `MatchManifest`
+(the map, the games whose installs the match reads, required or wanted,
+the gameplay's slots, the weapon sets, the minigame's id, SHA-256 and
+definition text), and a new event, `ChangeMatch`, carries it alone when the
+match changes on the same map (`minigame_net::change_match`). `Join` is
+unchanged: a client's mount doctor report rides in its userinfo
+(`_mounts`: the installed games and their Steam builds), so builds without
+one still join and older servers ignore it. The server refuses a client
+whose report lacks the map's game ("This match needs CS:S (cs_source)
+..."); a client checks every manifest before it loads anything and plays
+the server's minigame definition when its own differs or is missing.
+`minigame_net`'s `PartyOffer` (server message: the minigames every
+connected player can play, from their reports) goes to clients when the
+set or the players change.
