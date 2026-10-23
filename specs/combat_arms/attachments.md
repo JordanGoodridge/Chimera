@@ -3,7 +3,7 @@
 Source basis: the shared weapon-modification manager (record reader and lookups), the client weapon (attachment slots, spread meters, cone inputs, ray length, view-model parts, muzzle effects, fire-sound choice), the client player manager (view recoil, zoom, victim-side stun), the shared animation-rate calculation, the HUD crosshair and weapon panel, the scope overlay, the server weapon and weapon inventory (fitting, clip size, damage), the server damage path (special-function damage), the server projectile (server ray length, AI hearing radius), plus the shipped weapon-modification file, weapons file and character attachments file of a reference client build (US). Numbers are that build's data; the Steam build may differ (see Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; How attachments are described in the data; Which weapon accepts which; Fitting (when and where); Effects by kind (muzzle, sight, magazine, bullet, mechanical sight); The combined formulas (damage, range, spread, recoil, rates, clip, zoom); Sound; Crosshair, HUD and overlay; View model and world model; Kill feed; Character attachments and gear mods (pointer); Per-tick order; Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; How attachments are described in the data; Which weapon accepts which; Fitting (when and where); Effects by kind (muzzle, sight, magazine, bullet, mechanical sight); The combined formulas (damage, range, spread, recoil, rates, clip, zoom); Sound; Crosshair, HUD and overlay; View model and world model; Kill feed; Character attachments and gear mods (pointer); Per-tick order; Edge cases; Quirks; Corrections (2026-10-19); Corrections (2026-10-22); Test cases; Open questions.
 
 ---
 
@@ -566,6 +566,32 @@ view kick, compared with this spec and our implementation. Test cases 38–40.
      (`weapons.rs:748-759`).
    - Why it matters: switching from a weapon with a muzzle part to a bare
      one changes the cap the leftover climb returns against.
+
+## Corrections (2026-10-22)
+
+From the inventory, attachments, grenades and gear comparison (the server's
+weapon pickup). Entry: the reference behaviour, what we do now (file:line),
+and a testable expectation.
+
+1. **The fitted set decides whether a primary pickup is a swap at all**
+   ("Fitting: when and where", Lifetime; `inventory.md` Corrections
+   (2026-10-22) 1).
+   - Reference: when a primary item is used, its empty slots are first
+     filled with its weapon's default parts; then its five slot ids and
+     its sight style are compared with the class's last-selected weapon's
+     fitted set. If they are equal, the carried weapon (and its parts) is
+     kept and only its total and clip are replaced by the item's: the item's
+     parts are never fitted and the weapon is not swapped, even when the
+     item is a different weapon. Only a different set (or sight style)
+     swaps, and then the picked weapon keeps the dropper's parts as this
+     spec says, without a clip refill from the magazine.
+   - Ours: every primary pickup swaps, so the item's parts always arrive
+     with it (`games/combat_arms/src/game/inventory.rs:1220-1263`).
+   - Expect: an M4A1 with Silencer_A_AR and DotSight_A_AR carried; an item
+     M4A1 with the same two parts, total 50, clip 20 → the carried weapon
+     stays (same entity, same parts), total 50, clip 20. The same item with
+     DotSight_B_AR instead → swap: the item's M4A1 (with the B sight) is
+     drawn with clip 20 and the carried one dropped.
 
 ## Test cases
 

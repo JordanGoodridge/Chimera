@@ -63,6 +63,14 @@ fn log_damage(mut damage: MessageReader<Damage>, tick: Res<SimTick>, mut log: Re
     }
 }
 
+/// A second throwable, to be a different item in class 4.
+const OTHER_GRENADE: &str = "combat_arms:test_xm84";
+
+fn other_grenade(e: &mut EntityWorldMut) {
+    grenade(e);
+    e.get_mut::<Weapon>().unwrap().id = OTHER_GRENADE;
+}
+
 /// The M67 on Chimera's throwable part: 700 ms pin (pre-fire), the throw
 /// 67 ms after the release, 433 ms of throw animation (67 + 366), drawn
 /// in 400 ms; it hides when empty (inventory.md Constants).
@@ -138,9 +146,11 @@ fn sim_with(loadout: &[&'static str]) -> Sim {
         app.add_weapon_data(&[
             ("test_m16a3.toml", include_str!("../data/test_m16a3.toml")),
             ("test_m92fs.toml", include_str!("../data/test_m92fs.toml")),
+            ("test_hud_rifle.toml", include_str!("../data/test_hud_rifle.toml")),
         ])
         .unwrap();
         app.register_weapon(GRENADE, grenade);
+        app.register_weapon(OTHER_GRENADE, other_grenade);
         app.insert_resource(StartingWeapons {
             team: Vec::new(),
             all: loadout,
@@ -898,6 +908,17 @@ fn t27_death_drop_exemptions() {
     assert!(items(&mut sim).is_empty(), "drop on death off: no item");
 }
 
+/// Gives the carried rifle a part the items do not have, so that picking
+/// up a rifle item is the swap of section 11 and not the same-set case of
+/// Corrections (2026-10-22) 1.
+fn differ(sim: &mut Sim, p: Entity) {
+    let rifle = carried(sim, p, RIFLE);
+    let mut fitted = combat_arms::game::attachments::CaFitted::default();
+    fitted.slots[combat_arms::game::attachments::SIGHT] = Some(1);
+    fitted.given = true;
+    sim.app.world_mut().entity_mut(rifle).insert(fitted);
+}
+
 /// An item of `weapon` lying `dist` metres ahead of `p`'s eye, at eye
 /// height (looked at).
 fn item_ahead(sim: &mut Sim, p: Entity, weapon: &str, dist: f32, total: u32, clip: u32) -> Entity {
@@ -915,6 +936,7 @@ fn press_use(sim: &mut Sim, p: Entity) {
 #[test]
 fn t28_pickup_swap() {
     let (mut sim, p) = setup(STOCK);
+    differ(&mut sim, p);
     let a = carried(&sim, p, RIFLE);
     set_ammo(&mut sim, a, 5, 35);
     let index = inv(&sim, p).weapons.iter().position(|w| *w == a).unwrap();
@@ -944,6 +966,7 @@ fn t28_pickup_swap() {
 #[test]
 fn t29_pickup_while_holding_a_pistol() {
     let (mut sim, p) = setup(STOCK);
+    differ(&mut sim, p);
     let a = carried(&sim, p, RIFLE);
     set_ammo(&mut sim, a, 5, 35);
     key(&mut sim, p, 2);
@@ -975,6 +998,7 @@ fn t30_pickup_out_of_range() {
 #[test]
 fn t31_pickup_clamp() {
     let (mut sim, p) = setup(STOCK);
+    differ(&mut sim, p);
     let item = item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 150, 30);
     let b = sim.app.world().get::<Dropped>(item).unwrap().weapon;
     press_use(&mut sim, p);
@@ -984,6 +1008,7 @@ fn t31_pickup_clamp() {
 #[test]
 fn t32_pickup_at_total_0() {
     let (mut sim, p) = setup(STOCK);
+    differ(&mut sim, p);
     let item = item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 0, 7);
     let b = sim.app.world().get::<Dropped>(item).unwrap().weapon;
     press_use(&mut sim, p);
@@ -1026,6 +1051,7 @@ fn t34_auto_switch_fallback() {
 #[test]
 fn t35_respawn() {
     let (mut sim, p) = setup(STOCK);
+    differ(&mut sim, p);
     let a = carried(&sim, p, RIFLE);
     set_ammo(&mut sim, a, 5, 35);
     let item = item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 60, 30);
@@ -1176,6 +1202,7 @@ fn t40_spent_grenade() {
 #[test]
 fn t41_pickup_always_switches() {
     let (mut sim, p) = setup(STOCK);
+    differ(&mut sim, p);
     key(&mut sim, p, 2);
     sim.seconds(1.0);
     let item = item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 60, 30);
@@ -1244,6 +1271,7 @@ fn t43_knife_ray_and_zones() {
 #[test]
 fn t44_drop_positions() {
     let (mut sim, p) = setup(STOCK);
+    differ(&mut sim, p);
     let (foot, _) = feet(&sim, p);
     kill(&mut sim, p);
     let dropped = items(&mut sim);
@@ -1252,6 +1280,7 @@ fn t44_drop_positions() {
 
     for _ in 0..3 {
         let (mut sim, p) = setup(STOCK);
+        differ(&mut sim, p);
         let (foot, _) = feet(&sim, p);
         item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 60, 30);
         press_use(&mut sim, p);
@@ -1368,4 +1397,88 @@ fn t49_backstab_by_the_body() {
     }
     let d = one_hit(&mut sim, p, target, true);
     assert!(in_range(d, 67.5, 82.5), "a stab from the front by the body: {d}");
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-22): 1-3
+
+/// Corrections 1(a): a primary item whose parts match the carried
+/// primary's is no swap: the carried weapon keeps its entity and index, its
+/// total and clip are set to the item's (down as well as up), nothing is
+/// dropped and the item is gone.
+#[test]
+fn c1a_matching_set_keeps_the_weapon() {
+    let (mut sim, p) = setup(STOCK);
+    let a = carried(&sim, p, RIFLE);
+    set_ammo(&mut sim, a, 10, 60);
+    let index = inv(&sim, p).weapons.iter().position(|w| *w == a).unwrap();
+    let item = item_ahead(&mut sim, p, RIFLE, 80.0 * UNIT, 20, 20);
+    press_use(&mut sim, p);
+    assert_eq!(inv(&sim, p).weapons[index], a, "same weapon, same equip index");
+    assert_eq!(ammo(&sim, a), (20, 20), "set to the item's, not added");
+    assert!(items(&mut sim).is_empty(), "nothing dropped, the item gone");
+    assert!(sim.app.world().get_entity(item).is_err());
+}
+
+/// Corrections 1(b): the weapon itself is not compared (a faithful quirk):
+/// a different bare rifle item leaves the carried one in hand with the
+/// item's round count, clamped to the carried maximum.
+#[test]
+fn c1b_the_weapon_is_not_compared() {
+    let (mut sim, p) = setup(STOCK);
+    let a = carried(&sim, p, RIFLE);
+    set_ammo(&mut sim, a, 10, 60);
+    item_ahead(&mut sim, p, "combat_arms:test_hud_rifle", 80.0 * UNIT, 90, 30);
+    press_use(&mut sim, p);
+    assert_eq!(id(&sim, active(&sim, p).unwrap()), RIFLE, "still the M16A3");
+    assert_eq!(ammo(&sim, a), (30, 90));
+    assert!(items(&mut sim).is_empty(), "nothing dropped");
+}
+
+/// Corrections 1(c): a different fitted set is the normal swap.
+#[test]
+fn c1c_a_different_set_swaps() {
+    let (mut sim, p) = setup(STOCK);
+    let a = carried(&sim, p, RIFLE);
+    set_ammo(&mut sim, a, 10, 60);
+    differ(&mut sim, p);
+    let item = item_ahead(&mut sim, p, "combat_arms:test_hud_rifle", 80.0 * UNIT, 90, 30);
+    let b = sim.app.world().get::<Dropped>(item).unwrap().weapon;
+    press_use(&mut sim, p);
+    let dropped = items(&mut sim);
+    assert_eq!(dropped.len(), 1);
+    assert_eq!((dropped[0].1.weapon, dropped[0].1.total, dropped[0].1.clip), (a, 60, 10));
+    assert_eq!(active(&sim, p), Some(b), "the item's rifle is drawn");
+}
+
+/// Corrections 2: a non-primary item whose id is not carried needs the
+/// class's last chosen weapon: with the grenade never drawn since the
+/// spawn the request does nothing; after drawing it the swap happens; a
+/// same-id grenade item still adds either way.
+#[test]
+fn c2_no_pickup_into_an_unselected_class() {
+    let (mut sim, p) = setup(STOCK);
+    assert_eq!(sel(&sim, p).last_chosen[4], None, "the M67 was never drawn");
+    let item = item_ahead(&mut sim, p, OTHER_GRENADE, 80.0 * UNIT, 2, 0);
+    press_use(&mut sim, p);
+    assert!(sim.app.world().get::<Dropped>(item).is_some(), "the item stays");
+    assert_eq!(inv(&sim, p).weapons.len(), STOCK.len(), "nothing added");
+    // A same-id item adds, drawn or not.
+    sim.app.world_mut().despawn(item);
+    let mine = carried(&sim, p, GRENADE);
+    let same = item_ahead(&mut sim, p, GRENADE, 80.0 * UNIT, 1, 0);
+    press_use(&mut sim, p);
+    assert!(sim.app.world().get_entity(same).is_err());
+    // Draw the grenade, go back to the rifle: now the swap works.
+    key(&mut sim, p, 4);
+    sim.seconds(1.0);
+    key(&mut sim, p, 1);
+    sim.seconds(1.0);
+    assert_eq!(sel(&sim, p).last_chosen[4], Some(mine));
+    let item = item_ahead(&mut sim, p, OTHER_GRENADE, 80.0 * UNIT, 2, 0);
+    press_use(&mut sim, p);
+    assert!(sim.app.world().get_entity(item).is_err(), "taken");
+    let dropped = items(&mut sim);
+    assert_eq!(dropped.len(), 1);
+    assert_eq!(dropped[0].1.weapon, mine, "the M67 is dropped");
 }

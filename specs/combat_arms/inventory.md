@@ -18,7 +18,7 @@ inventory, 2 default bindings, 3 slot keys, 4 last weapon, 5 scroll wheel,
 6 switching, holster and draw, 7 what interrupts what, 8 the knife, 9 no
 quick-knife or quick-throw, 10 auto-switch when a weapon runs empty,
 11 pickup, 12 drop and death drop, 13 respawn); Per-frame order; Edge cases;
-Quirks; Corrections (2026-10-19); Test cases; Open questions.
+Quirks; Corrections (2026-10-19); Corrections (2026-10-22); Test cases; Open questions.
 
 ---
 
@@ -726,6 +726,70 @@ Test cases 45–49.
      mouse without moving. The ×1.3 that decides one-swing kills follows the
      legs, not the head.
 
+## Corrections (2026-10-22)
+
+From a comparison of the reference's server pickup, weapon-list and spawn
+code with this spec and our implementation (the inventory, attachments,
+grenades and gear session). Each entry: what the reference does, what we
+do (file:line), and a testable expectation.
+
+1. **A primary item whose fitted parts match yours is not a swap: your
+   weapon stays and only its ammunition is replaced.**
+   - Reference: before swapping (section 11, "Primary items"), the server
+     compares the item with the class's last-selected weapon. The
+     comparison looks only at the five attachment slots (each slot empty on
+     both, or the same part on both; the item's empty slots are first
+     filled with its weapon's default parts) and at the sight style. It
+     does **not** compare the weapon itself. When they match, nothing is
+     swapped and nothing is dropped: the weapon you carry keeps its equip
+     index, order slot and identity; its total is **set** to the item's
+     amount (clamped to your maximum; not added, so it can go down), its
+     clip is set to the item's clip (0 if the item's total is 0), and the
+     item is removed. Only when the parts or the sight style differ does
+     the swap of section 11 run. The client is sent the item's weapon and
+     ammo ids for your equip index; what its HUD then shows was not
+     traced (Open question 18). Stock weapons without parts all "match"
+     each other, so a bare AK-47 item taken by a player with a bare M16A3
+     leaves the M16A3 in hand with the AK-47's round count.
+   - Ours: every primary item is a swap; the carried weapon is dropped and
+     the item's weapon takes its place
+     (`games/combat_arms/src/game/inventory.rs:1220-1263`).
+   - Why it matters: picking up a gun identical to yours (same weapon,
+     same parts, the common case with stock loadouts) leaves no second gun
+     on the floor in the game, and can lower your ammunition.
+   - Expect: carry an M16A3 with no parts, total 60, clip 10. (a) E on a
+     bare M16A3 item with total 20, clip 20 → the same weapon at the same
+     equip index, total 20, clip 20, no item on the floor. (b) E on a bare
+     AK-47 item with total 90, clip 30 → still the M16A3, total 90, clip
+     30, nothing dropped. (c) Fit a red dot to the carried M16A3 and repeat
+     (b) → the normal swap: the M16A3 is dropped with total 60, clip 10,
+     and the AK-47 is drawn.
+2. **No pickup into a class you have not selected this life.**
+   - Reference: the swap (primary items, and non-primary items whose id
+     you do not carry) needs the class's "last chosen" weapon on the
+     server, which is set only when a weapon of that class is switched to
+     and is cleared at every respawn. If it is unset the request does
+     nothing: the item stays and nothing is added. Step 7 of section 11 ("no
+     weapon of that class at all: simply added and drawn") never happens.
+     A primary is drawn at every spawn, so primary items are only affected
+     for a loadout without one.
+   - Ours: without a last-chosen weapon we fall back to the class's cursor
+     slot or its first weapon, and with none at all we add the item
+     (`inventory.rs:1221-1226`, `1252`).
+   - Expect: carry an M67 not drawn since spawning; E on an XM84 item →
+     nothing happens, the item stays. Press 4 (the M67 is drawn), switch
+     back to the rifle, E again → the M67 is dropped and the XM84 taken.
+     An M67 item still adds to a carried M67 whether or not it was drawn
+     (the same-id rule is unchanged).
+3. **Starting totals: the server counts `SpawnedAmount`, the client is
+   told the maximum.** See `gear_perks.md` Corrections (2026-10-22) 1. For
+   this spec: "Starting ammo" in section 1 is right for the server's
+   count; at spawn the HUD shows the player's maximum instead, and a fire
+   message that reaches the server at its own total 0 is ignored (no
+   round, no grenade). With stock data the two differ only for the M-23F
+   and G7A (1 real, 2 shown; `grenades.md` Corrections (2026-10-22, b) 1)
+   and for set items with extra magazines.
+
 ## Test cases
 
 Common setup unless stated: a stock loadout (M16A3 primary 30/120, M92FS
@@ -1000,3 +1064,7 @@ means within the given number of frames.
     stand still facing +Z on flat ground, die (or swap), and read the item's
     position relative to the player's last position (several tries for the
     swap jitter). See 11 step 3 and 12; test case 44.
+18. **HUD after a matching-parts pickup** (Corrections 1). The server keeps
+    your weapon but sends the item's weapon and ammo ids for your equip
+    index. Does the weapon panel show the item's weapon name while the
+    hands still hold yours? Live check: bare M16A3, pick up a bare AK-47.

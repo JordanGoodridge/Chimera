@@ -494,8 +494,8 @@ fn case_27_set_protection() {
     near(lost, 210.0, "the head");
 }
 
-/// 28. A set with extra magazines +1 for the M4A1: the maximum and the
-/// starting total are 150.
+/// 28. A set with extra magazines +1 for the M4A1: the maximum is 150, the
+/// starting total stays 120 (Corrections 2026-10-22, 1).
 #[test]
 fn case_28_set_magazines() {
     let only_rifle = SetEffect {
@@ -508,7 +508,9 @@ fn case_28_set_magazines() {
     sim.ticks(3);
     let m = sim.app.world().get::<Magazine>(w).unwrap().clone();
     assert_eq!(m.reserve_max + m.size, 150, "the maximum");
-    assert_eq!(m.clip + m.reserve, 150, "the starting total");
+    // Corrections (2026-10-22) 1: the server starts at the spawned amount;
+    // the magazines only raise the cap.
+    assert_eq!(m.clip + m.reserve, 120, "the starting total");
     // Without the set, 120.
     let (mut sim, p) = wearer(look(0), default());
     let w = weapon::give(sim.app.world_mut(), p, M4A1).unwrap();
@@ -1106,6 +1108,8 @@ fn stand_on(sim: &mut Sim, p: Entity, b: Entity) {
     let at = sim.app.world().get::<Transform>(b).unwrap().translation;
     sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = at + Vec3::Y * 0.91;
     sim.app.world_mut().get_mut::<chimera_core::core::Velocity>(p).unwrap().0 = Vec3::ZERO;
+    // Charging needs the use key held (Corrections 2026-10-22, 5).
+    sim.intent(p).use_key = true;
 }
 
 /// A Warlord player with an M4A1 at 40 of 120.
@@ -1846,4 +1850,316 @@ fn case_59_resourceful_follows_the_install_class() {
     assert!(resourceful_drops(install_with(&[("M4A1", 6)])), "a sniper");
     assert!(resourceful_drops(install_with(&[("M4A1", 7)])), "a thrown weapon");
     assert!(!resourceful_drops(install_with(&[("M4A1", 8)])), "a special weapon");
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-22): 1-10
+
+/// The perk player (the one with perks) of `sim`.
+fn perk_player(sim: &mut Sim) -> Entity {
+    let w = sim.app.world_mut();
+    w.query_filtered::<Entity, With<CaPerks>>().iter(w).next().unwrap()
+}
+
+/// Put `p` at `at`, standing still.
+fn place(sim: &mut Sim, p: Entity, at: Vec3) {
+    sim.app.world_mut().get_mut::<Transform>(p).unwrap().translation = at;
+    sim.app.world_mut().get_mut::<chimera_core::core::Velocity>(p).unwrap().0 = Vec3::ZERO;
+}
+
+fn total(sim: &Sim, w: Entity) -> u32 {
+    let m = sim.app.world().get::<Magazine>(w).unwrap();
+    m.clip + m.reserve
+}
+
+/// 2. Resourceful's medikit heals to full and repairs the armour to full;
+/// at full health and armour it cannot be taken and the box stays.
+#[test]
+fn c2_medikit_heals_and_repairs_to_full() {
+    let (mut sim, b) = resourceful_kill(30.0, 60);
+    assert_eq!(b[0].kind, perks::BoxKind::Medikit);
+    let p = perk_player(&mut sim);
+    sim.app.world_mut().get_mut::<CaArmor>(p).unwrap().points = 20.0;
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 0.0));
+    sim.ticks(3);
+    near(sim.app.world().get::<Health>(p).unwrap().current, 1.0, "health");
+    near(armour_of(&sim, p).points, 100.0, "armour");
+    assert!(boxes(&mut sim).is_empty(), "used up");
+    // Full health and armour: the box stays.
+    let (mut sim, _) = resourceful_kill(30.0, 60);
+    let p = perk_player(&mut sim);
+    set_health(&mut sim, p, 100.0);
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 0.0));
+    sim.ticks(3);
+    assert_eq!(boxes(&mut sim).len(), 1, "nothing to take, the box stays");
+}
+
+/// 3. Resourceful's ammo box refills the last rifle or SMG held, not the
+/// weapon in hand; a last primary that is a machine gun cannot take it
+/// (the box stays for a teammate with a rifle).
+#[test]
+fn c3_ammo_box_refills_the_last_rifle() {
+    let (mut sim, p, rifle) = perk_sim(perks_of(&[16001]));
+    set_ammo(&mut sim, rifle, 10);
+    let pistol = weapon::give(sim.app.world_mut(), p, "combat_arms:beretta_m92fs").unwrap();
+    sim.seconds(1.5);
+    set_ammo(&mut sim, pistol, 5);
+    set_health(&mut sim, p, 80.0);
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 30.0));
+    sim.app.world_mut().resource_mut::<CaPerkRng>().forced = vec![0];
+    let victim = dummy(&mut sim, 2, Vec3::new(0.0, 1.0, 0.0));
+    kill(&mut sim, p, victim);
+    assert_eq!(boxes(&mut sim)[0].kind, perks::BoxKind::Ammo);
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 0.0));
+    sim.ticks(3);
+    assert_eq!(total(&sim, rifle), 120, "the last rifle is refilled");
+    assert_eq!(total(&sim, pistol), 5, "the pistol in hand is not");
+    assert!(boxes(&mut sim).is_empty());
+
+    // A machine gun as the last primary: the box stays.
+    let (mut sim, p, _rifle) = perk_sim(perks_of(&[16001]));
+    let mg = weapon::give(sim.app.world_mut(), p, "combat_arms:m60").unwrap();
+    sim.seconds(1.5);
+    let pistol = weapon::give(sim.app.world_mut(), p, "combat_arms:beretta_m92fs").unwrap();
+    sim.seconds(1.5);
+    set_ammo(&mut sim, pistol, 5);
+    set_ammo(&mut sim, mg, 10);
+    set_health(&mut sim, p, 80.0);
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 30.0));
+    sim.app.world_mut().resource_mut::<CaPerkRng>().forced = vec![0];
+    let victim = dummy(&mut sim, 2, Vec3::new(0.0, 1.0, 0.0));
+    kill(&mut sim, p, victim);
+    assert_eq!(boxes(&mut sim).len(), 1);
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 0.0));
+    sim.ticks(3);
+    assert_eq!(boxes(&mut sim).len(), 1, "an M60 cannot take it");
+    assert_eq!(total(&sim, mg), 10);
+    // A teammate with a rifle can, after the hide time.
+    let mate = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), movement::ID);
+    let mate_rifle = weapon::give(sim.app.world_mut(), mate, M4A1).unwrap();
+    sim.seconds(1.5);
+    set_ammo(&mut sim, mate_rifle, 5);
+    sim.seconds(10.0);
+    assert_eq!(total(&sim, mate_rifle), 120);
+    assert!(boxes(&mut sim).is_empty());
+}
+
+/// 4. The full-ammo box refills every weapon, thrown ones included (a
+/// spent grenade comes back and is selectable again).
+#[test]
+fn c4_full_ammo_box_refills_grenades_too() {
+    let (mut sim, p, rifle) = perk_sim(perks_of(&[16001]));
+    let g = weapon::give(sim.app.world_mut(), p, combat_arms::game::grenades::M67).unwrap();
+    sim.seconds(1.5);
+    sim.app.world_mut().get_mut::<chimera_sim::weapon::grenade::Throwable>(g).unwrap().count = 0;
+    sim.seconds(0.5);
+    set_ammo(&mut sim, rifle, 30);
+    set_health(&mut sim, p, 80.0);
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 30.0));
+    sim.app.world_mut().resource_mut::<CaPerkRng>().forced = vec![0];
+    let victim = dummy(&mut sim, 2, Vec3::new(0.0, 1.0, 0.0));
+    kill(&mut sim, p, victim);
+    assert_eq!(boxes(&mut sim)[0].kind, perks::BoxKind::FullAmmo);
+    place(&mut sim, p, Vec3::new(0.0, 1.0, 0.0));
+    sim.ticks(3);
+    let t = sim.app.world().get::<chimera_sim::weapon::grenade::Throwable>(g).unwrap();
+    assert_eq!(t.count, t.max, "the grenade is back");
+    assert!(t.count > 0);
+    assert_eq!(total(&sim, rifle), 120);
+    assert!(boxes(&mut sim).is_empty());
+}
+
+/// 5. Warlord: an enemy on the box gets nothing; the owner without use
+/// gets nothing; holding use for 3.0 s refills (charges 9); releasing use
+/// at 2.0 s cancels (charges back to 10); a switch to another rifle keeps
+/// the charge and that rifle is refilled.
+#[test]
+fn c5_warlord_use_team_and_gun_type() {
+    // An enemy holding use.
+    let (mut sim, p, w) = warlord_scene();
+    let b = supply_point(&mut sim);
+    let at = sim.app.world().get::<Transform>(b).unwrap().translation;
+    let enemy = sim.spawn_character(at + Vec3::Y * 0.91, movement::ID);
+    sim.app.world_mut().entity_mut(enemy).insert(Team(2));
+    let e_rifle = weapon::give(sim.app.world_mut(), enemy, M4A1).unwrap();
+    sim.seconds(1.0);
+    set_ammo(&mut sim, e_rifle, 40);
+    sim.intent(enemy).use_key = true;
+    sim.seconds(3.5);
+    assert_eq!(total(&sim, e_rifle), 40, "an enemy gets nothing");
+    assert_eq!(sim.app.world().get::<CaSupplyBox>(b).unwrap().charges, 10);
+    sim.app.world_mut().despawn(enemy);
+    // The owner without use.
+    stand_on(&mut sim, p, b);
+    sim.intent(p).use_key = false;
+    sim.seconds(3.5);
+    assert_eq!(sim.app.world().get::<CaSupplyBox>(b).unwrap().charges, 10, "no key, no charge");
+    // Holding use.
+    sim.intent(p).use_key = true;
+    sim.ticks(2);
+    assert_eq!(sim.app.world().get::<CaSupplyBox>(b).unwrap().charges, 9);
+    sim.seconds(3.2);
+    assert_eq!(total(&sim, w), 120);
+
+    // Released at 2.0 s: cancelled.
+    let (mut sim, p, w) = warlord_scene();
+    let b = supply_point(&mut sim);
+    stand_on(&mut sim, p, b);
+    sim.seconds(2.0);
+    sim.intent(p).use_key = false;
+    sim.seconds(1.5);
+    assert_eq!(total(&sim, w), 40, "no refill");
+    assert_eq!(sim.app.world().get::<CaSupplyBox>(b).unwrap().charges, 10, "the charge is back");
+
+    // Another rifle at 2.0 s still gets the refill.
+    let (mut sim, p, w) = warlord_scene();
+    let second = weapon::give(sim.app.world_mut(), p, M4A1).unwrap();
+    sim.seconds(1.5);
+    set_ammo(&mut sim, second, 40);
+    sim.app.world_mut().get_mut::<Inventory>(p).unwrap().wanted = Some(w);
+    sim.seconds(1.0);
+    let b = supply_point(&mut sim);
+    stand_on(&mut sim, p, b);
+    sim.seconds(2.0);
+    sim.app.world_mut().get_mut::<Inventory>(p).unwrap().wanted = Some(second);
+    sim.seconds(1.6);
+    assert_eq!(total(&sim, second), 120, "the rifle in hand at the end");
+    assert_eq!(sim.app.world().get::<CaSupplyBox>(b).unwrap().charges, 9);
+}
+
+/// 6. Warlord's box is removed as soon as the round is decided.
+#[test]
+fn c6_warlord_box_goes_with_the_round() {
+    let (mut sim, _p, _w) = warlord_scene();
+    let b = supply_point(&mut sim);
+    assert!(sim.app.world().get_entity(b).is_ok());
+    sim.app.world_mut().resource_mut::<combat_arms::game::rules::CaMatch>().phase =
+        combat_arms::game::rules::Phase::RoundOver { until: f64::MAX };
+    sim.ticks(3);
+    assert!(sim.app.world().get_entity(b).is_err(), "gone in the end-of-round phase");
+}
+
+/// 7. Opportunist: the weapons lie within 20 u of the torso, reserved for
+/// the looter (10 s) then the looter's team; the body is marked looted; an
+/// empty body fails and stays.
+#[test]
+fn c7_opportunist_reserves_and_removes() {
+    let (mut sim, p, _w) = perk_sim(perks_of(&[16009]));
+    sim.app.world_mut().entity_mut(p).insert(Team(1));
+    let body = sim.spawn_character(Vec3::new(0.0, 1.0, -2.0), movement::ID);
+    sim.app.world_mut().entity_mut(body).insert(Team(2));
+    sim.seconds(0.5);
+    weapon::give(sim.app.world_mut(), body, "combat_arms:mp5a4").unwrap();
+    weapon::give(sim.app.world_mut(), body, "combat_arms:l96a1").unwrap();
+    sim.seconds(0.5);
+    let now = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+    sim.app.world_mut().entity_mut(body).insert(Dead { since: now });
+    let torso = sim.app.world().get::<Transform>(body).unwrap().translation;
+    perks::use_perk(sim.app.world_mut(), p, 1).expect("starts");
+    sim.seconds(2.0);
+    let w = sim.app.world_mut();
+    let found: Vec<(Entity, Vec3, combat_arms::game::inventory::CaReserved)> = w
+        .query::<(Entity, &Transform, &combat_arms::game::inventory::CaReserved)>()
+        .iter(w)
+        .map(|(e, t, r)| (e, t.translation, *r))
+        .collect();
+    assert_eq!(found.len(), 1);
+    let (item, at, reserved) = found[0];
+    assert!((at.x - torso.x).abs() <= 20.0 * U + 1e-4 && (at.z - torso.z).abs() <= 20.0 * U + 1e-4, "{at} vs {torso}");
+    assert_eq!((reserved.owner, reserved.team), (p, Some(1)));
+    assert!(sim.app.world().get::<perks::CaLooted>(body).is_some(), "the body is looted");
+    // Another team's player cannot take it, a teammate only after 10 s.
+    let enemy = sim.spawn_character(Vec3::new(0.0, 1.0, 5.0), movement::ID);
+    sim.app.world_mut().entity_mut(enemy).insert(Team(2));
+    let mate = sim.spawn_character(Vec3::new(1.0, 1.0, 5.0), movement::ID);
+    sim.app.world_mut().entity_mut(mate).insert(Team(1));
+    for who in [enemy, mate] {
+        weapon::give(sim.app.world_mut(), who, M4A1).unwrap();
+    }
+    sim.seconds(1.5);
+    let w = sim.app.world_mut();
+    assert!(!combat_arms::game::inventory::pick_up(w, enemy, item), "not an enemy");
+    assert!(!combat_arms::game::inventory::pick_up(w, mate, item), "not a teammate yet");
+    sim.seconds(10.0);
+    let w = sim.app.world_mut();
+    assert!(!combat_arms::game::inventory::pick_up(w, enemy, item), "never an enemy");
+    assert!(combat_arms::game::inventory::pick_up(w, mate, item), "a teammate after 10 s");
+
+    // An empty body fails and stays.
+    let (mut sim, p, _w) = perk_sim(perks_of(&[16009]));
+    let body = sim.spawn_character(Vec3::new(0.0, 1.0, -2.0), movement::ID);
+    sim.seconds(0.5);
+    sim.app.world_mut().get_mut::<Inventory>(body).unwrap().weapons.clear();
+    let now = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+    sim.app.world_mut().entity_mut(body).insert(Dead { since: now });
+    perks::use_perk(sim.app.world_mut(), p, 1).expect("starts");
+    sim.seconds(2.0);
+    assert!(sim.app.world().get::<perks::CaLooted>(body).is_none(), "the body stays");
+    assert!(sim.app.world().get::<CaPerkState>(p).unwrap().cooldown.is_empty(), "a failed perk cools nothing");
+}
+
+/// 8. Parting Gift is always the perk's own frag on a 2.5 s fuse, whatever
+/// the dead carried (here a smoke grenade, and nothing at all).
+#[test]
+fn c8_parting_gift_is_the_perks_own_frag() {
+    for carried in [Some("combat_arms:m18"), None] {
+        let (mut sim, p) = wearer(look(0), perks_of(&[16007]));
+        if let Some(id) = carried {
+            weapon::give(sim.app.world_mut(), p, id).unwrap();
+        }
+        sim.seconds(1.5);
+        let killer = dummy(&mut sim, 2, Vec3::new(0.0, 1.0, -30.0));
+        kill(&mut sim, killer, p);
+        sim.ticks(2);
+        let world = sim.app.world_mut();
+        let grenades: Vec<CaGrenade> = world.query::<&CaGrenade>().iter(world).cloned().collect();
+        assert_eq!(grenades.len(), 1, "{carried:?}");
+        assert_eq!(grenades[0].weapon, combat_arms::game::grenades::M67, "the frag, not {carried:?}");
+        assert_eq!(grenades[0].params.fuse, 2.5);
+        assert_eq!(grenades[0].params.area_damage, 20.0);
+    }
+}
+
+/// 9. War Cry reaches a dead teammate in range too.
+#[test]
+fn c9_war_cry_reaches_the_dead() {
+    let (mut sim, p) = wearer(look(0), perks_of(&[16012]));
+    sim.app.world_mut().entity_mut(p).insert(Team(1));
+    let mate = sim.spawn_character(Vec3::new(0.0, 1.0, -500.0 * U), movement::ID);
+    sim.app.world_mut().entity_mut(mate).insert(Team(1));
+    sim.ticks(3);
+    let now = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+    sim.app.world_mut().entity_mut(mate).insert(Dead { since: now });
+    sim.ticks(2);
+    perks::use_perk(sim.app.world_mut(), p, 1).expect("starts");
+    sim.ticks(2);
+    let buff = sim.app.world().get::<CaPerkState>(mate).and_then(|s| s.war_cry);
+    assert!(buff.is_some(), "the dead teammate is on the buff list");
+}
+
+/// 10. The multi-kill window is strictly under 5 s: kills at 0, 5.000 and
+/// 6 s count 1, 1, 2.
+#[test]
+fn c10_multi_kill_window_is_strict() {
+    let (mut sim, p, _) = perk_sim(perks_of(&[16004]));
+    sim.set_tick_interval(0.01);
+    let mut counts = Vec::new();
+    for gap in [0, 499, 99] {
+        sim.ticks(gap);
+        let v = dummy(&mut sim, 2, Vec3::ZERO);
+        kill(&mut sim, p, v);
+        counts.push(sim.app.world().get::<CaPerkState>(p).unwrap().kills);
+    }
+    assert_eq!(counts, [1, 1, 2]);
+}
+
+/// 1 (spawn totals). An M-23F: one real grenade, the maximum two (the
+/// real count is shown; the original's client shows the maximum).
+#[test]
+fn c1_m23f_starts_with_one() {
+    let (mut sim, p) = wearer(look(0), default());
+    let g = weapon::give(sim.app.world_mut(), p, "combat_arms:m23f").unwrap();
+    sim.seconds(1.0);
+    let t = sim.app.world().get::<chimera_sim::weapon::grenade::Throwable>(g).unwrap();
+    assert_eq!((t.count, t.max), (1, 2));
 }
