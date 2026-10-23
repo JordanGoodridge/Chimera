@@ -1,0 +1,230 @@
+//! `points = "random_hidden"` (`chimera_sim::minigame::spawns`) on the
+//! greybox: spawns spread over the map and out of the enemy's sight, at
+//! the least distance, the same for a seed, on spots a character can stand
+//! and walk from, in zones' and water's absence, and the map's spawn
+//! points when the mesh has no areas.
+
+use avian3d::prelude::*;
+use bevy::{ecs::system::SystemState, prelude::*};
+use chimera_core::core::{Damage, DamageKind, Dead, Hitgroup, Intent, MapBrush, SOLID_LAYERS};
+use chimera_sim::{
+    minigame::{
+        self, MinigameAppExt, MinigamePlugin,
+        spawns::{SpawnHazardAppExt, SpawnSeed, SpawnSpots},
+    },
+    movement::placeholder,
+    testkit,
+};
+use chimera_world::{greybox, harness::Sim, map::nav::NavMesh};
+
+const DEF: &str = r#"
+id = "kit:deathmatch"
+name = "Kit deathmatch"
+players = { min = 2, max = 4 }
+maps = ["chimera:greybox"]
+teams = "free_for_all"
+time_limit = "60m"
+
+[spawn]
+respawn = { delay = "1s", protection = "0.5s" }
+points = "random_hidden"
+min_distance = 10.0
+
+[rules]
+module = "chimera:ladder"
+ladder = ["kit:pistol", "kit:rifle", "kit:shotgun"]
+demote_on = "melee_death"
+"#;
+
+fn started(def: &str, setup: impl FnOnce(&mut App)) -> Sim {
+    let mut sim = Sim::with(chimera_sim::SimBasePlugins, |app| {
+        app.add_plugins((greybox::GreyboxMapPlugin, MinigamePlugin));
+        testkit::add_weapons(app);
+        app.add_minigames(&[("kit_deathmatch.toml", def)]).expect("the definition reads");
+        setup(app);
+    });
+    sim.ticks(5);
+    minigame::start(sim.app.world_mut(), "kit:deathmatch").expect("it starts");
+    sim
+}
+
+fn player(sim: &mut Sim) -> Entity {
+    sim.spawn_character(greybox::SPAWNS[0], placeholder::ID)
+}
+
+/// `p` dies of the world and is back after the delay.
+fn die_and_return(sim: &mut Sim, p: Entity) {
+    let at = sim.position(p);
+    sim.app.world_mut().write_message(Damage {
+        target: p,
+        attacker: None,
+        amount: 500.0,
+        point: at,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Chest,
+        kind: DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.ticks(2);
+    let w = sim.app.world();
+    assert!(
+        w.get::<Dead>(p).is_some(),
+        "dead: health {:?} god {} in {:?} phase {:?} prot {:?} now {:?}",
+        w.get::<chimera_core::core::Health>(p),
+        w.get::<chimera_core::core::God>(p).is_some(),
+        w.get::<minigame::InMinigame>(p).is_some(),
+        w.resource::<chimera_sim::mode::Match>().phase,
+        w.get::<minigame::Protected>(p),
+        w.resource::<chimera_core::core::SimClock>().now
+    );
+    sim.seconds(1.7);
+    assert!(sim.app.world().get::<Dead>(p).is_none(), "back");
+}
+
+/// Two players in, `n` respawns of the second: where it came back.
+fn respawns(sim: &mut Sim, n: usize) -> (Entity, Entity, Vec<Vec3>) {
+    let a = player(sim);
+    let b = player(sim);
+    sim.seconds(1.7);
+    let mut at = Vec::new();
+    for _ in 0..n {
+        die_and_return(sim, b);
+        at.push(sim.position(b));
+    }
+    (a, b, at)
+}
+
+/// Whether the line from `from` to `to` meets the solid world.
+fn blocked(sim: &mut Sim, from: Vec3, to: Vec3) -> bool {
+    let w = sim.app.world_mut();
+    let characters: Vec<Entity> = w.query_filtered::<Entity, With<Intent>>().iter(w).collect();
+    let mut state = SystemState::<SpatialQuery>::new(w);
+    let q = state.get(w).unwrap();
+    let filter = SpatialQueryFilter::from_mask(SOLID_LAYERS).with_excluded_entities(characters);
+    let d = to - from;
+    q.cast_ray(from, Dir3::new(d).unwrap(), d.length() - 0.05, true, &filter).is_some()
+}
+
+#[test]
+fn spawns_spread_over_the_map_not_just_the_spawn_points() {
+    let mut sim = started(DEF, |_| {});
+    let (_, _, at) = respawns(&mut sim, 50);
+    let cells: std::collections::BTreeSet<(i32, i32)> =
+        at.iter().map(|p| ((p.x / 10.0).floor() as i32, (p.z / 10.0).floor() as i32)).collect();
+    assert!(cells.len() >= 14, "{} 10 m cells of 64 in 50 spawns: {cells:?}", cells.len());
+    let near_a_point = at
+        .iter()
+        .filter(|p| greybox::SPAWNS.iter().any(|s| s.xz().distance(p.xz()) < 2.0))
+        .count();
+    assert!(near_a_point < 10, "{near_a_point} of 50 at the map's own spawn points");
+    let spots = sim.app.world().resource::<SpawnSpots>();
+    assert!(spots.from_nav && spots.spots.len() > 100, "{} spots from nav: {}", spots.spots.len(), spots.from_nav);
+}
+
+#[test]
+fn a_spawn_is_out_of_the_enemys_sight_and_far_enough() {
+    let mut sim = started(DEF, |_| {});
+    let (a, _, at) = respawns(&mut sim, 40);
+    let eye = sim.position(a) + Vec3::Y * 0.7;
+    let centre = sim.position(a);
+    for p in at {
+        assert!(p.distance(centre) >= 10.0 - 0.2, "{p} is {} m from the enemy", p.distance(centre));
+        let feet = p - Vec3::Y * 0.9;
+        assert!(blocked(&mut sim, eye, feet + Vec3::Y * 1.7), "{p}: head in sight of {eye}");
+        assert!(blocked(&mut sim, eye, feet + Vec3::Y * 0.1), "{p}: feet in sight of {eye}");
+    }
+}
+
+#[test]
+fn the_same_seed_spawns_the_same_and_another_differently() {
+    let run = |seed: u32| {
+        let mut sim = started(DEF, |app| {
+            app.insert_resource(SpawnSeed(seed));
+        });
+        respawns(&mut sim, 12).2
+    };
+    let (one, again, other) = (run(7), run(7), run(8));
+    assert_eq!(one, again, "same seed");
+    assert_ne!(one, other, "another seed");
+}
+
+#[test]
+fn a_spawn_can_be_stood_on_and_walked_from() {
+    let mut sim = started(DEF, |_| {});
+    let (_, b, at) = respawns(&mut sim, 25);
+    // Each spot, tried: b there, settled, then walking in four directions.
+    for p in at {
+        let mut best = 0.0f32;
+        for yaw in [0.0f32, 1.57, 3.14, 4.71] {
+            let w = sim.app.world_mut();
+            w.entity_mut(b).insert((
+                Transform::from_translation(p),
+                avian3d::prelude::Position(p),
+                chimera_core::core::Velocity(Vec3::ZERO),
+            ));
+            sim.intent(b).move_axis = Vec2::ZERO;
+            sim.seconds(0.3);
+            let still = sim.position(b);
+            assert!((still.y - p.y).abs() < 0.3 && still.xz().distance(p.xz()) < 0.3, "{p} settled at {still}");
+            {
+                let mut i = sim.intent(b);
+                i.yaw = yaw;
+                i.move_axis = Vec2::new(0.0, 1.0);
+            }
+            sim.seconds(0.6);
+            best = best.max(sim.position(b).xz().distance(still.xz()));
+        }
+        sim.intent(b).move_axis = Vec2::ZERO;
+        assert!(best > 1.0, "stuck at {p}: moved {best} m");
+    }
+}
+
+#[test]
+fn without_areas_the_map_s_spawn_points_are_the_spots() {
+    let mut sim = started(DEF, |app| {
+        app.insert_resource(NavMesh::default());
+    });
+    let (_, _, at) = respawns(&mut sim, 12);
+    for p in at {
+        assert!(greybox::SPAWNS.iter().any(|s| s.xz().distance(p.xz()) < 0.3), "{p}: not at a spawn point");
+    }
+    assert!(!sim.app.world().resource::<SpawnSpots>().from_nav);
+}
+
+#[test]
+fn it_never_fails_when_nothing_is_far_or_hidden() {
+    // 500 m from an enemy: no spot qualifies; the farthest is taken.
+    let mut sim = started(&DEF.replace("min_distance = 10.0", "min_distance = 500.0"), |_| {});
+    let (a, _, at) = respawns(&mut sim, 6);
+    let from = sim.position(a);
+    assert_eq!(at.len(), 6);
+    assert!(at.iter().all(|p| p.distance(from) > 20.0), "far from the enemy: {at:?}");
+}
+
+#[test]
+fn zones_that_hurt_are_not_spawned_in() {
+    // The west half of the floor is a hurting zone.
+    fn zone(_: &mut World) -> Vec<MapBrush> {
+        vec![MapBrush::from_box(Vec3::new(-50.0, -1.0, -50.0), Vec3::new(0.0, 5.0, 50.0))]
+    }
+    let mut sim = started(DEF, |app| {
+        app.add_spawn_hazards(zone);
+    });
+    let (_, _, at) = respawns(&mut sim, 30);
+    assert!(at.iter().all(|p| p.x > 0.0), "none in the zone: {at:?}");
+    assert!(sim.app.world().resource::<SpawnSpots>().spots.iter().all(|s| s.x > 0.0));
+}
+
+#[test]
+fn the_other_options_still_work() {
+    for points in ["map", "far_from_enemies", "team"] {
+        let def = DEF.replace("random_hidden", points);
+        let mut sim = started(&def, |_| {});
+        let (_, _, at) = respawns(&mut sim, 3);
+        assert!(
+            at.iter().all(|p| greybox::SPAWNS.iter().any(|s| s.xz().distance(p.xz()) < 0.3)),
+            "{points}: {at:?}"
+        );
+    }
+}
