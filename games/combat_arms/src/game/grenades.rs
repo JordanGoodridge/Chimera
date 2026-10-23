@@ -89,6 +89,12 @@
 //! `inventory::UNIT`) and hit points inside; the world in metres and
 //! health (1.0 = 100 HP).
 //!
+//! Corrections 2026-10-22 (b): the M-23F and G7A are one grenade, shown and
+//! real (the spec's recommendation; the original shows 2 and ignores the
+//! second throw: not copied); the Parting Gift grenade is the perk's own
+//! stock frag on a fixed 2.5 s fuse (`perks::parting_gift`, a faithful
+//! quirk: whatever the dead carried).
+//!
 //! Known shortcuts (the spec's most literal reading where it is unclear,
 //! listed for its open questions):
 //! - The throw starts on the press's tick (the spec's one or two client

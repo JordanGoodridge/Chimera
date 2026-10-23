@@ -27,8 +27,8 @@
 //!   checks the perk's local conditions (Awareness needs stamina, Inner
 //!   Focus needs missing health, Spoils of War a dropped weapon within
 //!   `TargetDistance`) then starts it or, with a `WaitTime`, waits.
-//! - Deaths (`perk_deaths`): Victory Lap's multi-kill counter (5 s
-//!   windows), Resourceful's roll and box, Parting Gift's grenade.
+//! - Deaths (`perk_deaths`): Victory Lap's multi-kill counter (windows
+//!   strictly under 5000 ms), Resourceful's roll and box, Parting Gift's grenade.
 //! - Supplies (`supplies`): Resourceful's boxes and Warlord's supply
 //!   point (`CaPerkBox`, `CaSupplyBox`; the server's, not shown to
 //!   clients).
@@ -39,20 +39,42 @@
 //!   request as its `CaRelentless` (`respawn_wait`) and `CaFastRespawn`
 //!   (the loadout's counts and pass), set by `wire_respawn`.
 //!
+//! Corrections 2026-10-22 (gear_perks.md), parity with the original,
+//! faithful quirks marked: Resourceful's medikit heals and repairs to
+//! full and is refused at full health and armour (the box stays); its ammo
+//! box refills only the last SMG or assault rifle switched to
+//! (`CaLastPrimary`; machine guns and snipers get nothing, quirk) and only
+//! below the record's `MaxAmount`, so a set's raised cap never refills
+//! (quirk); the full-ammo box also refills thrown weapons, mines and air
+//! strikes; a box that refilled nothing stays. Warlord's point needs the
+//! use key held within 100 u, the owner's team only, follows the gun type
+//! (a switch to another weapon of the type keeps the charge), and goes
+//! when the round is decided. Opportunist removes the body (`CaBody`s of
+//! the character; the character is marked `CaLooted`) and the weapons
+//! lie at the torso +-20 u, reserved for the looter for `OwnerTime`, then
+//! for the looter's team only (the spec's wording; quirk); an empty body
+//! fails with no cooldown. Parting Gift is the stock frag on a 2.5 s fuse,
+//! whatever the dead carried (quirk). War Cry and Eagle Eye include dead
+//! teammates in range (quirk; whether a respawn clears the buff is Open
+//! question 11, we keep it to its end).
+//!
 //! Known shortcuts (docs/tech-debt.md):
 //! - Timers are checked each tick, not once per 20 Hz server frame.
-//! - Resourceful's boxes heal `HealthDrop_HP` hit points, refill the held
-//!   weapon (ammo) or every carried one (full ammo) on touch (within
-//!   60 u), and aren't shown to clients (open question 6).
+//! - Resourceful's boxes are used on touch (within 60 u) and aren't shown
+//!   to clients (open question 6); mission items (the objective class) are
+//!   skipped by the full-ammo box, the original's "ignore refills" flag is
+//!   not read.
 //! - Warlord's box appears 200 u ahead of the thrower at its floor level
-//!   (no flight, no impact sound, can't be shot down); a refill needs the
-//!   weapon below its maximum; the gun types without a charge time start
+//!   (no flight from the hull centre, no impact sound, can't be shot
+//!   down: open question 10); the gun types without a charge time start
 //!   none (`RechargeDefaultTime` isn't used: open question 7).
 //! - Opportunist takes the nearest dead body's carried primaries other
-//!   than the one it dropped, no reserved time; Spoils of War takes the
-//!   nearest dropped weapon within the distance without a sight test or
-//!   an owner check; Caution has no indicator to show; Parting Gift's
-//!   grenade is the M67's with the perk's area damage.
+//!   than the one it dropped, the torso is the hull centre, the body is
+//!   not frozen while the perk waits; Spoils of War takes the nearest
+//!   dropped weapon within the distance without a sight test or an owner
+//!   check; Caution has no indicator to show; Parting Gift's grenade is
+//!   the stock M67's data (the perk's `WeaponID` records are not read)
+//!   with the perk's area damage.
 //! - The weapon restrictions that switch Parting Gift off and "knife
 //!   only" rooms for Warlord aren't read; Spy Hunt's super spy keeps
 //!   Inner Focus.
@@ -71,14 +93,14 @@ use super::{
     grenades,
     inventory::{self, Dropped, UNIT},
     movement::{CaInfected, CaMovement},
-    rules::{CaMatchView, escort::CaVip},
+    rules::{CaMatchView, Phase, escort::CaVip},
     weapons::zoom::CaZoom,
 };
 use crate::{
     core::{self, Damage, Dead, Died, Health, Intent, LocalPlayer, MovementState, NetRole, RoundRestarts, SimClock, SimSet, Team},
     console::ConsoleAppExt,
     net::{NetAppExt, ordered::OrderedAppExt, server::Player},
-    weapon::{Inventory, Magazine, Weapon, grenade::Throwable},
+    weapon::{Inventory, Magazine, Weapon, grenade::Throwable, random::shared_random},
 };
 
 /// The perks by their `Type`.
@@ -645,7 +667,7 @@ fn begin(world: &mut World, data: &GearData, e: Entity, active: ActivePerk, targ
         }
         OPPORTUNIST => {
             if let Some(body) = target {
-                loot(world, data, level, body);
+                ok = loot(world, data, level, e, body);
             }
         }
         WARLORD => place_supply(world, data, e, level, now),
@@ -671,8 +693,8 @@ fn buff(world: &mut World, data: &GearData, e: Entity, active: ActivePerk, now: 
     let at = world.get::<Transform>(e).map(|t| t.translation).unwrap_or_default();
     let mut receivers = vec![e];
     let mut q = world.query_filtered::<(Entity, &Transform, Option<&Team>, Has<Dead>), With<Intent>>();
-    for (o, t, tm, dead) in q.iter(world) {
-        if o != e && !dead && tm.map(|t| t.0) == team && t.translation.distance(at) / UNIT < range {
+    for (o, t, tm, _dead) in q.iter(world) {
+        if o != e && tm.map(|t| t.0) == team && t.translation.distance(at) / UNIT < range {
             receivers.push(o);
         }
     }
@@ -692,23 +714,62 @@ fn buff(world: &mut World, data: &GearData, e: Entity, active: ActivePerk, now: 
 }
 
 /// Opportunist: the body's carried primaries other than the one it
-/// dropped are dropped again, up to `DropWeaponMax`.
-fn loot(world: &mut World, data: &GearData, level: usize, body: Entity) {
+/// dropped are dropped again at its torso (the hull centre) +-20 u in x
+/// and z with a random yaw, reserved for the looter for `OwnerTime` s and
+/// then for the looter's team, up to `DropWeaponMax`; the body is removed
+/// (`CaBody`; its character is marked looted). A body with none fails
+/// ("empty backpack") and stays (Corrections 2026-10-22, 7). Returns
+/// whether it worked.
+fn loot(world: &mut World, data: &GearData, level: usize, looter: Entity, body: Entity) -> bool {
     let max = value(data, OPPORTUNIST, "DropWeaponMax", level).max(1.0) as usize;
+    let owner_time = value(data, OPPORTUNIST, "OwnerTime", level) as f64;
+    let now = world.resource::<SimClock>().now;
     let carried = world.get::<Inventory>(body).map(|i| i.weapons.clone()).unwrap_or_default();
     let last = world.get::<inventory::CaSelection>(body).and_then(|s| s.last_chosen[inventory::PRIMARY as usize]);
-    let mut dropped = 0;
-    for w in carried {
-        if dropped >= max {
-            break;
-        }
-        let primary = world.get::<Weapon>(w).is_some_and(|x| inventory::class_of(x.slot) == inventory::PRIMARY);
-        if primary && Some(w) != last {
-            inventory::drop_item(world, body, w, false);
-            dropped += 1;
+    let backpack: Vec<Entity> = carried
+        .into_iter()
+        .filter(|&w| {
+            world.get::<Weapon>(w).is_some_and(|x| inventory::class_of(x.slot) == inventory::PRIMARY) && Some(w) != last
+        })
+        .take(max)
+        .collect();
+    if backpack.is_empty() {
+        return false;
+    }
+    let torso = world.get::<Transform>(body).map(|t| t.translation).unwrap_or_default();
+    let team = world.get::<Team>(looter).map(|t| t.0);
+    for (i, w) in backpack.into_iter().enumerate() {
+        inventory::drop_item(world, body, w, false);
+        let mut rng = shared_random((now * 1000.0) as u32, "combat_arms:loot", i as i32);
+        let spot = torso + Vec3::new(rng.range(-1.0, 1.0), 0.0, rng.range(-1.0, 1.0)) * LOOT_SPREAD * UNIT;
+        let yaw = rng.range(0.0, 1.0);
+        let item = world
+            .query::<(Entity, &Dropped)>()
+            .iter(world)
+            .find(|(_, d)| d.weapon == w)
+            .map(|(e, _)| e);
+        if let Some(item) = item {
+            world.entity_mut(item).insert((
+                Transform::from_translation(spot).with_rotation(Quat::from_rotation_y(yaw)),
+                inventory::CaReserved {
+                    owner: looter,
+                    team,
+                    until: now + owner_time,
+                },
+            ));
         }
     }
+    let bodies: Vec<Entity> = world
+        .query::<(Entity, &super::characters::CaBody)>()
+        .iter(world)
+        .filter(|(_, b)| b.owner == body)
+        .map(|(e, _)| e)
+        .collect();
+    for b in bodies {
+        world.despawn(b);
+    }
     world.entity_mut(body).insert(CaLooted);
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -722,6 +783,7 @@ fn moving(i: &Intent) -> bool {
 /// Each server tick, before the movement: waits, running perks, buffs,
 /// the Pitcher bar and the effects they come to.
 fn perk_tick(world: &mut World) {
+    track_last_primary(world);
     let now = world.resource::<SimClock>().now;
     let dt = world.resource::<SimClock>().dt();
     let rounds = world.get_resource::<RoundRestarts>().map_or(0, |r| r.0);
@@ -890,7 +952,8 @@ fn perk_deaths(world: &mut World) {
                 let time = value(&data, VICTORY_LAP, "Time", l) as f64;
                 if let Some(mut s) = world.get_mut::<CaPerkState>(killer) {
                     s.kills = match s.last_kill {
-                        Some(t) if now - t <= MULTI_KILL_WINDOW => s.kills + 1,
+                        // Strictly under 5000 ms (Corrections 2026-10-22, 10).
+                        Some(t) if ((now - t) * 1000.0).round() < MULTI_KILL_WINDOW * 1000.0 => s.kills + 1,
                         _ => 1,
                     };
                     s.last_kill = Some(now);
@@ -941,9 +1004,16 @@ fn resourceful(world: &mut World, data: &GearData, killer: Entity, victim: Entit
     let hp = world.get::<Health>(killer).map_or(100.0, |h| h.current * 100.0);
     let hp_limit = value(data, RESOURCEFUL, "HealthDrop_HP", level);
     let ammo_limit = value(data, RESOURCEFUL, "AmmoDrop_Ammo", level);
-    let percent = held.and_then(|h| world.get::<Magazine>(h)).map(|m| {
-        let max = (m.reserve_max + m.size).max(1);
-        ((100 * (m.clip + m.reserve)) / max) as f32
+    // A thrown weapon in hand counts by its own count over its maximum,
+    // so a spent grenade is 0 % (Corrections 2026-10-22, 3).
+    let percent = held.and_then(|h| {
+        world
+            .get::<Magazine>(h)
+            .map(|m| {
+                let max = (m.reserve_max + m.size).max(1);
+                ((100 * (m.clip + m.reserve)) / max) as f32
+            })
+            .or_else(|| world.get::<Throwable>(h).map(|t| ((100 * t.count) / t.max.max(1)) as f32))
     });
     let empty_thrown = world
         .get::<Inventory>(killer)
@@ -975,21 +1045,18 @@ fn resourceful(world: &mut World, data: &GearData, killer: Entity, victim: Entit
     ));
 }
 
-/// Parting Gift (14): a live grenade at the body going straight up,
-/// credited to the dead.
+/// The fuse of the perk's grenade, s (Corrections 2026-10-22, 8).
+pub const PARTING_GIFT_FUSE: f32 = 2.5;
+
+/// Parting Gift (14): the perk's own frag (the stock frag's data; the
+/// perk's `WeaponID` records are not read) made at the body, going
+/// straight up at its `DropVelocity` on a fixed 2.5 s fuse, credited to
+/// the dead, whatever the dead carried (Corrections 2026-10-22, 8).
 fn parting_gift(world: &mut World, data: &GearData, victim: Entity, level: usize) {
     let area = if level == 0 { 20.0 } else { 24.0 };
     let _ = data;
     let at = world.get::<Transform>(victim).map(|t| t.translation).unwrap_or_default();
-    // The grenade's data is the M67's (or the install's perk grenade);
-    // the owner's own weapon entity is the template when it carries one.
-    let template = world
-        .get::<Inventory>(victim)
-        .map(|i| i.weapons.clone())
-        .unwrap_or_default()
-        .into_iter()
-        .find(|&w| world.get::<grenades::CaGrenadeData>(w).is_some());
-    let Some(template) = template else { return };
+    let Some(template) = crate::weapon::spawn_weapon(world, grenades::M67, victim) else { return };
     let drop = world
         .get::<grenades::CaGrenadeData>(template)
         .map_or(0.0, |d| d.params.drop_speed * d.unit);
@@ -997,7 +1064,9 @@ fn parting_gift(world: &mut World, data: &GearData, victim: Entity, level: usize
         && let Some(mut c) = world.get_mut::<grenades::CaGrenade>(g)
     {
         c.params.area_damage = area;
+        c.params.fuse = PARTING_GIFT_FUSE;
     }
+    world.despawn(template);
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,12 +1174,18 @@ fn supplies(world: &mut World) {
             continue;
         }
         let alone = now - bx.since < bx.hide;
-        let taker = players.iter().find(|(p, pos, team)| {
-            pos.distance(at) / UNIT <= PICKUP_RANGE && if alone { *p == bx.owner } else { *team == bx.team }
-        });
-        let Some(&(p, _, _)) = taker else { continue };
-        take_box(world, p, &bx);
-        world.despawn(b);
+        // The first player in reach who can use it takes it; a box nobody
+        // can use stays (Corrections 2026-10-22, 2 to 4).
+        let candidates: Vec<Entity> = players
+            .iter()
+            .filter(|(p, pos, team)| {
+                pos.distance(at) / UNIT <= PICKUP_RANGE && if alone { *p == bx.owner } else { *team == bx.team }
+            })
+            .map(|(p, ..)| *p)
+            .collect();
+        if candidates.into_iter().any(|p| take_box(world, p, &bx)) {
+            world.despawn(b);
+        }
     }
     // Supply points.
     let points: Vec<Entity> = world.query_filtered::<Entity, With<CaSupplyBox>>().iter(world).collect();
@@ -1119,27 +1194,110 @@ fn supplies(world: &mut World) {
     }
 }
 
-fn take_box(world: &mut World, p: Entity, b: &CaPerkBox) {
+/// A weapon's `MaxAmount` from its record: its maximum without the gear's
+/// raise (Corrections 2026-10-22, 3).
+fn record_max(world: &World, w: Entity) -> Option<u32> {
+    let m = world.get::<Magazine>(w)?;
+    let raised = world.get::<super::gear::CaAmmoRaised>(w).map_or(0, |r| r.0);
+    Some((m.reserve_max + m.size).saturating_sub(raised))
+}
+
+/// A box or supply point refills `w`: its total goes to the player's
+/// maximum, only when below the record's `MaxAmount`. Whether it did.
+fn refill(world: &mut World, w: Entity) -> bool {
+    if let Some(record) = record_max(world, w)
+        && let Some(mut m) = world.get_mut::<Magazine>(w)
+    {
+        let total = m.clip + m.reserve;
+        if total >= record {
+            return false;
+        }
+        m.reserve = (m.reserve_max + m.size).saturating_sub(m.clip);
+        return true;
+    }
+    false
+}
+
+/// The last weapon switched to whose gun type is SMG, assault rifle,
+/// machine gun, sniper or rocket launcher, if still carried (the server's
+/// "last primary").
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaLastPrimary(pub Option<Entity>);
+
+/// Gun types that become the last primary (weapon_classes.md).
+fn records_as_last_primary(ty: i32) -> bool {
+    matches!(ty, 3..=6 | 9)
+}
+
+/// Each server tick: the weapon in hand becomes the player's last primary
+/// when its gun type says so.
+fn track_last_primary(world: &mut World) {
+    let held: Vec<(Entity, Entity, Option<Entity>)> = world
+        .query::<(Entity, &Inventory, Option<&CaLastPrimary>)>()
+        .iter(world)
+        .filter_map(|(e, i, l)| Some((e, i.active?, l.and_then(|l| l.0))))
+        .collect();
+    for (e, w, last) in held {
+        if last == Some(w) {
+            continue;
+        }
+        let ty = world.get::<Weapon>(w).and_then(|x| gun_type(world.resource::<super::data::CaData>(), x.id));
+        if ty.is_some_and(records_as_last_primary) {
+            world.entity_mut(e).insert(CaLastPrimary(Some(w)));
+        }
+    }
+}
+
+/// Whether the player takes the box (Corrections 2026-10-22, 2 to 4):
+/// false when it gave nothing, and the box stays.
+fn take_box(world: &mut World, p: Entity, b: &CaPerkBox) -> bool {
     match b.kind {
         BoxKind::Medikit => {
-            if let Some(mut h) = world.get_mut::<Health>(p) {
-                h.current = (h.current + b.heal / 100.0).min(h.max);
+            let max_ap = super::gear::max_armour(world, p);
+            let hp_full = world.get::<Health>(p).is_none_or(|h| h.current >= h.max);
+            let ap_full = world.get::<super::weapons::CaArmor>(p).is_none_or(|a| a.points >= max_ap);
+            if hp_full && ap_full {
+                return false;
             }
+            if let Some(mut h) = world.get_mut::<Health>(p) {
+                h.current = h.max;
+            }
+            if let Some(mut a) = world.get_mut::<super::weapons::CaArmor>(p) {
+                a.points = a.points.max(max_ap);
+            }
+            true
         }
         BoxKind::Ammo => {
-            if let Some(w) = active_weapon(world, p)
-                && let Some(mut m) = world.get_mut::<Magazine>(w)
-            {
-                m.reserve = m.reserve_max;
-            }
+            let carried = world.get::<Inventory>(p).map(|i| i.weapons.clone()).unwrap_or_default();
+            let Some(w) = world.get::<CaLastPrimary>(p).and_then(|l| l.0).filter(|w| carried.contains(w)) else {
+                return false;
+            };
+            // Assault rifles and SMGs only; machine guns and snipers get
+            // nothing.
+            let rifle_or_smg = world
+                .get::<Weapon>(w)
+                .and_then(|x| gun_type(world.resource::<super::data::CaData>(), x.id))
+                .is_some_and(|ty| matches!(ty, 3 | 4));
+            rifle_or_smg && refill(world, w)
         }
         BoxKind::FullAmmo => {
             let all = world.get::<Inventory>(p).map(|i| i.weapons.clone()).unwrap_or_default();
+            let mut any = false;
             for w in all {
-                if let Some(mut m) = world.get_mut::<Magazine>(w) {
-                    m.reserve = m.reserve_max;
+                // Mission items (the objective class) are left alone.
+                if world.get::<Weapon>(w).is_some_and(|x| inventory::class_of(x.slot) == 5) {
+                    continue;
+                }
+                if world.get::<Magazine>(w).is_some() {
+                    any |= refill(world, w);
+                } else if let Some(mut t) = world.get_mut::<Throwable>(w)
+                    && t.count < t.max
+                {
+                    t.count = t.max;
+                    any = true;
                 }
             }
+            any
         }
     }
 }
@@ -1147,8 +1305,13 @@ fn take_box(world: &mut World, p: Entity, b: &CaPerkBox) {
 fn supply_frame(world: &mut World, point: Entity, now: f64, rounds: u32, players: &[(Entity, Vec3, u8)]) {
     let Some(mut b) = world.get::<CaSupplyBox>(point).cloned() else { return };
     let at = world.get::<Transform>(point).map(|t| t.translation).unwrap_or_default();
-    // Gone: its owner left, or a new round started.
-    if world.get_entity(b.owner).is_err() || b.round != rounds {
+    // Gone: its owner left, a new round started, or the round is decided
+    // (the end-of-round phase; Corrections 2026-10-22, 6).
+    let decided = matches!(
+        world.resource::<CaMatchView>().phase,
+        Phase::RoundOver { .. } | Phase::Intermission { .. } | Phase::MatchOver
+    );
+    if world.get_entity(b.owner).is_err() || b.round != rounds || decided {
         world.despawn(point);
         return;
     }
@@ -1158,16 +1321,22 @@ fn supply_frame(world: &mut World, point: Entity, now: f64, rounds: u32, players
         let alive = players.iter().any(|(p, _, _)| *p == c.player) && world.get::<CaInfected>(c.player).is_none();
         let pos = world.get::<Transform>(c.player).map(|t| t.translation);
         let held = active_weapon(world, c.player);
-        // Moving, dying, becoming infected, or another weapon: cancelled,
-        // the charge back.
-        let kept = alive && pos == Some(c.at) && held == Some(c.weapon);
+        let using = world.get::<Intent>(c.player).is_some_and(|i| i.use_key);
+        // Releasing use, moving, dying or becoming infected: cancelled, the
+        // charge back. Another weapon does not cancel (Corrections
+        // 2026-10-22, 5).
+        let kept = alive && pos == Some(c.at) && using;
         if !kept {
             b.charges += 1;
             continue;
         }
         if now - c.started + 1e-9 >= c.time as f64 {
-            if let Some(mut m) = world.get_mut::<Magazine>(c.weapon) {
-                m.reserve = m.reserve_max;
+            // The weapon then in hand is refilled when its gun type is the
+            // recorded one; the charge is used either way.
+            if let Some(h) = held
+                && world.get::<Weapon>(h).and_then(|x| gun_type(world.resource::<super::data::CaData>(), x.id)) == Some(c.gun_type)
+            {
+                refill(world, h);
             }
             continue;
         }
@@ -1175,8 +1344,14 @@ fn supply_frame(world: &mut World, point: Entity, now: f64, rounds: u32, players
     }
     b.busy = still;
     // New touches.
-    for &(p, pos, _) in players {
-        if b.charges == 0 || b.busy.iter().any(|c| c.player == p) || pos.distance(at) / UNIT > SUPPLY_RANGE {
+    let team = players.iter().find(|(p, ..)| *p == b.owner).map(|(.., t)| *t).or_else(|| world.get::<Team>(b.owner).map(|t| t.0));
+    for &(p, pos, mine) in players {
+        if b.charges == 0
+            || b.busy.iter().any(|c| c.player == p)
+            || pos.distance(at) / UNIT > SUPPLY_RANGE
+            || Some(mine) != team
+            || !world.get::<Intent>(p).is_some_and(|i| i.use_key)
+        {
             continue;
         }
         if world.get::<CaInfected>(p).is_some() {

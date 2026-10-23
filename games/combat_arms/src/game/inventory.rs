@@ -58,6 +58,17 @@
 //!   weapon in hand was put away for the request). Only a real ray hit
 //!   within 100 units targets an item (the fallback, `body_fallback`, is
 //!   dead bodies'). Ammo travels with the gun (`Dropped::total`, `clip`).
+//!   Corrections 2026-10-22 (faithful quirks): a primary item whose five
+//!   part slots (empty ones filled with the weapon's defaults) and sight
+//!   style equal the last chosen primary's is no swap: the carried weapon
+//!   stays (whatever weapon the item is: a bare AK-47 item "matches" a
+//!   bare M16A3) and its total and clip are SET to the item's; with no
+//!   last chosen weapon in the class (none switched to since spawning)
+//!   the request does nothing; an item reserved for a looter
+//!   (`CaReserved`, Opportunist) is refused to others (the owner alone
+//!   for `OwnerTime`, then the owner's team only). The client's HUD after
+//!   a matching-set pickup is not traced (Open question 18); we show the
+//!   real count.
 //!   No walk-over pickup and no drop key.
 //! - A thrown weapon stays at total 0 when its last grenade goes (10):
 //!   `grenade::KeepSpent` on every throwable; its key skips it, Q refuses
@@ -416,6 +427,16 @@ pub struct Dropped {
     pub since: f64,
     pub total: u32,
     pub clip: u32,
+}
+
+/// A dropped weapon reserved for a looter (Opportunist): `owner` alone
+/// until `until` (server time, s), then `owner`'s team only (gear_perks.md
+/// Corrections 2026-10-22, 7).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct CaReserved {
+    pub owner: Entity,
+    pub team: Option<u8>,
+    pub until: f64,
 }
 
 /// Whether the dead drop their primary (12.3): off in snowball mode and
@@ -1183,6 +1204,14 @@ pub fn pick_up(world: &mut World, owner: Entity, item: Entity) -> bool {
     if world.get::<Health>(owner).is_none_or(|h| h.current <= 0.0) {
         return false;
     }
+    if let Some(r) = world.get::<CaReserved>(item).copied() {
+        let now = world.get_resource::<SimClock>().map_or(0.0, |c| c.now);
+        let mine = world.get::<core::Team>(owner).map(|t| t.0);
+        let allowed = owner == r.owner || (now >= r.until && r.team.is_some() && mine == r.team);
+        if !allowed {
+            return false;
+        }
+    }
     let Some((id, class)) = world.get::<Weapon>(d.weapon).map(|w| (w.id, class_of(w.slot))) else {
         return false;
     };
@@ -1218,12 +1247,35 @@ pub fn pick_up(world: &mut World, owner: Entity, item: Entity) -> bool {
         return true;
     }
     // A swap within the class: the last chosen one goes.
-    let replaced = (class != 0)
-        .then(|| sel.last_chosen[class as usize])
-        .flatten()
-        .filter(|w| in_class.contains(w))
-        .or_else(|| in_class.get(sel.cursor[class as usize % CLASSES]).copied())
-        .or_else(|| in_class.first().copied());
+    // Without one (none switched to since spawning) the request does
+    // nothing (Corrections 2026-10-22, 2); class 0 keeps the old fallbacks.
+    let replaced = if class != 0 {
+        let Some(last) = sel.last_chosen[class as usize].filter(|w| in_class.contains(w)) else {
+            return false;
+        };
+        Some(last)
+    } else {
+        in_class.get(sel.cursor[0]).copied().or_else(|| in_class.first().copied())
+    };
+    // A primary whose fitted set and sight style equal the carried
+    // weapon's is no swap: the carried weapon stays and takes the item's
+    // ammunition (Corrections 2026-10-22, 1).
+    if class == PRIMARY
+        && let Some(mine) = replaced
+        && same_fitted_set(world, mine, d.weapon)
+    {
+        if let Some(mut m) = world.get_mut::<Magazine>(mine) {
+            let total = d.total.min(m.size + m.reserve_max);
+            m.clip = if total == 0 { 0 } else { d.clip.min(total).min(m.size) };
+            m.reserve = total - m.clip;
+        } else if let Some(mut t) = world.get_mut::<Throwable>(mine) {
+            t.count = d.total.min(t.max);
+        }
+        despawn(world, item);
+        despawn(world, d.weapon);
+        world.write_message(crate::weapon::drop::PickedUp { who: owner, weapon: mine });
+        return true;
+    }
     if replaced.is_none() && inv.weapons.len() >= MAX_CARRIED {
         return false;
     }
@@ -1261,6 +1313,44 @@ pub fn pick_up(world: &mut World, owner: Entity, item: Entity) -> bool {
         weapon: d.weapon,
     });
     true
+}
+
+/// The five part slots of `weapon` with an empty slot filled by its
+/// weapon's default part (Corrections 2026-10-22, 1).
+fn effective_parts(world: &World, weapon: Entity) -> [Option<u16>; super::attachments::SLOTS] {
+    let mut out = world.get::<super::attachments::CaFitted>(weapon).map_or([None; super::attachments::SLOTS], |f| f.slots);
+    if let (Some(slots), Some(table)) =
+        (world.get::<super::attachments::CaAttachSlots>(weapon), world.get_resource::<super::attachments::CaModTable>())
+    {
+        for (s, part) in out.iter_mut().enumerate() {
+            if part.is_none()
+                && let Some(d) = slots.params.defaults.get(s)
+            {
+                *part = table.find(d);
+            }
+        }
+    }
+    out
+}
+
+/// Whether two weapons carry the same part in every slot and the same
+/// sight style; the weapons themselves are not compared (a faithful quirk:
+/// a bare AK-47 item "matches" a bare M16A3).
+fn same_fitted_set(world: &World, a: Entity, b: Entity) -> bool {
+    let (pa, pb) = (effective_parts(world, a), effective_parts(world, b));
+    if pa != pb {
+        return false;
+    }
+    let style = |w: Entity| {
+        let table = world.get_resource::<super::attachments::CaModTable>()?;
+        let id = pa_sight(world, w)?;
+        table.get(id).map(|r| r.sight_style)
+    };
+    style(a) == style(b)
+}
+
+fn pa_sight(world: &World, w: Entity) -> Option<u16> {
+    effective_parts(world, w)[super::attachments::SIGHT]
 }
 
 fn despawn(world: &mut World, e: Entity) {
