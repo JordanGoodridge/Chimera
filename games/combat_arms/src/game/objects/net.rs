@@ -47,6 +47,9 @@ pub struct NetObject {
     pub rot: [f32; 4],
     /// `VISIBLE` | `SOLID` | `RAYHIT` | `REMOVED`.
     pub flags: u8,
+    /// A jump pad's launch speed after a `VELOCITY` message (the client's
+    /// prediction launches with it).
+    pub pad: Option<f32>,
 }
 
 pub const VISIBLE: u8 = 1;
@@ -81,12 +84,13 @@ fn write(world: &mut World) {
         .objects
         .iter()
         .enumerate()
-        .filter(|(i, ob)| (ob.node || o.volumes.contains_key(&(*i as u32))) && o.start.get(*i).is_some_and(|s| (ob.pose, flags_of(ob)) != *s))
+        .filter(|(i, ob)| (ob.node || o.volumes.contains_key(&(*i as u32))) && o.start.get(*i).is_some_and(|s| (ob.pose, flags_of(ob)) != *s || ob.vol.speed.is_some()))
         .map(|(i, ob)| NetObject {
             id: i as u32,
             pos: ob.pose.pos.to_array(),
             rot: ob.pose.rot.to_array(),
             flags: flags_of(ob),
+            pad: ob.vol.speed,
         })
         .collect();
     let sounds: Vec<NetSound> = o
@@ -131,8 +135,10 @@ fn read(world: &mut World) {
     }
     let n = o.world.objects.len();
     let mut want: Vec<Option<(Pose, u8)>> = vec![None; n];
+    let mut pads: Vec<Option<f32>> = vec![None; n];
     for x in &net.objects {
         let Some(ob) = o.world.objects.get(x.id as usize) else { continue };
+        pads[x.id as usize] = x.pad;
         want[x.id as usize] = Some((
             Pose {
                 pos: Vec3::from(x.pos),
@@ -146,6 +152,10 @@ fn read(world: &mut World) {
         let Some(start) = o.start.get(i).copied() else { continue };
         let (pose, flags) = wanted.unwrap_or(start);
         let ob = &mut o.world.objects[i];
+        if ob.vol.speed != pads[i] {
+            ob.vol.speed = pads[i];
+            ob.dirty = true;
+        }
         if ob.pose != pose || flags_of(ob) != flags {
             ob.pose = pose;
             ob.visible = flags & VISIBLE != 0;

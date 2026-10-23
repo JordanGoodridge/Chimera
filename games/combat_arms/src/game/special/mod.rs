@@ -575,7 +575,7 @@ fn shot_objects(mut damage: MessageReader<Damage>, mut objects: Query<&mut CaObj
 }
 
 /// Heals reach health (the maximum caps it).
-fn apply_heals(mut heals: ResMut<CaHeals>, mut health: Query<&mut Health>) {
+pub(super) fn apply_heals(mut heals: ResMut<CaHeals>, mut health: Query<&mut Health>) {
     for (target, amount) in std::mem::take(&mut heals.now) {
         if let Ok(mut h) = health.get_mut(target)
             && h.current > 0.0
