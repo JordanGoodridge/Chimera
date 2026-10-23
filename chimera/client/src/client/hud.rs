@@ -853,7 +853,8 @@ fn killfeed(
 pub struct CapsuleBody;
 
 /// A capsule for every character that isn't the local player, on maps
-/// without character models; on maps with them (map::attach_bodies) the
+/// without character models (or none of its identity's game,
+/// `slots::GameIdentity`); on maps with them (map::attach_bodies) the
 /// capsules go. Characters outlive map changes (a network game's above
 /// all: a client gets them before the server's map is in), so this
 /// follows the map, not the character's arrival: a client that joined
@@ -861,14 +862,31 @@ pub struct CapsuleBody;
 /// in the network soak's screenshots).
 #[allow(clippy::type_complexity)]
 fn character_bodies(
-    characters: Query<(Entity, &Team, Has<CapsuleBody>), (With<Intent>, Without<LocalPlayer>)>,
+    characters: Query<
+        (
+            Entity,
+            &Team,
+            Has<CapsuleBody>,
+            (
+                Option<&crate::map::BodyName>,
+                Option<&crate::core::PlayerClass>,
+                Option<&crate::slots::GameIdentity>,
+            ),
+        ),
+        (With<Intent>, Without<LocalPlayer>),
+    >,
     models: Option<Res<crate::map::CharacterModels>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    for (e, team, capsule) in &characters {
-        match (models.is_some(), capsule) {
+    for (e, team, capsule, (name, class, identity)) in &characters {
+        // A model for it: the map's, among its identity's game's when it
+        // has one (another game's character on this map is a capsule).
+        let modelled = models
+            .as_ref()
+            .is_some_and(|m| identity.is_none() || m.for_identity(identity, Some(*team), name, class).is_some());
+        match (modelled, capsule) {
             (true, true) => {
                 commands
                     .entity(e)

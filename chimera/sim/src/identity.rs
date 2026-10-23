@@ -13,7 +13,12 @@
 //!   player's commands (a rung's swap) counts as `core::rebase`, a
 //!   restart for its client.
 //! - `GameIdentity` (the server's, replicated): the held weapon's game,
-//!   set in the same system where the world is authoritative.
+//!   set in the same system where the world is authoritative. The body
+//!   follows it on every machine: the map's character models are picked
+//!   among the identity's game's (`map::CharacterModels::for_identity`;
+//!   none of its game here: a capsule), and each game dresses and
+//!   animates only its own (Combat Arms' look by `GameIdentity::allows`,
+//!   CS:S's animation by the body's game, `CharacterModels::is_of`).
 //! - `hud_follows_identity`: the local player's identity's game made the
 //!   gameplay's `hud` slot (for an app that draws both games' HUDs).
 //!

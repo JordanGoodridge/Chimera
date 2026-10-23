@@ -1,9 +1,11 @@
 //! Each player is the game of the gun in hand (the gun game's `identity =
-//! "weapon"`, `chimera_sim::identity`): a CS:S gun moves as CS:S, a
-//! Combat Arms gun or the knife as Combat Arms. Headless on the party's
-//! simulation (scripted soldiers, the rungs' swaps and the knife), and over
-//! the network (`NetSim`, two clients): the switch is predicted on the
-//! owning client's own tick with no prediction error.
+//! "weapon"`, `chimera_sim::identity`): a CS:S gun moves and looks as
+//! CS:S (its body among the map's CS:S models), a Combat Arms gun or the
+//! knife as Combat Arms. Headless on the party's simulation (scripted
+//! soldiers, the rungs' swaps and the knife; two stand-in bodies, one per
+//! game, as the map's models), and over the network (`NetSim`, two
+//! clients): the switch is predicted on the owning client's own tick with
+//! no prediction error, and the other client sees the new body.
 
 use std::time::Duration;
 
@@ -26,7 +28,11 @@ use chimera_sim::{
     },
     testkit,
 };
-use chimera_world::greybox::GreyboxMapPlugin;
+use chimera_world::{
+    greybox::GreyboxMapPlugin,
+    harness::Sim,
+    map::{BodyModel, BodyName, CharacterModels, MapCharacterModel, MapSimPlugin},
+};
 use combat_arms::{
     game::{TICK_INTERVAL, inventory::KNIFE, movement as ca_movement},
     harness::CaSim,
@@ -35,6 +41,41 @@ use cs_source::game::{movement as cs_movement, weapons as cs_weapons};
 use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 use crate::gun_game::{held, line_up, party, rung, shoot_until_dead, soldier};
+
+/// `party` with the map's systems (which give characters their bodies)
+/// and `two_bodies`.
+fn party_with_bodies() -> Sim {
+    let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, MapSimPlugin::empty(), PartyPartsPlugin));
+    two_bodies(&mut sim.app);
+    minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+    sim
+}
+
+/// The map's bodies: one of Combat Arms' (0) and one of CS:S's (1),
+/// stand-ins with no mesh.
+pub(crate) fn two_bodies(app: &mut App) {
+    let body = |game| MapCharacterModel {
+        game: Some(game),
+        team: None,
+        name: None,
+        class: None,
+        model: default(),
+        hitboxes: Vec::new(),
+        bones: Vec::new(),
+        root: Transform::IDENTITY,
+        animations: None,
+        boxes: Vec::new(),
+        ragdoll: None,
+    };
+    app.insert_resource(CharacterModels(std::sync::Arc::new(vec![body("combat_arms"), body("cs_source")])));
+}
+
+const CA_BODY: usize = 0;
+const CS_BODY: usize = 1;
+
+fn body(world: &World, e: Entity) -> Option<usize> {
+    world.get::<BodyModel>(e).map(|b| b.0)
+}
 
 fn movement(world: &World, e: Entity) -> Option<&'static str> {
     world.get::<MovementSlot>(e).map(|m| m.0)
@@ -99,6 +140,35 @@ fn movement_follows_the_gun_on_a_rung_up_and_back() {
     assert!(sim.position(a).distance(from) > 1.0, "walked as CS:S: {from} -> {}", sim.position(a));
 }
 
+/// The body follows too: CS:S's model with a CS:S gun, Combat Arms' with
+/// the Beretta and the knife, CS:S's again with the Desert Eagle.
+#[test]
+fn the_body_follows_the_gun() {
+    let mut sim = party_with_bodies();
+    let a = soldier(&mut sim);
+    let b = soldier(&mut sim);
+    sim.seconds(1.5);
+    assert_eq!(body(sim.app.world(), a), Some(CS_BODY), "the Glock: CS:S's body");
+    assert!(sim.app.world().get::<BodyName>(a).is_none(), "no Combat Arms look");
+    line_up(&mut sim, a, b, 4.0);
+    assert!(shoot_until_dead(&mut sim, a, b, 8.0));
+    sim.ticks(3);
+    assert_eq!(held(&sim, a), Some("combat_arms:beretta_m92fs"));
+    assert_eq!(body(sim.app.world(), a), Some(CA_BODY), "the Beretta: Combat Arms' body");
+    line_up(&mut sim, a, b, 4.0);
+    assert_eq!(body(sim.app.world(), b), Some(CS_BODY), "b back with its Glock: CS:S's");
+    assert!(shoot_until_dead(&mut sim, a, b, 8.0));
+    sim.ticks(3);
+    assert_eq!(held(&sim, a), Some(cs_weapons::DEAGLE));
+    assert_eq!(body(sim.app.world(), a), Some(CS_BODY), "the Desert Eagle: CS:S's again");
+    sim.intent(a).select = Some(2);
+    sim.ticks(1);
+    sim.intent(a).select = None;
+    sim.ticks(3);
+    assert_eq!(held(&sim, a), Some(KNIFE));
+    assert_eq!(body(sim.app.world(), a), Some(CA_BODY), "the knife: Combat Arms'");
+}
+
 /// A minigame without the option leaves movement to its `movement` slot.
 #[test]
 fn without_the_option_the_slots_movement_stays() {
@@ -129,7 +199,8 @@ fn link(latency_ms: u64) -> LinkConditions {
 /// `latency_ms`, joined and in the game.
 pub(crate) fn party_net(latency_ms: u64, seed: u64) -> NetSim {
     let mut sim = NetSim::new(CaSim, link(latency_ms), seed, 2, |app| {
-        app.add_plugins((GreyboxMapPlugin, PartyPartsPlugin));
+        app.add_plugins((GreyboxMapPlugin, MapSimPlugin::empty(), PartyPartsPlugin));
+        two_bodies(app);
     });
     minigame::start(sim.server.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     sim.set_frame(TICK_INTERVAL);
@@ -151,6 +222,12 @@ fn reset_graphs(sim: &mut NetSim) {
 fn client_intent(sim: &mut NetSim, i: usize) -> Mut<'_, Intent> {
     let me = sim.local_player(i).unwrap();
     sim.clients[i].app.world_mut().get_mut::<Intent>(me).unwrap()
+}
+
+/// Client `i`'s copy of client `j`'s character.
+fn copy_of(sim: &mut NetSim, i: usize, j: usize) -> Entity {
+    let id = sim.client_id(j);
+    NetSim::owned_by(&mut sim.clients[i], Some(id)).unwrap()
 }
 
 fn client_held(sim: &mut NetSim, i: usize) -> Option<&'static str> {
@@ -204,7 +281,8 @@ fn assert_agrees(sim: &mut NetSim, i: usize, what: &str) {
 /// Client 0's own knife (Combat Arms') and back (Q, CS:S's Glock), then
 /// the server's rung-ups (the Beretta, Combat Arms'; the Desert Eagle,
 /// CS:S's): its movement switches on its own predicted tick, as the
-/// server's does, with no prediction error while it walks.
+/// server's does, with no prediction error while it walks; client 1 sees
+/// its body change with each.
 #[test]
 fn a_switch_is_predicted_without_error() {
     let mut sim = party_net(80, 7);
@@ -238,7 +316,13 @@ fn a_switch_is_predicted_without_error() {
     assert_eq!(client_held(&mut sim, 0), Some(cs_weapons::GLOCK));
     assert_moves_as(&mut sim, 0, "cs_source", "the Glock again");
     // The server's rung-ups, while it walks.
-    for (rung, gun, game) in [(1, "combat_arms:beretta_m92fs", "combat_arms"), (2, cs_weapons::DEAGLE, "cs_source")] {
+    // The other client sees CS:S's body on it.
+    let copy = copy_of(&mut sim, 1, 0);
+    assert_eq!(body(sim.clients[1].app.world(), copy), Some(CS_BODY), "client 1 sees the Glock's body");
+    for (rung, gun, game, model) in [
+        (1, "combat_arms:beretta_m92fs", "combat_arms", CA_BODY),
+        (2, cs_weapons::DEAGLE, "cs_source", CS_BODY),
+    ] {
         let theirs = sim.character_of(0).unwrap();
         let w = sim.server.app.world_mut();
         let l = w.resource::<Ladder>().clone();
@@ -247,6 +331,10 @@ fn a_switch_is_predicted_without_error() {
         assert_eq!(sim.server.app.world().get::<Rung>(theirs).map(|r| r.0), Some(rung));
         assert_eq!(client_held(&mut sim, 0), Some(gun), "rung {rung}");
         assert_moves_as(&mut sim, 0, game, gun);
+        let w1 = sim.clients[1].app.world();
+        assert_eq!(identity(w1, copy).as_deref(), Some(game), "client 1 hears {gun}'s identity");
+        assert_eq!(body(w1, copy), Some(model), "client 1 sees {gun}'s body");
+        assert_eq!(body(sim.server.app.world(), theirs), Some(model), "the server's body for {gun}");
     }
     sim.ticks(60);
     assert_no_errors(&sim, "switches");

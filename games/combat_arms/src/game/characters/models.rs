@@ -283,7 +283,7 @@ pub fn append_shared(map: &mut MapData, models: &SharedModels, kit: &crate::map:
         }
     };
     map.textures.extend(models.data.textures.iter().cloned());
-    let bodies = models.data.kit.characters.iter().filter(|_| kit.parts());
+    let bodies = models.data.kit.characters.iter().filter(|_| kit.bodies());
     map.kit.characters.extend(bodies.cloned().map(|mut c| {
         shift(&mut c.model);
         c
@@ -551,6 +551,7 @@ fn body_group(
     let name = group.name();
     register_group(group);
     Ok(MapCharacterModel {
+        game: Some(crate::game::GAME),
         team: None,
         name: Some(name),
         class: None,

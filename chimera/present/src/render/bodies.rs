@@ -131,7 +131,7 @@ pub fn attach_bodies(
             Option<&ColliderAabb>,
             &GlobalTransform,
             Option<&Children>,
-            (Has<crate::core::LocalPlayer>, Option<&Corpse>),
+            (Has<crate::core::LocalPlayer>, Option<&Corpse>, Option<&chimera_core::slots::GameIdentity>),
         ),
         (Or<(With<crate::core::Intent>, With<Corpse>)>, Without<ragdoll::Ragdolled>),
     >,
@@ -143,16 +143,20 @@ pub fn attach_bodies(
     let (Some(models), Some(bodies)) = (models, bodies) else {
         return;
     };
-    for (e, (team, name, class, skin, number), aabb, at, children, (local, corpse)) in &characters {
-        let Some((index, _)) = models.for_character(team.copied(), name, class) else {
-            continue;
-        };
-        let skin = skin.map_or(0, |s| s.0);
-        let number = number.map_or(0, |n| n.0);
+    for (e, (team, name, class, skin, number), aabb, at, children, (local, corpse, identity)) in &characters {
         let current = children
             .into_iter()
             .flatten()
             .find_map(|c| existing.get(*c).ok().map(|b| (*c, (b.model, b.skin, b.body))));
+        let Some((index, _)) = models.for_identity(identity, team.copied(), name, class) else {
+            // Its identity's game has no body here: the other game's goes.
+            if let Some((old, _)) = current {
+                commands.entity(old).despawn();
+            }
+            continue;
+        };
+        let skin = skin.map_or(0, |s| s.0);
+        let number = number.map_or(0, |n| n.0);
         match current {
             Some((_, m)) if m == (index, skin, number) => continue,
             Some((old, _)) => commands.entity(old).despawn(),

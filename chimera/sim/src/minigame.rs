@@ -43,8 +43,8 @@
 //! Known shortcuts: one round per match; the map pool's first map is the
 //! app's to load (no map vote or rotation); `character` is informational
 //! (the character kit isn't a slot yet), `movement` is set on each
-//! player at its spawn (with `identity = "weapon"`, then the held
-//! weapon's game's: `identity`); teams other than the mode's are refused, not
+//! player at its spawn (with `identity = "weapon"`, the movement and body
+//! are the held weapon's game's: `identity`); teams other than the mode's are refused, not
 //! adapted; no objective primitives (zones, carriables), scoring table
 //! beyond kills and deaths, or built-in modifiers yet; the HUD data is the
 //! local player's only (never a spectated player's); definitions travel to network clients by id only

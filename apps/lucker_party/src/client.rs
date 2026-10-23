@@ -1,7 +1,7 @@
 //! The client's side of Lucker Party (feature `present`): the shell with
-//! this app's hooks and Combat Arms' HUD (`ClientPlugin`), and the command
-//! line as the app plays it (`with_defaults`: the default minigame and its
-//! first map).
+//! this app's hooks and Combat Arms' HUD (`ClientPlugin`; CS:S's body
+//! animation for a player holding a CS:S gun), and the command line as the
+//! app plays it (`with_defaults`: the default minigame and its first map).
 
 use bevy::prelude::*;
 use chimera_client::client::{AppHooks, Args, ClientPlugins};
@@ -37,6 +37,9 @@ impl Plugin for ClientPlugin {
             }
             .build(),
         ))
+        // What CS:S's bodies play, for a player holding a CS:S gun (the
+        // gun game's `identity = "weapon"`).
+        .add_plugins(cs_source::game::player_anim::PlayerAnimPlugin)
         .add_systems(Startup, cs_source_names);
     }
 }

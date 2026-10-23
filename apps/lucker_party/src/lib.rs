@@ -5,7 +5,9 @@
 //! Combat Arms' soldiers, movement, HUD and guns, CS:S's maps, map logic,
 //! movement and guns, on CS:S's or Combat Arms' maps. A minigame with
 //! `identity = "weapon"` (the gun game) makes each player the game of the
-//! gun in hand (`chimera_sim::identity`): its movement. The games are libraries composed
+//! gun in hand (`chimera_sim::identity`): its movement and its body (CS:S's
+//! player models stay on CS:S's maps for it, `MapSources::players`; CS:S's
+//! per-tick body animation for a network server's hitboxes). The games are libraries composed
 //! here and nowhere else (checks/tests/it/architecture.rs), as in the
 //! mashup demo.
 //!
@@ -89,6 +91,9 @@ pub static MAP_SOURCES: MapSources = MapSources {
     teams: TEAMS,
     surfaces: SURFACES,
     kept: KEPT,
+    // A player holding a CS:S gun is CS:S's (the gun game's `identity =
+    // "weapon"`): CS:S's player bodies and HUD look stay on its maps.
+    players: true,
 };
 
 /// Map `id` (`cs_source:de_dust2`, `combat_arms:warehouse`) for the party.
@@ -141,8 +146,10 @@ impl Plugin for PartyPartsPlugin {
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,
             // CS:S's movement, for a player holding a CS:S gun (the gun
-            // game's `identity = "weapon"`).
+            // game's `identity = "weapon"`), and a network server's
+            // per-tick animation of CS:S's bodies (their hitboxes).
             cs_source::game::movement::SourceMovementPlugin,
+            cs_source::game::player_anim::SimAnimPlugin,
             MinigamePlugin,
             originals::OriginalsPlugin,
         ));
