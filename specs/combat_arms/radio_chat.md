@@ -506,3 +506,72 @@ Unless stated: non-BR constants; a two-team mode (Elimination); players A1, A2 o
 8. **System line lives:** `ui_system.md` lists 5000 or 15000 ms for system lines; the chat paths read here use 10000 for most and 5000 for one. Reconcile with `ui_system.md`'s source for 15000.
 9. **Voice service in the Steam build:** whether in-match voice works at all on the revived service, and whether others' talking is shown anywhere in a match (scoreboard voice icon). Not traced.
 10. **Emote page:** the Hunted emote animations, and when emotes are allowed, belong to a later spec.
+
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's radio menu, chat input and
+text-command parser against this spec and our implementation
+(`games/combat_arms/src/`, file:line relative to that folder). They change
+R2, T1, T2 and test cases 24 and 26.
+
+1. **Only radio entries 1 to 6 can be picked** (R2 "Number keys while
+   open"; `options.md` K1 "Fixed keys").
+   - Reference: a radio entry is picked by the menu-line commands
+     `Choose_1` … `Choose_9`, and the only keys ever bound to them are the
+     ones every bindings apply adds: keyboard 1 to 6 for `Choose_1` …
+     `Choose_6` (the apply first clears every binding, and `Choose_7` …
+     `Choose_0` are not in the bindable action set, so profile entries for
+     them are never bound). Keys 7, 8, 9 and 0 therefore do nothing while
+     a menu is open: the menu stays open and nothing is sent. Lines 7 to 9
+     are still shown when the class has that many entries; they cannot be
+     sent. (The weapon-select keys 1 to 6 are swallowed while the menu is
+     open, as R2 says.)
+   - Ours: `ui/talk.rs:264-280` reads the physical digit keys 1 to 9 and
+     picks entries 7 to 9 with them.
+   - Expect: a class with 9 entries; open its menu, press 7 → no message
+     sent, the menu stays open; press 6 → entry 6 is sent and the menu
+     closes. A player who rebinds `PrimaryWeapon` to another key still
+     picks entry 1 with key 1 (the fixed binding).
+
+2. **Within one command the first matching alias counts, in the order the
+   string lists them** (T1; our deviation, and test cases 24 and 26).
+   - Reference: T1's rule as written: for each command in list order, its
+     aliases are tried in the order they appear in its string, and the
+     first one the typed line starts with (case-insensitively) is taken;
+     a later command that matches replaces it. A shorter alias listed
+     before a longer one therefore always wins: with `/w/whisper`, the line
+     `/whisper Bob hi there` matches `/w`, the remainder is
+     `hisper Bob hi there`, and the whisper goes to "hisper" with the body
+     "Bob hi there".
+   - Ours: `game/chat/text.rs:111-123` takes the **longest** matching alias
+     of each command (documented as a deliberate deviation at
+     `game/chat.rs:39-41`, because test case 24 contradicted T1).
+   - Expect: test case 24 is wrong as written. With `ChatCMD_Whisper =
+     /w/whisper`: `/whisper Bob hi there` → whisper to "hisper", body "Bob
+     hi there", echo `<to-label> "hisper" : Bob hi there`. With
+     `ChatCMD_Whisper = /whisper/w`: `/whisper Bob hi there` → whisper to
+     "Bob" with body "hi there", and `/wave` → matches `/w` (test 26's
+     outcome). Implement the first-match rule; the stock aliases' order
+     (Open question 2) then decides what players see.
+
+3. **A setting command followed only by spaces is sent as chat** (T2).
+   - Reference: when the remainder after a Block, UnBlock or
+     WhisperAutoAnswer alias is longer than one character but holds no
+     word (only spaces), the command is **not** treated as a setting: it
+     falls through to C3 step 4's "anything else" route, and the **whole
+     typed line** (alias and spaces included) is sent on the current tab.
+     A Whisper alias followed only by spaces sends nothing (no target name)
+     and closes the input, as now. A remainder of at most one character
+     keeps T2's first column (help text, reset).
+   - Ours: `game/chat/client.rs:320-330` (and the UnBlock and AutoAnswer
+     arms below it) treats any remainder longer than one character as a
+     setting: Block and UnBlock with an empty name, and AutoAnswer stores
+     the spaces as the auto-reply; nothing is sent.
+   - Expect: on the All tab, `/block` followed by three spaces → every
+     receiver shows `A1 : /block   ` (with `ChatCMD_Block = /block`); the
+     block list is unchanged; no reply line. The same with the auto-reply
+     alias → sent as chat, the auto-reply unchanged.
+
+Could not determine here: the stock alias strings (still Open question 2),
+so whether correction 2 changes anything a player of the Steam build would
+type.
