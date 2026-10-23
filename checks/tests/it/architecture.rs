@@ -63,8 +63,12 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // runtime, their spawning and weapons, the gameplay switched to them.
     (
         "minigame",
-        &["core", "console", "map", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry"],
+        &["core", "console", "map", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry", "identity"],
     ),
+    // A character's game identity following its weapon (chimera/sim): its
+    // movement switched in the predicted tick, its identity, the local
+    // player's HUD slot.
+    ("identity", &["core", "map", "movement", "slots", "weapon", "gameplay", "game_registry"]),
     // Every game's respawn (chimera/sim): the dead held, a character
     // revived at a place (out of a toggled noclip).
     ("spawning", &["core", "movement"]),

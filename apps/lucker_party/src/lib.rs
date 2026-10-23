@@ -2,8 +2,12 @@
 //! `lucker_party`; docs/plans/active/architecture-review.md L2): minigames,
 //! each a data file (`minigames/`, the `originals` crate) played on
 //! Chimera's mode runtime (`chimera_sim::minigame`), with both games' parts:
-//! Combat Arms' soldiers, movement, HUD and guns, CS:S's maps, map logic and
-//! guns, on CS:S's or Combat Arms' maps. The games are libraries composed
+//! Combat Arms' soldiers, movement, HUD and guns, CS:S's maps, map logic,
+//! movement and guns, on CS:S's or Combat Arms' maps. A minigame with
+//! `identity = "weapon"` (the gun game) makes each player the game of the
+//! gun in hand (`chimera_sim::identity`): its movement and its body (CS:S's
+//! player models stay on CS:S's maps for it, `MapSources::players`; CS:S's
+//! per-tick body animation for a network server's hitboxes). The games are libraries composed
 //! here and nowhere else (checks/tests/it/architecture.rs), as in the
 //! mashup demo.
 //!
@@ -26,8 +30,8 @@
 //!   app and the server load unless the command line names a map.
 //! - With `present` (the default; not the dedicated server's,
 //!   apps/lucker_party_server): `ClientPlugin` (the shell with this app's
-//!   hooks and Combat Arms' HUD) and `with_defaults` (the command line as
-//!   the app plays it).
+//!   hooks and both games' HUDs, the local player's game's drawn) and
+//!   `with_defaults` (the command line as the app plays it).
 //!
 //! - Bots: Combat Arms' (the gun game's `bots` slot), with CS:S's guns'
 //!   types for their AI rows (data/bot_gun_types.toml); `MaxPlayer` is how
@@ -94,6 +98,9 @@ pub static MAP_SOURCES: MapSources = MapSources {
     teams: TEAMS,
     surfaces: SURFACES,
     kept: KEPT,
+    // A player holding a CS:S gun is CS:S's (the gun game's `identity =
+    // "weapon"`): CS:S's player bodies and HUD look stay on its maps.
+    players: true,
 };
 
 /// Map `id` (`cs_source:de_dust2`, `combat_arms:warehouse`) for the party.
@@ -145,6 +152,11 @@ impl Plugin for PartyPartsPlugin {
         app.add_plugins((
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,
+            // CS:S's movement, for a player holding a CS:S gun (the gun
+            // game's `identity = "weapon"`), and a network server's
+            // per-tick animation of CS:S's bodies (their hitboxes).
+            cs_source::game::movement::SourceMovementPlugin,
+            cs_source::game::player_anim::SimAnimPlugin,
             MinigamePlugin,
             originals::OriginalsPlugin,
             // The match and the ladder over the network (a part: nothing
@@ -294,7 +306,7 @@ pub fn ids() -> Vec<String> {
 #[cfg(feature = "present")]
 mod client;
 #[cfg(feature = "present")]
-pub use client::{ClientPlugin, client_hooks, joins_server, with_defaults};
+pub use client::{ClientPlugin, client_hooks, joins_server, with_defaults, with_huds};
 
 #[cfg(test)]
 mod tests {

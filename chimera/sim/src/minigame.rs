@@ -43,7 +43,8 @@
 //! Known shortcuts: one round per match; the map pool's first map is the
 //! app's to load (no map vote or rotation); `character` is informational
 //! (the character kit isn't a slot yet), `movement` is set on each
-//! player at its spawn; teams other than the mode's are refused, not
+//! player at its spawn (with `identity = "weapon"`, the movement and body
+//! are the held weapon's game's: `identity`); teams other than the mode's are refused, not
 //! adapted; no objective primitives (zones, carriables), scoring table
 //! beyond kills and deaths, or built-in modifiers yet; the HUD data is the
 //! local player's only (never a spectated player's); definitions travel to network clients by id only
@@ -204,6 +205,13 @@ pub fn check(world: &World, def: &MinigameDef) -> Result<(), String> {
     {
         return Err(fail(format!("slots.movement: no movement `{m}` registered")));
     }
+    // Following the weapon: each weapon set's game moves its own way.
+    if def.slots.identity == Some(def::IdentityDef::Weapon)
+        && let Some(registry) = world.get_resource::<MovementRegistry>()
+        && let Some(g) = def.slots.weapons.iter().find(|g| registry.of_game(g).is_none())
+    {
+        return Err(fail(format!("slots.identity = \"weapon\": no movement of `{g}` registered ({g}:...)")));
+    }
     Ok(())
 }
 
@@ -357,6 +365,9 @@ impl Plugin for MinigamePlugin {
             .init_resource::<hud::MinigameHud>()
             .add_systems(Update, hud::update)
             .add_minigame_rules(ladder::RULES);
+        if !app.is_plugin_added::<crate::identity::IdentityPlugin>() {
+            app.add_plugins(crate::identity::IdentityPlugin);
+        }
         runtime::plugin(app);
         app.console_command(
             "minigames",

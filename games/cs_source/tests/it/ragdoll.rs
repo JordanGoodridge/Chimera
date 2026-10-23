@@ -119,6 +119,7 @@ pub(crate) fn model() -> MapCharacterModel {
     let face = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
     let axes = Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
     MapCharacterModel {
+        game: None,
         team: None,
         name: None,
         class: None,

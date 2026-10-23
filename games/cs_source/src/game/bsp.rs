@@ -14,7 +14,8 @@
 //! decals, round sounds, held and view models, muzzle flash, shells, the
 //! navigation mesh) is read as far as `MapLoadOptions::kit` says: all of it
 //! by default, and for a mashup's map (`map::KitLoad::Only`) none but the
-//! kept guns' models, so its textures and materials aren't loaded.
+//! kept guns' models, so its textures and materials aren't loaded
+//! (`KitLoad::Players`: the players' bodies and the HUD look too).
 //!
 //! Known shortcuts (docs/tech-debt.md): Non-mover brush entities (other than breakables) are static where they spawn
 //! and ignore render modes other than 10. Overlays and infodecals on movers go
@@ -304,7 +305,7 @@ pub fn load_level_bytes_with(
     // The kit (`MapData::kit`) is read only as far as `options.kit` says:
     // a mashup's map takes none of it but the kept weapons' models.
     let kit = options.kit;
-    if kit.parts() {
+    if kit.bodies() {
         for (path, team) in [
             (CLASS_MODELS[0], Some(crate::core::Team(1))),
             (CLASS_MODELS[4], None),
@@ -324,6 +325,8 @@ pub fn load_level_bytes_with(
                 Err(e) => data.warnings.push(e),
             }
         }
+    }
+    if kit.parts() {
         // Hostages' bodies, on maps with hostages (picked by name).
         if data.entities.iter().any(|e| e.classname().eq_ignore_ascii_case("hostage_entity")) {
             for path in super::objectives::HOSTAGE_MODELS {
@@ -346,6 +349,11 @@ pub fn load_level_bytes_with(
             .read("botprofile.db")
             .map(|b| crate::map::bot_profiles::BotProfiles::parse(&String::from_utf8_lossy(&b)))
             .filter(|p| !p.0.is_empty());
+    }
+    // A mashup's map for players of CS:S (`KitLoad::Players`): its HUD
+    // look too (a whole kit read it above, in its usual order).
+    if kit.hud() && !kit.parts() {
+        data.kit.hud = super::hud::load(&mut materials, name).map(std::sync::Arc::new);
     }
     data.overview = super::hud::overview(&mut materials, name);
     data.particles = super::impact_effects::load_materials(&mut materials);

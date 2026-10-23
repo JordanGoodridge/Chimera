@@ -16,7 +16,10 @@
 //! - Spawning (`respawn`): at a spawn point the definition's `points`
 //!   pick (`spawn_point`), revived (`spawning::revive`), the definition's
 //!   movement set, the weapons taken and the life's given (the kit, then
-//!   the rules module's `loadout`, the last drawn), protected from damage
+//!   the rules module's `loadout`, the last drawn); with `identity =
+//!   "weapon"` the player follows its weapon's game (`slots::
+//!   FollowsWeapon`; `identity::follow` at once for the drawn one),
+//!   protected from damage
 //!   (`Protected`, through `core::God`) for `protection` s or until it
 //!   fires. The dead respawn after `delay` s (`respawn_dead`) unless the
 //!   match is over or the mode refuses.
@@ -32,7 +35,7 @@ use bevy::{ecs::message::MessageCursor, prelude::*};
 
 use super::{
     ActiveMinigame, MINIGAME,
-    def::{Points, SpawnDef},
+    def::{IdentityDef, Points, SpawnDef},
 };
 use crate::{
     core::{
@@ -43,7 +46,7 @@ use crate::{
     },
     weapon::{Inventory, give},
 };
-use chimera_core::slots::MovementSlot;
+use chimera_core::slots::{FollowsWeapon, MovementSlot};
 
 /// A decided round's results stay up this long before the round ends.
 pub const ROUND_OVER: f32 = 5.0;
@@ -154,11 +157,21 @@ pub fn respawn(world: &mut World, e: Entity) {
     {
         chimera_core::slots::set_movement(e, id).apply(world);
     }
+    let follows = def.slots.identity == Some(IdentityDef::Weapon);
+    if follows {
+        world.entity_mut(e).insert(FollowsWeapon);
+    } else if world.get::<FollowsWeapon>(e).is_some() {
+        crate::identity::unfollow(world, e);
+    }
     crate::weapon::equip::strip(world, e);
     let catalog = world.get_resource::<crate::weapon::data::WeaponCatalog>().cloned().unwrap_or_default();
     let kit: Vec<&'static str> = def.spawn.kit.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
     for id in kit.into_iter().chain((active.rules.loadout)(world, e)) {
         give(world, e, id);
+    }
+    // Following the weapon: the life starts as the drawn weapon's game.
+    if follows {
+        crate::identity::follow(world, e);
     }
     let protection = def.spawn.respawn.protection;
     if protection > 0.0 && world.get::<God>(e).is_none() {

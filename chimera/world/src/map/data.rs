@@ -595,6 +595,10 @@ pub fn body_choice(parts: &[u16], body: i32, part: usize) -> u16 {
 /// (feet at the origin, facing -Z) and its hitboxes in the same space.
 #[derive(Clone, Debug)]
 pub struct MapCharacterModel {
+    /// The game whose body it is (`cs_source`); a character whose
+    /// identity is another game's (`slots::GameIdentity`) never wears it.
+    /// None: any game's.
+    pub game: Option<&'static str>,
     /// The team it's for; None: anyone without a better match.
     pub team: Option<Team>,
     /// Set for a model only characters that name it use (`BodyName`, e.g.
@@ -1029,13 +1033,24 @@ pub struct GameKit {
 impl GameKit {
     /// The part of this kit that stays on a map of another game: the held
     /// and view models whose keys start with one of `kept` (another game's
-    /// weapons an app offers in the gameplay's slots). Nothing else stays.
-    pub fn stay(self, kept: &[&str]) -> GameKit {
+    /// weapons an app offers in the gameplay's slots), and with `players`
+    /// what a player of the map's game wears and sees (its character
+    /// bodies, hostages' aside, and its HUD look: an app whose players may
+    /// be that game's, `slots::GameIdentity`). Nothing else stays.
+    pub fn stay(self, kept: &[&str], players: bool) -> GameKit {
         let keep = |key: &str| kept.iter().any(|k| key.starts_with(k));
-        let Self { held, view_models, .. } = self;
+        let Self {
+            held,
+            view_models,
+            characters,
+            hud,
+            ..
+        } = self;
         GameKit {
             held: held.into_iter().filter(|h| keep(&h.key)).collect(),
             view_models: view_models.into_iter().filter(|v| keep(&v.key)).collect(),
+            characters: characters.into_iter().filter(|c| players && c.name.is_none()).collect(),
+            hud: hud.filter(|_| players),
             ..GameKit::default()
         }
     }

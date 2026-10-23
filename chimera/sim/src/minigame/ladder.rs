@@ -209,7 +209,7 @@ fn died(world: &mut World, d: &Died) {
 }
 
 /// `e` on `rung`, holding its weapon in place of the ladder's others.
-fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
+pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     world.entity_mut(e).insert(Rung(rung));
     let old: Vec<Entity> = world
         .get::<Inventory>(e)
@@ -225,6 +225,9 @@ fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
         runtime::take_weapon(world, e, w);
     }
     give(world, e, ladder.rungs[rung]);
+    // No command of the player's did this: its client takes the state
+    // as a restart, not a misprediction.
+    crate::core::rebase(world, e);
 }
 
 /// The time limit: the highest rung, then the most kills; a tie, a draw.

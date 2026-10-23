@@ -43,11 +43,12 @@
 //! tick, made safe by `NetCmd::apply`, with the view tick its shots are traced
 //! at; and the newest own state the client holds, `ack`), `OwnStateDelta` (an
 //! `OwnState` as a `delta` against the acknowledged one), `OwnState` (with the
-//! map index of the mover stood on, and the map camera viewed through:
-//! `core::MapView`); replicated `NetCharacter`, `Spectating`, `Unassigned`,
+//! map index of the mover stood on, the map camera viewed through:
+//! `core::MapView`, and the server's changes outside the player's commands:
+//! `core::Rebased`, a restart); replicated `NetCharacter`, `Spectating`, `Unassigned`,
 //! `ChoosingClass`, `PlayerClass`, `NetBody` (quantized: `quant`;
 //! `body_flags::TELEPORTS` counts the server's teleports), `Team`, `Health`,
-//! the map render looks `map::RenderLook` (players) and
+//! `slots::GameIdentity` (whose body a character wears), the map render looks `map::RenderLook` (players) and
 //! `BrushTint` (movers), `NetProp`, `NetHeld`, `NetItem`, `NetSmoke`, the body,
 //! prop and item ones also into each entity's `interp::Snapshots` by
 //! server tick, all written in tick order (`ordered`); weapons' messages
@@ -668,6 +669,10 @@ pub struct OwnState {
     /// The map camera the player views through (`core::MapView`: origin,
     /// rotation), if any.
     pub view: Option<([f32; 3], [f32; 4])>,
+    /// The times the server changed the player's predicted state outside
+    /// its commands (`core::Rebased`: a rules' weapon swap). When it
+    /// changes, the client takes the state as a restart, as for `alive`.
+    pub rebased: u32,
 }
 
 /// A character the server replicates: whose it is and its name. On a
@@ -1169,6 +1174,10 @@ impl Plugin for NetPlugin {
             .ordered::<crate::core::PlayerClass>()
             .replicate::<Health>()
             .ordered::<Health>()
+            // Whose game a character is (its body, its player's HUD) where
+            // that follows its weapon (`slots::GameIdentity`).
+            .replicate::<crate::slots::GameIdentity>()
+            .ordered::<crate::slots::GameIdentity>()
             // Map render looks: players' (invisibility, team colours) and
             // movers' (colour, alpha, texture frame; the movers themselves
             // are Source's logic's part, `NetParts`), only when they change.
