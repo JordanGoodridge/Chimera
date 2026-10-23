@@ -98,7 +98,7 @@ impl T {
     fn send(&mut self, name: &str, message: &str, who: Who) {
         self.w.now = self.t;
         let id = self.id(name);
-        self.w.deliver(id, message, Ctx { sender: who, target: None });
+        self.w.deliver(id, message, Ctx { sender: who, target: None, ..Ctx::default() });
     }
     fn run(&mut self, text: &str) {
         self.w.now = self.t;

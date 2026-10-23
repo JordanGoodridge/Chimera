@@ -20,6 +20,10 @@
 //! - Characters touch triggers (`touch`), use doors (`use_object`) and
 //!   damage world models (`damage`) before the frame.
 //!
+//! Corrections (2026-10-22) readings: the nudge of switching a volume on is
+//! 10 u along the normalised (1, 1, 1); a first `VISIBLE`/`SOLID` message
+//! records its own value as what the object "had".
+//!
 //! Known shortcuts: `SoundFX` keeps its on/off state and restart count (the
 //! client's `music::ambient` plays them); `LightGroup`, `Camera`,
 //! `SpecialFX` and `TargetTrigger` keep their on/off state only
@@ -54,6 +58,9 @@ pub const TRIGGER_SOUND_RADIUS: f32 = 200.0;
 /// Ours: how close (u) an AI character's box comes to a door it opens by
 /// walking into it.
 pub const AI_DOOR_REACH: f32 = 8.0;
+/// How far (u) switching a volume on moves the players and back
+/// (Corrections (2026-10-22) 16).
+pub const NUDGE: f32 = 10.0;
 /// A destructible dies at or below this many hit points.
 pub const BREAKABLE_DEATH_HP: f32 = 1.0;
 
@@ -156,6 +163,9 @@ pub enum Fx {
         looping: bool,
         owner: Option<ObjId>,
     },
+    /// Stop the looping transition sound an object started (an active
+    /// world model's: Corrections (2026-10-22) 3).
+    StopSound { owner: ObjId },
     /// A `BGMTrigger` got `ON` or `OFF` (the bridge checks its mode and
     /// tells the clients).
     Music { id: ObjId, on: bool },
@@ -296,9 +306,23 @@ pub struct Attached {
     pub rot: Quat,
 }
 
+/// What messages changed in a volume (world_dat.md Corrections
+/// (2026-10-22) 3 and 6): the bridge writes them to its `CaVolume`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct VolumeMods {
+    /// `DamageVal`: the new `Damage`.
+    pub damage: Option<f32>,
+    /// `VELOCITY` (a jump pad's launch speed, u/s).
+    pub speed: Option<f32>,
+    /// `LOCK` / `UNLOCK` (a `DamageVolume`).
+    pub locked: Option<bool>,
+}
+
 /// One map object.
 #[derive(Clone, Debug, Default)]
 pub struct Object {
+    /// A volume's changes by messages.
+    pub vol: VolumeMods,
     pub class: String,
     pub name: String,
     pub props: Props,
@@ -900,6 +924,7 @@ impl ObjectWorld {
                     let ctx = Ctx {
                         sender: Who::Object(id),
                         target,
+                        ..Ctx::default()
                     };
                     self.run(&c, ctx);
                 }
@@ -917,6 +942,7 @@ impl ObjectWorld {
                         owner: Some(id),
                     });
                 }
+                Out::StopSound => self.fx.push(Fx::StopSound { owner: id }),
                 Out::DoorLink(_) => {}
             }
         }
@@ -943,7 +969,8 @@ impl ObjectWorld {
             self.active_player = ctx.sender;
         }
         let o = &mut self.objects[id as usize];
-        if o.first.is_none() {
+        let fresh = o.first.is_none();
+        if fresh {
             o.first = Some((o.visible, o.solid, o.rayhit));
         }
         // Base messages.
@@ -952,13 +979,26 @@ impl ObjectWorld {
                 if let Some(v) = flag(args.first()) {
                     o.visible = v;
                     o.dirty = true;
+                    // Our reading: as a first message it sets what the
+                    // object "had" (Corrections (2026-10-22) 4's example
+                    // keeps it visible through hidden 1 / hidden 0).
+                    if fresh && let Some(f) = &mut o.first {
+                        f.0 = v;
+                    }
                 }
                 return;
             }
             "SOLID" => {
                 if let Some(v) = flag(args.first()) {
                     o.solid = v;
-                    if v && o.first.is_some_and(|f| f.2) {
+                    if fresh && let Some(f) = &mut o.first {
+                        f.1 = v;
+                    }
+                    // Corrections (2026-10-22) 4: solid 0 clears ray-hit
+                    // too; solid 1 restores it if it had it at first.
+                    if !v {
+                        o.rayhit = false;
+                    } else if o.first.is_some_and(|f| f.2) {
                         o.rayhit = true;
                     }
                     o.dirty = true;
@@ -977,10 +1017,12 @@ impl ObjectWorld {
                             d.never_destroy = true;
                         }
                     } else {
+                        // Corrections (2026-10-22) 4: adds back what it had
+                        // at its first message, never clears a flag.
                         let (v, s, r) = o.first.unwrap_or((true, true, true));
-                        o.visible = v;
-                        o.solid = s;
-                        o.rayhit = r;
+                        o.visible |= v;
+                        o.solid |= s;
+                        o.rayhit |= r;
                         if let Some(d) = &mut o.hp
                             && let Some((c, n)) = d.hidden_saved.take()
                         {
@@ -1008,13 +1050,17 @@ impl ObjectWorld {
                 return;
             }
             "REMEMBER" => {
+                // Corrections (2026-10-22) 15: only the logic state comes
+                // back; the object isn't moved and its flags stay.
                 if let Some(m) = o.memo.clone() {
-                    (o.visible, o.solid, o.rayhit) = m.flags;
-                    o.dirty = true;
+                    let mut out = Vec::new();
                     if let (Kind::Active(a), Some(saved)) = (&mut o.kind, m.awm) {
                         *a = saved;
+                        a.restart_sound(&mut out);
                     }
-                    self.set_pose(id, m.pose);
+                    o.dirty = true;
+                    let activator = o.awm().map_or(Who::Nobody, |a| a.activator);
+                    self.apply_outs(id, out, activator);
                 }
                 return;
             }
@@ -1158,7 +1204,8 @@ impl ObjectWorld {
                     "RESUME" => a.resume(&pose),
                     "SETPOWERONMULTIPLIER" => {
                         if let Some(m) = args.first().and_then(|x| x.parse::<f32>().ok()) {
-                            a.multiplier *= m;
+                            // Replaces (Corrections (2026-10-22) 5).
+                            a.multiplier = m;
                         }
                     }
                     "INIT" => {
@@ -1184,10 +1231,12 @@ impl ObjectWorld {
                         Who::Object(o) => self.objects.get(o as usize).map(|o| o.pose.pos),
                         w => self.chars.iter().find(|c| c.who == w).map(CharBox::centre),
                     };
-                    let opened = a.trigger(&f, &pose, at, &mut out);
-                    // Door link: a player (not a bot) opened an unlocked door.
-                    let by_player = self.chars.iter().any(|c| c.who == a.activator && c.player);
-                    if opened && a.door && by_player && !a.door_link.is_empty() {
+                    a.trigger(&f, &pose, at, &mut out);
+                    // Door link (Corrections (2026-10-22) 2): any trigger
+                    // that leaves an unlocked door in PowerOn, unless a
+                    // bot is the activator, tells the linked door.
+                    let by_bot = self.chars.iter().any(|c| c.who == a.activator && !c.player);
+                    if a.door && !a.locked && a.state == State::PowerOn && !by_bot && !a.door_link.is_empty() {
                         out.push(Out::DoorLink(a.door_link.clone()));
                     }
                 }
@@ -1202,7 +1251,8 @@ impl ObjectWorld {
                     .collect();
                 self.apply_outs(id, out, activator);
                 for n in links {
-                    for d in self.named_all(&n) {
+                    // The first object of that name only.
+                    if let Some(d) = self.named_all(&n).first().copied() {
                         self.link_open(d, activator);
                     }
                 }
@@ -1241,7 +1291,7 @@ impl ObjectWorld {
                     let cmds = commands.clone();
                     self.objects[id as usize].kind = kind;
                     for c in cmds.iter().filter(|c| !c.is_empty()) {
-                        self.run(c, Ctx { sender: ctx.sender, target: Some(id) });
+                        self.run(c, Ctx { sender: ctx.sender, target: Some(id), ..Ctx::default() });
                     }
                     return;
                 }
@@ -1262,29 +1312,19 @@ impl ObjectWorld {
                 "UNLOCK" => u.locked = false,
                 _ => {}
             },
-            Kind::EventCounter { value, locked, events } => {
-                let n = args.first().and_then(|a| a.parse::<i32>().ok()).unwrap_or(1).max(1);
+            Kind::EventCounter { locked, .. } => {
                 let up = matches!(word, "INC" | "INCREMENT");
                 let down = matches!(word, "DEC" | "DECREMENT");
                 if word == "LOCK" {
                     *locked = true;
                 } else if word == "UNLOCK" {
                     *locked = false;
-                } else if (up || down) && !*locked {
-                    let mut run = Vec::new();
-                    for _ in 0..n {
-                        if up {
-                            *value += 1;
-                            run.extend(events.iter().filter(|e| e.0 == *value).map(|e| e.1.clone()));
-                        } else if *value > 0 {
-                            *value -= 1;
-                            run.extend(events.iter().filter(|e| e.0 == *value).map(|e| e.2.clone()));
-                        }
-                    }
+                } else if up || down {
+                    // A whole number of single steps (Corrections
+                    // (2026-10-22) 14).
+                    let n = args.first().and_then(|a| a.parse::<f32>().ok()).map_or(1, |n| n as i32);
                     self.objects[id as usize].kind = kind;
-                    for c in run.iter().filter(|c| !c.is_empty()) {
-                        self.run(c, Ctx { sender: Who::Object(id), target: Some(id) });
-                    }
+                    self.count_steps(id, up, n);
                     return;
                 }
             }
@@ -1308,17 +1348,39 @@ impl ObjectWorld {
                 self.explode(id, ctx.sender);
                 return;
             }
-            Kind::Volume => match word {
-                "ON" => {
-                    self.objects[id as usize].visible = true;
-                    self.objects[id as usize].dirty = true;
+            Kind::Volume => {
+                let ob = &mut self.objects[id as usize];
+                let number = args.first().and_then(|a| a.parse::<f32>().ok());
+                match word {
+                    "ON" => {
+                        ob.visible = true;
+                        ob.dirty = true;
+                        // Switching on nudges every player so containers
+                        // and touches are re-evaluated (Corrections
+                        // (2026-10-22) 16).
+                        self.objects[id as usize].kind = kind;
+                        self.nudge_players();
+                        return;
+                    }
+                    "OFF" => {
+                        ob.visible = false;
+                        ob.dirty = true;
+                    }
+                    "DAMAGEVAL" => {
+                        ob.vol.damage = number;
+                        ob.dirty = true;
+                    }
+                    "VELOCITY" if class == "JumpVolume" => {
+                        ob.vol.speed = number;
+                        ob.dirty = true;
+                    }
+                    "LOCK" | "UNLOCK" => {
+                        ob.vol.locked = Some(word == "LOCK");
+                        ob.dirty = true;
+                    }
+                    _ => {}
                 }
-                "OFF" => {
-                    self.objects[id as usize].visible = false;
-                    self.objects[id as usize].dirty = true;
-                }
-                _ => {}
-            },
+            }
             Kind::Switchable { on, plays } => {
                 let sound = self.objects[id as usize].class == "SoundFX";
                 match word {
@@ -1353,6 +1415,30 @@ impl ObjectWorld {
             _ => {}
         }
         self.objects[id as usize].kind = kind;
+    }
+
+    /// An event counter takes `n` single steps, each followed by its
+    /// matching commands before the next; a `LOCK` the commands send
+    /// stops the rest (Corrections (2026-10-22) 14).
+    fn count_steps(&mut self, id: ObjId, up: bool, n: i32) {
+        for _ in 0..n.max(0) {
+            let Kind::EventCounter { value, locked, events } = &mut self.objects[id as usize].kind else { return };
+            if *locked {
+                return;
+            }
+            let run: Vec<String> = if up {
+                *value += 1;
+                events.iter().filter(|e| e.0 == *value).map(|e| e.1.clone()).collect()
+            } else if *value > 0 {
+                *value -= 1;
+                events.iter().filter(|e| e.0 == *value).map(|e| e.2.clone()).collect()
+            } else {
+                Vec::new()
+            };
+            for c in run.iter().filter(|c| !c.is_empty()) {
+                self.run(c, Ctx { sender: Who::Object(id), target: Some(id), ..Ctx::default() });
+            }
+        }
     }
 
     /// The linked door is told (7): the same activator; triggered when
@@ -1475,12 +1561,15 @@ impl ObjectWorld {
         let ctx = Ctx {
             sender: who,
             target: Some(id),
+            ..Ctx::default()
         };
         for c in run.iter().filter(|c| !c.is_empty()) {
             self.run(c, ctx);
         }
         if let Some(c) = touch.filter(|c| !c.is_empty()) {
-            self.run(c.as_str(), Ctx { sender: who, target: None });
+            // The toucher is both sender and default target (Corrections
+            // (2026-10-22) 9).
+            self.run(c.as_str(), Ctx { sender: who, target: None, target_char: who });
         }
     }
 
@@ -1489,32 +1578,54 @@ impl ObjectWorld {
     pub fn touches(&mut self) {
         let chars = self.chars.clone();
         for c in chars.iter().filter(|c| c.alive && c.player) {
-            for id in 0..self.objects.len() as ObjId {
-                let o = &self.objects[id as usize];
-                if o.removed {
-                    continue;
+            self.touch_with(c, &mut Vec::new());
+        }
+    }
+
+    /// Switching a volume on moves every player 10 u along (+1, +1, +1)
+    /// and straight back: the triggers its box touches in either place
+    /// are touch-fired once (Corrections (2026-10-22) 16; the move is the
+    /// length 10 along that direction, ours).
+    pub fn nudge_players(&mut self) {
+        let chars = self.chars.clone();
+        let by = Vec3::ONE.normalize() * NUDGE;
+        for c in chars.iter().filter(|c| c.alive && c.player) {
+            let mut done = Vec::new();
+            self.touch_with(&CharBox { min: c.min + by, max: c.max + by, ..*c }, &mut done);
+            self.touch_with(c, &mut done);
+        }
+    }
+
+    /// The touch triggers `c`'s box overlaps (not those in `done`, which
+    /// gets the ones fired).
+    fn touch_with(&mut self, c: &CharBox, done: &mut Vec<ObjId>) {
+        for id in 0..self.objects.len() as ObjId {
+            let o = &self.objects[id as usize];
+            if o.removed || done.contains(&id) {
+                continue;
+            }
+            let pos = o.pose.pos;
+            let inside = |dims: Vec3| c.min.cmplt(pos + dims).all() && c.max.cmpgt(pos - dims).all();
+            match &o.kind {
+                Kind::Trigger(t) if t.player_triggerable && inside(t.dims) => {
+                    done.push(id);
+                    self.fire(id, c.who, true);
                 }
-                let pos = o.pose.pos;
-                let inside = |dims: Vec3| {
-                    c.min.cmplt(pos + dims).all() && c.max.cmpgt(pos - dims).all()
-                };
-                match &o.kind {
-                    Kind::Trigger(t) if t.player_triggerable && inside(t.dims) => self.fire(id, c.who, true),
-                    Kind::TouchTrigger { dims, locked, limit, fired, commands } if !*locked && inside(*dims) => {
-                        if *limit > 0 && *fired >= *limit {
-                            continue;
-                        }
-                        let cmds = commands.clone();
-                        if let Kind::TouchTrigger { fired, .. } = &mut self.objects[id as usize].kind {
-                            *fired += 1;
-                        }
-                        self.active_player = c.who;
-                        for cmd in cmds.iter().filter(|c| !c.is_empty()) {
-                            self.run(cmd, Ctx { sender: c.who, target: Some(id) });
-                        }
+                Kind::TouchTrigger { dims, locked, limit, fired, commands } if !*locked && inside(*dims) => {
+                    if *limit > 0 && *fired >= *limit {
+                        continue;
                     }
-                    _ => {}
+                    done.push(id);
+                    let cmds = commands.clone();
+                    if let Kind::TouchTrigger { fired, .. } = &mut self.objects[id as usize].kind {
+                        *fired += 1;
+                    }
+                    self.active_player = c.who;
+                    for cmd in cmds.iter().filter(|c| !c.is_empty()) {
+                        self.run(cmd, Ctx { sender: c.who, target: Some(id), ..Ctx::default() });
+                    }
                 }
+                _ => {}
             }
         }
     }
@@ -1558,7 +1669,7 @@ impl ObjectWorld {
             for (c, w) in run {
                 if !c.is_empty() {
                     self.active_player = w;
-                    self.run(&c, Ctx { sender: w, target: Some(id) });
+                    self.run(&c, Ctx { sender: w, target: Some(id), ..Ctx::default() });
                 }
             }
         }
@@ -1581,7 +1692,7 @@ impl ObjectWorld {
                 if !o.pose.obb().overlaps(c.min - reach, c.max + reach) {
                     continue;
                 }
-                self.deliver(id, "ACTIVATE", Ctx { sender: c.who, target: None });
+                self.deliver(id, "ACTIVATE", Ctx { sender: c.who, target: None, ..Ctx::default() });
             }
         }
     }
@@ -1595,7 +1706,7 @@ impl ObjectWorld {
             _ => return,
         };
         if self.objects[target as usize].awm().is_some_and(Awm::activatable) {
-            self.deliver(target, "ACTIVATE", Ctx { sender: who, target: None });
+            self.deliver(target, "ACTIVATE", Ctx { sender: who, target: None, ..Ctx::default() });
         }
     }
 
@@ -1647,6 +1758,7 @@ impl ObjectWorld {
         let ctx = Ctx {
             sender: attacker,
             target: Some(id),
+            ..Ctx::default()
         };
         for c in run.iter().filter(|c| !c.is_empty()) {
             self.run(c, ctx);
@@ -1658,6 +1770,7 @@ impl ObjectWorld {
                     Ctx {
                         sender: Who::Object(id),
                         target: Some(id),
+                        ..Ctx::default()
                     },
                 );
             }
@@ -1766,7 +1879,7 @@ impl ObjectWorld {
             Kind::StartupCommand { command } if first_frame => {
                 let c = command.clone();
                 self.objects[id as usize].kind = kind;
-                self.run(&c, Ctx { sender: Who::Object(id), target: Some(id) });
+                self.run(&c, Ctx { sender: Who::Object(id), target: Some(id), ..Ctx::default() });
                 self.remove(id);
                 return;
             }
@@ -1838,7 +1951,7 @@ impl ObjectWorld {
             self.place_controlled(id, pos, rot, snap);
         }
         if let Some(c) = f.arrived.filter(|c| !c.is_empty()) {
-            self.run(&c, Ctx { sender: Who::Object(id), target: Some(id) });
+            self.run(&c, Ctx { sender: Who::Object(id), target: Some(id), ..Ctx::default() });
         }
     }
 
@@ -1856,7 +1969,7 @@ impl ObjectWorld {
             });
         }
         if !key.command.is_empty() {
-            self.run(&key.command, Ctx { sender: Who::Object(id), target: Some(id) });
+            self.run(&key.command, Ctx { sender: Who::Object(id), target: Some(id), ..Ctx::default() });
         }
     }
 
@@ -2042,8 +2155,12 @@ impl CommandHost for ObjectWorld {
                 "" => {
                     if let Some(t) = ctx.target {
                         self.deliver(t, message, ctx);
+                        continue;
                     }
-                    continue;
+                    match ctx.target_char {
+                        Who::Character(_) => vec![ctx.target_char],
+                        _ => continue,
+                    }
                 }
                 _ => {
                     for id in self.named_all(&n) {

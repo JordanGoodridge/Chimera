@@ -6,7 +6,9 @@
 //!   parentheses (and double quotes) group words into one argument, the
 //!   outer parentheses removed when used (`tokens`). Command words are
 //!   case-insensitive with exact argument counts (`ARG_COUNTS`); a
-//!   statement with the wrong count is skipped silently, one that fails
+//!   string whose first statement isn't valid is ignored whole (also the
+//!   bodies of `delay`, `repeat`, `loop`, `rand`), a later statement with
+//!   the wrong count is skipped silently, one that fails
 //!   (an unknown variable, a bad delay or `rand` chance, ...) stops the
 //!   rest of its string (Quirk 11).
 //! - `run` executes a string against a `CommandHost` (the object world:
@@ -18,7 +20,14 @@
 //!   runs at once; a delayed one longer than 255 bytes is cut; ids keep
 //!   15 characters.
 //!
-//! Known shortcuts: an unknown command word is skipped like a wrong
+//! A run that finishes inside a statement clears the outer string's
+//! sender and default target for what follows (world_objects.md
+//! Corrections (2026-10-22) 8); `tick` reaches commands queued into a later
+//! slot during its walk (13).
+//!
+//! Known shortcuts: an ignored (invalid) string doesn't count as a finished
+//! run for the context clearing, and `IF`/`WHEN` bodies are checked like any
+//! string (our readings); an unknown command word is skipped like a wrong
 //! argument count (the spec names only the failures above); `SHOWVAR` and
 //! `LISTCOMMANDS` write to the host's log (no on-screen display); nested
 //! runs deeper than `MAX_DEPTH` stop (ours: a map whose objects message
@@ -58,6 +67,9 @@ pub enum Who {
 pub struct Ctx {
     pub sender: Who,
     pub target: Option<ObjId>,
+    /// A character as the default target (a trigger's `CommandTouch`: the
+    /// toucher; Corrections (2026-10-22) 9).
+    pub target_char: Who,
 }
 
 /// What a command manager needs of the world around it.
@@ -266,6 +278,13 @@ pub struct CommandState {
     pub pending: Vec<Option<Pending>>,
     pub ticks: u64,
     pub depth: u32,
+    /// How many command-string runs have finished (a run that finishes
+    /// inside a statement clears the outer string's sender and target:
+    /// Corrections (2026-10-22) 8).
+    pub finished: u64,
+    /// The slot whose command the manager is running (a command queued
+    /// meanwhile takes another slot: Corrections (2026-10-22) 13).
+    pub running: Option<usize>,
 }
 
 impl Default for CommandState {
@@ -276,6 +295,8 @@ impl Default for CommandState {
             pending: vec![None; PENDING_MAX],
             ticks: 0,
             depth: 0,
+            finished: 0,
+            running: None,
         }
     }
 }
@@ -305,20 +326,53 @@ fn fail<T>(why: impl Into<String>) -> Result<T, Failure> {
 
 /// Run the command string `text` with `ctx`: each statement in turn,
 /// stopping at the first that fails (its reason returned).
+///
+/// A string whose first statement isn't valid (its first word a command
+/// word, its argument count exact) is ignored whole and fails
+/// (Corrections (2026-10-22) 6). A run that finishes inside a statement
+/// (a receiver's own commands, a `rand` branch, a message that is a
+/// command) clears the sender and default target for the statements
+/// after it (Corrections (2026-10-22) 8).
 pub fn run(host: &mut impl CommandHost, text: &str, ctx: Ctx) -> Result<(), Failure> {
     if host.commands().depth >= MAX_DEPTH {
         return fail("commands nested too deep");
     }
+    let list = statements(text);
+    let Some(first) = list.first() else { return Ok(()) };
+    if !valid_statement(first) {
+        return fail(format!("not a command: {first}"));
+    }
     host.commands().depth += 1;
+    let mut ctx = ctx;
     let mut result = Ok(());
-    for s in statements(text) {
-        if let Err(e) = statement(host, &s, ctx) {
+    for s in list {
+        let before = host.commands().finished;
+        let r = statement(host, &s, ctx);
+        if host.commands().finished != before {
+            ctx = Ctx::default();
+        }
+        if let Err(e) = r {
             result = Err(e);
             break;
         }
     }
-    host.commands().depth -= 1;
+    let state = host.commands();
+    state.depth -= 1;
+    state.finished += 1;
     result
+}
+
+/// Whether `s` (one statement) starts with a command word and has its
+/// exact argument count.
+fn valid_statement(s: &str) -> bool {
+    let t = tokens(s);
+    t.first().is_some_and(|w| !w.group && arg_count(&w.text) == Some(t.len()))
+}
+
+/// Whether the first statement of the stored command string `s` is valid
+/// (the bodies of `delay`, `repeat`, `loop`: Corrections (2026-10-22) 6).
+fn valid_string(s: &str) -> bool {
+    statements(s).first().is_some_and(|f| valid_statement(f))
 }
 
 /// Number argument.
@@ -353,7 +407,17 @@ fn uniform_int(host: &mut impl CommandHost, a: i32, b: i32) -> i32 {
 }
 
 /// Queue `command` after `delay` s (at once when the table is full).
-fn queue(host: &mut impl CommandHost, id: Option<String>, delay: f32, command: &str, ctx: Ctx, repeats: Repeats) {
+fn queue(
+    host: &mut impl CommandHost,
+    id: Option<String>,
+    delay: f32,
+    command: &str,
+    ctx: Ctx,
+    repeats: Repeats,
+) -> Result<(), Failure> {
+    if !valid_string(command) {
+        return fail(format!("not a command: {command}"));
+    }
     let mut command = command.to_string();
     if command.len() >= LENGTH_MAX {
         let mut cut = LENGTH_MAX - 1;
@@ -364,8 +428,9 @@ fn queue(host: &mut impl CommandHost, id: Option<String>, delay: f32, command: &
     }
     let state = host.commands();
     let born = state.ticks;
-    match state.pending.iter_mut().find(|p| p.is_none()) {
-        Some(slot) => {
+    let running = state.running;
+    match state.pending.iter_mut().enumerate().find(|(i, p)| p.is_none() && Some(*i) != running) {
+        Some((_, slot)) => {
             *slot = Some(Pending {
                 id,
                 delay,
@@ -373,10 +438,14 @@ fn queue(host: &mut impl CommandHost, id: Option<String>, delay: f32, command: &
                 ctx,
                 repeats,
                 born,
-            })
+            });
+            Ok(())
         }
         None => {
+            // The table is full: it runs at once, and that counts as a
+            // failure (Corrections (2026-10-22) 7).
             let _ = run(host, &command, ctx);
+            fail("command table full")
         }
     }
 }
@@ -399,62 +468,62 @@ fn statement(host: &mut impl CommandHost, s: &str, ctx: Ctx) -> Result<(), Failu
             message(host, &t[1].text, &t[2].text, ctx);
             Ok(())
         }
-        "VMSG" => match host.commands().vars.get(&t[1].text.to_ascii_lowercase()).copied() {
-            Some(Var::Obj(Some(o))) => {
+        // An unknown, non-object or empty variable sends nothing and the
+        // string goes on (Corrections (2026-10-22) 10).
+        "VMSG" => {
+            if let Some(Var::Obj(Some(o))) = host.commands().vars.get(&t[1].text.to_ascii_lowercase()).copied() {
                 for part in statements(&t[2].text) {
                     host.send_to(o, &part, ctx);
                 }
-                Ok(())
             }
-            Some(Var::Obj(None)) => Ok(()),
-            _ => fail(format!("no object variable {}", t[1].text)),
-        },
+            Ok(())
+        }
         "DELAY" => {
             let d = number(&t[1])?;
-            queue(host, None, d, &t[2].text, ctx, Repeats::Once);
-            Ok(())
+            queue(host, None, d, &t[2].text, ctx, Repeats::Once)
         }
         "DELAYID" => {
             let d = number(&t[2])?;
-            queue(host, Some(id(&t[1])), d, &t[3].text, ctx, Repeats::Once);
-            Ok(())
+            queue(host, Some(id(&t[1])), d, &t[3].text, ctx, Repeats::Once)
         }
         "DELAYVARIABLE" => {
             let Some(d) = host.commands().int(&t[1].text) else {
                 return fail(format!("no integer variable {}", t[1].text));
             };
-            queue(host, None, d as f32, &t[2].text, ctx, Repeats::Once);
-            Ok(())
+            queue(host, None, d as f32, &t[2].text, ctx, Repeats::Once)
         }
         "REPEAT" | "REPEATID" => {
             let (ident, a) = if w == "REPEATID" { (Some(id(&t[1])), &t[2..]) } else { (None, &t[1..]) };
             let (n0, n1, s0, s1) = (integer(&a[0])?, integer(&a[1])?, number(&a[2])?, number(&a[3])?);
-            let n = uniform_int(host, n0, n1);
-            if n <= 0 {
-                return Ok(());
-            }
+            // A roll of 0 (or less) still runs once (Corrections
+            // (2026-10-22) 12).
+            let n = uniform_int(host, n0, n1).max(1);
             let wait = uniform(host, s0, s1);
-            queue(host, ident, wait, &a[4].text, ctx, Repeats::Times(n as u32 - 1, s0, s1));
-            Ok(())
+            queue(host, ident, wait, &a[4].text, ctx, Repeats::Times(n as u32 - 1, s0, s1))
         }
         "LOOP" | "LOOPID" => {
             let (ident, a) = if w == "LOOPID" { (Some(id(&t[1])), &t[2..]) } else { (None, &t[1..]) };
             let (s0, s1) = (number(&a[0])?, number(&a[1])?);
             let wait = uniform(host, s0, s1);
-            queue(host, ident, wait, &a[2].text, ctx, Repeats::Forever(s0, s1));
-            Ok(())
+            queue(host, ident, wait, &a[2].text, ctx, Repeats::Forever(s0, s1))
         }
         "ABORT" => {
-            let want = id(&t[1]);
+            // Ids are kept to 15 characters but compared in full, so a
+            // longer one is never found; nothing found fails
+            // (Corrections (2026-10-22) 7).
+            let want = &t[1].text;
             let state = host.commands();
-            if let Some(slot) = state
+            match state
                 .pending
                 .iter_mut()
-                .find(|p| p.as_ref().is_some_and(|p| p.id.as_ref().is_some_and(|i| i.eq_ignore_ascii_case(&want))))
+                .find(|p| p.as_ref().is_some_and(|p| p.id.as_ref().is_some_and(|i| i.eq_ignore_ascii_case(want))))
             {
-                *slot = None;
+                Some(slot) => {
+                    *slot = None;
+                    Ok(())
+                }
+                None => fail(format!("nothing pending as {want}")),
             }
-            Ok(())
         }
         "RAND" => {
             let p = number(&t[1])?;
@@ -462,14 +531,15 @@ fn statement(host: &mut impl CommandHost, s: &str, ctx: Ctx) -> Result<(), Failu
                 return fail(format!("rand chance out of range: {p}"));
             }
             let pick = if host.random() < p { &t[2] } else { &t[3] };
-            let _ = run(host, &pick.text, ctx);
-            Ok(())
+            // A failing branch fails the statement (Corrections
+            // (2026-10-22) 11).
+            let pick = pick.text.clone();
+            run(host, &pick, ctx)
         }
         _ if w.starts_with("RAND") => {
             let n = t.len() - 1;
             let k = ((host.random() * n as f32) as usize).min(n - 1);
-            let _ = run(host, &t[1 + k].text, ctx);
-            Ok(())
+            run(host, &t[1 + k].text, ctx)
         }
         "INT" => {
             let name = t[1].text.to_ascii_lowercase();
@@ -586,7 +656,7 @@ pub fn message(host: &mut impl CommandHost, targets: &str, text: &str, ctx: Ctx)
     if is_command(text) {
         let first = targets.split_whitespace().next().unwrap_or("");
         let target = host.named(first).or(ctx.target);
-        let _ = run(host, text, Ctx { target, ..ctx });
+        let _ = run(host, text, Ctx { target, target_char: Who::Nobody, ..ctx });
         return;
     }
     for part in statements(text) {
@@ -709,18 +779,17 @@ fn changed(host: &mut impl CommandHost, var: &str) {
 
 /// One frame of the manager: every pending command's delay less the
 /// frame's real time `dt`; those at 0 or less run (in slot order), then
-/// repeat, loop or are freed. Commands queued in this frame wait for the
-/// next.
+/// repeat, loop or are freed. A command queued during the walk into a
+/// later slot is reached in the same walk (so `delay 0` queued by a
+/// running command runs this frame); the running command's own slot
+/// stays taken while it runs (Corrections (2026-10-22) 13). Commands
+/// queued outside the walk are first counted down in the next one.
 pub fn tick(host: &mut impl CommandHost, dt: f32) {
     host.commands().ticks += 1;
-    let now = host.commands().ticks;
     for i in 0..PENDING_MAX {
         let due = {
             let state = host.commands();
             let Some(p) = state.pending[i].as_mut() else { continue };
-            if p.born == now {
-                continue;
-            }
             p.delay -= dt;
             // (Float error aside: a delay of whole frames ends on its frame.)
             if p.delay > 1e-5 {
@@ -729,23 +798,31 @@ pub fn tick(host: &mut impl CommandHost, dt: f32) {
             (p.command.clone(), p.ctx, p.repeats)
         };
         let (command, ctx, repeats) = due;
-        match repeats {
+        let once = match repeats {
             Repeats::Times(left, s0, s1) if left > 0 => {
                 let wait = uniform(host, s0, s1);
                 if let Some(p) = host.commands().pending[i].as_mut() {
                     p.delay = wait;
                     p.repeats = Repeats::Times(left - 1, s0, s1);
                 }
+                false
             }
             Repeats::Forever(s0, s1) => {
                 let wait = uniform(host, s0, s1);
                 if let Some(p) = host.commands().pending[i].as_mut() {
                     p.delay = wait;
                 }
+                false
             }
-            _ => host.commands().pending[i] = None,
-        }
+            _ => true,
+        };
+        host.commands().running = Some(i);
         let _ = run(host, &command, ctx);
+        let state = host.commands();
+        state.running = None;
+        if once {
+            state.pending[i] = None;
+        }
     }
 }
 
@@ -796,11 +873,16 @@ mod tests {
     #[test]
     fn wrong_counts_are_skipped_and_failures_stop() {
         let mut h = Host::default();
-        // Wrong count: skipped, the rest runs.
-        run(&mut h, "msg A; msg B on", Ctx::default()).unwrap();
-        assert_eq!(h.sent, [("B".to_string(), "on".to_string())]);
-        // Case 20: an undeclared variable stops the string.
+        // A wrong count after the first statement: skipped, the rest runs.
+        run(&mut h, "msg B on; msg A; msg C on", Ctx::default()).unwrap();
+        assert_eq!(h.sent, [("B".to_string(), "on".to_string()), ("C".to_string(), "on".to_string())]);
+        // Corrections (2026-10-22) 6: a wrong first statement ignores the
+        // whole string.
         h.sent.clear();
+        assert!(run(&mut h, "msg A; msg B on", Ctx::default()).is_err());
+        assert!(run(&mut h, "mgs A on; msg B on", Ctx::default()).is_err());
+        assert!(h.sent.is_empty());
+        // Case 20: an undeclared variable stops the string.
         assert!(run(&mut h, "set Undeclared 1; msg A on", Ctx::default()).is_err());
         assert!(h.sent.is_empty());
         // `SET x -1` fails (a value must start with a digit).

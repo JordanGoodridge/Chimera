@@ -24,7 +24,7 @@ use lithtech_formats::world::{
     BspNode, BspPolygon, Object, Plane, Property, Surface, Value, World, WorldModel, model_flags, surface_flags,
 };
 
-fn prop(name: &str, value: Value) -> Property {
+pub(crate) fn prop(name: &str, value: Value) -> Property {
     Property {
         name: name.into(),
         flags: 0,
@@ -35,7 +35,7 @@ fn prop(name: &str, value: Value) -> Property {
 
 /// A box world model from `min` to `max` (file frame) named `name`
 /// (`physics`: the level's own physics BSP).
-fn cuboid(name: &str, min: [f32; 3], max: [f32; 3], physics: bool) -> WorldModel {
+pub(crate) fn cuboid(name: &str, min: [f32; 3], max: [f32; 3], physics: bool) -> WorldModel {
     let [x0, y0, z0] = min;
     let [x1, y1, z1] = max;
     let quads: [([f32; 3], [[f32; 3]; 4]); 6] = [
@@ -88,7 +88,7 @@ fn cuboid(name: &str, min: [f32; 3], max: [f32; 3], physics: bool) -> WorldModel
 
 /// A floor (y 0, ±2000 u) with a start point at the origin facing +Z,
 /// and `objects` with their world models.
-fn world_with(models: Vec<WorldModel>, objects: Vec<Object>) -> World {
+pub(crate) fn world_with(models: Vec<WorldModel>, objects: Vec<Object>) -> World {
     let mut w = World {
         models: vec![cuboid("PhysicsBSP", [-2000.0, -20.0, -2000.0], [2000.0, 0.0, 2000.0], true)],
         ..default()

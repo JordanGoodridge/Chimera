@@ -530,7 +530,7 @@ fn corrosive_fluid_burns() {
     assert!(!d.is_empty());
     for d in &d {
         assert_eq!(d.kind, DamageKind::Burn);
-        close(d.amount * movement_data().health_points, 5.0 * DT, 1e-5, "burn per tick");
+        close(d.amount * movement_data().health_points, 5.0 * 0.05 * DT, 1e-5, "burn per tick");
     }
 }
 
