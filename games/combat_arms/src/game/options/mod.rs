@@ -37,8 +37,10 @@
 //! - The profile is in the user's data folder (beside the console's
 //!   config), not the game's folder, and plain text; the Steam build's
 //!   encryption (Open question 1) isn't there.
-//! - There is no lobby, so the screen opens by the `options` console
-//!   command (refused in a match; `options force` opens it there too).
+//! - The screen opens from the lobby's start menu (`ui::lobby`: its option
+//!   entry runs the `options` console command, a modal over the current
+//!   page that leaves the room state alone) and by that console command
+//!   (refused in a match; `options force` opens it there too).
 //! - Resolution, depth, anti-aliasing, window mode, vsync, quality
 //!   presets and the Custom block are stored, derived (`Derived`) and
 //!   kept; the renderer applies none of them, only brightness (a ramp)

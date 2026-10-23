@@ -80,7 +80,7 @@ impl Commands {
             (Cmd::Normal, "/a/all"),
             (Cmd::Block, "/block"),
             (Cmd::UnBlock, "/unblock"),
-            (Cmd::Whisper, "/w/whisper"),
+            (Cmd::Whisper, "/whisper/w"),
             (Cmd::WhisperEnable, "/whisperenable"),
             (Cmd::WhisperIgnore, "/ignore"),
             (Cmd::WhisperUnignore, "/unignore"),
@@ -104,18 +104,15 @@ impl Commands {
     /// The command a typed line starts with and what follows its alias
     /// (the leading space included). Commands are tried in order; an
     /// alias matches at the start, case-insensitively, with no word
-    /// boundary; within a command the longest matching alias counts (the
-    /// spec says the first, but its case 24 has `/w` before `/whisper`
-    /// and still reads `/whisper Bob hi` as a whisper to Bob); a later
-    /// command that matches replaces an earlier one.
+    /// boundary; within a command the first matching alias in the order its
+    /// string lists them counts (a shorter alias listed before a longer one
+    /// wins; corrections 2026-10-22, 2); a later command that matches
+    /// replaces an earlier one.
     pub fn parse<'a>(&self, line: &'a str) -> Option<(Cmd, &'a str)> {
         let mut found = None;
         for cmd in ORDER {
-            let best = self.aliases[cmd.index()]
-                .iter()
-                .filter_map(|alias| strip_prefix_ci(line, alias).map(|rest| (alias.len(), rest)))
-                .max_by_key(|(len, _)| *len);
-            if let Some((_, rest)) = best {
+            let first = self.aliases[cmd.index()].iter().find_map(|alias| strip_prefix_ci(line, alias));
+            if let Some(rest) = first {
                 found = Some((cmd, rest));
             }
         }

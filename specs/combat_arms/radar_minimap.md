@@ -454,3 +454,111 @@ All at 1024 x 768 (x_r = y_r = 1) unless stated. "rel" = object position minus p
 9. **Death marks across rounds:** they are cleared only on entering a world. Check whether the client re-enters the world between rounds (then marks are per round).
 10. **Satellite scan timer resolution:** the server checks the 7000 ms in its message handling; the exact moment the "off" arrives was not settled (at most one server frame late is assumed).
 11. **A different round-start message order** exists in a mode family not in the room list (the image name before the corners); harmless for the modes that play, but a reader of that family would swap fields.
+
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's radar panel, full-screen map
+panel and the map key's handling against this spec and our
+implementation (`games/combat_arms/src/`, file:line relative to that
+folder). They change R6, R8, F1 and F4; the numbers and transforms above
+stand.
+
+1. **Arms Race: scanners never reveal an enemy on the radar** (R6 rule 5
+   and 6).
+   - Reference: in Arms Race the radar's enemy rules stop at the
+     last-stage test: an enemy in the last stage is drawn; any other enemy
+     is not drawn, and the scan rules (shared scan, own heartbeat contact,
+     a teammate's shared heartbeat list) are not consulted at all in that
+     mode. In every other mode the scan rules apply as written. The full
+     map is not affected: there a shared scan still shows every enemy in
+     Arms Race (F4).
+   - Ours: `game/radar/look.rs:148` reveals an enemy when it is in the
+     last stage **or** under any scan, in every mode.
+   - Expect: Arms Race, Alpha viewer, Bravo enemy at rel (100, 100) on
+     ladder step 3 of 5, satellite scan for Alpha running → not on Alpha's
+     radar, but on Alpha's full map. Same with the viewer's heartbeat
+     sensor on and the enemy 500 u ahead in view → not on the radar. The
+     same enemy on the last step → on the radar, with or without a scan.
+     Elimination, the same scan → on the radar (unchanged).
+
+2. **A flag carrier's edge arrow shows only the flag badge** (R6 "Flag
+   badge", R8).
+   - Reference: when a carrier is out of range, the icon drawn over the
+     turned arrow is the flag badge **instead of** the character icon (the
+     arrow's icon slot is given the badge's image). In range, the
+     character icon and the badge are both drawn, as R6 says. Bomb and
+     bullion carriers' arrows keep their own icon (no badge).
+   - Ours: `ui/hud/radar.rs:574` draws the character icon in the arrow's
+     box and then `:575-577` the badge over it.
+   - Expect: test 10's arrow (enemy carrier at rel (2000, 0)) draws two
+     images: the arrow `locationIndicator.dtx` and `character_flag_A.dtx`
+     in the same 64 x 32 box; no `character_enemy.dtx` in that box. In
+     range (rel (100, 100)) both `character_enemy.dtx` and the badge are
+     drawn.
+
+3. **The full map opens and stays open after the round has ended** (F1).
+   - Reference: the key press handler refuses to open the map after the
+     round has ended, but the map's own per-frame check, which runs every
+     frame and decides visibility alone, has no round-end condition: while
+     the key is held and none of F1's other conditions (chat input,
+     in-game popup, letterbox, video, AI freeze) holds, the map is shown.
+     So holding M during the round-end and intermission pause shows it
+     (from the next frame on), and a map held across the round end stays.
+   - Ours: `ui/hud/full_map.rs:124-127` hides it in the round-over,
+     intermission and match-over phases.
+   - Expect: hold the map key from 1 s before a round ends until 3 s after
+     → visible the whole time. Press it 2 s after the round ended → visible
+     from the frame after the press while held. F1's sentence "Pressing it
+     after the round has ended does not open it" is replaced by this.
+
+4. **Dead players on the full map** (F4; R11).
+   - Reference:
+     - A dead player's mark (the death icon, or any icon a dead player is
+       still shown with) is placed at the position the player had **when
+       the kill message arrived**, kept until the player is set alive
+       again; it does not follow the body afterwards. No wedge is drawn
+       for a dead player.
+     - **Enemies are not hidden for being dead**: an enemy that a rule of
+       F4 still reveals while dead (a shared scan running, Arms Race's
+       last stage, a bullion count not yet cleared) stays on the full map
+       with its living icon (`character_enemy.dtx` or the variant), no
+       wedge, at its death position, until respawn or until the rule
+       stops.
+     - **A dead VIP ally shows the VIP icon** (`character_VIP.dtx`) at its
+       death position, not `area_death_ally.DTX`: the VIP icon is chosen
+       after the death icon and replaces it. (A dead ally holding the
+       Bombing Run bomb would likewise show the bomb icon; the bomb is
+       dropped on death, so this does not occur in play.)
+     - The radar is unchanged: every dead player is hidden there.
+   - Ours: `game/radar/look.rs:172` drops every dead enemy from the full
+     map; `:159-165` gives every dead ally the death icon, VIP included;
+     `ui/hud/scene.rs:233` places dead players at their current transform.
+   - Expect: satellite scan by Alpha running, Bravo enemy E killed at V →
+     Alpha's full map shows `character_enemy.dtx` at V with no wedge until
+     E respawns or the scan ends; E is not on Alpha's radar. VIP Escort,
+     the own VIP killed at V → `character_VIP.dtx` at V on the full map, no
+     wedge. An ally killed at V whose body is then moved 200 u (a physics
+     push) → the death icon stays at V.
+
+5. **Alpha flag carriers may show no badge on the radar** (R6 "Flag
+   badge"; to verify before implementing).
+   - Reference: the radar looks up Bravo's flag-badge image (for an Alpha
+     carrier, who carries Bravo's flag) under a layout-attribute key whose
+     name is misspelt (two letters swapped) in the radar code only; the
+     full map, the observer map and the loose-flag icons use the correct
+     key `LargeMapBravoFlagMove`. Unless the HUD layout attributes also
+     carry the misspelt key, an Alpha carrier on the radar gets an empty
+     badge (nothing drawn over the icon) and an empty icon on its edge
+     arrow (correction 2: only the turned arrow image), while Bravo
+     carriers show `character_flag_A.dtx` normally.
+   - Ours: both teams' carriers get their badge (`game/radar/look.rs:87-89`).
+   - Expect (only once the install's `[HUDLargeMap]` section is checked
+     and has no misspelt key): an Alpha player carrying Bravo's flag at rel
+     (100, 100) → radar shows its character icon without a badge; out of
+     range → an arrow with no icon. Full map: badge `character_flag_B.dtx`
+     as now. Until checked, keep ours.
+
+Could not determine here: whether the install's layout attributes carry
+the misspelt key of correction 5; whether the HUD (and so the map's
+per-frame check) keeps updating during every kind of round-end screen
+(the scoreboard shown at a match's end may sit over it).

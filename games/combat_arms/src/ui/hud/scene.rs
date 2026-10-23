@@ -125,6 +125,12 @@ impl DeathMarks {
     }
 }
 
+/// Where each dead player was when its kill message arrived (F4, 2026-10-22
+/// correction 4): a dead player's mark stays there, it does not follow the
+/// body. Dropped when the player is alive again.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct DeadSpots(pub Vec<(Entity, (f64, f64))>);
+
 type Chars<'w, 's> = Query<
     'w,
     's,
@@ -183,7 +189,7 @@ fn seize_mode(mode: &str) -> bool {
     matches!(mode, "HQM" | "SQM2")
 }
 
-pub fn update_scene(inputs: SceneInputs, mut scene: ResMut<CaScene>) {
+pub fn update_scene(inputs: SceneInputs, mut scene: ResMut<CaScene>, mut spots: ResMut<DeadSpots>) {
     let mode = inputs.view.as_ref().map(|v| v.mode.clone()).unwrap_or_default();
     let warmup = inputs.view.as_ref().is_some_and(|v| v.warmup);
     let mut next = CaScene {
@@ -226,14 +232,21 @@ pub fn update_scene(inputs: SceneInputs, mut scene: ResMut<CaScene>) {
     let mut items: Vec<Thing> = Vec::new();
     let mut npcs: Vec<Thing> = Vec::new();
     let mut players: Vec<Thing> = Vec::new();
+    let mut still_dead: Vec<Entity> = Vec::new();
     for (e, t, h, team, carry, seen, _stats, intent, name, dead, npc, vip) in &inputs.chars {
         if Some(e) == local {
             continue;
         }
-        let at = radar::file_point(t.translation);
+        let alive = !dead && h.current > 0.0;
+        let mut at = radar::file_point(t.translation);
         let y = radar::file_height(t.translation);
         let yaw = yaw_of(intent, t);
-        let alive = !dead && h.current > 0.0;
+        if !alive {
+            still_dead.push(e);
+            if let Some((_, p)) = spots.0.iter().find(|(s, _)| *s == e) {
+                at = *p;
+            }
+        }
         let team_id = team.map_or(0, |t| t.0);
         let allied = viewer.team != 0 && team_id == viewer.team;
         if npc {
@@ -260,6 +273,7 @@ pub fn update_scene(inputs: SceneInputs, mut scene: ResMut<CaScene>) {
             alive,
             carry: carry.copied().unwrap_or_default(),
             vip,
+            arms_race: mode == "VWRM",
             last_stage: arms_last(e),
             shared_scan: seen.scanned_by(viewer.team),
             contact: match (&my_scan, &scan_view) {
@@ -367,6 +381,7 @@ pub fn update_scene(inputs: SceneInputs, mut scene: ResMut<CaScene>) {
         }
     }
 
+    spots.0.retain(|(e, _)| still_dead.contains(e));
     next.things.extend(items);
     next.things.extend(npcs);
     next.things.extend(players);
@@ -383,6 +398,7 @@ pub fn track_deaths(
     killers: Query<(), (With<Health>, With<Intent>)>,
     loads: Option<Res<MapLoads>>,
     mut marks: ResMut<DeathMarks>,
+    mut spots: ResMut<DeadSpots>,
 ) {
     let l = loads.map_or(0, |l| l.0);
     if marks.loads != Some(l) {
@@ -392,6 +408,13 @@ pub fn track_deaths(
         };
     }
     for d in died.read() {
+        if let Ok((t, _, false)) = victims.get(d.entity) {
+            let at = radar::file_point(t.translation);
+            match spots.0.iter_mut().find(|(e, _)| *e == d.entity) {
+                Some(s) => s.1 = at,
+                None => spots.0.push((d.entity, at)),
+            }
+        }
         let Some(a) = d.attacker else { continue };
         if a == d.entity || !killers.contains(a) {
             continue;

@@ -574,3 +574,33 @@ Common setup unless stated: stock path of M2 (no smoothing); a profile file as d
 9. **Levels above 1.** Sound levels reach 1.27 (S2). Whether the sound library clamps them to 1.0 or amplifies is unknown; and whether the music stream is also under the effects master. Check by ear: music loudness at effects volume 0 vs 100.
 10. **Receive-notes default.** `[OtherOption] AllowNote` is a boolean while the switch holds a three-way service value (friends, all, nobody, unknown); how TRUE/FALSE map was not traced.
 11. **Pitch limit.** The first-person pitch clamp is outside this spec; confirm it belongs to `movement.md`'s eye/camera section.
+
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's options screen and its
+callers against this spec and our implementation
+(`games/combat_arms/src/`, file:line relative to that folder). It changes
+P "Opening".
+
+1. **The options screen is reached from the lobby's start menu** (P
+   "Opening"; `lobby.md` N, `StartButton`).
+   - Reference: the lobby's top-bar "menu" button opens the start-menu
+     popup, whose option entry opens the options screen as a modal screen
+     over whatever lobby screen is current (room list or waiting room).
+     Closing it (OK, Cancel, close) returns to that screen unchanged: the
+     player's room state is not touched (no un-ready, no *outfitting*
+     extra state is sent, unlike the inventory and shop). (A second-password popup can also open it on the Other tab;
+     out of scope offline.) There is no way to open it in a match.
+   - Ours: the screen opens only with the `options` console command
+     (`game/options/mod.rs:40-41`, `game/options/flow.rs:272`); the lobby
+     screens have no start menu (`ui/lobby.rs:31-35`), so a player in the
+     lobby cannot reach the options.
+   - Expect: in the waiting room as a ready non-host, open "menu" → the
+     option entry → the options screen shows over the room on the
+     Graphic tab; change the sensitivity, press OK → back in the waiting
+     room, still ready, the new sensitivity in effect; the other players
+     saw no state change. Same from the room list.
+
+Could not determine here: whether the waiting room's start timeout (`lobby.md`
+S step 6) survives opening and closing the options during a countdown (the
+waiting room re-runs part of its focus handling when the options close).

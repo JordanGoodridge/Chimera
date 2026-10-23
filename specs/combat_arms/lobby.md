@@ -580,3 +580,94 @@ Common setup unless stated: US room data and string table; one offline channel w
 14. **Contradiction check with `ui_system.md`**: H says team and loadout are chosen "in the waiting room"; the loadout is chosen in the separate inventory screen reached from it (E). Not a real conflict. Its question 6 is answered above.
 15. **Contradiction check with `inventory.md` and `attachments.md`**: none. Addition: the game server drops weapons the room's arms option forbids before building the in-match list (E), which `inventory.md` section 1 does not mention; `attachments.md` question 6 (lobby fitting rules) is answered in part by E (attachments per weapon per set; ownership is the service's).
 16. **Host change during a countdown**: the client prints "Cancel..." and re-enables buttons, but the lobby keeps counting. Check live whether the match still starts.
+
+## Corrections (2026-10-22)
+
+From a comparison pass over the reference's room list, waiting room and
+the lobby service's room rules against this spec and our implementation
+(`games/combat_arms/src/game/lobby/`, file:line relative to that folder).
+They change L, R, S and J.
+
+1. **START while the room is not waiting means "join the match", for the
+   host too** (R "Who sees which button", J, K "The host leaving").
+   - Reference: the START/F5 action first looks at the room's state, not
+     at who is host. While the room is *starting*, *in game* or *closing*,
+     START from **anyone** (the host included) runs the join path of J:
+     the 1st Arms check and the abilities check on the player's own
+     loadout (correction 2), then a "ready" request that the lobby turns
+     into a join (it refuses a host's ready only while the room is
+     *waiting*). Only while the room is *waiting* does the host's START run
+     the start path of S. So a host who left a running match with EXIT
+     (X), or a player who became host while the match was running (K),
+     rejoins with START like anyone else.
+   - Ours: `client.rs:312-330` sends a host's START through the player
+     count check (`check::start_check`, which ignores the room state) and
+     `service.rs:773-776` refuses a host's start when the room is not
+     *waiting*; the host can never rejoin a running match.
+   - Expect: room *in game* with Join Mid Combat on; the host leaves the
+     match with EXIT and is *waiting* in the room; pressing START → the
+     host becomes *in game*, gets the go notice and connects. With Join
+     Mid Combat off → "Please wait... the game is currently in the final
+     round or is just ending." No "There aren't enough players" message in
+     either case.
+
+2. **A mid-match join runs the same loadout checks as READY** (J, E "The
+   1st Arms check").
+   - Reference: START pressed to join a *starting*, *in game* or *closing*
+     room first runs the 1st/2nd Arms check and (with Abilities on) the
+     abilities check on the player's loadout; a failure shows the option's
+     message with "Go to Shop" and sends nothing.
+   - Ours: `client.rs:314-318` sends a non-host's START at once, without
+     the checks.
+   - Expect: room *in game*, 1st Arms "Pistols Only", the player's
+     loadout has no pistol; START → "You do not have a pistol equipped for
+     'Pistols Only' mode." with "Go to Shop"; no request sent.
+
+3. **READY toggles a local flag and allows one request at a time** (S
+   "READY").
+   - Reference: READY flips the client's own ready flag at once (the
+     button's red text follows immediately) and sends the matching ready
+     on/off; further READY presses are ignored until the lobby's reply to
+     that request arrives. A refused request (room closing, start failure)
+     turns the flag off again. The 1st Arms and abilities checks run on
+     every READY press, also when it would un-ready.
+   - Ours: `client.rs:301-309` derives on/off from the seat's state as
+     last notified, so two quick presses before the notice send two
+     "ready on" requests (the second is refused by the lobby), and the
+     checks run only when readying.
+   - Expect: F5 pressed twice within one lobby round trip by a waiting
+     non-host → exactly one "ready on" request; the button shows ready from
+     the first press. After the reply, F5 → one "ready off".
+
+4. **What re-sorts and re-filters the room list** (L "Refresh" and
+   "Filters").
+   - Reference: the filters are applied only when the list is rebuilt (a
+     header click, a filter change, a created room, the screen gaining
+     focus, and the changes below); a room-changed notice otherwise only
+     updates the row's cells. A change rebuilds the list when it is:
+     - a map, mode or Pure Combat change: always (re-sorted and
+       re-filtered);
+     - an Elite Moderator level change: only the moderator float is
+       redone;
+     - a password, player count, max players or room state change: only
+       when the room **now fails** a filter, so it disappears at once.
+     - Every other change (name, goal, Join Mid Combat, options, arms)
+       rebuilds nothing.
+     So a room that starts passing the filters again (becomes joinable,
+     loses its password) does **not** reappear until the next rebuild, and
+     a room whose Join Mid Combat is switched off while in game stays
+     listed (greyed) under "Joinable" until then.
+   - Ours: `list.rs:173-184` filters every frame from the current data
+     (rooms appear and disappear at once), and `list.rs:108-119` re-sorts
+     only on a Pure Combat change, so a map or mode change leaves a list
+     sorted by Map or Mode out of order.
+   - Expect: list sorted by Map ascending, rooms A (map "Junk Flea") and B
+     ("Warehouse"); B's map changes to "Cargo" → order B, A at once.
+     "Joinable" checked, room C full (16/16) and hidden; a player leaves C
+     (15/16) → C still hidden; click any header → C shown. "Joinable"
+     checked, room D (waiting) becomes full → D hidden at once.
+
+Could not determine here: whether a READY request refused for a reason
+other than the two the client names (room closing, start failure) also
+turns the local flag back off (the client only does so for those two), so
+correction 3's "refused" is limited to them.

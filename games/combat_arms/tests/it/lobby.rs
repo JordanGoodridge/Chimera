@@ -133,9 +133,48 @@ fn case_1_rows_show_numbers_status_and_greyed_rooms() {
 fn case_2_joinable_and_no_password_filters() {
     let mut v = case_list();
     v.filters.joinable = true;
+    v.rebuild();
     assert_eq!(titles(&v), ["Alpha", "delta"]);
     v.filters.no_password = true;
+    v.rebuild();
     assert_eq!(titles(&v), ["Alpha"]);
+}
+
+/// Corrections 2026-10-22 (4): a map change re-sorts a list sorted by Map.
+#[test]
+fn corr4_a_map_change_resorts_the_list() {
+    let mut v = RoomListView::new(LobbyData::built_in());
+    let mut a = summary(0, "A", RoomState::Waiting, 1, 8, true, false);
+    a.map = 1; // JUNK FLEA
+    let mut b = summary(1, "B", RoomState::Waiting, 1, 8, true, false);
+    b.map = 0; // OIL RIG
+    v.set_all(vec![a.clone(), b]);
+    v.click(Column::Map);
+    assert_eq!(titles(&v), ["A", "B"]);
+    a.map = 2; // WAREHOUSE
+    v.changed(a);
+    assert_eq!(titles(&v), ["B", "A"], "re-sorted at once");
+}
+
+/// Corrections 2026-10-22 (4): filters apply only on a rebuild: a room that
+/// starts failing vanishes at once, one passing again stays hidden.
+#[test]
+fn corr4_filters_apply_on_rebuild_only() {
+    let mut v = case_list();
+    v.filters.joinable = true;
+    v.rebuild();
+    assert_eq!(titles(&v), ["Alpha", "delta"]);
+    // Alpha becomes full: gone at once.
+    v.changed(summary(0, "Alpha", RoomState::Waiting, 16, 16, true, false));
+    assert_eq!(titles(&v), ["delta"]);
+    // It has room again: still hidden until a rebuild.
+    v.changed(summary(0, "Alpha", RoomState::Waiting, 15, 16, true, false));
+    assert_eq!(titles(&v), ["delta"]);
+    v.click(Column::Num);
+    assert_eq!(titles(&v), ["Alpha", "delta"]);
+    // A name change rebuilds nothing.
+    v.changed(summary(0, "Renamed", RoomState::Waiting, 15, 16, true, false));
+    assert_eq!(titles(&v), ["Renamed", "delta"]);
 }
 
 #[test]
@@ -920,6 +959,9 @@ fn case_38_f5_is_start_for_the_host_and_ready_for_the_others() {
     other.apply(Notice::Entered(detail.clone()), 0.0);
     other.f5(Ok(()));
     assert_eq!(other.take_outbox(), [Request::Ready(true)]);
+    // The lobby's reply (here a refusal) frees the next press.
+    other.apply(Notice::Refused(Refusal::FinalRound), 0.0);
+    other.message = None;
     // A failed loadout check sends nothing and offers the message.
     other.f5(Err("You do not have a sniper rifle equipped for 'Sniper Only' mode.".into()));
     assert!(other.take_outbox().is_empty());
@@ -1032,6 +1074,87 @@ fn case_42_a_late_joiner_of_a_starting_room_goes_in_with_the_others() {
     l.request(1, Request::Start).unwrap();
     hello(&mut l, 3);
     assert_eq!(l.request(3, Request::Enter { room, password: String::new() }), Err(Refusal::NoMidCombat));
+}
+
+/// A client in `room`'s detail as player `id`.
+fn client_in(l: &Lobby, room: RoomId, id: PlayerId) -> ClientLobby {
+    let mut c = ClientLobby::new(LobbyData::built_in(), id, "me");
+    c.apply(Notice::Entered(l.room(room).unwrap().detail()), 0.0);
+    c
+}
+
+/// Corrections 2026-10-22 (1): START while the room is in game is a join,
+/// the host's too: no player count check, no "not enough players".
+#[test]
+fn corr1_the_host_rejoins_a_running_match_with_start() {
+    let (mut l, room) = room_in_game(true);
+    // The host left the match with EXIT and waits in the room.
+    l.request(1, Request::ReturnToRoom(ReturnReason::Normal)).unwrap();
+    assert_eq!(state(&l, room, 1), PlayerState::Waiting);
+    l.take_notices();
+    let mut host = client_in(&l, room, 1);
+    host.f5(Ok(()));
+    assert!(host.message.is_none(), "{:?}", host.message);
+    assert_eq!(host.take_outbox(), [Request::Start]);
+    assert_eq!(l.request(1, Request::Start), Ok(()));
+    assert_eq!(state(&l, room, 1), PlayerState::InGame);
+    let notices = l.take_notices();
+    assert!(notices.iter().any(|(a, n)| *a == Audience::Player(1) && matches!(n, Notice::Go { .. })));
+}
+
+/// The same with Join Mid Combat off: the final-round message.
+#[test]
+fn corr1_without_join_mid_combat_the_hosts_start_is_refused() {
+    let (mut l, room) = room_in_game(false);
+    l.request(1, Request::ReturnToRoom(ReturnReason::Normal)).unwrap();
+    assert_eq!(l.request(1, Request::Start), Err(Refusal::FinalRound));
+    assert_eq!(state(&l, room, 1), PlayerState::Waiting);
+}
+
+/// Corrections 2026-10-22 (2): a join runs the loadout checks first.
+#[test]
+fn corr2_a_mid_match_join_runs_the_arms_check() {
+    let (l, room) = room_in_game(true);
+    let mut c = client_in(&l, room, 3);
+    let why = "You do not have a pistol equipped for 'Pistols Only' mode.";
+    c.f5(Err(why.into()));
+    assert!(c.take_outbox().is_empty(), "nothing is sent");
+    assert_eq!(c.message.as_deref(), Some(why));
+    c.message = None;
+    c.f5(Ok(()));
+    assert_eq!(c.take_outbox(), [Request::Start]);
+}
+
+/// Corrections 2026-10-22 (3): READY flips the flag at once, one request in
+/// flight; the arms check runs on every press.
+#[test]
+fn corr3_ready_allows_one_request_at_a_time() {
+    let mut l = lobby();
+    let room = room_with(&mut l, "TDM", 16, 1);
+    let mut c = client_in(&l, room, 2);
+    c.f5(Ok(()));
+    assert!(c.is_ready(), "the flag follows the first press");
+    c.f5(Ok(()));
+    c.f5(Ok(()));
+    assert_eq!(c.take_outbox(), [Request::Ready(true)], "exactly one request");
+    // The reply: the seat is ready; the next press un-readies.
+    c.apply(Notice::State(2, PlayerState::Ready, Extra::None), 1.0);
+    assert!(c.is_ready());
+    c.f5(Ok(()));
+    assert_eq!(c.take_outbox(), [Request::Ready(false)]);
+    c.apply(Notice::State(2, PlayerState::Waiting, Extra::None), 2.0);
+    assert!(!c.is_ready());
+    // A refusal turns the flag back.
+    c.f5(Ok(()));
+    assert!(c.is_ready());
+    c.apply(Notice::Refused(Refusal::FinalRound), 3.0);
+    assert!(!c.is_ready());
+    c.take_outbox();
+    // The check runs when un-readying too.
+    c.apply(Notice::State(2, PlayerState::Ready, Extra::None), 4.0);
+    c.f5(Err("no".into()));
+    assert!(c.take_outbox().is_empty());
+    assert_eq!(c.message.as_deref(), Some("no"));
 }
 
 // ---------------------------------------------------------------------------

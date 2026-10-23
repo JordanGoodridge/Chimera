@@ -274,7 +274,9 @@ fn typing(world: &mut World) {
             (KeyCode::Digit0, 0),
         ];
         for (key, n) in DIGITS {
-            if world.resource::<ButtonInput<KeyCode>>().just_pressed(key) && radio_number(world, n) {
+            // Only the keys 1 to 6 are bound to the menu picks (corrections
+            // 2026-10-22, 1): 7 to 0 do nothing and the menu stays open.
+            if (1..=6).contains(&n) && world.resource::<ButtonInput<KeyCode>>().just_pressed(key) && radio_number(world, n) {
                 world.resource_mut::<ButtonInput<KeyCode>>().clear_just_pressed(key);
             }
             if world.resource::<CaChat>().radio_open.is_none() {
