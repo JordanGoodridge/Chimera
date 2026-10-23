@@ -247,7 +247,7 @@ const PANEL: [u8; 4] = [14, 18, 22, 235];
 pub struct MapRoot;
 
 pub fn spawn_root(mut commands: Commands) {
-    commands.spawn((MapRoot, layer(super::HUD_Z + 20)));
+    commands.spawn((MapRoot, layer(super::HUD_Z + 20), crate::client::hud::HudRoot(crate::game::GAME)));
 }
 
 fn spawn_text(p: &mut ChildSpawnerCommands, s: &str, centre: Vec2, size: f32, col: [u8; 4], fonts: Option<&UiFonts>, faces: Option<&CaFaces>, centred: bool, outline: bool) {

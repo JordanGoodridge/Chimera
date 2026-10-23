@@ -205,6 +205,7 @@ struct Pending {
     state: Option<OwnState>,
     done: u64,
     alive: Option<bool>,
+    rebased: Option<u32>,
     life_changed: bool,
 }
 
@@ -611,10 +612,11 @@ fn receive_own_states(
     if s.tick <= current {
         return;
     }
-    if pending.alive.is_some_and(|a| a != s.alive) {
+    if pending.alive.is_some_and(|a| a != s.alive) || pending.rebased.is_some_and(|r| r != s.rebased) {
         pending.life_changed = true;
     }
     pending.alive = Some(s.alive);
+    pending.rebased = Some(s.rebased);
     graph.buffered = s.buffered;
     graph.missed = s.missed;
     graph.late = s.late;
@@ -624,7 +626,12 @@ fn receive_own_states(
     };
     if let Some(p) = player {
         let (e, slot, seed) = *p;
-        if slot.is_none_or(|m| m.0 != s.movement)
+        // The first movement mirrored here (prediction starts with it);
+        // later ones with the state they came in, at its tick
+        // (`reconcile`): a switch we predicted ourselves (the held
+        // weapon's game: `slots::FollowsWeapon`) must not be undone by an
+        // older state.
+        if slot.is_none()
             && let Some(id) = registry.as_ref().and_then(|r| r.get(&s.movement)).map(|m| m.id)
         {
             commands.queue(set_movement(e, id));
@@ -788,6 +795,17 @@ fn reconcile(world: &mut World, player: Entity, server: OwnState, restart: bool)
         .get::<Transform>(player)
         .map(|t| t.translation)
         .unwrap_or_default();
+    // The server's movement at S first (its markers' states come with the
+    // blob, decoded over the fresh ones), so the replay moves as it did.
+    let movement = world
+        .get_resource::<MovementRegistry>()
+        .and_then(|r| r.get(&server.movement))
+        .map(|m| m.id);
+    if let Some(id) = movement
+        && world.get::<MovementSlot>(player).is_none_or(|m| m.0 != id)
+    {
+        set_movement(player, id).apply(world);
+    }
     let decoded =
         world.resource_scope(|world, registry: Mut<PredictedComponents>| registry.decode(world, player, &server.state));
     if let Err(e) = decoded {

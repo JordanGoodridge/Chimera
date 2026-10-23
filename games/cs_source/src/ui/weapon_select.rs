@@ -66,8 +66,10 @@ impl Plugin for WeaponSelectPlugin {
     fn build(&self, app: &mut App) {
         // The selection's logic and commands are the shell's; CS:S's
         // timings, when slot keys go through the row, and its look here.
-        app.add_plugins(WeaponMenuPlugin)
-            .insert_resource(TIMES)
+        if !app.is_plugin_added::<WeaponMenuPlugin>() {
+            app.add_plugins(WeaponMenuPlugin);
+        }
+        app.insert_resource(TIMES)
             .init_resource::<FastSwitch>()
             .init_resource::<History>()
             .add_systems(
@@ -80,7 +82,11 @@ impl Plugin for WeaponSelectPlugin {
                         .run_if(resource_exists::<ActiveHud>),
                 )
                     .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
-            );
+            )
+            // The look gone (a map without one, or put away for another
+            // game's HUD): the row and history come down, slot keys switch
+            // at once.
+            .add_systems(Update, put_down.run_if(resource_removed::<ActiveHud>));
         crate::console::resource_cvar::<FastSwitch, u8>(
             app,
             "hud_fastswitch",
@@ -104,6 +110,15 @@ impl Plugin for WeaponSelectPlugin {
 /// `hud_fastswitch`.
 #[derive(Resource, Default)]
 pub struct FastSwitch(pub u8);
+
+/// The row and the history taken down; the slot keys no longer go
+/// through the row.
+fn put_down(parts: Query<Entity, With<SelectPart>>, mut menu: ResMut<WeaponMenu>, mut commands: Commands) {
+    for e in &parts {
+        commands.entity(e).despawn();
+    }
+    menu.takes_slots = false;
+}
 
 /// How long the selection shows: open waiting for a pick, showing a fast
 /// switch, the last part of either it fades over (ours; the game's timing

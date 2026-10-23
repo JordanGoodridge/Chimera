@@ -43,16 +43,20 @@
 //! Known shortcuts: one round per match; the map pool's first map is the
 //! app's to load (no map vote or rotation); `character` is informational
 //! (the character kit isn't a slot yet), `movement` is set on each
-//! player at its spawn; teams other than the mode's are refused, not
+//! player at its spawn (with `identity = "weapon"`, the movement and body
+//! are the held weapon's game's: `identity`); teams other than the mode's are refused, not
 //! adapted; no objective primitives (zones, carriables), scoring table
 //! beyond kills and deaths, or built-in modifiers yet; the HUD data is the
 //! local player's only (never a spectated player's); definitions travel to network clients by id only
-//! (their hash and bytes are L3's).
+//! (their hash and bytes are L3's): a client starts the server's minigame by
+//! its id from its own definitions (`join_remote`, `minigame_net`), and
+//! can't start or restart one itself.
 
 pub mod def;
 pub mod hud;
 pub mod ladder;
 pub mod runtime;
+pub mod spawns;
 
 use bevy::prelude::*;
 
@@ -146,6 +150,11 @@ pub struct ActiveMinigame {
     pub rules: RulesModule,
 }
 
+/// The names `MinigameEvent`s have, in a fixed order: a network server
+/// sends an event's place in it (`chimera_net::minigame_net`). A rules module's own
+/// event names go at the end.
+pub const EVENT_NAMES: &[&str] = &["rung_up", "rung_down", "match_won"];
+
 /// A named moment of the match, for a HUD or an announcer.
 #[derive(Message, Clone, Debug, PartialEq)]
 pub struct MinigameEvent {
@@ -196,6 +205,13 @@ pub fn check(world: &World, def: &MinigameDef) -> Result<(), String> {
     {
         return Err(fail(format!("slots.movement: no movement `{m}` registered")));
     }
+    // Following the weapon: each weapon set's game moves its own way.
+    if def.slots.identity == Some(def::IdentityDef::Weapon)
+        && let Some(registry) = world.get_resource::<MovementRegistry>()
+        && let Some(g) = def.slots.weapons.iter().find(|g| registry.of_game(g).is_none())
+    {
+        return Err(fail(format!("slots.identity = \"weapon\": no movement of `{g}` registered ({g}:...)")));
+    }
     Ok(())
 }
 
@@ -213,6 +229,18 @@ pub fn weapon(def: &MinigameDef, catalog: &WeaponCatalog, id: &str) -> Result<&'
 /// Start minigame `id`: its definition checked and made the active one,
 /// the gameplay switched to it, a fresh match that every player joins.
 pub fn start(world: &mut World, id: &str) -> Result<&'static MinigameDef, String> {
+    begin(world, id, true)
+}
+
+/// A network client's `start`: the minigame the server plays, made the
+/// local gameplay (its slots, the rules module's parameters, the
+/// modifiers) with the match and the players as the server replicated
+/// them (`chimera_net::minigame_net`), not started over.
+pub fn join_remote(world: &mut World, id: &str) -> Result<&'static MinigameDef, String> {
+    begin(world, id, false)
+}
+
+fn begin(world: &mut World, id: &str, fresh: bool) -> Result<&'static MinigameDef, String> {
     let def = world
         .get_resource::<Minigames>()
         .and_then(|m| m.get(id))
@@ -239,7 +267,9 @@ pub fn start(world: &mut World, id: &str) -> Result<&'static MinigameDef, String
     };
     gameplay::switch_gameplay(world, gameplay);
     world.insert_resource(ActiveMinigame { def, rules });
-    restart(world);
+    if fresh {
+        restart(world);
+    }
     (rules.start)(world, def);
     let modifiers: Vec<(Modifier, toml::Value)> = def
         .modifiers
@@ -257,6 +287,7 @@ pub fn start(world: &mut World, id: &str) -> Result<&'static MinigameDef, String
 pub fn restart(world: &mut World) {
     world.insert_resource(Match::default());
     world.insert_resource(mode::flow::MissionFrames::default());
+    spawns::reset(world);
     let players: Vec<Entity> = world.query_filtered::<Entity, With<InMinigame>>().iter(world).collect();
     for p in players {
         world.entity_mut(p).remove::<(InMinigame, Protected)>().insert(Score::default());
@@ -311,6 +342,14 @@ impl MinigameAppExt for App {
     }
 }
 
+/// Why a client can't start or restart a minigame.
+const SERVER_PICKS: &str = "the server picks the minigame and starts its matches; you are a client of it";
+
+/// This process is a client of a server (which plays the minigame).
+fn client(w: &World) -> bool {
+    w.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client)
+}
+
 /// Minigames: the registry, the runtime's systems (the server's, while a
 /// minigame is the gameplay), the built-in `chimera:ladder` and the
 /// console. An app (or a test) adds it on its simulation; none is
@@ -326,6 +365,9 @@ impl Plugin for MinigamePlugin {
             .init_resource::<hud::MinigameHud>()
             .add_systems(Update, hud::update)
             .add_minigame_rules(ladder::RULES);
+        if !app.is_plugin_added::<crate::identity::IdentityPlugin>() {
+            app.add_plugins(crate::identity::IdentityPlugin);
+        }
         runtime::plugin(app);
         app.console_command(
             "minigames",
@@ -360,6 +402,7 @@ impl Plugin for MinigamePlugin {
                     w.get_resource::<ActiveMinigame>()
                         .map_or("no minigame playing".into(), |m| format!("{}: {}", m.def.id, m.def.name)),
                 )),
+                Some(_) if client(w) => Err(SERVER_PICKS.into()),
                 Some(id) => start(w, id).map(|d| Some(format!("playing {}: {}", d.id, d.name))),
             },
         )
@@ -377,6 +420,9 @@ impl Plugin for MinigamePlugin {
             },
         )
         .console_command("minigame_restart", "Play the minigame's match again from the start.", |w, _| {
+            if client(w) {
+                return Err(SERVER_PICKS.into());
+            }
             if !w.contains_resource::<ActiveMinigame>() {
                 return Err("no minigame playing".into());
             }

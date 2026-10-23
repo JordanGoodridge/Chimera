@@ -1611,6 +1611,44 @@ life's reach, the map pool doesn't rotate, a client joins a party server
 by id only (L3's match manifest), objective primitives and modifiers
 (D2) and more original minigames.
 
+L2, identity follows the weapon (10-22): a minigame option, `[slots]
+identity = "weapon"` (on in the gun game): each player is the game of the
+weapon it holds (its id's `game:` prefix), switching whenever that changes
+(a rung's swap, the knife, a pickup, `give`). Generic in Chimera
+(`chimera_sim::identity`, `slots::FollowsWeapon`, `slots::GameIdentity`);
+no game names the other; the party composes both.
+Movement: switched in the predicted tick right after the weapon selection
+(`follow_weapon`, `MovementRegistry::of_game`), from the predicted
+inventory only, so server and client switch on the same tick; the client
+now takes a server's movement change with the state it came in
+(`predict::reconcile`, before the decode), not on receipt; a server-made
+swap counts in `core::Rebased` (`OwnState::rebased`), a restart for the
+client, not an error. Body: `GameIdentity` (server's, replicated) picks
+the map's model among its game's (`MapCharacterModel::game`,
+`CharacterModels::for_identity`; none: the shell's capsule); Combat Arms
+dresses, animates and leaves corpses only for its own identity, CS:S's
+animation drives only CS:S's bodies (`CharacterModels::is_of`);
+`KitLoad::Players` / `MapSources::players` keep the map game's player
+bodies (after the gameplay's) and HUD look on the party's CS:S maps. HUD:
+`hud_follows_identity` makes the local player's identity the `hud` slot;
+the shell's `client::hud::HudSwitchPlugin` keeps only the active HUD up
+(`HudRoot`s hidden, `GameDraws` from `HudDraws`, the map's HUD look put
+away while another game's HUD draws, `HudLookOwner`), CS:S's HUD parts
+tear down on the look's removal whatever the HUD (X1's "a HUD switched
+off keeps its nodes" fixed for both HUDs); the minigame's panel is on
+both (CS:S's `ui::minigame_hud`). Tests: lucker_party's `identity`
+(rung-ups and the knife: movement and body; NetSim with two clients:
+zero prediction errors, every compared tick bit for bit, the other client
+sees each new body) and `hud` (the HUD swap with the panel on both).
+Left: on Combat Arms' maps (Warehouse) CS:S's bodies, HUD look and gun
+models aren't there (a CS:S player is a capsule with the shell's plain
+HUD); CS:S's radar, spectator panel and target ids aren't in the party;
+(a network client's minigame panel was empty here until L3: it now
+plays the server's minigame, `minigame_net`, and its panel follows the
+server's state, `net_gun_game`); CS:S's team models are by team (free for all: everyone but team 1
+wears the CT model); the shell's binds and movement cvars stay the
+gameplay's `binds` game's.
+
 X6, done (10-21), with these choices. `GameInfo::steam` is an
 `Option<SteamGame>`; `install::STEAM_GAMES` and `steam_game` are gone, and
 `resolve`/`resolve_with` take the `SteamGame` as an argument, so the mount

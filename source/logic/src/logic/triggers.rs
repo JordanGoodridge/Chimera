@@ -687,3 +687,15 @@ pub(super) fn input(
     }
     true
 }
+
+/// The volumes (entity space) of the enabled `trigger_hurt`s that hurt
+/// (damage above 0), for what places a player (spawn spots keep out of
+/// them).
+pub fn hurt_zones(w: &LogicWorld) -> Vec<&MapBrush> {
+    w.ids()
+        .into_iter()
+        .filter_map(|id| trig(w, id))
+        .filter(|t| t.enabled && matches!(&t.kind, Kind::Hurt(h) if h.damage > 0.0))
+        .flat_map(|t| t.brushes.iter())
+        .collect()
+}

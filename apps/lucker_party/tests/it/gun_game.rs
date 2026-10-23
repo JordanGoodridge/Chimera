@@ -24,43 +24,43 @@ use combat_arms::{game::movement, harness::CaSim};
 use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 /// The party's simulation on the greybox, the gun game started.
-fn party() -> Sim {
+pub(crate) fn party() -> Sim {
     let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, PartyPartsPlugin));
     minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     sim
 }
 
 /// A Combat Arms soldier, not yet in the game (the minigame takes it in).
-fn soldier(sim: &mut Sim) -> Entity {
+pub(crate) fn soldier(sim: &mut Sim) -> Entity {
     sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), movement::ID)
 }
 
-fn place(sim: &mut Sim, e: Entity, at: Vec3) {
+pub(crate) fn place(sim: &mut Sim, e: Entity, at: Vec3) {
     let w = sim.app.world_mut();
     w.get_mut::<Transform>(e).unwrap().translation = at;
     w.get_mut::<Position>(e).unwrap().0 = at;
 }
 
-fn held(sim: &Sim, e: Entity) -> Option<&'static str> {
+pub(crate) fn held(sim: &Sim, e: Entity) -> Option<&'static str> {
     testkit::active_id(sim.app.world(), e)
 }
 
-fn rung(sim: &Sim, e: Entity) -> usize {
+pub(crate) fn rung(sim: &Sim, e: Entity) -> usize {
     sim.app.world().get::<Rung>(e).map_or(0, |r| r.0)
 }
 
-fn phase(sim: &Sim) -> Phase {
+pub(crate) fn phase(sim: &Sim) -> Phase {
     sim.app.world().resource::<Match>().phase
 }
 
-fn alive(sim: &Sim, e: Entity) -> bool {
+pub(crate) fn alive(sim: &Sim, e: Entity) -> bool {
     sim.app.world().get::<Dead>(e).is_none()
 }
 
 /// `shooter` aims at `target`'s centre and works the trigger (pressed
 /// every other tick, for the semi-automatics) until `target` dies or
 /// `secs` pass; whether it died.
-fn shoot_until_dead(sim: &mut Sim, shooter: Entity, target: Entity, secs: f64) -> bool {
+pub(crate) fn shoot_until_dead(sim: &mut Sim, shooter: Entity, target: Entity, secs: f64) -> bool {
     let ticks = (secs * sim.tick_hz()) as u64;
     for t in 0..ticks {
         let at = sim.position(target);
@@ -78,7 +78,7 @@ fn shoot_until_dead(sim: &mut Sim, shooter: Entity, target: Entity, secs: f64) -
 
 /// `target` back in play, unprotected, `d` m in front of `shooter` (both
 /// standing still), the shooter's weapon drawn.
-fn line_up(sim: &mut Sim, shooter: Entity, target: Entity, d: f32) {
+pub(crate) fn line_up(sim: &mut Sim, shooter: Entity, target: Entity, d: f32) {
     for _ in 0..(6.0 * sim.tick_hz()) as u32 {
         if alive(sim, target) && sim.app.world().get::<God>(target).is_none() {
             break;
@@ -147,6 +147,10 @@ fn a_full_gun_game_runs_to_a_winner_with_both_games_guns() {
     assert!(fired_with.iter().any(|g| g.starts_with("combat_arms:")), "{fired_with:?}");
     assert_eq!(fired_with.last(), Some(&cs_source::game::weapons::AWP), "the last rung");
     assert!(events.contains(&("rung_up", 9)), "{events:?}");
+    assert!(
+        events.iter().all(|(n, _)| minigame::EVENT_NAMES.contains(n)),
+        "every event the match raises is one the network can send: {events:?}"
+    );
     let team_a = sim.app.world().get::<Team>(a).unwrap().0;
     assert_eq!(sim.app.world().resource::<Match>().winner, Some(team_a));
     sim.seconds(9.0);
@@ -230,6 +234,32 @@ fn combat_arms_bots_play_the_gun_game() {
     }
     assert!(kills >= 2, "the bots kill each other ({kills} kills in 90 s)");
     assert!(bots.iter().any(|b| rung(&sim, *b) > 0), "and climb");
+}
+
+/// A ladder gun never runs dry: shooting a rung's gun (the M60's 200
+/// rounds, misses included) empties neither its clip nor its reserve for
+/// good; the reserve is topped up, so the last rungs stay playable.
+#[test]
+fn a_rungs_gun_keeps_its_reserve() {
+    use chimera_sim::weapon::Magazine;
+    let mut sim = party();
+    let a = soldier(&mut sim);
+    let _b = soldier(&mut sim);
+    sim.seconds(1.5);
+    sim.app.world_mut().entity_mut(a).insert(Rung(8));
+    chimera_sim::weapon::give(sim.app.world_mut(), a, "combat_arms:m60");
+    sim.seconds(2.0);
+    assert_eq!(held(&sim, a), Some("combat_arms:m60"));
+    let gun = testkit::active(sim.app.world(), a).unwrap();
+    {
+        let mut m = sim.app.world_mut().get_mut::<Magazine>(gun).unwrap();
+        m.clip = 0;
+        m.reserve = 0;
+    }
+    sim.seconds(0.5);
+    let m = sim.app.world().get::<Magazine>(gun).unwrap();
+    assert_eq!(m.reserve, m.reserve_max, "the reserve is full again: {m:?}");
+    assert!(m.reserve > 0);
 }
 
 /// A soldier holding CS:S's gun has its view model driven by Chimera's

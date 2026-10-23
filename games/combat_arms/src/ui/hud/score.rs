@@ -404,7 +404,7 @@ pub(super) fn update_score(
 pub(super) struct ScoreRoot;
 
 pub(super) fn spawn_root(mut commands: Commands) {
-    commands.spawn((ScoreRoot, layer(40)));
+    commands.spawn((ScoreRoot, layer(40), crate::client::hud::HudRoot(crate::game::GAME)));
 }
 
 #[allow(clippy::too_many_arguments)]

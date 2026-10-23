@@ -36,11 +36,12 @@ impl Plugin for HudSpritesPlugin {
             Update,
             (
                 build.run_if(resource_exists_and_changed::<ActiveHud>),
-                teardown.run_if(resource_removed::<ActiveHud>),
                 (pain, update).chain().run_if(resource_exists::<ActiveHud>),
             )
                 .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
-        );
+        )
+        // The look gone (or put away for another game's HUD): its parts go.
+        .add_systems(Update, teardown.run_if(resource_removed::<ActiveHud>));
     }
 }
 

@@ -298,7 +298,7 @@ const FULL: Vec4 = Vec4::new(0.0, 0.0, 1.0, 1.0);
 pub struct RadarRoot;
 
 pub fn spawn_root(mut commands: Commands) {
-    commands.spawn((RadarRoot, layer(super::HUD_Z - 3)));
+    commands.spawn((RadarRoot, layer(super::HUD_Z - 3), crate::client::hud::HudRoot(crate::game::GAME)));
 }
 
 /// The icon files and radar art the radar draws, as texture keys (the

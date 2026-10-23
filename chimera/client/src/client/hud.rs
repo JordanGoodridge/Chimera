@@ -8,6 +8,14 @@
 //! screen tints, health, ammo, hit marker, killfeed, capsule bodies for other
 //! characters. A game that draws its own crosshair, health and ammo, hit
 //! marker or kill feed turns this HUD's off with `GameDraws`.
+//!
+//! An app whose HUD changes (`gameplay::Gameplay::hud`: Lucker Party's
+//! local player follows its weapon's game, `chimera_sim::identity`) keeps
+//! only the active one up: a game's HUD roots (`HudRoot`) show only while
+//! its HUD is the gameplay's; `GameDraws` is the active HUD's
+//! (`HudDraws`); the map's own HUD look (`map::hud::ActiveHud`) is put
+//! away while another game's HUD draws (`HudLookOwner`: its game's HUD
+//! takes its parts down when it goes and builds them when it is back).
 
 use bevy::prelude::*;
 
@@ -35,8 +43,29 @@ impl Plugin for HudPlugin {
                     game_scope.run_if(resource_exists_and_changed::<crate::map::hud::ActiveHud>),
                     screen_tints,
                 ),
-            );
+            )
+;
+        if !app.is_plugin_added::<HudSwitchPlugin>() {
+            app.add_plugins(HudSwitchPlugin);
+        }
         crosshair_cvars(app);
+    }
+}
+
+/// Only the gameplay's HUD up, in an app with several (`HudRoot`,
+/// `HudDraws`, `HudLookOwner`); `HudPlugin` adds it.
+pub struct HudSwitchPlugin;
+
+impl Plugin for HudSwitchPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<GameDraws>().init_resource::<PutAway>().add_systems(
+            Update,
+            (
+                show_active_huds,
+                draws_follow_hud.run_if(resource_exists_and_changed::<crate::gameplay::Gameplay>),
+                put_away_hud_look.run_if(resource_exists::<HudLookOwner>),
+            ),
+        );
     }
 }
 
@@ -51,6 +80,76 @@ pub struct GameDraws {
     pub status: bool,
     pub hit_marker: bool,
     pub killfeed: bool,
+}
+
+/// A root of game `0`'s HUD nodes: shown only while that game's HUD is
+/// the gameplay's (`show_active_huds`). A game marks the roots it spawns at
+/// start; without a `Gameplay` they show.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HudRoot(pub &'static str);
+
+/// Each game's `GameDraws` by its id, for an app with several HUDs:
+/// `GameDraws` is the gameplay's HUD's (one not listed: this HUD draws
+/// everything). Empty: `GameDraws` is left as the game set it.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct HudDraws(pub Vec<(&'static str, GameDraws)>);
+
+/// Whose HUD the map's own HUD look (`map::hud::ActiveHud`) is, in an app
+/// with several HUDs: while another game's HUD is the gameplay's the look
+/// is put away (removed: its game's HUD takes its parts down, this HUD
+/// acts as without one) and it comes back with its game's HUD (the same
+/// map's only). Without it the look stays.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct HudLookOwner(pub &'static str);
+
+/// The look put away, and the map it is of (`map::LoadedMapName`).
+#[derive(Resource, Default)]
+struct PutAway(Option<(crate::map::hud::ActiveHud, Option<String>)>);
+
+/// Roots of a HUD that isn't the gameplay's hidden; the active one's shown
+/// as it becomes active (or appears), then left to its game.
+fn show_active_huds(gameplay: Option<Res<crate::gameplay::Gameplay>>, mut roots: Query<(Ref<HudRoot>, &mut Visibility)>) {
+    let Some(gameplay) = gameplay else { return };
+    for (root, mut vis) in &mut roots {
+        if gameplay.hud != root.0 {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        } else if (gameplay.is_changed() || root.is_added()) && *vis == Visibility::Hidden {
+            *vis = Visibility::Inherited;
+        }
+    }
+}
+
+/// `GameDraws` from the gameplay's HUD (`HudDraws`).
+fn draws_follow_hud(
+    gameplay: Res<crate::gameplay::Gameplay>,
+    registry: Option<Res<HudDraws>>,
+    mut draws: ResMut<GameDraws>,
+) {
+    let Some(registry) = registry.filter(|r| !r.0.is_empty()) else { return };
+    let want = registry.0.iter().find(|(g, _)| *g == gameplay.hud).map(|(_, d)| *d).unwrap_or_default();
+    if *draws != want {
+        *draws = want;
+    }
+}
+
+/// The map's HUD look away while another game's HUD draws, back with its
+/// owner's (`HudLookOwner`).
+fn put_away_hud_look(world: &mut World) {
+    let Some(owner) = world.get_resource::<HudLookOwner>().map(|o| o.0) else { return };
+    let shown = world.get_resource::<crate::gameplay::Gameplay>().is_none_or(|g| g.hud == owner);
+    let map = world.get_resource::<crate::map::LoadedMapName>().map(|m| m.0.clone());
+    if !shown {
+        if let Some(look) = world.remove_resource::<crate::map::hud::ActiveHud>() {
+            world.resource_mut::<PutAway>().0 = Some((look, map));
+        }
+    } else if !world.contains_resource::<crate::map::hud::ActiveHud>()
+        && let Some((look, of)) = world.resource_mut::<PutAway>().0.take()
+        && of == map
+    {
+        world.insert_resource(look);
+    }
 }
 
 /// The crosshair's look, CS:S's cvars (all archived, CS:S's defaults):
@@ -853,7 +952,8 @@ fn killfeed(
 pub struct CapsuleBody;
 
 /// A capsule for every character that isn't the local player, on maps
-/// without character models; on maps with them (map::attach_bodies) the
+/// without character models (or none of its identity's game,
+/// `slots::GameIdentity`); on maps with them (map::attach_bodies) the
 /// capsules go. Characters outlive map changes (a network game's above
 /// all: a client gets them before the server's map is in), so this
 /// follows the map, not the character's arrival: a client that joined
@@ -861,14 +961,31 @@ pub struct CapsuleBody;
 /// in the network soak's screenshots).
 #[allow(clippy::type_complexity)]
 fn character_bodies(
-    characters: Query<(Entity, &Team, Has<CapsuleBody>), (With<Intent>, Without<LocalPlayer>)>,
+    characters: Query<
+        (
+            Entity,
+            &Team,
+            Has<CapsuleBody>,
+            (
+                Option<&crate::map::BodyName>,
+                Option<&crate::core::PlayerClass>,
+                Option<&crate::slots::GameIdentity>,
+            ),
+        ),
+        (With<Intent>, Without<LocalPlayer>),
+    >,
     models: Option<Res<crate::map::CharacterModels>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    for (e, team, capsule) in &characters {
-        match (models.is_some(), capsule) {
+    for (e, team, capsule, (name, class, identity)) in &characters {
+        // A model for it: the map's, among its identity's game's when it
+        // has one (another game's character on this map is a capsule).
+        let modelled = models
+            .as_ref()
+            .is_some_and(|m| identity.is_none() || m.for_identity(identity, Some(*team), name, class).is_some());
+        match (modelled, capsule) {
             (true, true) => {
                 commands
                     .entity(e)
