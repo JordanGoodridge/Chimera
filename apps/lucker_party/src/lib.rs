@@ -2,8 +2,10 @@
 //! `lucker_party`; docs/plans/active/architecture-review.md L2): minigames,
 //! each a data file (`minigames/`, the `originals` crate) played on
 //! Chimera's mode runtime (`chimera_sim::minigame`), with both games' parts:
-//! Combat Arms' soldiers, movement, HUD and guns, CS:S's maps, map logic and
-//! guns, on CS:S's or Combat Arms' maps. The games are libraries composed
+//! Combat Arms' soldiers, movement, HUD and guns, CS:S's maps, map logic,
+//! movement and guns, on CS:S's or Combat Arms' maps. A minigame with
+//! `identity = "weapon"` (the gun game) makes each player the game of the
+//! gun in hand (`chimera_sim::identity`): its movement. The games are libraries composed
 //! here and nowhere else (checks/tests/it/architecture.rs), as in the
 //! mashup demo.
 //!
@@ -138,6 +140,9 @@ impl Plugin for PartyPartsPlugin {
         app.add_plugins((
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,
+            // CS:S's movement, for a player holding a CS:S gun (the gun
+            // game's `identity = "weapon"`).
+            cs_source::game::movement::SourceMovementPlugin,
             MinigamePlugin,
             originals::OriginalsPlugin,
         ));

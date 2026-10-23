@@ -17,6 +17,8 @@
 //! bots = "combat_arms"        # whose bots play (a game that gates them by `gameplay::bots_are`)
 //! movement = "combat_arms:movement"   # checked to be registered; the app's characters use it
 //! character = "combat_arms:soldier"   # informational (the kit isn't a slot yet)
+//! identity = "weapon"         # per player: the held weapon's game gives its movement,
+//!                             # body and HUD (`chimera_sim::identity`); default: the slots above
 //! weapons = ["cs_source", "combat_arms"]   # the weapon sets a definition may name
 //!
 //! [spawn]
@@ -104,9 +106,22 @@ pub struct Slots {
     pub bots: Option<String>,
     pub movement: Option<String>,
     pub character: Option<String>,
+    /// What each player's own game slots follow (None: the slots above,
+    /// the same for everyone).
+    #[serde(default)]
+    pub identity: Option<IdentityDef>,
     /// Game ids whose weapons the definition may name (empty: any).
     #[serde(default)]
     pub weapons: Vec<String>,
+}
+
+/// What a player's own game identity follows (`slots::FollowsWeapon`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityDef {
+    /// The game of the weapon it holds: its movement, its body and look,
+    /// its HUD (`chimera_sim::identity`).
+    Weapon,
 }
 
 /// Where and how players come back.
@@ -269,6 +284,9 @@ ladder = ["kit:pistol", "kit:rifle"]
         assert_eq!(def.rules.module, "chimera:ladder");
         assert!(def.rules.params.contains_key("ladder"));
         assert!(def.allows_weapon("anything:at_all"), "no weapon sets named: any");
+        assert_eq!(def.slots.identity, None, "slots the same for everyone by default");
+        let follows = MinigameDef::parse("t", &DEF.replace("[spawn]", "[slots]\nidentity = \"weapon\"\n[spawn]")).unwrap();
+        assert_eq!(follows.slots.identity, Some(IdentityDef::Weapon));
     }
 
     #[test]

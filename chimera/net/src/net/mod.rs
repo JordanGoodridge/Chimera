@@ -667,6 +667,10 @@ pub struct OwnState {
     /// The map camera the player views through (`core::MapView`: origin,
     /// rotation), if any.
     pub view: Option<([f32; 3], [f32; 4])>,
+    /// The times the server changed the player's predicted state outside
+    /// its commands (`core::Rebased`: a rules' weapon swap). When it
+    /// changes, the client takes the state as a restart, as for `alive`.
+    pub rebased: u32,
 }
 
 /// A character the server replicates: whose it is and its name. On a

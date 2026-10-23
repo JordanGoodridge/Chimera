@@ -314,6 +314,24 @@ impl Default for Health {
 #[reflect(Component)]
 pub struct Team(pub u8);
 
+/// How many times the server changed a character's predicted state
+/// outside its commands while it lived (a rules' weapon swap: a gun
+/// game's rung): a network client predicting it takes the server's state
+/// after such a change as a restart, not a prediction error (as it does a
+/// spawn or a death), since no command of its led to it. `rebase` counts
+/// one.
+#[derive(Component, Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rebased(pub u32);
+
+/// Count a change to `e`'s predicted state the server made outside its
+/// commands (`Rebased`).
+pub fn rebase(world: &mut World, e: Entity) {
+    if let Ok(mut ent) = world.get_entity_mut(e) {
+        let n = ent.get::<Rebased>().map_or(0, |r| r.0);
+        ent.insert(Rebased(n.wrapping_add(1)));
+    }
+}
+
 /// A character's own dice seed, for rolls that should repeat run to run
 /// (bots' route noise and choices, buying, bullet spread). Entity ids
 /// won't do: every spawn shifts them, resources included (Bevy 0.19

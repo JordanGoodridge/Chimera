@@ -1,7 +1,9 @@
 # Gun Game on de_dust2 (docs/plans/active/architecture-review.md D2): every
 # player for themselves up a ladder of Counter-Strike: Source's and Combat
 # Arms' guns, a rung a kill; a knife death costs a rung; the first kill
-# with the last gun wins. Played as Combat Arms' soldiers on a CS:S map
+# with the last gun wins. Each player is the game of the gun in hand
+# (`identity = "weapon"`): a CS:S gun moves, looks and shows its HUD as
+# CS:S, a Combat Arms gun (and the knife) as Combat Arms. On a CS:S map
 # (or on Combat Arms' Warehouse, the pool's second map).
 id = "originals:gun_game_dust2"
 name = "Gun Game: Dust II"
@@ -18,6 +20,7 @@ tick = "combat_arms"
 bots = "combat_arms"
 movement = "combat_arms:movement"
 character = "combat_arms:soldier"
+identity = "weapon"
 weapons = ["cs_source", "combat_arms"]
 
 [spawn]
