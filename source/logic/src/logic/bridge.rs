@@ -122,8 +122,29 @@ fn logic_sound(world: &mut World, sound: PlaySound) {
 
 pub struct LogicPlugin;
 
+/// The map's hurting trigger volumes in engine space (m), for spawns to
+/// keep out of (`map::SpawnHazards`).
+fn hurt_hazards(world: &mut World) -> Vec<crate::core::MapBrush> {
+    let Some(logic) = world.get_resource::<Logic>() else { return Vec::new() };
+    let s = logic.scale;
+    // Entity space (x, y, z up) to engine (x, z, -y), times the scale.
+    let to_engine = |v: Vec3| Vec3::new(v.x, v.z, -v.y) * s;
+    super::triggers::hurt_zones(&logic.world)
+        .into_iter()
+        .map(|b| crate::core::MapBrush {
+            planes: b.planes.iter().map(|(n, d)| (to_engine(*n) / s, d * s)).collect(),
+            min: to_engine(Vec3::new(b.min.x, b.max.y, b.min.z)),
+            max: to_engine(Vec3::new(b.max.x, b.min.y, b.max.z)),
+            ladder: false,
+            surface: None,
+        })
+        .collect()
+}
+
 impl Plugin for LogicPlugin {
     fn build(&self, app: &mut App) {
+        use crate::map::SpawnHazardAppExt;
+        app.add_spawn_hazards(hurt_hazards);
         // The logic's part of the network (movers, HUD messages).
         super::net::plugin(app);
         // Its entities for tools (the client's console and debug UI).

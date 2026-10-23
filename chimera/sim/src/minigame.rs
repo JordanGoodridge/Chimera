@@ -54,6 +54,7 @@ pub mod def;
 pub mod hud;
 pub mod ladder;
 pub mod runtime;
+pub mod spawns;
 
 use bevy::prelude::*;
 
@@ -265,6 +266,7 @@ pub fn start(world: &mut World, id: &str) -> Result<&'static MinigameDef, String
 pub fn restart(world: &mut World) {
     world.insert_resource(Match::default());
     world.insert_resource(mode::flow::MissionFrames::default());
+    spawns::reset(world);
     let players: Vec<Entity> = world.query_filtered::<Entity, With<InMinigame>>().iter(world).collect();
     for p in players {
         world.entity_mut(p).remove::<(InMinigame, Protected)>().insert(Score::default());

@@ -35,7 +35,7 @@ use bevy::{ecs::message::MessageCursor, prelude::*};
 
 use super::{
     ActiveMinigame, MINIGAME,
-    def::{IdentityDef, Points},
+    def::{IdentityDef, Points, SpawnDef},
 };
 use crate::{
     core::{
@@ -143,7 +143,7 @@ fn event(world: &mut World, event: FlowEvent) {
 pub fn respawn(world: &mut World, e: Entity) {
     let Some(active) = world.get_resource::<ActiveMinigame>().copied() else { return };
     let def = active.def;
-    let at = spawn_point(world, e, def.spawn.points);
+    let at = spawn_point_in(world, e, def.spawn.points, def.spawn.min_distance);
     if !crate::spawning::revive(world, e, at) {
         return;
     }
@@ -184,6 +184,11 @@ pub fn respawn(world: &mut World, e: Entity) {
 /// Where `e` comes back, as `points` picks among the map's spawn points
 /// (None: none, it stays where it is).
 pub fn spawn_point(world: &mut World, e: Entity, points: Points) -> Option<Transform> {
+    spawn_point_in(world, e, points, SpawnDef::default().min_distance)
+}
+
+/// `spawn_point` with `random_hidden`'s least distance from an enemy (m).
+pub fn spawn_point_in(world: &mut World, e: Entity, points: Points, min_distance: f32) -> Option<Transform> {
     let mut all: Vec<(Entity, Transform, Option<Team>)> = world
         .query_filtered::<(Entity, &Transform, &SpawnPoint), Without<Intent>>()
         .iter(world)
@@ -204,7 +209,15 @@ pub fn spawn_point(world: &mut World, e: Entity, points: Points) -> Option<Trans
             .iter()
             .all(|o| (o.xz() - t.translation.xz()).length() > SPAWN_CLEARANCE || (o.y - t.translation.y).abs() > 2.0)
     };
+    let points = match points {
+        Points::RandomHidden => match super::spawns::pick(world, e, min_distance) {
+            Some(at) => return Some(at),
+            None => Points::FarFromEnemies,
+        },
+        p => p,
+    };
     match points {
+        Points::RandomHidden => unreachable!("handled above"),
         Points::Map => {
             let n = all.len();
             let start = world.get_resource_or_init::<SpawnCursor>().0;
@@ -403,7 +416,9 @@ pub(super) fn plugin(app: &mut App) {
     let on = |a: Option<Res<ActiveMinigame>>, g: Option<Res<chimera_core::gameplay::Gameplay>>| {
         a.is_some() && g.is_none_or(|g| g.rules == MINIGAME)
     };
+    use crate::map::MapScopedApp;
     app.init_resource::<SpawnCursor>()
+        .map_scoped::<super::spawns::SpawnSpots>()
         .add_observer(number_players)
         .add_systems(
             FixedUpdate,

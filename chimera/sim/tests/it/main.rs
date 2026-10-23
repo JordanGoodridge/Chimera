@@ -10,4 +10,5 @@ mod minigame;
 mod mode;
 mod movement;
 mod noclip_damage;
+mod spawns;
 mod weapon_frame;

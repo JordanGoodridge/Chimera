@@ -63,7 +63,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // runtime, their spawning and weapons, the gameplay switched to them.
     (
         "minigame",
-        &["core", "console", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry", "identity"],
+        &["core", "console", "map", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry", "identity"],
     ),
     // A character's game identity following its weapon (chimera/sim): its
     // movement switched in the predicted tick, its identity, the local

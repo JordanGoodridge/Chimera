@@ -25,7 +25,8 @@ weapons = ["cs_source", "combat_arms"]
 
 [spawn]
 respawn = { delay = "2s", protection = "1.5s" }
-points = "far_from_enemies"
+points = "random_hidden"
+min_distance = 20.32   # m (800 u) from a living enemy
 kit = ["combat_arms:m9_knife"]
 
 [rules]
