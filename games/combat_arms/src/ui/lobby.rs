@@ -31,7 +31,7 @@
 //!   stand-in art, with or without the install. The tooltips, the hover
 //!   panel, the user menu (right click), the shop, clan and jobs screens,
 //!   the server select, the connecting screen, the quick-join options
-//!   and the Start menu are not there; Change Room Name and Change PW
+//!   are not there (the Start menu has the option entry only); Change Room Name and Change PW
 //!   are not (the service takes the requests, `Setting::Name`).
 //! - The list has 18 rows and no scroll bar; combo boxes are cycled; the
 //!   mode filter cycles through the modes (no Pure Combat entries);
@@ -87,13 +87,15 @@ pub enum Page {
 }
 
 /// The sheets, in the desk's order.
-const NAMES: [&str; 6] = ["gameLobby", "gameroom", "inventory", "CreateWnd", "LockGameRoom", "MessageBox"];
+const NAMES: [&str; 7] = ["gameLobby", "gameroom", "inventory", "CreateWnd", "LockGameRoom", "MessageBox", "StartMenu"];
 const S_LIST: usize = 0;
 const S_ROOM: usize = 1;
 const S_INV: usize = 2;
 const S_CREATE: usize = 3;
 const S_PASS: usize = 4;
 const S_MSG: usize = 5;
+/// The start menu popup (`StartButton`, `POPUP_STARTMENU.XML`).
+const S_START: usize = 6;
 
 /// Which edit box takes the typed characters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -158,11 +160,13 @@ const OPTIONS: [(&str, usize); 6] = [("Join", 0), ("FriendlyFire", 1), ("KillCam
 #[derive(Resource, Clone)]
 pub struct LobbyScreen {
     pub desk: Desk,
-    sheets: [usize; 6],
+    sheets: [usize; 7],
     pub open: bool,
     pub screen: IVec2,
     pub page: Page,
     pub create: Option<CreateForm>,
+    /// The start menu popup is up (`StartButton`).
+    pub start_menu: bool,
     pub password_room: Option<RoomId>,
     pub focus: Focus,
     pub chat_input: String,
@@ -195,8 +199,9 @@ impl LobbyScreen {
             layouts::create(),
             layouts::password(),
             layouts::message(),
+            layouts::start_menu(),
         ];
-        let mut sheets = [0; 6];
+        let mut sheets = [0; 7];
         for (i, t) in texts.iter().enumerate() {
             let l: Layout = xml::read(t).unwrap_or_else(|e| panic!("lobby layout {}: {e:?}", NAMES[i]));
             l.check_fonts(&ui.fonts).expect("the lobby screens' fonts");
@@ -209,6 +214,7 @@ impl LobbyScreen {
             screen: IVec2::new(1024, 768),
             page: Page::List,
             create: None,
+            start_menu: false,
             password_room: None,
             focus: Focus::None,
             chat_input: String::new(),
@@ -235,13 +241,14 @@ impl LobbyScreen {
     /// Centre the 1024 x 768 menu on the screen (every sheet's first
     /// control moves with it).
     pub fn place(&mut self) {
-        for i in 0..6 {
+        for i in 0..7 {
             let l = &mut self.desk.sheets[self.sheets[i]].layout;
             let first = l.tree.get(0).children.first().copied().unwrap_or(0);
             let base = match i {
                 S_CREATE => IVec2::new(262, 160),
                 S_PASS => IVec2::new(362, 300),
                 S_MSG => IVec2::new(312, 300),
+                S_START => IVec2::new(332, 66),
                 _ => IVec2::ZERO,
             };
             let off = crate::client::canvas::centre(self.screen, IVec2::new(1024, 768));
@@ -259,10 +266,10 @@ impl LobbyScreen {
     /// across its files); the shown ones win, the popups before the pages.
     pub fn find(&self, name: &str) -> Option<(usize, usize)> {
         let shown = |i: usize| self.desk.sheets[self.sheets[i]].shown;
-        [S_MSG, S_PASS, S_CREATE, S_LIST, S_ROOM, S_INV]
+        [S_MSG, S_PASS, S_CREATE, S_START, S_LIST, S_ROOM, S_INV]
             .into_iter()
             .filter(|i| shown(*i))
-            .chain([S_LIST, S_ROOM, S_INV, S_CREATE, S_PASS, S_MSG])
+            .chain([S_LIST, S_ROOM, S_INV, S_CREATE, S_PASS, S_MSG, S_START])
             .find_map(|i| self.layout(i).find(name).map(|id| (i, id)))
     }
 
@@ -358,6 +365,8 @@ impl LobbyScreen {
             Some(S_PASS)
         } else if self.create.is_some() {
             Some(S_CREATE)
+        } else if self.start_menu {
+            Some(S_START)
         } else {
             None
         }
@@ -447,7 +456,7 @@ pub fn sync(world: &mut World, screen: &mut LobbyScreen) {
             }
         }
     }
-    for (i, name) in [(S_CREATE, "create"), (S_PASS, "pass"), (S_MSG, "msg")] {
+    for (i, name) in [(S_CREATE, "create"), (S_PASS, "pass"), (S_MSG, "msg"), (S_START, "start")] {
         let on = popup == Some(i) || (name == "create" && screen.create.is_some() && popup != Some(S_MSG) && popup.is_some() && i == S_CREATE);
         let id = screen.sheets[i];
         if on != screen.desk.sheets[id].shown {
@@ -478,7 +487,7 @@ pub fn sync(world: &mut World, screen: &mut LobbyScreen) {
 
 fn sync_nav(screen: &mut LobbyScreen, c: &crate::game::lobby::client::ClientLobby) {
     let in_room = c.room.is_some();
-    for name in ["button_lobby", "button_gameroom", "button_character", "button_option"] {
+    for name in ["button_lobby", "button_gameroom", "button_character", "StartButton"] {
         screen.set_enabled(name, true);
     }
     // "Gameroom" returns to the waiting room; Lobby leaves it. Shown as
@@ -487,7 +496,7 @@ fn sync_nav(screen: &mut LobbyScreen, c: &crate::game::lobby::client::ClientLobb
     screen.set_selected("button_lobby", screen.page == Page::List);
     screen.set_selected("button_gameroom", screen.page == Page::Room);
     screen.set_selected("button_character", screen.page == Page::Inventory);
-    screen.set_enabled("button_option", true);
+    screen.set_enabled("StartButton", true);
 }
 
 fn sync_list(screen: &mut LobbyScreen, c: &crate::game::lobby::client::ClientLobby) {
@@ -778,6 +787,20 @@ fn do_op(world: &mut World, screen: &mut LobbyScreen, name: &str) {
         create_op(world, screen, name);
         return;
     }
+    // The start menu: its option entry opens the options screen as a modal
+    // over the current page; the room state is not touched (corrections
+    // 2026-10-22, options 1).
+    if screen.start_menu {
+        match name {
+            "button_start_option" => {
+                screen.start_menu = false;
+                let _ = world.resource_mut::<crate::console::Console>().submit("options");
+            }
+            "button_start_close" | "StartButton" => screen.start_menu = false,
+            _ => {}
+        }
+        return;
+    }
     // The nav bar.
     match name {
         "button_lobby" | "button_lobby_room" => {
@@ -803,8 +826,8 @@ fn do_op(world: &mut World, screen: &mut LobbyScreen, name: &str) {
             }
             return;
         }
-        "button_option" => {
-            let _ = world.resource_mut::<crate::console::Console>().submit("options");
+        "StartButton" => {
+            screen.start_menu = true;
             return;
         }
         _ => {}
@@ -844,9 +867,18 @@ fn list_op(world: &mut World, screen: &mut LobbyScreen, name: &str, t: f64) {
         return;
     }
     match name {
-        "Check_join" => client(world, |c| c.list.filters.joinable ^= true),
-        "Check_pw" => client(world, |c| c.list.filters.no_password ^= true),
-        "Check_official" => client(world, |c| c.list.filters.pure_combat ^= true),
+        "Check_join" => client(world, |c| {
+            c.list.filters.joinable ^= true;
+            c.list.rebuild();
+        }),
+        "Check_pw" => client(world, |c| {
+            c.list.filters.no_password ^= true;
+            c.list.rebuild();
+        }),
+        "Check_official" => client(world, |c| {
+            c.list.filters.pure_combat ^= true;
+            c.list.rebuild();
+        }),
         "mode_combo" => client(world, |c| {
             let mut modes: Vec<Option<(u16, bool)>> = vec![None];
             modes.extend(c.data.modes_offered(false).iter().map(|m| Some((m.id, false))));
@@ -859,6 +891,7 @@ fn list_op(world: &mut World, screen: &mut LobbyScreen, name: &str, t: f64) {
             maps.extend(c.data.maps.iter().map(|m| Some(m.id)));
             let cur = c.list.filters.map;
             c.list.filters.map = next_in(&maps, cur).flatten();
+            c.list.rebuild();
         }),
         "button_Join" => {
             let id = client(world, |c| c.list.selected);
@@ -1123,7 +1156,7 @@ fn pointer(world: &mut World, screen: &mut LobbyScreen, ui: &CaUi) {
         (m.just_pressed(MouseButton::Left), m.just_released(MouseButton::Left))
     };
     let ctx = ui.ctx();
-    let before: Vec<_> = (0..6).map(|i| states(screen.layout(i))).collect();
+    let before: Vec<_> = (0..7).map(|i| states(screen.layout(i))).collect();
     screen.desk.pointer_moved(p, &ctx);
     if down {
         screen.desk.left_down(p, &ctx);
@@ -1131,7 +1164,7 @@ fn pointer(world: &mut World, screen: &mut LobbyScreen, ui: &CaUi) {
     if up {
         screen.desk.left_up();
     }
-    let after: Vec<_> = (0..6).map(|i| states(screen.layout(i))).collect();
+    let after: Vec<_> = (0..7).map(|i| states(screen.layout(i))).collect();
     if before != after {
         screen.changed = true;
     }
@@ -1233,6 +1266,8 @@ fn typing(world: &mut World, screen: &mut LobbyScreen) {
                     do_op(world, screen, "button_cancel");
                 } else if screen.create.is_some() {
                     do_op(world, screen, "button_cancel");
+                } else if screen.start_menu {
+                    screen.start_menu = false;
                 } else {
                     screen.focus = Focus::None;
                 }
@@ -1258,7 +1293,7 @@ pub fn update(world: &mut World) {
             screen.open = want;
             screen.changed = true;
             if !want {
-                for i in 0..6 {
+                for i in 0..7 {
                     let id = screen.sheets[i];
                     screen.desk.hide(id);
                 }
@@ -1285,11 +1320,18 @@ pub fn update(world: &mut World) {
             screen.loadout.auto_equip(&catalog, &owned, &expired, &fell);
         }
         client(world, |c| c.go = None);
-        pointer(world, screen, &ui);
-        act(world, screen);
-        typing(world, screen);
+        // The options screen over the lobby is modal: the lobby takes no
+        // pointer or keys while it is up.
+        let options_up = world.get_resource::<crate::game::options::CaOptions>().is_some_and(|o| o.open);
+        if options_up {
+            screen.typed.clear();
+        } else {
+            pointer(world, screen, &ui);
+            act(world, screen);
+            typing(world, screen);
+        }
         sync(world, screen);
-        let draws = (0..6)
+        let draws = (0..7)
             .filter(|&i| screen.desk.sheets[screen.sheets[i]].shown)
             .flat_map(|i| screen.layout(i).draw(&ui.ctx()))
             .collect::<Vec<_>>();
@@ -1359,9 +1401,13 @@ fn window_size(window: Query<&Window, With<PrimaryWindow>>, mut screen: ResMut<L
 }
 
 /// The keyboard into the screen while it is open; the game sees none.
-fn collect_keys(mut events: MessageReader<KeyboardInput>, mut screen: ResMut<LobbyScreen>, mut keys: ResMut<ButtonInput<KeyCode>>) {
+fn collect_keys(options: Option<Res<crate::game::options::CaOptions>>, mut events: MessageReader<KeyboardInput>, mut screen: ResMut<LobbyScreen>, mut keys: ResMut<ButtonInput<KeyCode>>) {
     if !screen.open {
         events.clear();
+        return;
+    }
+    // The options screen over the lobby has the keys.
+    if options.is_some_and(|o| o.open) {
         return;
     }
     for e in events.read() {

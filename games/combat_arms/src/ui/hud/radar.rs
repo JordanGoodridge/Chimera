@@ -105,6 +105,15 @@ pub struct EdgeArrow {
     pub icon: PxRect,
 }
 
+impl EdgeArrow {
+    /// The image drawn over the turned arrow: a flag carrier's badge in
+    /// place of its character icon, else the icon (corrections
+    /// 2026-10-22, 2).
+    pub fn icon_image(&self) -> &str {
+        self.look.badge.as_deref().unwrap_or(&self.look.icon)
+    }
+}
+
 /// The map image under the window (R5).
 #[derive(Clone, Debug, PartialEq)]
 pub struct MapQuad {
@@ -560,7 +569,7 @@ pub fn draw_radar(
             }
             for m in &radar.marks {
                 spawn_box(c, origin, &m.look.icon, m.rect, [255; 4], art);
-                if let Some(b) = &m.look.badge {
+                if let Some(b) = m.look.badge.as_ref().filter(|b| !b.is_empty()) {
                     spawn_box(c, origin, b, m.rect, [255; 4], art);
                 }
                 if let (Some(w), Some(view), Some(mats)) = (m.wedge, &m.look.view, materials.as_mut()) {
@@ -571,9 +580,10 @@ pub fn draw_radar(
                 if let Some(mats) = materials.as_mut() {
                     spawn_turned(c, mats, origin, clip, look::ARROW, upright(a.corners, s), [255; 4], FULL, art);
                 }
-                spawn_box(c, origin, &a.look.icon, a.icon, [255; 4], art);
-                if let Some(b) = &a.look.badge {
-                    spawn_box(c, origin, b, a.icon, [255; 4], art);
+                // A flag carrier's arrow shows only the flag badge, in place of
+                // the character icon (corrections 2026-10-22, 2).
+                if !a.icon_image().is_empty() {
+                    spawn_box(c, origin, a.icon_image(), a.icon, [255; 4], art);
                 }
             }
             if let (Some(g), Some(mats)) = (radar.guide, materials.as_mut()) {
@@ -607,6 +617,7 @@ impl Plugin for CaRadarStatePlugin {
         register_keys(app);
         app.init_resource::<CaScene>()
             .init_resource::<super::scene::DeathMarks>()
+            .init_resource::<super::scene::DeadSpots>()
             .init_resource::<RadarKeys>()
             .init_resource::<RadarMemory>()
             .init_resource::<CaRadar>()
@@ -617,7 +628,7 @@ impl Plugin for CaRadarStatePlugin {
             .add_message::<crate::core::Died>()
             .add_systems(
                 Update,
-                (super::scene::update_scene, super::scene::track_deaths, update_radar, super::full_map::update_full_map)
+                (super::scene::track_deaths, super::scene::update_scene, update_radar, super::full_map::update_full_map)
                     .chain()
                     .after(super::HudUpdate)
                     .in_set(RadarUpdate),

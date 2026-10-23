@@ -192,6 +192,10 @@ fn t10_a_far_carrier_gets_an_edge_arrow() {
     // the characters' heights drift by a hair, which the 3D
     // normalisation turns into a pixel at this boundary.
     assert!((979..=980).contains(&a.point.0) && a.point.1 == 98, "{:?}", a.point);
+    // Corrections 2026-10-22 (2): the arrow shows the flag badge only, in
+    // place of the character icon.
+    assert_eq!(a.icon_image(), look::icon("character_flag_A.dtx"));
+    assert_ne!(a.icon_image(), look::icon("character_enemy.dtx"));
 }
 
 // ---------------------------------------------------------------------------
@@ -709,4 +713,69 @@ fn an_ally_wedge_at_16_9() {
     let (fx, fy, fw, fh) = combat_arms::ui::hud::radar::FRAME_AT;
     let frame = r.screen.rect(Vec2::new(fx, fy), Vec2::new(fw, fh));
     assert!(win.min.x >= frame.min.x && win.min.y >= frame.min.y && win.max.x <= frame.max.x && win.max.y <= frame.max.y);
+}
+
+// ---------------------------------------------------------------------------
+// Corrections 2026-10-22
+
+/// Correction 3: held, the full map stays through the round's end.
+#[test]
+fn corr3_the_full_map_stays_after_the_round_ends() {
+    use combat_arms::game::rules::{CaMatchView, Phase};
+    let (mut sim, me) = live("TDM");
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    place(&mut sim, me, &[]);
+    assert!(map(&sim).visible);
+    sim.app.world_mut().resource_mut::<CaMatchView>().phase = Phase::MatchOver;
+    place(&mut sim, me, &[]);
+    assert!(map(&sim).visible, "held across the end");
+}
+
+/// Correction 4: a dead enemy a scan still reveals stays on the full map
+/// with its living icon and no wedge, at its death spot; it is not on the
+/// radar.
+#[test]
+fn corr4_a_revealed_dead_enemy_stays_where_it_died() {
+    let (mut sim, me) = live("TDM");
+    let enemy = spot(&mut sim, CREED, 300.0, -200.0, "Enemy");
+    let killer = spot(&mut sim, JSF, -3000.0, 0.0, "Killer");
+    hold_scanner(&mut sim, me, "combat_arms:satellite_scanner");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    sim.intent(me).fire = true;
+    place(&mut sim, me, &[(enemy, 300.0, -200.0), (killer, -3000.0, 0.0)]);
+    sim.intent(me).fire = false;
+    kill(&mut sim, enemy, killer);
+    let there = [(me, at(0.0, 0.0)), (enemy, at(300.0, -200.0)), (killer, at(-3000.0, 0.0))];
+    settle(&mut sim, &there);
+    // The body is pushed away afterwards: the mark does not follow.
+    let moved = [(me, at(0.0, 0.0)), (enemy, at(500.0, -200.0)), (killer, at(-3000.0, 0.0))];
+    settle(&mut sim, &moved);
+    assert!(mark_of(&radar(&sim), enemy).is_none(), "the dead are not on the radar");
+    let f = map(&sim);
+    let m = f.marks.iter().find(|m| m.entity == Some(enemy)).expect("revealed while dead");
+    assert_eq!(m.look.icon, look::icon("character_enemy.dtx"));
+    assert!(m.wedge.is_none());
+    let scene = sim.app.world().resource::<combat_arms::ui::hud::scene::CaScene>();
+    let t = scene.things.iter().find(|t| t.entity == Some(enemy)).unwrap();
+    assert!((t.at.0 - 300.0).abs() < 2.0, "{:?}", t.at);
+}
+
+/// Correction 4: a dead ally stays at its death spot.
+#[test]
+fn corr4_a_dead_ally_does_not_follow_the_body() {
+    let (mut sim, me) = live("TDM");
+    let ally = spot(&mut sim, JSF, 300.0, 400.0, "Ally");
+    let enemy = spot(&mut sim, CREED, -3000.0, 0.0, "Enemy");
+    sim.app.world_mut().resource_mut::<RadarKeys>().map = true;
+    sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+    place(&mut sim, me, &[(ally, 300.0, 400.0), (enemy, -3000.0, 0.0)]);
+    kill(&mut sim, ally, enemy);
+    settle(&mut sim, &[(me, at(0.0, 0.0)), (ally, at(300.0, 400.0)), (enemy, at(-3000.0, 0.0))]);
+    settle(&mut sim, &[(me, at(0.0, 0.0)), (ally, at(500.0, 400.0)), (enemy, at(-3000.0, 0.0))]);
+    let scene = sim.app.world().resource::<combat_arms::ui::hud::scene::CaScene>();
+    let t = scene.things.iter().find(|t| t.entity == Some(ally)).unwrap();
+    assert!((t.at.0 - 300.0).abs() < 2.0, "{:?}", t.at);
+    assert_eq!(t.map.as_ref().unwrap().icon, look::icon("area_death_ally.DTX"));
 }

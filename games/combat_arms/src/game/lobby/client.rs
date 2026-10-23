@@ -67,6 +67,10 @@ pub struct ClientLobby {
     pub active: bool,
     /// `Hello` has been sent.
     pub hello_sent: bool,
+    /// READY: the flag the player set and the lobby has not answered yet;
+    /// further presses are ignored until it does (corrections 2026-10-22,
+    /// 3).
+    ready_pending: Option<bool>,
     last_input: f64,
     idle: bool,
 }
@@ -91,6 +95,7 @@ impl ClientLobby {
             result_since: None,
             active: false,
             hello_sent: false,
+            ready_pending: None,
             last_input: 0.0,
             idle: false,
         }
@@ -107,6 +112,12 @@ impl ClientLobby {
     /// The client's seat in the room it is in.
     pub fn seat(&self) -> Option<&Seat> {
         self.room.as_ref().and_then(|r| r.seat(self.me))
+    }
+
+    /// The player's ready flag: the one just set while the lobby has not
+    /// answered, else the seat's.
+    pub fn is_ready(&self) -> bool {
+        self.ready_pending.unwrap_or_else(|| self.seat().is_some_and(|s| s.state == PlayerState::Ready))
     }
 
     pub fn is_host(&self) -> bool {
@@ -131,6 +142,7 @@ impl ClientLobby {
             Notice::RoomDestroyed(id) => self.list.destroyed(id),
             Notice::RoomChanged(r) => self.list.changed(r),
             Notice::Entered(d) => {
+                self.ready_pending = None;
                 self.room = Some(d);
                 self.chat.clear();
                 self.countdown = None;
@@ -144,6 +156,7 @@ impl ClientLobby {
                 }
             }
             Notice::LeftRoom { kicked } => {
+                self.ready_pending = None;
                 self.room = None;
                 self.countdown = None;
                 if kicked {
@@ -167,6 +180,9 @@ impl ClientLobby {
                 }
             }
             Notice::State(p, state, extra) => {
+                if p == self.me {
+                    self.ready_pending = None;
+                }
                 if let Some(s) = self.room.as_mut().and_then(|r| r.seats.iter_mut().find(|s| s.id == p)) {
                     s.state = state;
                     s.extra = extra;
@@ -213,6 +229,8 @@ impl ClientLobby {
             Notice::Invite { from, room, password } => self.invite = Some((from, room, password)),
             Notice::ItemsExpired(items) => self.expired.extend(items),
             Notice::Refused(r) => {
+                // A refused request turns the flag back (the seat's state).
+                self.ready_pending = None;
                 self.message = Some(r.text());
             }
         }
@@ -296,29 +314,35 @@ impl ClientLobby {
         });
     }
 
-    /// READY (non-host) toggles, after the loadout checks pass (`ok`):
-    /// the caller runs `loadout::ready_check`.
+    /// READY (non-host) flips the player's ready flag at once and sends the
+    /// matching on or off; the loadout checks (`check`, the caller runs
+    /// `loadout::ready_check`) run on every press, also when un-readying;
+    /// presses are ignored until the lobby answers the request.
     pub fn ready(&mut self, check: Result<(), String>) {
-        let Some(seat) = self.seat() else { return };
-        let on = seat.state != PlayerState::Ready;
-        if on && let Err(m) = check {
+        if self.seat().is_none() || self.ready_pending.is_some() {
+            return;
+        }
+        if let Err(m) = check {
             self.message = Some(m);
             return;
         }
+        let on = !self.is_ready();
+        self.ready_pending = Some(on);
         self.send(Request::Ready(on));
     }
 
-    /// START for the host: the player count check, then the loadout's.
+    /// START: while the room is *waiting* the host's starts it (the player
+    /// count check, then the loadout's); while it is starting, in game or
+    /// closing, START from anyone, the host included, is a join of the
+    /// match in progress, with the loadout's checks (corrections
+    /// 2026-10-22, 1 and 2).
     pub fn start(&mut self, check: Result<(), String>) {
         let Some(room) = self.room.clone() else { return };
-        if room.host != self.me {
-            // A joiner of a match in progress.
-            self.send(Request::Start);
-            return;
-        }
-        if let Err(r) = check::start_check(&self.data, &room) {
-            self.message = Some(r.text());
-            return;
+        if room.state == RoomState::Waiting && room.host == self.me {
+            if let Err(r) = check::start_check(&self.data, &room) {
+                self.message = Some(r.text());
+                return;
+            }
         }
         if let Err(m) = check {
             self.message = Some(m);
@@ -327,9 +351,11 @@ impl ClientLobby {
         self.send(Request::Start);
     }
 
-    /// F5: START for the host, READY for the others.
+    /// F5: START when the room is not waiting or for the host, READY for
+    /// the others.
     pub fn f5(&mut self, check: Result<(), String>) {
-        if self.is_host() { self.start(check) } else { self.ready(check) }
+        let waiting = self.room.as_ref().is_some_and(|r| r.state == RoomState::Waiting);
+        if self.is_host() || !waiting { self.start(check) } else { self.ready(check) }
     }
 
     /// A team button or the arrows (`team`), or the toggle (`None`).

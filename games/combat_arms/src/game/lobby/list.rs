@@ -63,6 +63,10 @@ pub struct RoomListView {
     pub sort: Option<Column>,
     pub direction: Direction,
     pub filters: Filters,
+    /// The rooms the last rebuild let through the filters: a room-changed
+    /// notice only drops a room that now fails them; a room passing again
+    /// stays hidden until the next rebuild (corrections 2026-10-22, 4).
+    shown: Vec<RoomId>,
     /// The first row shown (scroll position, in rows).
     pub scroll: usize,
     /// The selected room's id.
@@ -77,6 +81,7 @@ impl RoomListView {
             sort: None,
             direction: Direction::None,
             filters: Filters::default(),
+            shown: Vec::new(),
             scroll: 0,
             selected: None,
         }
@@ -85,7 +90,15 @@ impl RoomListView {
     /// The full list arrives (the room list reply).
     pub fn set_all(&mut self, rooms: Vec<RoomSummary>) {
         self.rooms = rooms;
+        self.rebuild();
+    }
+
+    /// Rebuild the list: sorted again and the filters applied afresh (a
+    /// header click, a filter change, a created room, the screen gaining
+    /// focus, a map, mode or Pure Combat change).
+    pub fn rebuild(&mut self) {
         self.resort();
+        self.shown = self.rooms.iter().filter(|r| self.passes(r)).map(|r| r.id).collect();
     }
 
     /// A room was created: inserted and the list re-sorted, the scroll
@@ -93,28 +106,42 @@ impl RoomListView {
     pub fn created(&mut self, room: RoomSummary) {
         self.rooms.retain(|r| r.id != room.id);
         self.rooms.push(room);
-        self.resort();
+        self.rebuild();
     }
 
     pub fn destroyed(&mut self, id: RoomId) {
         self.rooms.retain(|r| r.id != id);
+        self.shown.retain(|s| *s != id);
         if self.selected == Some(id) {
             self.selected = None;
         }
     }
 
-    /// A room changed: updated in place without re-sorting, except a Pure
-    /// Combat flag change.
+    /// A room changed: its cells are updated in place; the list is rebuilt
+    /// only for a map, mode or Pure Combat change, the moderator float is
+    /// redone for a moderator level change, and a password, player count,
+    /// maximum or state change drops a room that now fails a filter. Any
+    /// other change rebuilds nothing.
     pub fn changed(&mut self, room: RoomSummary) {
-        match self.rooms.iter_mut().find(|r| r.id == room.id) {
-            Some(r) => {
-                let pure = r.pure_combat != room.pure_combat;
-                *r = room;
-                if pure {
-                    self.resort();
-                }
+        let Some(r) = self.rooms.iter_mut().find(|r| r.id == room.id) else {
+            return self.created(room);
+        };
+        let rebuild = r.map != room.map || r.mode != room.mode || r.pure_combat != room.pure_combat;
+        let float = r.moderator != room.moderator;
+        let refilter =
+            r.locked != room.locked || r.users != room.users || r.max != room.max || r.state != room.state;
+        let id = room.id;
+        *r = room;
+        if rebuild {
+            self.rebuild();
+        } else if float {
+            self.rooms.sort_by(|a, b| b.moderator.cmp(&a.moderator));
+        }
+        if refilter && !rebuild {
+            let fails = self.find(id).is_some_and(|r| !self.passes(r));
+            if fails {
+                self.shown.retain(|s| *s != id);
             }
-            None => self.created(room),
         }
     }
 
@@ -126,7 +153,7 @@ impl RoomListView {
             Direction::Ascending => Direction::Descending,
         };
         self.sort = Some(column);
-        self.resort();
+        self.rebuild();
     }
 
     fn key_cmp(&self, column: Column, a: &RoomSummary, b: &RoomSummary) -> std::cmp::Ordering {
@@ -167,19 +194,21 @@ impl RoomListView {
     pub fn filter_mode(&mut self, mode: Option<(u16, bool)>) {
         self.filters.mode = mode;
         self.filters.map = None;
+        self.rebuild();
     }
 
-    /// The rooms that pass the filters, in order.
-    pub fn visible(&self) -> Vec<&RoomSummary> {
+    fn passes(&self, r: &RoomSummary) -> bool {
         let f = &self.filters;
-        self.rooms
-            .iter()
-            .filter(|r| !f.joinable || r.can_enter())
-            .filter(|r| !f.no_password || !r.locked)
-            .filter(|r| !f.pure_combat || r.pure_combat)
-            .filter(|r| f.mode.is_none_or(|(m, p)| r.mode == m && r.pure_combat == p))
-            .filter(|r| f.map.is_none_or(|m| r.map == m))
-            .collect()
+        (!f.joinable || r.can_enter())
+            && (!f.no_password || !r.locked)
+            && (!f.pure_combat || r.pure_combat)
+            && f.mode.is_none_or(|(m, p)| r.mode == m && r.pure_combat == p)
+            && f.map.is_none_or(|m| r.map == m)
+    }
+
+    /// The rooms the last rebuild let through the filters, in order.
+    pub fn visible(&self) -> Vec<&RoomSummary> {
+        self.rooms.iter().filter(|r| self.shown.contains(&r.id)).collect()
     }
 
     /// A row's cells (L, "Columns").

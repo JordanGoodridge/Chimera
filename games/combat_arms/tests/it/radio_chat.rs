@@ -606,8 +606,9 @@ fn typist() -> Room {
     room
 }
 
-/// 24. `/whisper Bob hi there`: a whisper to Bob with body "hi there";
-/// A1 shows the echo in (66, 158, 83).
+/// 24 (corrected 2026-10-22): the first matching alias in the listed order
+/// counts. With `/w/whisper`, `/whisper Bob hi there` matches `/w`: a
+/// whisper to "hisper" with the body "Bob hi there".
 #[test]
 fn case_24_whisper_command() {
     let mut room = typist();
@@ -615,14 +616,47 @@ fn case_24_whisper_command() {
     assert_eq!(
         outs,
         [Out::Whisper {
-            to: "Bob".into(),
-            body: "hi there".into()
+            to: "hisper".into(),
+            body: "Bob hi there".into()
         }]
     );
     let l = room.players[A1].last().unwrap();
-    assert_eq!(l.text, "To \"Bob\" : hi there");
+    assert_eq!(l.text, "To \"hisper\" : Bob hi there");
     assert_eq!(l.colour, [66, 158, 83, 255]);
     assert_eq!(l.life, 10_000.0);
+}
+
+/// 24, the other order: with `/whisper/w` the long alias comes first, so
+/// `/whisper Bob hi there` is a whisper to Bob, and `/wave` still matches
+/// `/w`.
+#[test]
+fn case_24_whisper_command_long_alias_first() {
+    let mut room = Room::new();
+    for p in &mut room.players {
+        p.chat.settings.commands = Commands::from_values(&[(Cmd::Whisper, "/whisper/w")]);
+    }
+    let outs = room.type_outs(A1, "/whisper Bob hi there", 0.0);
+    assert_eq!(outs, [Out::Whisper { to: "Bob".into(), body: "hi there".into() }]);
+    assert!(room.type_outs(A1, "/wave", 0.0).is_empty());
+}
+
+/// Corrections 2026-10-22 (3): a setting command followed only by spaces
+/// is sent whole as chat; the block list and the auto-reply stay.
+#[test]
+fn setting_command_with_only_spaces_is_chat() {
+    let mut room = Room::new();
+    for p in &mut room.players {
+        p.chat.settings.commands = Commands::from_values(&[
+            (Cmd::Block, "/block"),
+            (Cmd::UnBlock, "/unblock"),
+            (Cmd::WhisperAutoAnswer, "/auto"),
+        ]);
+    }
+    for (i, line) in ["/block   ", "/unblock   ", "/auto   "].into_iter().enumerate() {
+        let outs = room.type_outs(A1, line, i as f64 * 20_000.0);
+        assert_eq!(outs, [Out::Say { team: false, text: line.into() }], "{line:?}");
+    }
+    assert!(room.players[A1].chat.settings.auto_reply.is_empty());
 }
 
 /// 25. `/w Bob`: nothing sent; the input closes.

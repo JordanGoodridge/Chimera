@@ -514,3 +514,59 @@ fn the_radar_options_are_saved_with_the_profile() {
     }
     assert_eq!(*sim.app.world().resource::<CaRadarProfile>(), CaRadarProfile { scale: 1.0, rotate: 0 });
 }
+
+// --- Corrections 2026-10-22
+
+/// Correction 1: in Arms Race a scan never reveals an enemy on the radar,
+/// the last stage does, the full map is unaffected.
+#[test]
+fn corr1_arms_race_scans_do_not_reach_the_radar() {
+    let scanned = |last| Subject {
+        alive: true,
+        arms_race: true,
+        shared_scan: true,
+        contact: true,
+        team_contact: true,
+        last_stage: last,
+        ..default()
+    };
+    assert_eq!(look::radar_player(&me(), &scanned(false)), None);
+    assert!(look::radar_player(&me(), &scanned(true)).is_some());
+    assert!(look::map_player(&me(), &scanned(false)).is_some(), "the full map still shows a shared scan");
+    // Elimination: unchanged.
+    let elim = Subject { arms_race: false, ..scanned(false) };
+    assert!(look::radar_player(&me(), &elim).is_some());
+}
+
+/// Correction 4: a dead VIP ally shows the VIP icon, no wedge; a dead
+/// plain ally the death icon; a dead enemy only while a rule reveals it.
+#[test]
+fn corr4_dead_players_on_the_full_map() {
+    let vip = Subject { ally: true, alive: false, vip: true, ..default() };
+    let l = look::map_player(&me(), &vip).unwrap();
+    assert_eq!((l.icon, l.view), (look::icon("character_VIP.dtx"), None));
+    let ally = Subject { ally: true, alive: false, ..default() };
+    assert_eq!(look::map_player(&me(), &ally).unwrap().icon, look::icon("area_death_ally.DTX"));
+    let hidden = Subject { alive: false, ..default() };
+    assert_eq!(look::map_player(&me(), &hidden), None);
+    let scanned = Subject { alive: false, shared_scan: true, ..default() };
+    let l = look::map_player(&me(), &scanned).unwrap();
+    assert_eq!((l.icon, l.view), (look::icon("character_enemy.dtx"), None));
+    assert_eq!(look::radar_player(&me(), &scanned), None, "the radar hides every dead player");
+}
+
+/// Correction 5 (the install has no misspelt key): an Alpha carrier, who
+/// carries Bravo's flag, has an empty badge on the radar and Bravo's carrier
+/// keeps hers; the full map shows both.
+#[test]
+fn corr5_alpha_carriers_have_no_badge_on_the_radar() {
+    let alpha = Subject { alive: true, carry: CaCarry { flag: Some(2), ..default() }, ..default() };
+    let l = look::radar_player(&me(), &alpha).unwrap();
+    assert_eq!(l.badge.as_deref(), Some(""));
+    assert!(l.arrow);
+    assert_eq!(look::map_player(&me(), &alpha).unwrap().badge, Some(look::icon("character_flag_B.dtx")));
+    let bravo = Subject { alive: true, carry: CaCarry { flag: Some(1), ..default() }, ..default() };
+    assert_eq!(look::radar_player(&me(), &bravo).unwrap().badge, Some(look::icon("character_flag_A.dtx")));
+    let ally = Subject { ally: true, ..alpha };
+    assert_eq!(look::radar_player(&me(), &ally).unwrap().badge.as_deref(), Some(""));
+}
