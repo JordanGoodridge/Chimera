@@ -249,6 +249,18 @@ fn world_file(world: &World, map: &str) -> Option<String> {
     offer_file(world.get_resource::<Games>(), map)
 }
 
+/// Whether the map's game is known and names no file for it (Combat
+/// Arms' maps, offered by id and hash only). Unknown games (no `Games`,
+/// as in tests that serve files directly) don't count.
+fn offered_by_id_only(world: &World, map: &str) -> bool {
+    let Some(games) = world.get_resource::<Games>() else { return false };
+    let game = match map.split_once(':') {
+        Some((id, _)) => games.get(id),
+        None => games.default_game(),
+    };
+    game.is_some_and(|g| (g.map_file)(map_name(map)).is_none())
+}
+
 /// A relative path of plain names: nothing to climb out of a folder with.
 fn safe_file(file: &str) -> bool {
     !file.is_empty() && file.split('/').all(safe_name) && !file.starts_with('/')
@@ -805,7 +817,7 @@ fn start(world: &mut World, welcome: &Welcome) -> Fetch {
     // nothing to compare or download, the game loads it by name from its
     // own install and the hash decides (`client::check_map`); a client
     // without it fails to load it, and says so.
-    if world_file(world, &map).is_none() {
+    if offered_by_id_only(world, &map) {
         return load(world, &map, None);
     }
     let (Some(files), Some(hash)) = (world.get_resource::<MapFiles>().cloned(), welcome.map_hash) else {
