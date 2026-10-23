@@ -314,7 +314,7 @@ pub fn wake_on_contact(
                 .get(other)
                 .is_ok_and(|(rb, v)| rb.is_dynamic() && v.0.length_squared() > WAKE_SPEED * WAKE_SPEED);
             if moving && asleep.contains(me) {
-                commands.entity(me).remove::<StartAsleep>().insert(RigidBody::Dynamic);
+                commands.entity(me).try_remove::<StartAsleep>().try_insert(RigidBody::Dynamic);
                 awakened.write(PropAwakened(me));
             }
         }
@@ -516,7 +516,7 @@ pub fn settle_props(
     mut moving: Local<bevy::platform::collections::HashSet<u32>>,
 ) {
     for e in &asleep {
-        commands.entity(e).remove::<Settling>();
+        commands.entity(e).try_remove::<Settling>();
     }
     let now = time.elapsed_secs_f64();
     still.clear();
@@ -525,7 +525,7 @@ pub fn settle_props(
     for (e, rb, p, r, island, _, _, settling, check) in &mut props {
         if !rb.is_dynamic() {
             if settling.is_some() {
-                commands.entity(e).remove::<Settling>();
+                commands.entity(e).try_remove::<Settling>();
             }
             continue;
         }
@@ -537,7 +537,7 @@ pub fn settle_props(
                     wedged.push(e);
                 }
             } else {
-                commands.entity(e).remove::<WedgeCheck>();
+                commands.entity(e).try_remove::<WedgeCheck>();
             }
         }
         let fresh = Settling {
@@ -547,7 +547,7 @@ pub fn settle_props(
             wedged: stuck.then_some(now),
         };
         let Some(mut s) = settling else {
-            commands.entity(e).insert(fresh);
+            commands.entity(e).try_insert(fresh);
             moving.insert(island.island_id().0);
             continue;
         };
@@ -576,7 +576,7 @@ pub fn settle_props(
             v.bypass_change_detection().0 = Vec3::ZERO;
             w.bypass_change_detection().0 = Vec3::ZERO;
             if slept.insert(island.island_id().0) {
-                commands.entity(e).remove::<Settling>();
+                commands.entity(e).try_remove::<Settling>();
                 commands.queue(SleepBody(e));
             }
         }
@@ -591,7 +591,7 @@ pub fn settle_props(
         }
         // Forgotten now: a push before the next tick wakes it before this
         // runs again, and it must not count as still from before.
-        commands.entity(e).remove::<Settling>();
+        commands.entity(e).try_remove::<Settling>();
         if slept.insert(island) {
             commands.queue(SleepBody(e));
         }
@@ -608,4 +608,38 @@ fn wedged_depth(contacts: &ContactGraph, bodies: &Query<&RigidBody>, e: Entity) 
         })
         .flat_map(|pair| pair.manifolds.iter().flat_map(|m| m.points.iter().map(|p| p.penetration)))
         .fold(0.0, f32::max)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A body despawned between `settle_props` reading it and its commands
+    /// being applied (a map change or a breakage in the same frame) is no
+    /// error: its commands are for a body that is gone.
+    #[test]
+    fn settling_a_body_that_is_despawned_before_its_commands_apply_is_no_error() {
+        let mut world = World::new();
+        world.init_resource::<Time>();
+        world.init_resource::<TimeToSleep>();
+        world.init_resource::<ContactGraph>();
+        world.init_resource::<avian3d::dynamics::solver::islands::PhysicsIslands>();
+        // The default handler panics on a failed command.
+        let body = world
+            .spawn((
+                RigidBody::Dynamic,
+                Position::default(),
+                Rotation::default(),
+                BodyIslandNode::default(),
+                LinearVelocity::default(),
+                AngularVelocity::default(),
+                SettlesLikeProp,
+            ))
+            .id();
+        let mut system = IntoSystem::into_system(settle_props);
+        system.initialize(&mut world);
+        system.run_without_applying_deferred((), &mut world).unwrap();
+        world.despawn(body);
+        system.apply_deferred(&mut world);
+    }
 }
