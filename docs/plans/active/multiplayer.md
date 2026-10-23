@@ -1698,3 +1698,13 @@ in one blob, sorted by name.
 (`core::ActionRegistry`, `Intent::actions`; architecture review X5). The
 bits follow the names' sorted order, so a server and its clients agree as
 long as they register the same actions.
+
+
+### net30 (2026-10-22)
+
+A playing minigame (`minigame_net`): `NetMinigame` (its id, the match's
+phase and end) on one replicated entity, `MinigameNews` (the match's
+events, by their place in `minigame::EVENT_NAMES`), and the characters'
+`InMinigame` and the ladder's `Rung` replicated, registered after the
+memory plugin's. A client starts the minigame the server plays
+(`minigame::join_remote`) and shows its match in the HUD.

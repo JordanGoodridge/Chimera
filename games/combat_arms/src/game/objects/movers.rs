@@ -112,8 +112,11 @@ pub enum Out {
     /// Start this transition sound (stops the one before); `looping` while
     /// the transition lasts.
     Sound { file: String, looping: bool },
-    /// Tell the linked door (a player opened this one).
+    /// Tell the linked door (this one was triggered into opening).
     DoorLink(String),
+    /// Stop the object's looping transition sound (Corrections
+    /// (2026-10-22) 3).
+    StopSound,
 }
 
 /// What the characters let a mover do.
@@ -280,6 +283,23 @@ impl Awm {
         }
     }
 
+    /// `REMEMBER`: the remembered state's transition sound starts again
+    /// when the world model loops its sounds (Corrections (2026-10-22)
+    /// 15).
+    pub fn restart_sound(&self, out: &mut Vec<Out>) {
+        if !self.loop_sounds {
+            return;
+        }
+        out.push(Out::StopSound);
+        match self.state {
+            State::PowerOn => self.sound(POWER_ON, out),
+            State::On => self.sound(ON, out),
+            State::PowerOff => self.sound(POWER_OFF, out),
+            State::Off => self.sound(OFF, out),
+            State::Pause => {}
+        }
+    }
+
     fn command(&self, i: usize, out: &mut Vec<Out>) {
         if !self.commands[i].is_empty() {
             out.push(Out::Command(self.commands[i].clone()));
@@ -291,6 +311,11 @@ impl Awm {
     pub fn enter(&mut self, state: State, pose: &Pose, activator_at: Option<Vec3>, now: f64, out: &mut Vec<Out>) {
         let from = self.state;
         self.state = state;
+        // Every state change first stops a looping transition sound, even
+        // when the new state has none of its own.
+        if self.loop_sounds && state != State::Pause {
+            out.push(Out::StopSound);
+        }
         match state {
             State::PowerOn => {
                 if from == State::Off {
@@ -373,6 +398,9 @@ impl Awm {
     /// A trigger (`TRIGGER`, an accepted `ON`/`OFF` or activation).
     pub fn trigger(&mut self, f: &Frame, pose: &Pose, activator_at: Option<Vec3>, out: &mut Vec<Out>) -> bool {
         if self.locked {
+            if self.loop_sounds {
+                out.push(Out::StopSound);
+            }
             if !self.sounds[LOCKED].is_empty() {
                 out.push(Out::Sound {
                     file: self.sounds[LOCKED].clone(),
@@ -413,8 +441,11 @@ impl Awm {
         false
     }
 
-    /// Reversing (6): unless the activator would stand in the pose 10 %
-    /// along the reversed move, the opposite state, the timer from 0.
+    /// Reversing (6): unless the activator would stand in the pose one
+    /// frame's step along the reversed move (speed at p = 0.1 of the
+    /// opposite state's plain duration; a rotation's rate from its
+    /// current angle), the opposite state, the timer from 0 (Corrections
+    /// (2026-10-22) 1).
     fn reverse(&mut self, f: &Frame, pose: &Pose, activator_at: Option<Vec3>, out: &mut Vec<Out>) {
         let opposite = if self.state == State::PowerOn { State::PowerOff } else { State::PowerOn };
         if activator_at.is_some()
@@ -422,8 +453,9 @@ impl Awm {
         {
             let mut trial = self.clone();
             trial.state = opposite;
+            trial.multiplier = 1.0;
             trial.tau = 0.1 * trial.duration(opposite);
-            let (p, r, _) = trial.next_pose(pose, 0.1 * trial.duration(opposite), true);
+            let (p, r, _) = trial.next_pose(pose, f.dt, true);
             let obb = Pose { pos: p, rot: r, ..*pose }.obb();
             if obb.overlaps(who.min, who.max) {
                 return;
@@ -437,12 +469,11 @@ impl Awm {
     }
 
     /// The pose after one step of `dt` toward the state's target (sliding
-    /// and rotating), with whether it arrives; `whole` takes `dt` as the
-    /// step's length (the reversal test).
-    fn next_pose(&self, pose: &Pose, dt: f32, whole: bool) -> (Vec3, Quat, Option<Vec3>) {
+    /// and rotating), with whether it arrives; `test` is the reversal
+    /// test (a rotation's rate is from its current angle).
+    fn next_pose(&self, pose: &Pose, dt: f32, test: bool) -> (Vec3, Quat, Option<Vec3>) {
         let t = self.duration(self.state);
         let p = if t <= 0.001 { 1.0 } else { (self.tau / t).clamp(0.0, 1.0) };
-        let _ = whole;
         match self.motion {
             Motion::Sliding => {
                 let target = if self.state == State::PowerOn { self.on_pos } else { self.off_pos };
@@ -465,7 +496,7 @@ impl Awm {
                 };
                 let mut a = self.angles;
                 for k in 0..3 {
-                    a[k] = self.step_axis(a[k], a0[k], a1[k], s[k], t, p, dt);
+                    a[k] = self.step_axis(a[k], a0[k], a1[k], s[k], t, p, dt, test);
                 }
                 let (pos, rot) = self.rotated(a);
                 (pos, rot, Some(a))
@@ -476,7 +507,7 @@ impl Awm {
 
     /// One axis's step (4).
     #[allow(clippy::too_many_arguments)]
-    fn step_axis(&self, a: f32, a0: f32, a1: f32, s: f32, t: f32, p: f32, dt: f32) -> f32 {
+    fn step_axis(&self, a: f32, a0: f32, a1: f32, s: f32, t: f32, p: f32, dt: f32, test: bool) -> f32 {
         if p >= 1.0 {
             return a1;
         }
@@ -487,7 +518,8 @@ impl Awm {
         if !going {
             return a1;
         }
-        let rho = if t <= 0.001 { a1 - a0 } else { (a1 - a0) / t };
+        let from = if test { a } else { a0 };
+        let rho = if t <= 0.001 { a1 - from } else { (a1 - from) / t };
         let next = a + self.waveform.speed(rho, p, SLOW_ADD, SLOW_ADD) * dt;
         // Within float error of the target: there.
         if (a1 - next).abs() < 1e-5 {

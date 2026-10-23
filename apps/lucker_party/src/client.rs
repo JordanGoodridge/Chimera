@@ -1,9 +1,24 @@
 //! The client's side of Lucker Party (feature `present`): the shell with
-//! this app's hooks and Combat Arms' HUD (`ClientPlugin`), and the command
-//! line as the app plays it (`with_defaults`: the default minigame and its
-//! first map).
+//! this app's hooks and both games' HUDs (`ClientPlugin`, `with_huds`:
+//! Combat Arms' and CS:S's, the one drawn the local player's game, which
+//! follows its gun in the gun game: `chimera_sim::identity`; each shows the
+//! minigame's panel; CS:S's body animation for a player holding a CS:S
+//! gun), the map files it can read for a server's map check
+//! (`map_file_bytes`: CS:S's from its install, so a server on another map
+//! than the one loaded is joined; Combat Arms' maps load by id) and the command line as the app plays it
+//! (`with_defaults`: the default minigame and its first map).
+//!
+//! CS:S's HUD here is its health, armour and ammo panels, death notices,
+//! damage sprites and weapon selection row (`ui::game_hud`,
+//! `hud_sprites`, `weapon_select`), from the map's CS:S HUD look (kept on
+//! CS:S's maps, `MapSources::players`; put away while Combat Arms' HUD
+//! draws: `client::hud::HudLookOwner`), with the shell's crosshair, and
+//! the minigame's panel (`ui::minigame_hud`). Known shortcuts: not its
+//! radar, spectator panel or overview (Combat Arms' radar is the party's);
+//! on Combat Arms' maps there is no CS:S HUD look (the shell's plain HUD
+//! with CS:S's guns).
 
-use bevy::prelude::*;
+use bevy::{app::PluginGroupBuilder, prelude::*};
 use chimera_client::client::{AppHooks, Args, ClientPlugins};
 use chimera_core::game_registry::Games;
 use combat_arms::ui::hud::ItemNames;
@@ -16,27 +31,59 @@ pub fn client_hooks() -> AppHooks {
         build: super::BUILD,
         load_map: super::load_map,
         load_map_file: |id, _, _| Err(format!("{id}: Lucker Party loads maps by id only, not from a file")),
-        map_file_bytes: |_| None,
+        map_file_bytes,
         unload_greybox: greybox::unload,
         respawn_greybox: greybox::respawn,
     }
 }
 
-/// The client: the shell's plugins with the app's hooks and Combat Arms'
-/// HUD.
+/// The bytes of map `id`'s file as this app loads it, for the network's
+/// map check (`net::maps::MapFiles`): a CS:S map's, from the install. Combat
+/// Arms' maps have no file of their own (the server offers them by id and
+/// hash only: `net::maps`), so a client loads them by id. Without this a
+/// client joining a server on a map other than the one it has loaded found
+/// no copy, asked the server for a file the server doesn't have, and
+/// stayed in its own greybox game with a minigame that nobody plays.
+pub fn map_file_bytes(id: &str) -> Option<Vec<u8>> {
+    let name = id.strip_prefix("cs_source:")?;
+    let install = cs_source::game::INFO.install()?;
+    cs_source::game::mount::open(&install).ok()?.read(&format!("maps/{name}.bsp")).ok()
+}
+
+/// The shell's plugins with both games' HUDs: Combat Arms' (`ui::
+/// with_hud`), then CS:S's panels, sprites and weapon selection (whose
+/// logic is the shell's `WeaponMenuPlugin`, added once, by CS:S's) and the
+/// minigame's panel on CS:S's HUD.
+pub fn with_huds(shell: PluginGroupBuilder) -> PluginGroupBuilder {
+    use chimera_client::client::{hud::HudPlugin, view::ViewPlugin, weapon_menu::WeaponMenuPlugin};
+    use cs_source::ui::{game_hud::GameHudPlugin, hud_sprites::HudSpritesPlugin, minigame_hud::MinigameHudPlugin};
+    combat_arms::ui::with_hud(shell)
+        .disable::<WeaponMenuPlugin>()
+        .add_after::<HudPlugin>(GameHudPlugin)
+        .add_after::<GameHudPlugin>(HudSpritesPlugin)
+        .add_after::<HudSpritesPlugin>(MinigameHudPlugin)
+        .add_after::<ViewPlugin>(cs_source::ui::weapon_select::WeaponSelectPlugin)
+}
+
+/// The client: the shell's plugins with the app's hooks and both games'
+/// HUDs (`with_huds`), the map's HUD look CS:S's (`HudLookOwner`).
 pub struct ClientPlugin {
     pub args: Args,
 }
 
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(combat_arms::ui::with_hud(
+        app.add_plugins(with_huds(
             ClientPlugins {
                 args: self.args.clone(),
                 hooks: client_hooks(),
             }
             .build(),
         ))
+        .insert_resource(chimera_client::client::hud::HudLookOwner(cs_source::game::GAME))
+        // What CS:S's bodies play, for a player holding a CS:S gun (the
+        // gun game's `identity = "weapon"`).
+        .add_plugins(cs_source::game::player_anim::PlayerAnimPlugin)
         .add_systems(Startup, cs_source_names);
     }
 }
@@ -53,16 +100,26 @@ fn cs_source_names(games: Res<Games>, mut names: ResMut<ItemNames>) {
     names.0.extend(cs_source::game::weapons::display_names(&mount));
 }
 
+/// Whether the command line joins a server (`+connect <address>`).
+pub fn joins_server(console: &[String]) -> bool {
+    console.iter().any(|c| c.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("connect")))
+}
+
 /// The command line as the app plays it: `DEFAULT_MINIGAME` without
 /// `+minigame`, and without `--map` that minigame's first map (a minigame
 /// that isn't built in keeps the default's); `DEFAULT_BOTS` bots unless it
-/// sets `MaxPlayer`.
+/// sets `MaxPlayer`. A joiner (`+connect`) gets neither the minigame nor
+/// the bots: the server plays its minigame (`minigame_net`) and fills its
+/// own slots; the map is the default's, loaded at once, until the server
+/// says its own.
 pub fn with_defaults(mut args: Args) -> Args {
-    if !args.console.iter().any(|c| c.to_lowercase().starts_with("maxplayer")) {
+    let joining = joins_server(&args.console);
+    if !joining && !args.console.iter().any(|c| c.to_lowercase().starts_with("maxplayer")) {
         args.console.insert(0, format!("MaxPlayer {}", super::DEFAULT_BOTS));
     }
     let minigame = match super::minigame_of(&args.console) {
         Some(id) => id,
+        None if joining => super::DEFAULT_MINIGAME.to_string(),
         None => {
             args.console.push(format!("minigame {}", super::DEFAULT_MINIGAME));
             super::DEFAULT_MINIGAME.to_string()
@@ -92,5 +149,16 @@ mod tests {
         assert_eq!(own.map.as_deref(), Some("combat_arms:warehouse"));
         assert_eq!(own.console.len(), 2);
         assert_eq!(super::client_hooks().build, crate::BUILD);
+    }
+
+    #[test]
+    fn a_joiner_leaves_the_minigame_and_the_bots_to_the_server() {
+        let mut join = Args::default();
+        join.console.push("connect 127.0.0.1:28930".into());
+        let join = super::with_defaults(join);
+        assert!(super::joins_server(&join.console));
+        assert_eq!(join.console, ["connect 127.0.0.1:28930"], "no local minigame or bots");
+        assert_eq!(join.map.as_deref(), Some("cs_source:de_dust2"), "the default map meanwhile");
+        assert!(!super::joins_server(&super::with_defaults(Args::default()).console));
     }
 }

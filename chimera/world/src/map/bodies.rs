@@ -1,5 +1,7 @@
 //! Character bodies, the simulation's side: which model a character uses
-//! (its team's, its class's or the one `BodyName` names), what it holds
+//! (its team's, its class's or the one `BodyName` names, among its
+//! identity's game's models when it has one: `slots::GameIdentity`,
+//! `CharacterModels::for_identity`), what it holds
 //! (`Held`), its animations and its hitboxes following the skeleton (also
 //! headless, for the server's hit tests). The drawn body, held model and
 //! their posing are `render::bodies`, which draws what these say.
@@ -47,11 +49,24 @@ pub struct CharacterModels(pub Arc<Vec<MapCharacterModel>>);
 impl CharacterModels {
     /// The model for `team`: its own, else one without a team, else any.
     pub fn for_team(&self, team: Option<Team>) -> Option<(usize, &MapCharacterModel)> {
+        self.for_team_of(None, team)
+    }
+
+    /// Whether game `game` may wear `m` (`MapCharacterModel::game`; no
+    /// game: every one).
+    fn wears(game: Option<&str>, m: &MapCharacterModel) -> bool {
+        match (game, m.game) {
+            (Some(g), Some(own)) => own.eq_ignore_ascii_case(g),
+            _ => true,
+        }
+    }
+
+    fn for_team_of(&self, game: Option<&str>, team: Option<Team>) -> Option<(usize, &MapCharacterModel)> {
         let all = self
             .0
             .iter()
             .enumerate()
-            .filter(|(_, m)| m.name.is_none() && m.class.is_none());
+            .filter(|(_, m)| Self::wears(game, m) && m.name.is_none() && m.class.is_none());
         all.clone()
             .find(|(_, m)| team.is_some() && m.team == team)
             .or_else(|| all.clone().find(|(_, m)| m.team.is_none()))
@@ -66,17 +81,42 @@ impl CharacterModels {
         name: Option<&BodyName>,
         class: Option<&crate::core::PlayerClass>,
     ) -> Option<(usize, &MapCharacterModel)> {
+        self.for_identity(None, team, name, class)
+    }
+
+    /// `for_character` among the models of the character's identity's game
+    /// (`slots::GameIdentity`; without one, among all): None when that
+    /// game has none here.
+    pub fn for_identity(
+        &self,
+        identity: Option<&chimera_core::slots::GameIdentity>,
+        team: Option<Team>,
+        name: Option<&BodyName>,
+        class: Option<&crate::core::PlayerClass>,
+    ) -> Option<(usize, &MapCharacterModel)> {
+        let game = identity.map(|i| i.0.as_str());
         match name {
-            Some(n) => self
-                .0
-                .iter()
-                .enumerate()
-                .find(|(_, m)| m.name.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(&n.0))),
+            Some(n) => self.0.iter().enumerate().find(|(_, m)| {
+                Self::wears(game, m) && m.name.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(&n.0))
+            }),
             None => class
                 .filter(|c| c.0 != 0 && c.team() == team)
-                .and_then(|c| self.0.iter().enumerate().find(|(_, m)| m.class == Some(c.0)))
-                .or_else(|| self.for_team(team)),
+                .and_then(|c| {
+                    self.0
+                        .iter()
+                        .enumerate()
+                        .find(|(_, m)| Self::wears(game, m) && m.class == Some(c.0))
+                })
+                .or_else(|| self.for_team_of(game, team)),
         }
+    }
+
+    /// Whether the body a character wears (`BodyModel`) is game `game`'s,
+    /// of no game in particular, or none of the map's: which game's
+    /// animation drives it.
+    pub fn is_of(&self, body: Option<&BodyModel>, game: &str) -> bool {
+        body.and_then(|b| self.0.get(b.0))
+            .is_none_or(|m| m.game.is_none_or(|g| g.eq_ignore_ascii_case(game)))
     }
 }
 
@@ -120,14 +160,22 @@ pub fn attach_hitboxes(
             Option<&BodyName>,
             Option<&crate::core::PlayerClass>,
             Option<&BodyModel>,
+            Option<&chimera_core::slots::GameIdentity>,
         ),
         With<crate::core::Intent>,
     >,
     mut commands: Commands,
 ) {
     let Some(models) = models else { return };
-    for (e, team, name, class, current) in &characters {
-        let Some((index, m)) = models.for_character(team.copied(), name, class) else {
+    for (e, team, name, class, current, identity) in &characters {
+        let Some((index, m)) = models.for_identity(identity, team.copied(), name, class) else {
+            // Its identity's game has no body here: none (it was another
+            // game's).
+            if current.is_some() {
+                commands
+                    .entity(e)
+                    .remove::<(BodyModel, crate::core::Hitboxes, anim::Animator)>();
+            }
             continue;
         };
         if current == Some(&BodyModel(index)) {

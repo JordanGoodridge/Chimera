@@ -9,4 +9,5 @@ mod greybox;
 // Slow ones (the user's installs): the fast tier skips `heavy::`.
 mod heavy {
     mod dust2;
+    mod spawns;
 }

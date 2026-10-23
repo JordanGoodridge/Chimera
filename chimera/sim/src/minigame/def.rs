@@ -17,11 +17,15 @@
 //! bots = "combat_arms"        # whose bots play (a game that gates them by `gameplay::bots_are`)
 //! movement = "combat_arms:movement"   # checked to be registered; the app's characters use it
 //! character = "combat_arms:soldier"   # informational (the kit isn't a slot yet)
+//! identity = "weapon"         # per player: the held weapon's game gives its movement,
+//!                             # body and HUD (`chimera_sim::identity`); default: the slots above
 //! weapons = ["cs_source", "combat_arms"]   # the weapon sets a definition may name
 //!
 //! [spawn]
 //! respawn = { delay = "2s", protection = "1.5s" }
-//! points = "far_from_enemies"   # or "map" (in turn), "team" (the player's team's)
+//! points = "far_from_enemies"   # or "map" (in turn), "team" (the player's team's),
+//!                               # "random_hidden" (anywhere walkable, out of enemies' sight)
+//! min_distance = 20.32          # m from a living enemy for "random_hidden" (800 u)
 //! kit = ["combat_arms:m9_knife"]   # given every life, before the rules' weapons
 //!
 //! [rules]
@@ -104,22 +108,54 @@ pub struct Slots {
     pub bots: Option<String>,
     pub movement: Option<String>,
     pub character: Option<String>,
+    /// What each player's own game slots follow (None: the slots above,
+    /// the same for everyone).
+    #[serde(default)]
+    pub identity: Option<IdentityDef>,
     /// Game ids whose weapons the definition may name (empty: any).
     #[serde(default)]
     pub weapons: Vec<String>,
 }
 
+/// What a player's own game identity follows (`slots::FollowsWeapon`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityDef {
+    /// The game of the weapon it holds: its movement, its body and look,
+    /// its HUD (`chimera_sim::identity`).
+    Weapon,
+}
+
 /// Where and how players come back.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SpawnDef {
     #[serde(default)]
     pub respawn: Respawn,
     #[serde(default)]
     pub points: Points,
+    /// `random_hidden`'s least distance (m) from a living enemy: 800 u
+    /// by default.
+    #[serde(default = "default_min_distance")]
+    pub min_distance: f32,
     /// Weapons given every life before the rules' own.
     #[serde(default)]
     pub kit: Vec<String>,
+}
+
+fn default_min_distance() -> f32 {
+    20.32
+}
+
+impl Default for SpawnDef {
+    fn default() -> Self {
+        Self {
+            respawn: Respawn::default(),
+            points: Points::default(),
+            min_distance: default_min_distance(),
+            kit: Vec::new(),
+        }
+    }
 }
 
 /// The dead respawn after `delay` s, protected from damage for
@@ -153,6 +189,10 @@ pub enum Points {
     FarFromEnemies,
     /// The player's team's points (any where there are none).
     Team,
+    /// A spot anywhere on the map's walkable floor (`spawns`), at random
+    /// (seeded), out of every living enemy's sight and at least
+    /// `min_distance` from each; relaxed when none is.
+    RandomHidden,
 }
 
 /// The rules module and its own keys.
@@ -265,10 +305,18 @@ ladder = ["kit:pistol", "kit:rifle"]
         assert_eq!(def.time_limit, 120.0);
         assert_eq!(def.spawn.respawn, Respawn { delay: 0.5, protection: 1.0 });
         assert_eq!(def.spawn.points, Points::FarFromEnemies);
+        assert_eq!(def.spawn.min_distance, 20.32);
+        let hidden = DEF.replace("[spawn]", "[spawn]\npoints = \"random_hidden\"\nmin_distance = 15");
+        let def = MinigameDef::parse("t", &hidden).unwrap();
+        assert_eq!((def.spawn.points, def.spawn.min_distance), (Points::RandomHidden, 15.0));
+        let def = MinigameDef::parse("t", DEF).unwrap();
         assert_eq!(def.teams.teams(), Teams::FreeForAll);
         assert_eq!(def.rules.module, "chimera:ladder");
         assert!(def.rules.params.contains_key("ladder"));
         assert!(def.allows_weapon("anything:at_all"), "no weapon sets named: any");
+        assert_eq!(def.slots.identity, None, "slots the same for everyone by default");
+        let follows = MinigameDef::parse("t", &DEF.replace("[spawn]", "[slots]\nidentity = \"weapon\"\n[spawn]")).unwrap();
+        assert_eq!(follows.slots.identity, Some(IdentityDef::Weapon));
     }
 
     #[test]

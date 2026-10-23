@@ -113,6 +113,7 @@ pub static MAP_SOURCES: MapSources = MapSources {
     teams: TEAMS,
     surfaces: SURFACES,
     kept: KEPT,
+    players: false,
 };
 
 /// Map `id` (`cs_source:de_dust2`, `combat_arms:warehouse`; a bare name is

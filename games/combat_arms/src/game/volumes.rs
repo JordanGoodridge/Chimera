@@ -20,9 +20,17 @@
 //! viscosity, currents, friction, speed factors, player gravity, jump
 //! pads, safety nets; by the hull's box, and the eye volume,
 //! `eye_volume`) is movement.md's (`movement`); players whose hull box
-//! touches one take `Damage` per second (`volume_damage`, on the
-//! server; burn for `CorrosiveFluid` and `Burn`), `EndlessFall`'s 10⁸
-//! killing them, after `PendingSec` inside when it is set.
+//! touches one are handed `Damage` x the server step (50 ms) as lasting
+//! damage each tick, applied by the frame time for 0.25 s (so `Damage` /
+//! 20 per second, going on 0.25 s after leaving: `volume_damage`, on the
+//! server; world_dat.md Corrections (2026-10-22) 1). Plain volumes hurt
+//! players only; `DamageVolume` heals by default (`FAK_HEAL`, 5), has a
+//! `TargetTeam` and `Locked` and takes bots; the kind comes from
+//! `DamageType` (`typed`: `BURN` burns, `ENDLESS FALL` is the endless-fall
+//! kind); `EndlessFall`'s 10⁸ kills at once, after `PendingSec` on a 0.5 s
+//! grid of looks when it is set. Messages (`objects`): `DamageVal`,
+//! `VELOCITY`, `LOCK`/`UNLOCK`; a launching pad plays its
+//! `WorldSoundPath` (`PadLaunch`, `pad_sounds`).
 //! `ca_volumes_here [radius]` lists the volumes at the player's centre
 //! (`volumes_near`).
 //!
@@ -36,15 +44,15 @@
 //! exact shape for a convex brush; a concave one is taken as the
 //! intersection of its faces' half-spaces); a moved volume's world model
 //! is drawn where it stood (only its planes move); the
-//! `DamageType` property, armour, the sound filter, fog and tint aren't
-//! read (freezing damage is generic);
+//! armour, the sound filter, fog and tint aren't read (freezing
+//! damage is generic, its screen effects aren't made); `VELOCITY` reaches
+//! clients with the objects' state (`objects::net`);
 //! the class defaults of `Friction` (1, `Ice` 0) and `PlayerSpeedFactor`
-//! (1) are ours (world_dat.md gives Ice's and Wind's only); the pending
-//! time is checked every tick, not every 0.5 s; the box test has no edge
+//! (1) are ours (world_dat.md gives Ice's and Wind's only); the box test has no edge
 //! axes (a box near a convex brush's edge, outside it, can count); of
 //! overlapping eye volumes a liquid or ladder wins (`eye_volume`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// What an `EndlessFall` volume's damage names as its weapon: the
 /// `EndlessFall` damage kind (characters.md 10).
@@ -52,9 +60,10 @@ pub const ENDLESS_FALL: &str = "combat_arms:endless_fall";
 
 use bevy::prelude::*;
 
+use super::{effects::sounds::CaSound, inventory, special::CaHeals};
 use crate::{
     console::ConsoleAppExt,
-    core::{Damage, DamageKind, Health, Hitgroup, Intent, MovementState, SimClock, SimSet},
+    core::{Bot, Damage, DamageKind, Dead, Health, Hitgroup, Intent, MovementState, Npc, SimClock, SimSet, Team},
     map::{MapEntities, MapEntity, MapPart, entities::entity_to_engine},
 };
 
@@ -80,7 +89,7 @@ pub const VOLUME_CLASSES: &[(&str, bool, f32, f32)] = &[
     ("Ladder", false, 0.4, 0.0),
     ("Weather", false, 0.0, 0.0),
     ("Gravity", false, 0.0, 0.0),
-    ("DamageVolume", false, 0.0, 0.0),
+    ("DamageVolume", false, 0.0, 5.0),
     ("WorldVolume", false, 0.0, 0.0),
     ("JumpVolume", false, 0.0, 0.0),
 ];
@@ -98,9 +107,6 @@ const NOT_EYE_VOLUMES: &[&str] = &["SafteyNet", "JumpVolume", "Weather", "Corros
 /// The classes left out of the players' ground friction (movement.md
 /// "Volumes"): filters, safety nets and jump pads.
 const NO_FRICTION_VOLUMES: &[&str] = &["Filter", "SafteyNet", "JumpVolume"];
-
-/// The classes whose damage burns (corrosive 5 burn/s, `Burn`).
-const BURNING: &[&str] = &["CorrosiveFluid", "Burn"];
 
 /// Whether objects of `class` are volumes.
 pub fn is_volume(class: &str) -> bool {
@@ -139,8 +145,49 @@ pub struct CaVolume {
     /// `JumpDirection`). A player whose hull touches the pad and stood on
     /// ground is launched by it (movement.md "Jump pads").
     pub jump_velocity: Option<Vec3>,
-    /// The damage's kind: burn for the burning classes, else generic.
+    /// The damage's kind (from `damage_type`): burn for `BURN`, else
+    /// generic.
     pub kind: DamageKind,
+    /// `DamageType`, upper case: the class's default unless the map names
+    /// one (world_dat.md Corrections (2026-10-22) 4).
+    pub damage_type: String,
+    /// `ENDLESS FALL`: the damage is of the endless-fall kind.
+    pub endless_fall: bool,
+    /// `FAK_HEAL`: the damage heals (a `DamageVolume`'s default).
+    pub heal: bool,
+    /// A `DamageVolume`'s `Locked`: it does nothing (`LOCK` / `UNLOCK`).
+    pub locked: bool,
+    /// A `DamageVolume`'s `TargetTeam` (team id; None: everyone).
+    pub target_team: Option<u8>,
+    /// A `JumpVolume`'s world sound (`WorldSoundPath` and its radii).
+    pub pad_sound: Option<PadSound>,
+}
+
+/// The sound a jump pad plays at the player it launches (world_dat.md
+/// Corrections (2026-10-22) 7).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PadSound {
+    pub file: String,
+    /// `SndInnerRadius`, `SndOuterRadius` (u, 300 each by default).
+    pub inner: f32,
+    pub outer: f32,
+    /// `IgnoreTouchPlayer` (true by default): an ordinary 3D sound, else a
+    /// non-3D one.
+    pub three_d: bool,
+}
+
+/// The class's default `DamageType` (world_dat.md).
+fn default_damage_type(class: &str) -> &'static str {
+    match class {
+        "VolumeBrush" => "CHOKE",
+        "CorrosiveFluid" | "Burn" => "BURN",
+        "FreezingWater" | "ColdAir" => "FREEZE",
+        "PoisonGas" => "POISON",
+        "Electricity" => "ELECTROCUTE",
+        "EndlessFall" => "ENDLESS FALL",
+        "DamageVolume" => "FAK_HEAL",
+        _ => "UNSPECIFIED",
+    }
 }
 
 impl CaVolume {
@@ -174,8 +221,26 @@ impl CaVolume {
             player_gravity: (class == "Gravity").then_some(DEFAULT_PLAYER_GRAVITY),
             // No rotation: forward is the file's +Z, engine -Z.
             jump_velocity: (class == "JumpVolume").then_some(Vec3::NEG_Z * DEFAULT_PAD_SPEED),
-            kind: if BURNING.contains(&class) { DamageKind::Burn } else { DamageKind::Generic },
-        })
+            kind: DamageKind::Generic,
+            damage_type: String::new(),
+            endless_fall: false,
+            heal: false,
+            locked: false,
+            target_team: None,
+            pad_sound: None,
+        }
+        .typed(default_damage_type(class)))
+    }
+
+    /// This volume with `DamageType` `name` (case ignored): the kind of
+    /// its damage, or a heal.
+    pub fn typed(mut self, name: &str) -> Self {
+        let name = name.trim().to_ascii_uppercase();
+        self.kind = if name == "BURN" { DamageKind::Burn } else { DamageKind::Generic };
+        self.endless_fall = name == "ENDLESS FALL";
+        self.heal = name == "FAK_HEAL";
+        self.damage_type = name;
+        self
     }
 
     /// A ladder (`Ladder`): characters inside climb (movement.md "Other
@@ -246,8 +311,21 @@ impl CaVolume {
                 };
                 dir * real("Velocity").unwrap_or(DEFAULT_PAD_SPEED)
             }),
+            pad_sound: (defaults.class == "JumpVolume")
+                .then(|| e.get("WorldSoundPath").map(str::trim).filter(|f| !f.is_empty()))
+                .flatten()
+                .map(|file| PadSound {
+                    file: file.to_string(),
+                    inner: real("SndInnerRadius").unwrap_or(300.0),
+                    outer: real("SndOuterRadius").unwrap_or(300.0),
+                    three_d: !e.get("IgnoreTouchPlayer").is_some_and(|v| v == "0" || v.eq_ignore_ascii_case("false")),
+                }),
+            locked: defaults.class == "DamageVolume"
+                && e.get("Locked").is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true")),
+            target_team: e.get("TargetTeam").and_then(super::rules::objects::team_named),
             ..defaults
-        })
+        }
+        .typed(e.get("DamageType").unwrap_or(default_damage_type(e.classname()))))
     }
 }
 
@@ -290,9 +368,28 @@ pub fn eye_volume<'a>(volumes: impl IntoIterator<Item = &'a CaVolume>, p: Vec3) 
 /// The map's volumes, made when it loads; players' damage inside them.
 pub struct CaVolumesPlugin;
 
+/// The volumes that hurt, drown or burn a player, as zones for spawns
+/// to keep out of (`map::SpawnHazards`).
+fn hazard_zones(world: &mut World) -> Vec<crate::core::MapBrush> {
+    world
+        .query::<&CaVolume>()
+        .iter(world)
+        .filter(|v| !v.hidden && (v.liquid || (v.damage > 0.0 && !v.heal && !v.locked && v.target_team.is_none())))
+        .map(|v| crate::core::MapBrush {
+            planes: v.planes.clone(),
+            min: v.min,
+            max: v.max,
+            ladder: false,
+            surface: None,
+        })
+        .collect()
+}
+
 impl Plugin for CaVolumesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TimeInside>().add_systems(
+        use crate::map::SpawnHazardAppExt;
+        app.add_spawn_hazards(hazard_zones);
+        app.init_resource::<VolumeDamage>().add_message::<PadLaunch>().add_systems(
             FixedUpdate,
             (
                 load_volumes
@@ -300,7 +397,8 @@ impl Plugin for CaVolumesPlugin {
                     .before(super::objects::CaObjectsSet),
                 volume_damage
                     .run_if(crate::core::authoritative)
-                    .after(super::objects::CaObjectsSet),
+                    .after(super::objects::CaObjectsSet)
+                    .before(super::special::apply_heals),
             )
                 .chain()
                 .in_set(SimSet::Weapons),
@@ -367,51 +465,173 @@ fn load_volumes(entities: Res<MapEntities>, old: Query<Entity, With<CaVolume>>, 
     }
 }
 
-/// Since when each player has been inside each damaging volume.
-#[derive(Resource, Default)]
-struct TimeInside(HashMap<(Entity, Entity), f64>);
+/// A jump pad launched a player (written by the movement, predicted or
+/// not; only the server plays the sound).
+#[derive(Message, Clone, Debug, PartialEq)]
+pub struct PadLaunch {
+    /// Where the player is (metres).
+    pub at: Vec3,
+    pub sound: PadSound,
+}
 
-/// Players whose hull box touches a damaging volume take its damage × the
-/// tick (after its pending time).
+/// A launching pad's world sound (Corrections (2026-10-22) 7), played by
+/// the server at the launched player: a 3D sound with the pad's radii, or
+/// a non-3D one when `IgnoreTouchPlayer` is false.
+fn pad_sound(l: &PadLaunch) -> CaSound {
+    CaSound {
+        file: l.sound.file.clone(),
+        at: l.sound.three_d.then_some(l.at),
+        radii: (l.sound.inner, l.sound.outer),
+        volume: 100.0,
+        source: None,
+        channel: None,
+        server: true,
+    }
+}
+
+/// The volumes' damage bookkeeping (world_dat.md Corrections
+/// (2026-10-22) 1 and 5). `BTreeMap`s: ordered by entity, nothing hashed.
+#[derive(Resource, Default)]
+struct VolumeDamage {
+    /// Each volume with a `PendingSec`: when its next 0.5 s look at the
+    /// players inside is due.
+    next_check: BTreeMap<Entity, f64>,
+    /// The players those looks listed (player, volume), with the time
+    /// after which they take the damage.
+    listed: BTreeMap<(Entity, Entity), f64>,
+    /// The lasting (progressive) damage in force, per (player, volume).
+    lasting: BTreeMap<(Entity, Entity), Lasting>,
+}
+
+/// One hand-over of lasting damage.
+#[derive(Clone, Copy, Debug)]
+struct Lasting {
+    /// `Damage` × the step time, in health units (a heal too: positive).
+    amount: f32,
+    /// When it lapses.
+    until: f64,
+}
+
+/// How long a hand-over of damage lasts, s.
+pub const LASTING: f64 = 0.25;
+/// How often a volume with a `PendingSec` looks at the players inside, s.
+pub const PENDING_CHECK: f64 = 0.5;
+
+/// Characters inside a damaging volume are handed `Damage` × the server
+/// step as lasting damage each tick (replacing the last), which then
+/// applies its amount × the frame time every frame for 0.25 s: so
+/// `Damage` × the step per second (`Damage` / 20 at 20 Hz), going on for
+/// 0.25 s after leaving. Plain volumes hurt players only; a
+/// `DamageVolume` heals by default, filters by team, can be locked and
+/// takes bots too.
+#[allow(clippy::type_complexity)]
 fn volume_damage(
     volumes: Query<(Entity, &CaVolume)>,
-    players: Query<(Entity, &Transform, &MovementState, &Health), With<Intent>>,
+    characters: Query<
+        (Entity, &Transform, &MovementState, &Health, Option<&Team>, Has<Bot>, Has<Npc>, Has<Dead>),
+        With<Intent>,
+    >,
     clock: Res<SimClock>,
-    mut inside: ResMut<TimeInside>,
+    mut state: ResMut<VolumeDamage>,
     mut damage: MessageWriter<Damage>,
+    mut heals: ResMut<CaHeals>,
+    mut launches: MessageReader<PadLaunch>,
+    mut sounds: MessageWriter<CaSound>,
 ) {
+    for l in launches.read() {
+        sounds.write(pad_sound(l));
+    }
     let now = clock.now;
     let dt = clock.dt();
-    let mut seen = HashMap::new();
-    for (p, t, state, health) in &players {
-        if health.current <= 0.0 {
+    let step = super::grenades::SERVER_FRAME as f32;
+    // The 0.5 s look at the players inside, per volume with a pending time.
+    let mut checking: Vec<Entity> = Vec::new();
+    for (ve, v) in &volumes {
+        if v.pending <= 0.001 || v.damage <= 0.0 {
             continue;
         }
-        let centre = t.translation + (state.hull_min + state.hull_max) / 2.0;
-        let (lo, hi) = (t.translation + state.hull_min, t.translation + state.hull_max);
-        for (ve, v) in &volumes {
-            if v.damage <= 0.0 || v.hidden || !v.touches_box(lo, hi) {
-                continue;
+        let next = state.next_check.entry(ve).or_insert(now);
+        if now + 1e-9 >= *next {
+            while *next <= now + 1e-9 {
+                *next += PENDING_CHECK;
             }
-            let since = *inside.0.get(&(p, ve)).unwrap_or(&now);
-            seen.insert((p, ve), since);
-            if now - since + 1e-9 < v.pending as f64 {
-                continue;
-            }
-            damage.write(Damage {
-                target: p,
-                attacker: None,
-                amount: v.damage * 0.01 * dt,
-                point: centre,
-                dir: Vec3::ZERO,
-                hitgroup: Hitgroup::Generic,
-                kind: v.kind,
-                // The endless fall's own damage kind (characters.md 10:
-                // its death animation `D_W`).
-                weapon: (v.class == "EndlessFall").then_some(ENDLESS_FALL),
-                force: Vec3::ZERO,
-            });
+            checking.push(ve);
         }
     }
-    inside.0 = seen;
+    let mut inside_now: BTreeSet<(Entity, Entity)> = BTreeSet::new();
+    state.lasting.retain(|_, l| now <= l.until + 1.0);
+    for (p, t, ms, health, team, bot, npc, dead) in &characters {
+        if health.current <= 0.0 || dead {
+            continue;
+        }
+        let centre = t.translation + (ms.hull_min + ms.hull_max) / 2.0;
+        let (lo, hi) = (t.translation + ms.hull_min, t.translation + ms.hull_max);
+        let is_player = !bot && !npc;
+        for (ve, v) in &volumes {
+            if v.damage <= 0.0 || v.hidden || v.locked || !v.touches_box(lo, hi) {
+                continue;
+            }
+            // Plain volumes hurt players only; a DamageVolume takes any
+            // character of its team (or all of them).
+            if v.class == "DamageVolume" {
+                if v.target_team.is_some_and(|tt| team.map(|t| t.0) != Some(tt)) {
+                    continue;
+                }
+            } else if !is_player {
+                continue;
+            }
+            inside_now.insert((p, ve));
+            if v.pending > 0.001 {
+                // Listed by a look (due = the look's time + PendingSec),
+                // damaged only once past it.
+                if checking.contains(&ve) {
+                    state.listed.entry((p, ve)).or_insert(now + v.pending as f64);
+                }
+                if !state.listed.get(&(p, ve)).is_some_and(|due| now > *due + 1e-9) {
+                    continue;
+                }
+            }
+            state.lasting.insert(
+                (p, ve),
+                Lasting {
+                    amount: v.damage * step * inventory::HP,
+                    until: now + LASTING,
+                },
+            );
+        }
+        // This character's lasting damage, the refresh above included.
+        let mine: Vec<((Entity, Entity), Lasting)> =
+            state.lasting.iter().filter(|((q, _), _)| *q == p).map(|(k, l)| (*k, *l)).collect();
+        for ((_, ve), l) in mine {
+            let Ok((_, v)) = volumes.get(ve) else {
+                state.lasting.remove(&(p, ve));
+                continue;
+            };
+            if now > l.until + 1e-9 {
+                state.lasting.remove(&(p, ve));
+                continue;
+            }
+            if v.heal {
+                heals.now.push((p, l.amount * dt));
+            } else {
+                damage.write(Damage {
+                    target: p,
+                    attacker: None,
+                    amount: l.amount * dt,
+                    point: centre,
+                    dir: Vec3::ZERO,
+                    hitgroup: Hitgroup::Generic,
+                    kind: v.kind,
+                    // The endless fall's own damage kind (characters.md 10:
+                    // its death animation `D_W`).
+                    weapon: v.endless_fall.then_some(ENDLESS_FALL),
+                    force: Vec3::ZERO,
+                });
+            }
+        }
+    }
+    // Players missing at a look are forgotten.
+    if !checking.is_empty() {
+        state.listed.retain(|(p, ve), _| !checking.contains(ve) || inside_now.contains(&(*p, *ve)));
+    }
 }

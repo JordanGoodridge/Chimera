@@ -711,6 +711,25 @@ leave (ids are never given out again, as real clients' random ones
 aren't); the link counts the data bytes it carried to and from each
 client (`Link::bytes_to`, `bytes_from`: bandwidth per client).
 
+Lucker Party's gun game over the network (`apps/lucker_party/tests/it/
+net_gun_game.rs`: a server and two clients that only `connect`, the ladder
+climbed to the win, the HUD, guns and match state read on each client).
+Live on the dev box (the game needs `WAYLAND_DISPLAY=wayland-1
+XDG_RUNTIME_DIR=/run/user/1000`; never 27015): a server `lucker_party_server
+-port 28930 +maxplayers 4 +MaxPlayer 0 +sv_cheats 1` (commands on its stdin),
+two clients `CHIMERA_REMOTE_PORT=15711 lucker_party --window 960x540 +name
+Alice +connect 127.0.0.1:28930` (then 15712, Bob), and over each client's
+remote console (section 3b): `screenshot`, `getpos`; a client's `setpos`
+moves its player on the server, `setang` doesn't (its own input aims), so
+to shoot, `setpos` Alice a few units south of Bob (`getpos` on Bob) and
+`+attack` while she faces +Y. A listen server is `lucker_party -port 28931
++maxplayers 4 +MaxPlayer 1` (the app hosts once its `--map` is loaded and
+the command line has run: `chimera_host_if_asked`). `minigame_load <file>`
+on the server and on the clients, then `minigame <id>` on the server only,
+tries a shorter ladder (a client can't start minigames: it plays the
+server's, `minigame_net`). `grep 'console:'` the clients' output; the
+server prints on stdout.
+
 Votes (`games/cs_source/tests/it/net_votes.rs`): the server's
 `net::vote::Votes` has the running vote (voters, ballots) and the passed
 and failed counts, each side's `VoteView` what it shows (the vote,
@@ -1258,6 +1277,30 @@ and keys typed into its fields don't reach binds.
 
 Headless: `games/cs_source/tests/ui/debug_ui.rs` opens it, walks the tabs and runs the
 lines its tabs run in a `Sim` (`DebugUiStatePlugin`).
+
+## 3e. Several agents at once (builds and tests)
+
+Source `tools/agent-env.sh` in each agent shell, then run builds and tests
+through `agent_run`:
+
+```
+source tools/agent-env.sh
+agent_run cargo nextest run -p chimera_world --features dev
+```
+
+It joins one box-wide jobserver FIFO (one token per CPU thread, created once
+and kept open by a `sleep infinity` holder) through `MAKEFLAGS`, which cargo
+and rustc honour, and `agent_run` puts the command in the `agents.slice`
+user slice (CPUWeight=50, MemoryHigh=24G). Measured on the 12-thread, 31 GB
+dev box with 4 agents building and testing `chimera_world` and `chimera_sim`
+from scratch at once: without it the box ran at load 32 (peak 49), 48 rustc
+processes, swapped out 7.5 GB, and a `git status` took 68 ms at p95; with
+the jobserver alone load was 16, rustc peaked at 16, swap out was 0.2 GB,
+the builds finished 10% sooner and `git status` took 26 ms; the slice on
+top cut that to 14 ms. A cap on concurrent test suites (flock semaphore) and
+the slice by itself did not help once the jobserver was in, so they are not
+included. The holder's tokens are lost if the holder dies (the next `source`
+recreates it); a client killed mid-build loses at most the tokens it held.
 
 ## 4. Logs
 

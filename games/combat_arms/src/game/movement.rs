@@ -549,6 +549,7 @@ impl Plugin for CaMovementPlugin {
         app.insert_resource(movement)
             .insert_resource(Loadout { movement: ID })
             .register_movement::<CaMovement>(ID)
+            .add_message::<super::volumes::PadLaunch>()
             .add_systems(Predict::Movement, (step, sync_collider).chain())
             .predicted_net::<CaMovement>()
             .predicted_net::<CustomMovePenalty>()
@@ -1071,6 +1072,7 @@ fn step(
     clock: Res<SimClock>,
     first: Option<Res<FirstTimePredicted>>,
     mut damage: MessageWriter<Damage>,
+    mut launches: MessageWriter<super::volumes::PadLaunch>,
     volumes: Query<&CaVolume>,
     pushers: Query<(Entity, &CaPusher)>,
     mut commands: Commands,
@@ -1432,7 +1434,8 @@ fn step(
             me.brake_blocked = current * dt != Vec3::ZERO || viscosity != 0.0;
             // A jump pad (switched off too) requests a jump when the
             // player stood on ground last tick; not in free movement.
-            let pad = touched.iter().filter_map(|v| v.jump_velocity).last();
+            let pad_volume = touched.iter().filter(|v| v.jump_velocity.is_some()).last();
+            let pad = pad_volume.and_then(|v| v.jump_velocity);
             if pad.is_some() && me.on_ground && !free {
                 me.jump_pending = true;
             }
@@ -1605,6 +1608,13 @@ fn step(
                 // A jump pad adds its own launch velocity instead.
                 if let Some(pad) = pad {
                     v += pad;
+                    // The pad's world sound, from the launched player
+                    // (volumes, world_dat.md Corrections (2026-10-22) 7).
+                    if first
+                        && let Some(sound) = pad_volume.and_then(|p| p.pad_sound.clone())
+                    {
+                        launches.write(super::volumes::PadLaunch { at: pos * s, sound });
+                    }
                 } else {
                     let bonus = fig.variable_jump + character.gear_sum(|g| g.jump);
                     v.y = d.jump * (1.0 + bonus) * j;

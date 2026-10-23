@@ -16,7 +16,10 @@
 //! - Spawning (`respawn`): at a spawn point the definition's `points`
 //!   pick (`spawn_point`), revived (`spawning::revive`), the definition's
 //!   movement set, the weapons taken and the life's given (the kit, then
-//!   the rules module's `loadout`, the last drawn), protected from damage
+//!   the rules module's `loadout`, the last drawn); with `identity =
+//!   "weapon"` the player follows its weapon's game (`slots::
+//!   FollowsWeapon`; `identity::follow` at once for the drawn one),
+//!   protected from damage
 //!   (`Protected`, through `core::God`) for `protection` s or until it
 //!   fires. The dead respawn after `delay` s (`respawn_dead`) unless the
 //!   match is over or the mode refuses.
@@ -30,7 +33,10 @@
 use avian3d::prelude::ColliderDisabled;
 use bevy::{ecs::message::MessageCursor, prelude::*};
 
-use super::{ActiveMinigame, MINIGAME, def::Points};
+use super::{
+    ActiveMinigame, MINIGAME,
+    def::{IdentityDef, Points, SpawnDef},
+};
 use crate::{
     core::{
         Connecting, Dead, Died, God, Health, Intent, Npc, Score, SimClock, SimSet, SpawnPoint, Spectating, Team,
@@ -40,7 +46,7 @@ use crate::{
     },
     weapon::{Inventory, give},
 };
-use chimera_core::slots::MovementSlot;
+use chimera_core::slots::{FollowsWeapon, MovementSlot};
 
 /// A decided round's results stay up this long before the round ends.
 pub const ROUND_OVER: f32 = 5.0;
@@ -66,8 +72,9 @@ pub const FLOW: Flow = Flow {
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JoinOrder(pub u64);
 
-/// A character the minigame took in (`join`).
-#[derive(Component, Clone, Copy, Debug, Default)]
+/// A character the minigame took in (`join`). Replicated to clients
+/// (`minigame_net`), whose HUD counts the players by it.
+#[derive(Component, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct InMinigame;
 
 /// Spawn protection: no damage (`core::God`, which this inserted) until
@@ -137,7 +144,7 @@ fn event(world: &mut World, event: FlowEvent) {
 pub fn respawn(world: &mut World, e: Entity) {
     let Some(active) = world.get_resource::<ActiveMinigame>().copied() else { return };
     let def = active.def;
-    let at = spawn_point(world, e, def.spawn.points);
+    let at = spawn_point_in(world, e, def.spawn.points, def.spawn.min_distance);
     if !crate::spawning::revive(world, e, at) {
         return;
     }
@@ -150,11 +157,21 @@ pub fn respawn(world: &mut World, e: Entity) {
     {
         chimera_core::slots::set_movement(e, id).apply(world);
     }
+    let follows = def.slots.identity == Some(IdentityDef::Weapon);
+    if follows {
+        world.entity_mut(e).insert(FollowsWeapon);
+    } else if world.get::<FollowsWeapon>(e).is_some() {
+        crate::identity::unfollow(world, e);
+    }
     crate::weapon::equip::strip(world, e);
     let catalog = world.get_resource::<crate::weapon::data::WeaponCatalog>().cloned().unwrap_or_default();
     let kit: Vec<&'static str> = def.spawn.kit.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
     for id in kit.into_iter().chain((active.rules.loadout)(world, e)) {
         give(world, e, id);
+    }
+    // Following the weapon: the life starts as the drawn weapon's game.
+    if follows {
+        crate::identity::follow(world, e);
     }
     let protection = def.spawn.respawn.protection;
     if protection > 0.0 && world.get::<God>(e).is_none() {
@@ -168,6 +185,11 @@ pub fn respawn(world: &mut World, e: Entity) {
 /// Where `e` comes back, as `points` picks among the map's spawn points
 /// (None: none, it stays where it is).
 pub fn spawn_point(world: &mut World, e: Entity, points: Points) -> Option<Transform> {
+    spawn_point_in(world, e, points, SpawnDef::default().min_distance)
+}
+
+/// `spawn_point` with `random_hidden`'s least distance from an enemy (m).
+pub fn spawn_point_in(world: &mut World, e: Entity, points: Points, min_distance: f32) -> Option<Transform> {
     let mut all: Vec<(Entity, Transform, Option<Team>)> = world
         .query_filtered::<(Entity, &Transform, &SpawnPoint), Without<Intent>>()
         .iter(world)
@@ -188,7 +210,15 @@ pub fn spawn_point(world: &mut World, e: Entity, points: Points) -> Option<Trans
             .iter()
             .all(|o| (o.xz() - t.translation.xz()).length() > SPAWN_CLEARANCE || (o.y - t.translation.y).abs() > 2.0)
     };
+    let points = match points {
+        Points::RandomHidden => match super::spawns::pick(world, e, min_distance) {
+            Some(at) => return Some(at),
+            None => Points::FarFromEnemies,
+        },
+        p => p,
+    };
     match points {
+        Points::RandomHidden => unreachable!("handled above"),
         Points::Map => {
             let n = all.len();
             let start = world.get_resource_or_init::<SpawnCursor>().0;
@@ -387,7 +417,9 @@ pub(super) fn plugin(app: &mut App) {
     let on = |a: Option<Res<ActiveMinigame>>, g: Option<Res<chimera_core::gameplay::Gameplay>>| {
         a.is_some() && g.is_none_or(|g| g.rules == MINIGAME)
     };
+    use crate::map::MapScopedApp;
     app.init_resource::<SpawnCursor>()
+        .map_scoped::<super::spawns::SpawnSpots>()
         .add_observer(number_players)
         .add_systems(
             FixedUpdate,

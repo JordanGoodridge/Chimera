@@ -21,6 +21,16 @@ fn main() {
         );
     }
     let args = lucker_party::with_defaults(Args::parse());
+    // What this machine lacks, said exactly (a joiner needs both games
+    // too: each player loads the maps, models and sounds from their own).
+    let problems = lucker_party::requirements();
+    if !problems.is_empty() {
+        let (text, fatal) = lucker_party::report(&problems);
+        eprintln!("{text}");
+        if fatal {
+            std::process::exit(1);
+        }
+    }
     let mut app = App::new();
     let id = args.game_map().unwrap_or("cs_source:de_dust2").to_string();
     match lucker_party::load_map(&id, 0) {

@@ -231,6 +231,7 @@ fn front_death_pose_throws_the_head_back() {
         return;
     };
     let m = MapCharacterModel {
+        game: None,
         team: None,
         name: None,
         class: None,

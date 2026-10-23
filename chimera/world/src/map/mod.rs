@@ -38,6 +38,8 @@ pub mod emitters;
 pub mod extras;
 pub use extras::{MapExtras, SourceEffects};
 pub mod entities;
+pub mod hazards;
+pub use hazards::{SpawnHazardAppExt, SpawnHazards};
 pub mod fish;
 pub mod fire;
 pub use entities::{MapBrushEntity, MapEntities, MapEntity, MapHull};

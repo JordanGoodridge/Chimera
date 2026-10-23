@@ -35,7 +35,10 @@
 //!   else the table's default.
 //! - Kept parts: the held and view models of the map's game whose keys
 //!   start with one of `MapSources::kept` stay (another game's weapons an
-//!   app offers in the gameplay's slots).
+//!   app offers in the gameplay's slots); with `MapSources::players`, also
+//!   its players' bodies (after the gameplay's) and its HUD look
+//!   (`KitLoad::Players`: an app whose players may be the map's game's,
+//!   Lucker Party's `identity = "weapon"`).
 //!
 //! The functions are plain `fn`s and the lists `'static` slices, so an
 //! app's `MapSources` is a `static` and its `client::AppHooks::load_map`
@@ -83,6 +86,10 @@ pub enum KitLoad {
     /// prefixes (`MapSources::kept`); everything else of the kit is left
     /// unread. `Only(&[])`: no kit.
     Only(&'static [&'static str]),
+    /// `Only`'s models and what a player of the map's game wears and sees:
+    /// its players' character bodies and its HUD look (`MapSources::
+    /// players`: an app whose players may be that game's).
+    Players(&'static [&'static str]),
 }
 
 impl KitLoad {
@@ -93,11 +100,21 @@ impl KitLoad {
         matches!(self, Self::All)
     }
 
+    /// Whether the players' character bodies are loaded.
+    pub fn bodies(&self) -> bool {
+        matches!(self, Self::All | Self::Players(_))
+    }
+
+    /// Whether the game's HUD look is loaded.
+    pub fn hud(&self) -> bool {
+        matches!(self, Self::All | Self::Players(_))
+    }
+
     /// Whether the held or view model `key` is loaded.
     pub fn wants(&self, key: &str) -> bool {
         match self {
             Self::All => true,
-            Self::Only(kept) => kept.iter().any(|k| key.starts_with(k)),
+            Self::Only(kept) | Self::Players(kept) => kept.iter().any(|k| key.starts_with(k)),
         }
     }
 
@@ -105,7 +122,7 @@ impl KitLoad {
     pub fn any_models(&self) -> bool {
         match self {
             Self::All => true,
-            Self::Only(kept) => !kept.is_empty(),
+            Self::Only(kept) | Self::Players(kept) => !kept.is_empty(),
         }
     }
 }
@@ -265,6 +282,11 @@ pub struct MapSources {
     /// Key prefixes of the map game's held and view models that stay on
     /// its maps (`cs_source:weapon_`: CS:S's guns an app offers).
     pub kept: &'static [&'static str],
+    /// What a player of the map's game wears and sees stays too: its
+    /// character bodies (after the gameplay's own) and HUD look
+    /// (`KitLoad::Players`; an app whose players may be the map's game's,
+    /// `slots::GameIdentity`).
+    pub players: bool,
 }
 
 impl MapSources {
@@ -294,7 +316,7 @@ impl MapSources {
         // but the kept models.
         let mut options = *options;
         if self.gameplay.is_some_and(|g| !g.game.eq_ignore_ascii_case(loader.game)) {
-            options.kit = KitLoad::Only(self.kept);
+            options.kit = if self.players { KitLoad::Players(self.kept) } else { KitLoad::Only(self.kept) };
         }
         let mut map = (loader.load)(name, &options)?;
         self.dress(loader.game, &mut map);
@@ -309,7 +331,10 @@ impl MapSources {
         let Some(gameplay) = self.gameplay.filter(|g| !g.game.eq_ignore_ascii_case(game)) else {
             return;
         };
-        map.kit = std::mem::take(&mut map.kit).stay(self.kept);
+        map.kit = std::mem::take(&mut map.kit).stay(self.kept, self.players);
+        // The map game's bodies go after the gameplay's (whose first is
+        // the one everything without an identity is measured against).
+        let kept_bodies = std::mem::take(&mut map.kit.characters);
         if let Some(table) = self
             .surfaces
             .iter()
@@ -331,6 +356,7 @@ impl MapSources {
         if let Err(e) = (gameplay.dress)(map) {
             map.warnings.push(format!("{}'s parts: {e}", gameplay.game));
         }
+        map.kit.characters.extend(kept_bodies);
     }
 }
 
@@ -400,6 +426,7 @@ mod tests {
             text: "default = \"Stone\"\n[names]\nWood_Crate = \"Wood\"\n[materials]\nN = \"Sand\"\n",
         }],
         kept: &["a:gun"],
+        players: false,
     };
 
     #[test]
@@ -434,7 +461,8 @@ mod tests {
             Ok(MapData { name: name.into(), ..default() })
         }
         static L: MapLoader = MapLoader { game: "l", load: lean_only };
-        static S: MapSources = MapSources { loaders: &[&L], gameplay: None, teams: &[], surfaces: &[], kept: &[] };
+        static S: MapSources =
+            MapSources { loaders: &[&L], gameplay: None, teams: &[], surfaces: &[], kept: &[], players: false };
         S.load_with("l:x", &MapLoadOptions::lean()).unwrap();
         assert!(MapLoadOptions::default().textures, "everything by default");
     }
@@ -453,6 +481,7 @@ mod tests {
             teams: &[],
             surfaces: &[],
             kept: &["a:gun"],
+            players: false,
         };
         assert_eq!(S2.load("a:x", 0).unwrap().name, "x/Only([\"a:gun\"])", "the world and the kept guns");
         assert_eq!(S2.load("b:x", 0).unwrap().name, "x/All", "the gameplay's own game: its whole kit");
@@ -460,6 +489,57 @@ mod tests {
         assert!(!kit.parts() && kit.any_models());
         assert!(kit.wants("a:gun_ak") && !kit.wants("a:knife"));
         assert!(!KitLoad::Only(&[]).any_models() && KitLoad::All.wants("any") && KitLoad::All.parts());
+    }
+
+    fn body(game: &'static str, name: Option<&str>) -> crate::map::MapCharacterModel {
+        crate::map::MapCharacterModel {
+            game: Some(game),
+            team: None,
+            name: name.map(str::to_string),
+            class: None,
+            model: default(),
+            hitboxes: Vec::new(),
+            bones: Vec::new(),
+            root: Transform::IDENTITY,
+            animations: None,
+            boxes: Vec::new(),
+            ragdoll: None,
+        }
+    }
+
+    /// With `players`, the map game's player bodies and HUD look stay
+    /// (asked of the loader as `KitLoad::Players`), after the gameplay's
+    /// own bodies; its other parts still go.
+    #[test]
+    fn a_map_for_players_of_its_game_keeps_their_bodies_and_hud() {
+        fn with_players(name: &str, o: &MapLoadOptions) -> Result<MapData, String> {
+            assert!(matches!(o.kit, KitLoad::Players(_)) && o.kit.bodies() && o.kit.hud() && !o.kit.parts());
+            let mut map = a_map(name, o)?;
+            map.kit.characters.push(body("a", None));
+            map.kit.characters.push(body("a", Some("a_hostage")));
+            map.kit.hud = Some(default());
+            Ok(map)
+        }
+        fn b_bodies(map: &mut MapData) -> Result<(), String> {
+            map.kit.characters.push(body("b", Some("b_soldier")));
+            Ok(())
+        }
+        static A3: MapLoader = MapLoader { game: "a", load: with_players };
+        static B_BODIES: MapDressing = MapDressing { game: "b", dress: b_bodies };
+        static S3: MapSources = MapSources {
+            loaders: &[&A3, &B],
+            gameplay: Some(&B_BODIES),
+            teams: &[],
+            surfaces: &[],
+            kept: &["a:gun"],
+            players: true,
+        };
+        let map = S3.load("a:x", 0).unwrap();
+        let bodies: Vec<_> = map.kit.characters.iter().map(|c| (c.game, c.name.as_deref())).collect();
+        assert_eq!(bodies, [(Some("b"), Some("b_soldier")), (Some("a"), None)], "the gameplay's first; no hostage");
+        assert!(map.kit.hud.is_some(), "the HUD look stays");
+        assert!(map.kit.nav.is_none(), "the rest goes");
+        assert_eq!(map.kit.held.len(), 1);
     }
 
     #[test]

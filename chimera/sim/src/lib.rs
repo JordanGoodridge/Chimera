@@ -22,6 +22,7 @@
 //! slot's implementations, the weapon framework): the start of a game's set (`cs_source::SimPlugins`)
 //! and the base of the engine's own scenario tests (tests/it/).
 
+pub mod identity;
 pub mod minigame;
 pub mod mode;
 pub mod movement;

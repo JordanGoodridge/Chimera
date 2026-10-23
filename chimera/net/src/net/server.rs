@@ -923,6 +923,7 @@ fn capture_own_states(world: &mut World) {
             let seed = world.get::<Seed>(e).map_or(0, |s| s.0);
             let held = world.get::<Dead>(e).is_some();
             let alive = !held && world.get::<Health>(e).is_none_or(|h| h.current > 0.0);
+            let rebased = world.get::<crate::core::Rebased>(e).map_or(0, |r| r.0);
             let parts = own_parts.as_ref().map_or_else(Vec::new, |p| p.encode(world, e));
             let view = world
                 .get::<crate::core::MapView>(e)
@@ -946,6 +947,7 @@ fn capture_own_states(world: &mut World) {
                 frozen_until,
                 parts,
                 view,
+                rebased,
                 ..default()
             });
         }
@@ -1036,6 +1038,11 @@ fn replicate_characters(
         } else {
             name.map_or_else(|| "Character".into(), |n| n.as_str().to_string())
         };
+        if local {
+            // The host's own character is called what the others see
+            // (the HUD's kill feed and leader line read `Name`).
+            commands.entity(e).insert(Name::new(name.clone()));
+        }
         commands.entity(e).insert((
             Replicated,
             NetCharacter {

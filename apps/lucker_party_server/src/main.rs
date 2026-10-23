@@ -34,6 +34,20 @@ fn main() {
             std::process::exit(2);
         }
     };
+    // What this machine lacks, said exactly (the maps are CS:S's, loaded
+    // from its install).
+    let problems = if lucker_party_server::map_id(&options.map) == "greybox" {
+        Vec::new()
+    } else {
+        lucker_party::requirements()
+    };
+    if !problems.is_empty() {
+        let (text, fatal) = lucker_party::report(&problems);
+        eprintln!("{text}");
+        if fatal {
+            std::process::exit(1);
+        }
+    }
     let start = StartMap::load(&options).unwrap_or_else(|e| {
         eprintln!("error: {e}");
         std::process::exit(1);

@@ -155,6 +155,67 @@ cargo run --release -p lucker_party                    # the gun game on de_dust
 cargo run --release -p lucker_party -- --map combat_arms:warehouse
 ```
 
+### Play the gun game with friends
+
+Everyone who plays needs their **own** copy of what the game loads at run
+time, because each player's game draws the maps, soldiers, guns and sounds
+from their own install (nothing is sent over the network but the game's
+state):
+
+- **Rust** 1.95 or newer and Git, and a checkout of this repository (see
+  Installing above).
+- **Counter-Strike: Source** from Steam (app 240), installed.
+- **Combat Arms** installed, its folder under `[games.combat_arms]` `path`
+  and its two archive keys (`V1` and `V2`) under `[games.combat_arms.keys.V1]`
+  and `.V2` in your `chimera.local.toml` (copy
+  `chimera.local.example.toml`; the file is never committed). Without the
+  keys some soldiers, guns and sounds don't load.
+
+When something is missing the game says exactly what and how to get it
+before it starts (and refuses to start without Counter-Strike: Source).
+Host and joiners should run the same commit: `git pull` before playing (a
+different network version is refused with a message saying which side is
+older; the scripts pull first).
+
+On Windows (PowerShell, no admin rights needed; each script pulls, builds and
+runs an optimized build):
+
+```powershell
+.\scripts\lucker_party_host.ps1                  # you host and play; prints the join command
+.\scripts\lucker_party_host.ps1 -Dedicated       # only serve (a PC that stays on)
+.\scripts\lucker_party_host.ps1 -Players 6 -Bots 2 -Port 28930
+.\scripts\lucker_party_join.ps1 192.168.1.20     # a friend joins (:28930 unless it says another port)
+```
+
+On Linux or macOS the same by hand: `cargo run --profile playtest --bin
+lucker_party -- -port 28930 +maxplayers 4 +MaxPlayer 0 +net_upnp 1` hosts
+(or `--bin lucker_party_server` for no window) and `cargo run --profile
+playtest --bin lucker_party -- +connect <ip>:28930` joins.
+
+The host script prints your LAN address and the exact command to give your
+friends; the game port is **UDP 28930** (`-Port` changes it).
+
+- **Same network (LAN, same Wi-Fi):** friends join with your LAN address.
+  The first time, Windows asks whether the game may use the network: allow
+  it for private networks (allow public ones too if you host from a cafe or
+  similar). If friends can't connect, that prompt, or Windows Firewall
+  blocking `lucker_party.exe`, is the usual reason.
+- **Over the internet:** friends need your public address and the host's
+  router to let UDP 28930 through. The host script asks the router to
+  forward it by itself (UPnP, `net_upnp 1`; the game prints a `UPnP:` line
+  saying whether it worked and the router's outside address, and `status`
+  shows it again). If the router has UPnP off, or sits behind another NAT
+  (an ISP box), forward UDP 28930 to the host's PC by hand in the router's
+  settings, or use a VPN everyone joins (Tailscale, ZeroTier) and use the VPN
+  addresses.
+- **Bots:** `+MaxPlayer <n>` keeps `n` Combat Arms bots in the match (the
+  host script's `-Bots`; 0 for friends only; a solo run keeps 3 without it,
+  and a joining game never starts bots of its own).
+- `+name <name>` is your name in the game (`-Name` in the scripts).
+- The match: first to climb the whole ladder (a rung a kill, CS:S's guns and
+  Combat Arms' in turn, a knife death costs a rung) wins; it waits for at
+  least two players.
+
 ## How it is built
 
 ```
