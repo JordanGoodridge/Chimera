@@ -70,6 +70,8 @@ cargo run --features dev --bin combat_arms   # Combat Arms' skeleton (greybox)
 cargo run --features dev --bin mashup_demo   # mashup: de_dust2 played as Combat Arms
 cargo run --features dev --bin lucker_party -- +minigame originals:gun_game_dust2   # Lucker Party
 cargo run --features dev --bin lucker_party_server -- +minigame originals:gun_game_dust2 +MaxPlayer 3   # its server
+source tools/agent-env.sh && agent_run cargo ...   # several agents on one box:
+                                   # shared jobserver + agents.slice (OBSERVABILITY 3e)
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
 cargo run -q -p repo_checks --bin docs_index   # regenerate docs/modules.md and the
                                    # debt list after editing a `//!` doc

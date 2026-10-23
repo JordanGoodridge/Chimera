@@ -1278,6 +1278,30 @@ and keys typed into its fields don't reach binds.
 Headless: `games/cs_source/tests/ui/debug_ui.rs` opens it, walks the tabs and runs the
 lines its tabs run in a `Sim` (`DebugUiStatePlugin`).
 
+## 3e. Several agents at once (builds and tests)
+
+Source `tools/agent-env.sh` in each agent shell, then run builds and tests
+through `agent_run`:
+
+```
+source tools/agent-env.sh
+agent_run cargo nextest run -p chimera_world --features dev
+```
+
+It joins one box-wide jobserver FIFO (one token per CPU thread, created once
+and kept open by a `sleep infinity` holder) through `MAKEFLAGS`, which cargo
+and rustc honour, and `agent_run` puts the command in the `agents.slice`
+user slice (CPUWeight=50, MemoryHigh=24G). Measured on the 12-thread, 31 GB
+dev box with 4 agents building and testing `chimera_world` and `chimera_sim`
+from scratch at once: without it the box ran at load 32 (peak 49), 48 rustc
+processes, swapped out 7.5 GB, and a `git status` took 68 ms at p95; with
+the jobserver alone load was 16, rustc peaked at 16, swap out was 0.2 GB,
+the builds finished 10% sooner and `git status` took 26 ms; the slice on
+top cut that to 14 ms. A cap on concurrent test suites (flock semaphore) and
+the slice by itself did not help once the jobserver was in, so they are not
+included. The holder's tokens are lost if the holder dies (the next `source`
+recreates it); a client killed mid-build loses at most the tokens it held.
+
 ## 4. Logs
 
 `RUST_LOG=mashup=debug cargo run --features dev`. Log state changes that matter
