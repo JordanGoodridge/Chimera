@@ -114,8 +114,8 @@ pub struct Ladder {
     pub demote_on_melee: bool,
 }
 
-/// A player's rung (0: the first).
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// A player's rung (0: the first). Replicated to clients (`minigame_net`).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Rung(pub usize);
 
 fn params(def: &MinigameDef) -> Result<Params, String> {

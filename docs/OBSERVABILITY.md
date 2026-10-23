@@ -711,6 +711,25 @@ leave (ids are never given out again, as real clients' random ones
 aren't); the link counts the data bytes it carried to and from each
 client (`Link::bytes_to`, `bytes_from`: bandwidth per client).
 
+Lucker Party's gun game over the network (`apps/lucker_party/tests/it/
+net_gun_game.rs`: a server and two clients that only `connect`, the ladder
+climbed to the win, the HUD, guns and match state read on each client).
+Live on the dev box (the game needs `WAYLAND_DISPLAY=wayland-1
+XDG_RUNTIME_DIR=/run/user/1000`; never 27015): a server `lucker_party_server
+-port 28930 +maxplayers 4 +MaxPlayer 0 +sv_cheats 1` (commands on its stdin),
+two clients `CHIMERA_REMOTE_PORT=15711 lucker_party --window 960x540 +name
+Alice +connect 127.0.0.1:28930` (then 15712, Bob), and over each client's
+remote console (section 3b): `screenshot`, `getpos`; a client's `setpos`
+moves its player on the server, `setang` doesn't (its own input aims), so
+to shoot, `setpos` Alice a few units south of Bob (`getpos` on Bob) and
+`+attack` while she faces +Y. A listen server is `lucker_party -port 28931
++maxplayers 4 +MaxPlayer 1` (the app hosts once its `--map` is loaded and
+the command line has run: `chimera_host_if_asked`). `minigame_load <file>`
+on the server and on the clients, then `minigame <id>` on the server only,
+tries a shorter ladder (a client can't start minigames: it plays the
+server's, `minigame_net`). `grep 'console:'` the clients' output; the
+server prints on stdout.
+
 Votes (`games/cs_source/tests/it/net_votes.rs`): the server's
 `net::vote::Votes` has the running vote (voters, ballots) and the passed
 and failed counts, each side's `VoteView` what it shows (the vote,

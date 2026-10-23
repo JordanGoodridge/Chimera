@@ -11,7 +11,8 @@
 //!   SimPlugins`, `CombatArmsPlugins`: the default game, for bare map
 //!   names), then `PartyPartsPlugin`: CS:S registered as a second game,
 //!   Source's map logic, CS:S's guns, the minigame runtime
-//!   (`MinigamePlugin`) and the original minigames (`OriginalsPlugin`).
+//!   (`MinigamePlugin`), its part of the network (`chimera_net::
+//!   minigame_net`) and the original minigames (`OriginalsPlugin`).
 //!   The app's gameplay is Combat Arms' until a minigame starts
 //!   (`minigame <id>`, `+minigame originals:gun_game_dust2` on the command
 //!   line), which takes the rules slot and names the others.
@@ -29,7 +30,13 @@
 //!   the app plays it).
 //!
 //! - Bots: Combat Arms' (the gun game's `bots` slot), with CS:S's guns'
-//!   types for their AI rows (data/bot_gun_types.toml); `MaxPlayer`.
+//!   types for their AI rows (data/bot_gun_types.toml); `MaxPlayer` is how
+//!   many the server keeps (none for a joiner: `+connect` skips the app's
+//!   default of `DEFAULT_BOTS` and its local minigame, the server's comes
+//!   over the network: `chimera_net::minigame_net`).
+//! - `requirements`, `missing`, `report`: what this machine lacks to play
+//!   (CS:S's install, Combat Arms' install and its V1 and V2 keys), told
+//!   exactly at start by both binaries; CS:S's missing stops them.
 //!
 //! Known shortcuts: maps load by id only (no downloaded map files); the
 //! minigame's map pool isn't rotated (its first map plays); the bots fight
@@ -140,6 +147,9 @@ impl Plugin for PartyPartsPlugin {
             cs_source::game::weapons::CsGunsPlugin,
             MinigamePlugin,
             originals::OriginalsPlugin,
+            // The match and the ladder over the network (a part: nothing
+            // runs without a `NetPlugin`).
+            chimera_net::minigame_net::MinigameNetPlugin,
         ));
         if let Some(mut s) = app.world_mut().get_resource_mut::<combat_arms::game::rules::CaRuleSettings>() {
             s.mode = "none".into();
@@ -169,6 +179,99 @@ pub fn minigame_of(console: &[String]) -> Option<String> {
     })
 }
 
+/// Something this machine lacks to play Lucker Party, in words that say
+/// what and how to get it (`requirements`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Missing {
+    /// Nothing loads without it (else the game runs, looking or sounding
+    /// wrong).
+    pub fatal: bool,
+    pub text: String,
+}
+
+/// What a machine needs for the party: Counter-Strike: Source's install
+/// (`cstrike` in `css`, the folder a config or Steam names), Combat Arms'
+/// (`Game` in `ca`) and Combat Arms' two archive keys (`keys`: the names
+/// configured, `V1` and `V2`). Pure: `requirements` reads the machine.
+pub fn missing(css: Option<&std::path::Path>, ca: Option<&std::path::Path>, keys: &[&str]) -> Vec<Missing> {
+    let mut out = Vec::new();
+    let mut add = |fatal: bool, text: String| out.push(Missing { fatal, text });
+    match css {
+        None => add(
+            true,
+            "Counter-Strike: Source isn't installed: install it from Steam (app 240), or name its folder under \
+             `[games.cs_source]` `path` in chimera.local.toml, or run `chimera_install <folder>`. Its maps and \
+             guns are the gun game's."
+                .into(),
+        ),
+        Some(p) if !p.join("cstrike").is_dir() => add(
+            true,
+            format!(
+                "Counter-Strike: Source's folder {} has no `cstrike` folder in it: point `[games.cs_source]` `path` \
+                 in chimera.local.toml (or `chimera_install`) at the folder that holds `cstrike` and `hl2`.",
+                p.display()
+            ),
+        ),
+        Some(_) => {}
+    }
+    match ca {
+        None => add(
+            false,
+            "Combat Arms isn't set up: put its install folder under `[games.combat_arms]` `path` in \
+             chimera.local.toml. Without it the soldiers, their guns and the HUD's art don't load."
+                .into(),
+        ),
+        Some(p) if !p.join("Game").is_dir() => add(
+            false,
+            format!(
+                "Combat Arms' folder {} has no `Game` folder in it: point `[games.combat_arms]` `path` in \
+                 chimera.local.toml at the folder that holds `Game`.",
+                p.display()
+            ),
+        ),
+        Some(_) => {}
+    }
+    for scheme in ["V1", "V2"] {
+        if ca.is_some() && !keys.contains(&scheme) {
+            add(
+                false,
+                format!(
+                    "Combat Arms' {scheme} key isn't in chimera.local.toml (`[games.combat_arms.keys.{scheme}]` with \
+                     `key` and `iv`; see chimera.local.example.toml): what is in its {scheme} archives (some \
+                     soldiers, guns and sounds) won't load, and players made of them look wrong."
+                ),
+            );
+        }
+    }
+    out
+}
+
+/// `missing` for this machine: its config (`chimera.local.toml`) and
+/// Steam's library.
+pub fn requirements() -> Vec<Missing> {
+    use chimera_core::mount::config::LocalConfig;
+    let config = LocalConfig::load().unwrap_or_default();
+    let css = config.game_path_in(cs_source::game::GAME, cs_source::game::INFO.steam.as_ref());
+    let ca = config.game_path(combat_arms::game::GAME);
+    let keys: Vec<&str> = config
+        .game_keys(combat_arms::game::GAME)
+        .map(|k| k.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    missing(css.as_deref(), ca.as_deref(), &keys)
+}
+
+/// `requirements` told to the user: each on its own line (`error:` for what
+/// stops the game, `warning:` for what only spoils it), and whether any
+/// stops it.
+pub fn report(problems: &[Missing]) -> (String, bool) {
+    let text = problems
+        .iter()
+        .map(|m| format!("{}: {}", if m.fatal { "error" } else { "warning" }, m.text))
+        .collect::<Vec<_>>()
+        .join("\n");
+    (text, problems.iter().any(|m| m.fatal))
+}
+
 /// The first map of built-in minigame `id`'s pool.
 pub fn first_map(id: &str) -> Result<String, String> {
     originals::MINIGAMES
@@ -191,7 +294,7 @@ pub fn ids() -> Vec<String> {
 #[cfg(feature = "present")]
 mod client;
 #[cfg(feature = "present")]
-pub use client::{ClientPlugin, client_hooks, with_defaults};
+pub use client::{ClientPlugin, client_hooks, joins_server, with_defaults};
 
 #[cfg(test)]
 mod tests {
@@ -218,6 +321,33 @@ mod tests {
             let (_, kind) = row.unwrap_or_else(|| panic!("{} has no bot gun type", gun.id));
             assert!(ca.guns.contains_key(kind.as_str()), "{}: {kind} isn't one of Combat Arms' gun types", gun.id);
         }
+    }
+
+    #[test]
+    fn what_a_machine_lacks_is_named_exactly() {
+        use std::path::Path;
+        let both = ["V1", "V2"];
+        let nothing = super::missing(None, None, &[]);
+        assert_eq!(nothing.len(), 2);
+        assert!(nothing[0].fatal && nothing[0].text.contains("Counter-Strike: Source isn't installed"));
+        assert!(!nothing[1].fatal && nothing[1].text.contains("`[games.combat_arms]` `path`"));
+        let here = Path::new(env!("CARGO_MANIFEST_DIR"));
+        // A folder that exists but isn't the game's.
+        let wrong = super::missing(Some(here), Some(here), &both);
+        assert_eq!(wrong.len(), 2, "{wrong:?}");
+        assert!(wrong[0].text.contains("has no `cstrike` folder") && wrong[0].fatal);
+        assert!(wrong[1].text.contains("has no `Game` folder"));
+        // Installed, one key missing: only that key is named.
+        let dir = here.join("../../target/lucker_party_missing_test");
+        std::fs::create_dir_all(dir.join("cstrike")).unwrap();
+        std::fs::create_dir_all(dir.join("Game")).unwrap();
+        let one = super::missing(Some(&dir), Some(&dir), &["V1"]);
+        assert_eq!(one.len(), 1);
+        assert!(one[0].text.contains("V2 key isn't in chimera.local.toml") && !one[0].fatal, "{one:?}");
+        assert!(super::missing(Some(&dir), Some(&dir), &both).is_empty());
+        let (text, fatal) = super::report(&nothing);
+        assert!(fatal && text.starts_with("error: Counter-Strike") && text.contains("\nwarning: Combat Arms"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

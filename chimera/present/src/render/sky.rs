@@ -106,14 +106,14 @@ pub fn follow_sky_camera(
     vis: Option<Res<SkyVis>>,
     has_3d_sky: Option<Res<ActiveMapHas3dSky>>,
     water_view: Option<Res<water::WaterView>>,
-    main: Query<
+    mut main: Query<
         (
             &GlobalTransform,
             &Projection,
             Option<&bevy::camera::RenderTarget>,
             Option<&bevy::core_pipeline::tonemapping::Tonemapping>,
             Entity,
-            &Camera,
+            &mut Camera,
         ),
         (
             With<Camera3d>,
@@ -138,8 +138,8 @@ pub fn follow_sky_camera(
     >,
 ) {
     let Some(info) = info else { return };
-    let Some((main_tf, projection, target, tonemapping, main_entity, main_camera)) =
-        main.iter().find(|(.., c)| c.is_active)
+    let Some((main_tf, projection, target, tonemapping, _main_entity, mut main_camera)) =
+        main.iter_mut().find(|(.., c)| c.is_active)
     else {
         return;
     };
@@ -173,11 +173,13 @@ pub fn follow_sky_camera(
         (ClearColorConfig::Custom(a), ClearColorConfig::Custom(b)) => a == b,
         _ => false,
     };
+    // In place, never by inserting a copy: a copy made before this frame's
+    // `camera_system` computed the camera's target would replace it with
+    // one that never got its target or projection (a camera that draws
+    // nothing; a client's first-person camera, which is born the frame
+    // the sky's clear changes).
     if !same {
-        commands.entity(main_entity).insert(Camera {
-            clear_color: clear,
-            ..main_camera.clone()
-        });
+        main_camera.clear_color = clear;
     }
     match sky.single_mut() {
         Ok((entity, mut tf, mut global, mut proj, mut camera, mut layers, sky_target, sky_tonemapping)) => {

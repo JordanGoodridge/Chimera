@@ -69,8 +69,9 @@ pub const FLOW: Flow = Flow {
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JoinOrder(pub u64);
 
-/// A character the minigame took in (`join`).
-#[derive(Component, Clone, Copy, Debug, Default)]
+/// A character the minigame took in (`join`). Replicated to clients
+/// (`minigame_net`), whose HUD counts the players by it.
+#[derive(Component, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct InMinigame;
 
 /// Spawn protection: no damage (`core::God`, which this inserted) until
