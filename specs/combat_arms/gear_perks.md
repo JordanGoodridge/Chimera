@@ -3,7 +3,7 @@
 Source basis: reference material the user pointed the spec session to: the server's damage and armour bookkeeping (gear list, armour points, repair), the server player object's gear acquisition, health and armour reset, stamina capacity and drain, ammunition maxima and the spawn loadout, the server's perk manager and the Warlord ammo-box object, the client's perk logic and perk HUD (throw bar, buff icons), the client movement speed and penalty code, the client weapon's ammunition and spread hooks, the shared attribute managers for character models, attachments, gear, gear mods, set items, perks and items, the lobby-to-server item hand-over and the respawn request check. Data was read from a US-region attribute data set (`WEAPONS.TXT`, `MODELBUTES.TXT`, `ATTACHMENTS.TXT`, `MOD.TXT`, `PERKSKILLINFO.TXT`, `SETITEM.TXT`, `ITEMS.TXT`, `FX.TXT`, `VIP.TXT`) with throwaway readers (not in the repo); the perk names are the US string list's. The Steam install was not inspected; its data may differ (Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Behaviour (1 what a player wears and where the data lives, 2 body types, 3 vests, 4 gear pieces, 5 helmets, 6 goggles and masks, 7 backpacks, 8 gear mods, 9 the gear list and the armour step, 10 speed, sprint and stamina from gear, 11 ammunition from gear, 12 set items, 13 the perk system, 14 each perk, 15 infection-mode perks, 16 function items and fast respawn, 17 how gear reaches the match, 18 players with no gear: offline, bots, the VIP); Per-tick order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Behaviour (1 what a player wears and where the data lives, 2 body types, 3 vests, 4 gear pieces, 5 helmets, 6 goggles and masks, 7 backpacks, 8 gear mods, 9 the gear list and the armour step, 10 speed, sprint and stamina from gear, 11 ammunition from gear, 12 set items, 13 the perk system, 14 each perk, 15 infection-mode perks, 16 function items and fast respawn, 17 how gear reaches the match, 18 players with no gear: offline, bots, the VIP); Per-tick order; Edge cases; Quirks; Corrections (2026-10-22); Test cases; Open questions.
 
 ---
 
@@ -424,6 +424,173 @@ Client frame:
 8. **Shop stats are cosmetic** (section 1): the numbers players see in the item panel can differ from the real ones. Use the records.
 9. **Goggle pieces do not match goggle names** in places (the "FP-1 Face Guard" goggle uses piece 33 at 0.03, not piece 11 "FP-1 Face Guard" at 0.05). Data; keep.
 
+## Corrections (2026-10-22)
+
+From a comparison of the reference's server spawn loadout, weapon ammunition
+bookkeeping, rechargeable pickup boxes, perk manager and Warlord supply box
+with this spec and our implementation. Each entry: what the reference does,
+what we do (file:line), and a testable expectation. Numbers are the stock
+data of this spec.
+
+1. **Set-item extra magazines do not add starting ammunition; the client
+   only shows them** (section 11, Open question 9, third bullet).
+   - Reference: a loadout weapon's server total at spawn is the ammo's
+     `SpawnedAmount` after Fighting Chance (n + max(1, ⌊1.25n⌋ − n)),
+     clamped to the player's maximum. The set-item extra magazines are not
+     applied to it; they only raise the maximum (the cap for pickups and
+     refills). The message that gives the weapon to the client, however,
+     carries the player's **maximum** as the round count, and the client
+     uses that as its total. The server ignores any fire message that
+     arrives while its own total is 0 (no round, no damage, no
+     projectile), so the rounds between the two numbers are shown and can
+     be "fired" on the client but do nothing on the server. With stock
+     data and no set, only the M-23F and G7A differ (`SpawnedAmount` 1,
+     `MaxAmount` 2).
+   - Ours: the starting total is raised to the maximum, set magazines and
+     Fighting Chance alike (`games/combat_arms/src/game/gear.rs:881-884`),
+     so the extra magazines are real rounds.
+   - Why it matters: a set with extra magazines gives no extra rounds
+     until a refill; our players get up to a magazine more per weapon at
+     every spawn.
+   - Expect: test case 28 changes: M4A1 with a set of extra magazines
+     value 1 → maximum 150, starting total 120 (server); a Warlord or
+     full-ammo refill then reaches 150. Fighting Chance (test case 30) is
+     unchanged: starting total and maximum 150. Recommendation: keep the
+     server's numbers (start at `SpawnedAmount`, raise only the cap) and
+     show the real total; the client's inflated display is a fidelity
+     option at most.
+2. **Resourceful's medikit heals to full and repairs armour to full**
+   (section 14, Open question 6).
+   - Reference: the medikit box restores hit points to the maximum and the
+     armour pool to `MaxArmor`. `HealthDrop_HP` is only the killer's
+     health threshold that chooses a medikit, not the amount. A player
+     already at full health and full armour cannot take it: the box stays
+     for someone else (or until it expires).
+   - Ours: heals `HealthDrop_HP` hit points, leaves armour alone, and the
+     box is used up by any touch (`games/combat_arms/src/game/perks.rs:1124-1128`,
+     `1112-1113`).
+   - Expect: killer at 30 HP and 20 armour takes their medikit → 100 HP,
+     100 armour. A teammate at 100 HP and 100 armour walks over it after
+     the 10 s → nothing happens, the box stays.
+3. **Resourceful's ammo box refills the last rifle or SMG held, not the
+   weapon in hand, and stays when it cannot refill.**
+   - Reference: the ammo box refills one weapon: the one the server
+     records as the player's "last primary", which is the last weapon
+     switched to whose gun type is SMG, assault rifle, machine gun, sniper
+     or rocket launcher (shotguns, pistols, knives and grenades never
+     become it). It is refilled only if its gun type is assault rifle,
+     else only if it is SMG; machine guns and snipers get nothing. The
+     refill sets the total to the player's maximum (the raised one of
+     section 11) and happens only when the total is below the ammo's
+     record `MaxAmount`. Taking the box needs a refill to happen; otherwise
+     it stays.
+   - Ours: sets the held weapon's reserve to its ceiling, any weapon with a
+     magazine, and the box is always used up (`perks.rs:1129-1135`,
+     `1112-1113`).
+   - Expect: the killer holds a pistol at 5/45 after emptying a rifle
+     (M4A1 at 10/120, last primary) → the box sets the M4A1 to 120 and the
+     pistol stays at 5. A killer whose last primary is an M60 or an L96A1
+     cannot take an ammo box; it stays and a teammate with a rifle can.
+     (The roll that chooses the box still uses the killer's **current**
+     weapon, section 14; a thrown weapon in hand counts by its own
+     count / maximum, so a killer holding a spent grenade, 0 %, gets an
+     ammo box. Ours skips weapons without a magazine there, `perks.rs:944-947`.)
+4. **Resourceful's full-ammo box refills every weapon, grenades included.**
+   - Reference: every carried weapon except mission items and weapons
+     flagged to ignore refills, whose total is below its record
+     `MaxAmount`, is set to the player's maximum; thrown weapons, mines and
+     air strikes also get a full clip. As in 3, the box stays when nothing
+     was refilled.
+   - Ours: only weapons with a magazine, reserve to its ceiling; grenades
+     stay at 0 (`perks.rs:1136-1143`).
+   - Expect: a killer who threw their only M67 and holds an M4A1 at
+     30/120 takes the full-ammo box → M67 1 (and selectable again), M4A1
+     120.
+5. **Warlord's supply point needs the use key, works for the owner's team
+   only, and a charge follows the gun type, not the weapon.**
+   - Reference: a charge starts when a player inside the box's volume
+     holds use (E), on the client's request; the client only offers it
+     when the box belongs to the player's team. The server starts it if a
+     charge is left, the held weapon's gun type has a `RechargeTime`, the
+     weapon is not flagged to ignore refills, and its total is below the
+     player's maximum; one charge is reserved. Releasing E, moving (any
+     change of position), dying or becoming infected cancels it and gives
+     the charge back. When the charge time ends, the weapon then in hand is
+     refilled if its gun type is the one recorded at the start (so a switch
+     to another rifle still gets the refill), to the player's maximum, and
+     only if its total is below the record `MaxAmount`; the charge is used
+     either way.
+   - Ours: any living, uninfected player within 100 u starts a charge
+     without a key, whatever their team; a weapon switch cancels and
+     returns it (`perks.rs:1178-1210`, `1158-1166`).
+   - Expect: an enemy standing on the box with an empty rifle → nothing.
+     A teammate with an M4A1 at 40/120 standing still without E → nothing;
+     holding E for 3.0 s → 120, charges 9; releasing E at 2.0 s → no refill,
+     charges back to 10. Switching to a backpack rifle at 2.0 s and
+     holding still → that rifle is refilled at 3.0 s.
+6. **Warlord's box is thrown from the body and goes when the round is
+   decided.**
+   - Reference: the box is weapon 499's projectile, fired from the
+     player's object position (the hull centre, not the eye) along the
+     body's facing (yaw only), and it becomes the supply point where it
+     lands. It is removed as soon as the round is decided (the end-of-round
+     phase starts), not at the next round's start.
+   - Ours: the point appears at once 200 u ahead at the thrower's floor
+     level (`perks.rs:1062-1067`, a known shortcut) and is removed when the
+     round counter changes (`perks.rs:1151`).
+   - Expect: a box placed during a round is gone in the 3 s end-of-round
+     phase; nobody can charge from it after the round is won. Where it
+     lands follows weapon 499's projectile record (not in this spec: Open
+     question 10).
+7. **Opportunist removes the body it loots and reserves the weapons.**
+   - Reference: on success the body is removed from the world. The
+     weapons appear at the body's torso node, each offset by a uniform
+     random amount in [−20, 20] u on x and z, with a random yaw of 0 to
+     1 rad, visible and reserved for the looter alone for `OwnerTime`
+     (10 s), then for the looter's team. With no backpack weapons on the
+     body the perk fails ("empty backpack") and the body stays. While the
+     wait runs, the target body is frozen (its own updates are paused, so
+     it does not fade out), and resumes if the perk fails.
+   - Ours: the body stays (marked looted); the weapons are dropped at its
+     left foot with no offset and no reservation; an empty body still
+     counts as a success (`perks.rs:696-711`).
+   - Expect: Opportunist on a body with one backpack M4A1 → after 1.5 s the
+     body is gone, an M4A1 lies within 20 u of where its torso was; another
+     player cannot pick it up for 10 s, a teammate of the looter can after
+     that. On a body without backpack weapons → failure, the body stays.
+8. **Parting Gift is always the perk's own frag, on a 2.5 s fuse.**
+   - Reference: the grenade is weapon `WeaponID` (472 basic, 846 Expert:
+     the perk frags of section 14), whatever the dead player carries, made
+     at the dead player's object position, moving straight up at that
+     weapon's `DropVelocity`. Its fuse is fixed at 2.5 s, not its
+     projectile's `Lifetime`. The `Probability` roll applies (100 % in
+     stock data).
+   - Ours: the template is the first thrown weapon the victim carries, so
+     a player carrying an XM84 or M18 drops a flash or smoke with the
+     perk's area damage, and a player with no thrown weapon drops nothing
+     (`perks.rs:980-1002`).
+   - Expect: a Parting Gift owner with an XM84 as their thrown item dies →
+     a frag (area damage 20 basic, 24 Expert, radius of the perk weapon's
+     ammo) goes off 2.5 s later at the body; no flash. A loadout without a
+     thrown item gives the same.
+9. **War Cry and Eagle Eye reach dead teammates too.**
+   - Reference: the buff goes to the user and every teammate whose
+     position is strictly closer than `TargetDistance`, with no check that
+     the teammate is alive, so a dead teammate in range is given the
+     buff's timer too (whether their respawn clears it was not traced:
+     Open question 11).
+   - Ours: dead teammates are skipped (`perks.rs:675`).
+   - Expect: War Cry used with a dead teammate 500 u away → that teammate
+     is on the buff list for 30 s (the HUD's buff icon for them); live
+     check of what a respawn inside the 30 s does (Open question 11).
+10. **The multi-kill window is strictly under 5 s.**
+    - Reference: a kill raises the counter only if it comes less than
+      5000 ms after the previous enemy kill; exactly 5000 ms restarts it at
+      1. Kills of teammates (and of oneself) neither count nor reset it.
+    - Ours: ≤ 5.0 s counts (`perks.rs:893`).
+    - Expect: Victory Lap, enemy kills at 0, 5.000 and 6 s → counter 1, 1,
+      2: not active (ours: 1, 2, 3, active at 6 s).
+
 ## Test cases
 
 Stock US data, M4A1 (35 damage, roll 1.0, `MovePenalty` 0.10, ammo max 120, clip 30) unless stated; victim at full health 100 and armour 100; quirk 1 off unless stated; speeds are the speed limit V.
@@ -504,3 +671,17 @@ Stock US data, M4A1 (35 damage, roll 1.0, `MovePenalty` 0.10, ammo max 120, clip
    - `grenades.md` section 10's flash table is a subset: many later helmets, masks and characters (Anubis, Horus, Bastet, Heartseeker, Agent and event pieces) also carry flash entries, and quirk 1 adds 0.60 to everyone without a goggle piece. Its test cases hold for "no gear" victims with quirk 1 off.
    - `weapon_firing.md` test 8 ("default body gear only, head hit → 210") and `grenades.md`'s no-gear flash cases are what this spec's default (quirk 1 off) gives; the reference with the US data gives the values of tests 25 and 26.
    - `attribute_data.md` says backpack and goggle records carry sprint bonuses: the fields are read, but no stock goggle or backpack record has `DashSpeed`, and backpacks have no stamina either.
+10. **Warlord's flight** (Corrections 6). Weapon 499's ammo and projectile
+    record (speed, gravity, fuse, model and its touch volume) were not
+    read, so where the thrown box lands and how big its use volume is are
+    open. Live check: stand on flat ground, use Warlord, measure the box's
+    distance from where you stood.
+11. **Buffs on dead teammates** (Corrections 9). A dead teammate in range
+    is given the buff; whether a respawn before its end keeps it was not
+    traced. Live check: War Cry next to a teammate's body, have them
+    respawn at once, sprint.
+12. **Shown but unreal rounds** (Corrections 1). With a set's extra
+    magazines the client shows and fires more rounds than the server
+    counts. Live check: wear a set with extra magazines, fire a full
+    loadout's worth at a wall, then at a player: do the last magazine's
+    hits register?

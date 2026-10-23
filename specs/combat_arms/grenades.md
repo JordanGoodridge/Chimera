@@ -28,7 +28,7 @@ each kind; Behavior (1 kinds, 2 carrying and starting counts, 3 pin pull and
 grenade as a target, 14 death release and the drop perk, 15 the end of a
 round); Per-tick order;
 Edge cases; Quirks; Corrections (2026-10-19); Corrections (2026-10-22);
-Test cases; Open questions.
+Corrections (2026-10-22, b); Test cases; Open questions.
 
 ---
 
@@ -971,6 +971,46 @@ expectation. Test cases 61–63.
      (`games/combat_arms/src/game/effects/mod.rs:1010`). Section 8's rule
      is not implemented for the look.
    - Expect: as `effects_sounds.md` case 58.
+
+## Corrections (2026-10-22, b)
+
+From the inventory, attachments, grenades and gear comparison (server spawn
+loadout, ammunition bookkeeping and the perk grenade), the parts that touch
+this spec. Each entry: the reference behaviour, what we do now (file:line),
+and a testable expectation. The flash fade and the smoke timing are in
+Corrections (2026-10-22) above and are not repeated.
+
+1. **The M-23F and G7A show two grenades at spawn but only one is real**
+   (section 2).
+   - Reference: section 2 is right for the server: the loadout's thrown
+     weapon starts at `SpawnedAmount` (M67 1, XM84 2, M18 2, M-23F 1, G7A
+     1). The client, however, is given the maximum (`MaxAmount`: 2 for the
+     M-23F and G7A) as its count. After the first throw the client still
+     shows 1 and lets the player throw again: the full pin pull and throw
+     play, but the server ignores the fire message at its own count 0, so
+     no grenade appears. The client's own count then reaches 0 and it
+     switches away as after any last grenade (section 3).
+   - Ours: one M-23F or G7A, shown and usable; after the throw the weapon
+     is spent and skipped by key 4 (`games/combat_arms/data/weapons/m23f.toml:19-20`,
+     `g7a.toml:19-20`; `inventory.md` section 10). `gear_perks.md`
+     Corrections (2026-10-22) 1 has the general rule.
+   - Expect (faithful mode): spawn with an M-23F → the HUD shows 2; throw
+     twice → one incendiary sphere, the second throw plays its animations
+     and releases nothing. Recommendation: keep ours (1 shown, 1 real) by
+     default and treat the reference's display as a fidelity option.
+2. **Perk grenades have a fixed 2.5 s fuse** (section 14, drop-grenade
+   perk).
+   - Reference: a grenade made by the drop-grenade perk (Parting Gift) is
+     set up with a 2.5 s fuse whatever its projectile record's `Lifetime`
+     says, moving straight up at its `DropVelocity`, from the dead player's
+     object position. It is always the perk's own weapon (`WeaponID`),
+     never the dead player's grenade (`gear_perks.md` Corrections
+     (2026-10-22) 8).
+   - Ours: the grenade is spawned from the dead player's own thrown weapon,
+     with that weapon's fuse (`games/combat_arms/src/game/perks.rs:980-1002`).
+   - Expect: Parting Gift owner dies holding an XM84 in their loadout → a
+     frag goes off 2.5 s after the death, at the body (section 8's frame
+     rule); no flash.
 
 ## Test cases
 
