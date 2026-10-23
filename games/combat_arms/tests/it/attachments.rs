@@ -999,6 +999,9 @@ fn t34_picked_up_weapon() {
     let w = arm(&mut sim, dropper, "test:m4a1_exact");
     set_mag(&mut sim, w, 37, 60);
     let picker = player(&mut sim, Vec3::new(32.0, 1.0, 30.0), 0.0, 1.0, "test:m4a1_exact", &[]);
+    // A primary drawn since spawning: the pickup swaps with it (inventory.md
+    // Corrections 2026-10-22 2).
+    arm(&mut sim, picker, "test:m4a1_exact");
     inventory::drop_item(sim.app.world_mut(), dropper, w, false).unwrap();
     let item = sim
         .app
@@ -1318,4 +1321,44 @@ fn t40_switch_after_a_kick() {
     let moved = before - sim.app.world().get::<ViewPunch>(p).unwrap().0.x;
     close(moved, down, 1e-6, "the knife's return");
     close(sim.app.world().get::<CaKick>(p).unwrap().pitch, k.pitch, 1e-7, "J");
+}
+
+/// Corrections (2026-10-22) 1: an item whose five parts equal the carried
+/// primary's is not a swap (the carried weapon stays, its parts too, and
+/// takes the item's total and clip); a different sight is the swap, the
+/// item's parts arriving with it.
+#[test]
+fn c1_the_fitted_set_decides_the_swap() {
+    for (item_sight, swaps) in [("DotSight_A_AR", false), ("DotSight_B_AR", true)] {
+        let mut sim = sim();
+        let dropper = player(&mut sim, Vec3::new(30.0, 1.0, 30.0), 0.0, 1.0, "test:m4a1_exact", &["Silencer_A_AR", item_sight]);
+        let item_gun = arm(&mut sim, dropper, "test:m4a1_exact");
+        set_mag(&mut sim, item_gun, 20, 30);
+        let picker = player(&mut sim, Vec3::new(32.0, 1.0, 30.0), 0.0, 1.0, "test:m4a1_exact", &["Silencer_A_AR", "DotSight_A_AR"]);
+        let mine = arm(&mut sim, picker, "test:m4a1_exact");
+        inventory::drop_item(sim.app.world_mut(), dropper, item_gun, false).unwrap();
+        let item = sim
+            .app
+            .world_mut()
+            .query::<(Entity, &Dropped)>()
+            .iter(sim.app.world())
+            .find(|(_, d)| d.weapon == item_gun)
+            .map(|(e, _)| e)
+            .unwrap();
+        assert!(inventory::pick_up(sim.app.world_mut(), picker, item));
+        sim.seconds(1.5);
+        let active = sim.app.world().get::<Inventory>(picker).unwrap().active.unwrap();
+        let m = mag(&sim, active);
+        if swaps {
+            assert_eq!(active, item_gun, "{item_sight}: swapped");
+            assert_eq!(fitted(&sim, active)[at::SIGHT], name("DotSight_B_AR"), "the item's parts arrive");
+            assert_eq!(m.clip, 20);
+            assert!(sim.app.world().get_entity(mine).is_ok(), "the old one lies dropped");
+        } else {
+            assert_eq!(active, mine, "{item_sight}: the carried weapon stays");
+            assert_eq!((m.clip, m.clip + m.reserve), (20, 50));
+            assert_eq!(fitted(&sim, mine)[at::SIGHT], name("DotSight_A_AR"));
+            assert!(sim.app.world().get_entity(item).is_err(), "the item is used up");
+        }
+    }
 }

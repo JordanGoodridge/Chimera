@@ -33,7 +33,12 @@
 //!   list and repairs the pool by each piece's `Armor` (capped; case 24).
 //!   A character wearing an untouched default armour gets its gear's.
 //! - Ammunition (`ammo`): a weapon's maximum total is raised by Fighting
-//!   Chance and the sets' extra magazines, and its starting total with it.
+//!   Chance and the sets' extra magazines; its starting total is raised by
+//!   Fighting Chance only (Corrections 2026-10-22, 1: the server counts
+//!   `SpawnedAmount`; the original's client shows the maximum, so extra
+//!   magazines are shown but unreal there. We show the real count, the
+//!   spec's recommendation; the M-23F and G7A likewise stay 1 and 1).
+//!   `max_armour` is the vest's `MaxArmor` (Resourceful's medikit).
 //!
 //! Known shortcuts (docs/tech-debt.md; the most literal reading where the
 //! spec is unclear):
@@ -880,8 +885,15 @@ fn ammo(
             }
             None => max_total(total, mag.size, effects.fighting_chance, magazines) - total,
         };
+        // The server's starting total is `SpawnedAmount` (the weapon's
+        // own count here) after Fighting Chance only: the sets' extra
+        // magazines raise the cap, not the count (Corrections
+        // 2026-10-22, 1; the original's client shows the cap, a
+        // fidelity option we leave out).
+        let held = mag.clip + mag.reserve;
+        let start = max_total(held, mag.size, effects.fighting_chance, 0.0).min(total + delta).saturating_sub(held);
         mag.reserve_max += delta;
-        mag.reserve += delta;
+        mag.reserve += start;
         commands.entity(e).insert(CaAmmoRaised(delta));
     }
 }
@@ -927,4 +939,18 @@ pub fn spawn_gear(world: &mut World, e: Entity) {
         h.max = resolved.max_hp / 100.0;
         h.current = h.max;
     }
+}
+
+/// `e`'s armour pool maximum, the vest's `MaxArmor` (section 9): what
+/// Resourceful's medikit repairs to. 100 without a look or gear data.
+pub fn max_armour(world: &World, e: Entity) -> f32 {
+    let Some(look) = world.get::<Selection>(e) else { return 100.0 };
+    let loadout = world.get::<CaLoadout>(e).cloned().unwrap_or_default();
+    let effects = world.get::<CaGearEffects>(e).cloned().unwrap_or_default();
+    let infected = world.get::<super::movement::CaInfected>(e).is_some();
+    let quirks = world.get_resource::<CaGearQuirks>().copied().unwrap_or_default();
+    let (Some(data), Some(movement)) = (world.get_resource::<CaGearData>(), world.get_resource::<MovementData>()) else {
+        return 100.0;
+    };
+    resolve(&data.0, &movement.character.figure, quirks, look, &loadout, &effects, infected).max_armor
 }

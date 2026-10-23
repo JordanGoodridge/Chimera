@@ -27,7 +27,11 @@
 //!   total (`min(total, clip_max)`). The fitted set (`CaFitted`: five
 //!   record IDs) belongs to the weapon entity: it survives switching and
 //!   travels with a dropped weapon, so a pickup keeps the dropper's parts
-//!   and clip (no refill).
+//!   and clip (no refill) - unless the item's five slots (empty ones filled
+//!   with its weapon's defaults) and sight style equal the last chosen
+//!   primary's: then the carried weapon and its parts stay and only its
+//!   total and clip are replaced (Corrections 2026-10-22, 1, a faithful
+//!   quirk; `inventory::same_fitted_set`).
 //! - **Effects** (`apply_fitted`, on both sides whenever `CaFitted`
 //!   changes): `CaMods` holds the fitted records and computes every
 //!   attachment term from them; the weapon's parts get theirs:
