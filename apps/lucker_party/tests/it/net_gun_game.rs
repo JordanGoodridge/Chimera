@@ -121,6 +121,113 @@ fn a_client_cant_start_or_restart_the_minigame_itself() {
     );
 }
 
+/// Client 0 (character `a`) shoots client 1 (`b`) dead with rung `kill`'s
+/// gun, which each client sees in its owner's hand with rounds in it.
+fn kill_once(sim: &mut NetSim, kill: usize, a: Entity, b: Entity, ladder: &[&'static str]) {
+    assert_eq!(held(sim, 0), Some(ladder[kill]), "rung {kill}'s gun in client 0's hand");
+    assert!(clip(sim, 0).is_some_and(|c| c > 0), "rung {kill}: {} has rounds on its client", ladder[kill]);
+    // The victim back in play and unprotected, 4 m in front of the shooter.
+    assert!(
+        sim.until(600, |s| server_alive(s, b) && s.server.app.world().get::<God>(b).is_none()),
+        "the victim is back"
+    );
+    sim.ticks(30);
+    assert_eq!(held(sim, 1), Some(ladder[0]), "the victim, back, has the first rung's gun on its client");
+    let at = sim.server.position(a) + Vec3::new(0.0, 0.0, -4.0);
+    {
+        let w = sim.server.app.world_mut();
+        w.get_mut::<Transform>(b).unwrap().translation = at;
+        w.get_mut::<avian3d::prelude::Position>(b).unwrap().0 = at;
+    }
+    sim.ticks(90);
+    let me = sim.local_player(0).unwrap();
+    let mut dead = false;
+    for t in 0..(10.0 / TICK_INTERVAL) as u64 {
+        let target = sim.server.position(b);
+        testkit::aim_at(&mut sim.clients[0], me, target);
+        sim.clients[0].intent(me).fire = t % 2 == 0;
+        sim.step();
+        if !server_alive(sim, b) {
+            dead = true;
+            break;
+        }
+    }
+    sim.clients[0].intent(me).fire = false;
+    assert!(dead, "kill {kill}: {} killed in 10 s", ladder[kill]);
+    sim.ticks(40);
+}
+
+/// Client `i`'s minigame panel: the rules' status lines, then the match's
+/// own line (its time, waiting or over).
+fn panel(sim: &NetSim, i: usize) -> (Vec<String>, String) {
+    let mut lines = hud_lines(sim, i);
+    let phase = lines.pop().unwrap_or_default();
+    (lines, phase)
+}
+
+/// What the server's rules tell player `who` (a server entity), as HUD text
+/// (`{weapon}` and `{player}` left in).
+fn server_status(sim: &mut NetSim, who: Entity) -> Vec<String> {
+    let w = sim.server.app.world_mut();
+    let status = w.resource::<minigame::ActiveMinigame>().rules.status;
+    status(w, who).into_iter().map(|l| l.text).collect()
+}
+
+/// The first line of the server's status for `who` without its `{...}`
+/// placeholders' words: what a client's line must start with.
+fn stem(line: &str) -> &str {
+    line.split('{').next().unwrap_or(line).trim_end_matches([' ', ':'])
+}
+
+/// Client 0 kills client 1 with each of the first rungs' guns. Before each
+/// kill and after the last, each client's minigame panel says what the
+/// server's rules say to its own player (rung, next gun, leader), the time
+/// on it is the server's, the match is live (never "waiting"), and the HUD
+/// in use is the game of the gun in hand (CS:S's and Combat Arms'
+/// alternate on this ladder).
+#[test]
+fn each_clients_minigame_panel_follows_the_servers_state_and_the_held_gun() {
+    let mut sim = joined();
+    let (a, b) = (sim.character_of(0).unwrap(), sim.character_of(1).unwrap());
+    let ladder = sim.server.app.world().resource::<minigame::ladder::Ladder>().rungs.clone();
+    for kill in 0..=4usize {
+        for (i, who) in [(0usize, a), (1, b)] {
+            let (lines, phase) = panel(&sim, i);
+            let want = server_status(&mut sim, who);
+            assert_eq!(lines.len(), want.len(), "kill {kill}, client {i}: {lines:?} against the server's {want:?}");
+            for (got, want) in lines.iter().zip(&want) {
+                assert!(got.starts_with(stem(want)), "kill {kill}, client {i}: {got:?} against {want:?}");
+            }
+            let rung = if i == 0 { kill } else { 0 };
+            assert!(lines[0].starts_with(&format!("Rung {}/10", rung + 1)), "kill {kill}, client {i}: {lines:?}");
+            assert_eq!(
+                lines.last().is_some_and(|l| l.starts_with("Leader:")),
+                i == 1 && kill > 0,
+                "kill {kill}, client {i}: only the one behind is told who leads: {lines:?}"
+            );
+            // The match: live, with the server's time.
+            let time = phase.strip_prefix("Time ").unwrap_or_else(|| panic!("kill {kill}, client {i}: {phase:?}"));
+            let (m, s) = time.split_once(':').unwrap();
+            let shown = m.parse::<f64>().unwrap() * 60.0 + s.parse::<f64>().unwrap();
+            let w = sim.server.app.world();
+            let left = w.resource::<Match>().round_ends.unwrap() - w.resource::<chimera_core::core::SimClock>().now;
+            assert!((shown - left).abs() < 3.0, "kill {kill}, client {i}: {phase} against {left:.1} s left");
+            // The HUD in use is the held gun's game's.
+            // (The one just killed holds nothing until it respawns.)
+            let Some(gun) = held(&mut sim, i) else {
+                assert_eq!((i, kill > 0), (1, true), "kill {kill}: client {i} holds a gun");
+                continue;
+            };
+            let w = sim.clients[i].app.world();
+            let game = w.resource::<chimera_core::game_registry::Games>().get(gun.split(':').next().unwrap()).map(|g| g.id);
+            assert_eq!(Some(w.resource::<Gameplay>().hud), game, "kill {kill}, client {i}: the HUD of {gun}");
+        }
+        if kill < 4 {
+            kill_once(&mut sim, kill, a, b, &ladder);
+        }
+    }
+}
+
 /// Client 0 shoots client 1 with every rung's gun to the win. Each client
 /// draws the rung's gun with rounds in it, the HUD follows (rung, next
 /// gun, leader), and the match ends with the shooter the winner on both.
@@ -131,37 +238,7 @@ fn a_ladder_climbed_by_a_client_shows_on_both_clients() {
     let ladder = sim.server.app.world().resource::<minigame::ladder::Ladder>().rungs.clone();
     assert_eq!(ladder.len(), 10);
     for kill in 0..10usize {
-        assert_eq!(held(&mut sim, 0), Some(ladder[kill]), "rung {kill}'s gun in client 0's hand");
-        assert!(clip(&mut sim, 0).is_some_and(|c| c > 0), "rung {kill}: {} has rounds on its client", ladder[kill]);
-        // The victim back in play and unprotected, 4 m in front of the shooter.
-        assert!(
-            sim.until(600, |s| server_alive(s, b) && s.server.app.world().get::<God>(b).is_none()),
-            "the victim is back"
-        );
-        sim.ticks(30);
-        assert_eq!(held(&mut sim, 1), Some(ladder[0]), "the victim, back, has the first rung's gun on its client");
-        let at = sim.server.position(a) + Vec3::new(0.0, 0.0, -4.0);
-        {
-            let w = sim.server.app.world_mut();
-            w.get_mut::<Transform>(b).unwrap().translation = at;
-            w.get_mut::<avian3d::prelude::Position>(b).unwrap().0 = at;
-        }
-        sim.ticks(90);
-        let me = sim.local_player(0).unwrap();
-        let mut dead = false;
-        for t in 0..(10.0 / TICK_INTERVAL) as u64 {
-            let target = sim.server.position(b);
-            testkit::aim_at(&mut sim.clients[0], me, target);
-            sim.clients[0].intent(me).fire = t % 2 == 0;
-            sim.step();
-            if !server_alive(&sim, b) {
-                dead = true;
-                break;
-            }
-        }
-        sim.clients[0].intent(me).fire = false;
-        assert!(dead, "kill {kill}: {} killed in 10 s", ladder[kill]);
-        sim.ticks(40);
+        kill_once(&mut sim, kill, a, b, &ladder);
         if kill < 9 {
             let rung = |sim: &mut NetSim, i: usize| {
                 let me = sim.local_player(i).unwrap();

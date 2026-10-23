@@ -1643,8 +1643,9 @@ sees each new body) and `hud` (the HUD swap with the panel on both).
 Left: on Combat Arms' maps (Warehouse) CS:S's bodies, HUD look and gun
 models aren't there (a CS:S player is a capsule with the shell's plain
 HUD); CS:S's radar, spectator panel and target ids aren't in the party;
-a network client's minigame panel is empty (no `ActiveMinigame` there,
-L3); CS:S's team models are by team (free for all: everyone but team 1
+(a network client's minigame panel was empty here until L3: it now
+plays the server's minigame, `minigame_net`, and its panel follows the
+server's state, `net_gun_game`); CS:S's team models are by team (free for all: everyone but team 1
 wears the CT model); the shell's binds and movement cvars stay the
 gameplay's `binds` game's.
 

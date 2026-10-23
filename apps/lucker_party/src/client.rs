@@ -3,8 +3,10 @@
 //! Combat Arms' and CS:S's, the one drawn the local player's game, which
 //! follows its gun in the gun game: `chimera_sim::identity`; each shows the
 //! minigame's panel; CS:S's body animation for a player holding a CS:S
-//! gun), and the command line as the app plays it (`with_defaults`: the
-//! default minigame and its first map).
+//! gun), the map files it can read for a server's map check
+//! (`map_file_bytes`: CS:S's from its install, so a server on another map
+//! than the one loaded is joined; Combat Arms' maps load by id) and the command line as the app plays it
+//! (`with_defaults`: the default minigame and its first map).
 //!
 //! CS:S's HUD here is its health, armour and ammo panels, death notices,
 //! damage sprites and weapon selection row (`ui::game_hud`,
@@ -29,10 +31,23 @@ pub fn client_hooks() -> AppHooks {
         build: super::BUILD,
         load_map: super::load_map,
         load_map_file: |id, _, _| Err(format!("{id}: Lucker Party loads maps by id only, not from a file")),
-        map_file_bytes: |_| None,
+        map_file_bytes,
         unload_greybox: greybox::unload,
         respawn_greybox: greybox::respawn,
     }
+}
+
+/// The bytes of map `id`'s file as this app loads it, for the network's
+/// map check (`net::maps::MapFiles`): a CS:S map's, from the install. Combat
+/// Arms' maps have no file of their own (the server offers them by id and
+/// hash only: `net::maps`), so a client loads them by id. Without this a
+/// client joining a server on a map other than the one it has loaded found
+/// no copy, asked the server for a file the server doesn't have, and
+/// stayed in its own greybox game with a minigame that nobody plays.
+pub fn map_file_bytes(id: &str) -> Option<Vec<u8>> {
+    let name = id.strip_prefix("cs_source:")?;
+    let install = cs_source::game::INFO.install()?;
+    cs_source::game::mount::open(&install).ok()?.read(&format!("maps/{name}.bsp")).ok()
 }
 
 /// The shell's plugins with both games' HUDs: Combat Arms' (`ui::
