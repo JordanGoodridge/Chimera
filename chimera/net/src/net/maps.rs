@@ -24,8 +24,9 @@
 //! - **Which file.** The game names a map's file (`GameInfo::map_file`,
 //!   found by the id's game prefix, else the default game: `offer_file`).
 //!   A map without one (Combat Arms', in the install's archives) is
-//!   offered by id and hash only: nothing is served, cached or fetched, and
-//!   a client without the map fails as missing it.
+//!   offered by id and hash only: nothing is served, cached or fetched; a
+//!   client loads it by id from its own install (`start`) and the hash
+//!   decides, and one without it fails to load it.
 //!
 //! `net` can't reach the mounts, so the game, the dedicated server and
 //! tests say how this process reads map files (`MapFiles`).
@@ -800,6 +801,13 @@ fn start(world: &mut World, welcome: &Welcome) -> Fetch {
         }
         _ => {}
     }
+    // A map offered by id and hash only (the game names no file for it):
+    // nothing to compare or download, the game loads it by name from its
+    // own install and the hash decides (`client::check_map`); a client
+    // without it fails to load it, and says so.
+    if world_file(world, &map).is_none() {
+        return load(world, &map, None);
+    }
     let (Some(files), Some(hash)) = (world.get_resource::<MapFiles>().cloned(), welcome.map_hash) else {
         // The greybox, or no files to compare: the game loads it by name.
         return load(world, &map, None);
@@ -1014,6 +1022,48 @@ mod tests {
         assert_eq!(offer_file(Some(&games), "a_game:../x"), None, "nothing outside the cache");
         assert!(safe_name("mg_swag_multigames_v1"));
         assert!(!safe_name("../x") && !safe_name("a/b") && !safe_name(".."));
+    }
+
+    /// A map the server offers by id and hash only (Combat Arms'), which
+    /// this client doesn't have loaded and can't read as a file: it is
+    /// loaded by id (the hash decides once it is in), not asked of the
+    /// server, which has no file to send.
+    #[test]
+    fn a_map_offered_by_id_only_is_loaded_by_id() {
+        AsyncComputeTaskPool::get_or_init(Default::default);
+        let mut world = World::new();
+        let mut games = Games::default();
+        games.register(&A_GAME);
+        games.register(&NO_FILE_GAME);
+        world.insert_resource(games);
+        world.insert_resource(MapFiles {
+            read: Arc::new(|_| None),
+            cache: Some(std::env::temp_dir()),
+        });
+        world.init_resource::<Messages<NetEvent>>();
+        world.init_resource::<JoinProgress>();
+        let welcome = Welcome {
+            map: "no_file:warehouse".into(),
+            map_hash: Some([7; 32]),
+            map_size: 0,
+            download_url: String::new(),
+            allow_download: true,
+            tick_nanos: 15_000_000,
+            you: 1,
+            server_name: String::new(),
+            players: 1,
+            max_players: 4,
+        };
+        let fetch = start(&mut world, &welcome);
+        assert!(matches!(fetch, Fetch::Loading), "the map is asked of the game");
+        let events: Vec<NetEvent> = world.resource_mut::<Messages<NetEvent>>().drain().collect();
+        assert!(
+            matches!(&events[..], [NetEvent::LoadMap { map, file: None }] if map == "no_file:warehouse"),
+            "{events:?}"
+        );
+        // A map with a file the client can't read still goes to its checks.
+        let welcome = Welcome { map: "a_game:m".into(), ..welcome };
+        assert!(matches!(start(&mut world, &welcome), Fetch::Checking(_)));
     }
 
     #[test]

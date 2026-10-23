@@ -10,6 +10,10 @@
 //! ready the front end's placeholder box stands in, and `drive` starts
 //! the model afresh when it arrives.
 //!
+//! Only Combat Arms' own weapons load here (`ours`): another game's gun in
+//! a mashup (CS:S's in Lucker Party) has its own game's view model, which
+//! that game's loader or Chimera's driver draws.
+//!
 //! Runs only where `LoadOnDemand` is (the front end inserts it): a
 //! dedicated server draws no view models.
 //!
@@ -116,6 +120,12 @@ pub fn load_cached(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Loaded {
     loaded
 }
 
+/// Whether weapon `id` is Combat Arms' (an id of another game, `game:name`,
+/// is not).
+pub fn ours(id: &str) -> bool {
+    id.split_once(':').is_none_or(|(game, _)| game == crate::game::GAME)
+}
+
 /// The view models loading.
 #[derive(Default)]
 pub struct Pending(HashMap<String, Task<Loaded>>);
@@ -157,7 +167,7 @@ pub fn load_on_demand(
     wanted.extend(shown.iter().filter_map(|v| v.key.as_deref()));
     let mut seen = Vec::new();
     for id in wanted {
-        if seen.contains(&id) || has(id) || pending.0.contains_key(id) {
+        if !ours(id) || seen.contains(&id) || has(id) || pending.0.contains_key(id) {
             continue;
         }
         seen.push(id);
@@ -176,5 +186,14 @@ pub fn load_on_demand(
                 pending.0.insert(id.to_string(), task);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn another_games_weapons_are_not_loaded_here() {
+        assert!(super::ours("combat_arms:m4a1"));
+        assert!(!super::ours("cs_source:weapon_deagle"));
     }
 }
