@@ -336,6 +336,7 @@ pub fn load_character(
         None => None,
     };
     Ok(crate::map::MapCharacterModel {
+        game: Some(super::GAME),
         team,
         name: None,
         class: None,

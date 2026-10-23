@@ -63,8 +63,12 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // runtime, their spawning and weapons, the gameplay switched to them.
     (
         "minigame",
-        &["core", "console", "map", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry"],
+        &["core", "console", "map", "mode", "spawning", "weapon", "slots", "gameplay", "game_registry", "identity"],
     ),
+    // A character's game identity following its weapon (chimera/sim): its
+    // movement switched in the predicted tick, its identity, the local
+    // player's HUD slot.
+    ("identity", &["core", "map", "movement", "slots", "weapon", "gameplay", "game_registry"]),
     // Every game's respawn (chimera/sim): the dead held, a character
     // revived at a place (out of a toggled noclip).
     ("spawning", &["core", "movement"]),
@@ -104,6 +108,12 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "weapon",
         ],
     ),
+    // The minigame runtime's part of the network (chimera/net): the match
+    // and the players' ladder state replicated, a client starting the
+    // server's minigame. Above `net`, `minigame` and `mode`, which `net`
+    // itself may not use; an app that plays minigames over the network adds
+    // its plugin.
+    ("minigame_net", &["core", "net", "minigame", "mode"]),
     // The headless harness (chimera_world's `Sim`, chimera_net's `NetSim`,
     // cs_source's base and test maps). `lib` = crate-root items such as
     // `SimPlugins`.

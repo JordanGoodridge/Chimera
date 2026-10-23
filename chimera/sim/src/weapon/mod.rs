@@ -1349,7 +1349,7 @@ pub enum WeaponEventKind {
 // ---------------------------------------------------------------------------
 // Selection and deploy
 
-fn select_weapons(
+pub(crate) fn select_weapons(
     mut owners: Query<(Entity, &Intent, &mut Inventory, &Transform), Without<NetDrawn>>,
     mut weapons: Query<(
         &Weapon,

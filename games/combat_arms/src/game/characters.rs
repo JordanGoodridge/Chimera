@@ -40,6 +40,13 @@
 //! model's own, drawn through Chimera's body (`map::BodyName`,
 //! `Animator::fixed`) with the weapon held at `RightHand` (`map::Held`).
 //!
+//! A character whose identity is another game's (`slots::GameIdentity`:
+//! Lucker Party's players follow their weapon's game) keeps its trackers,
+//! pose and hit spheres (our guns still hit it so) but wears no look of
+//! ours (`dress` takes `BodyName`, `BodyNumber` and `BodySkin` off, `drive`
+//! leaves its `Animator` and visibility alone) and leaves no body of ours
+//! when it dies.
+//!
 //! On death (`core::Died`) the driver plays the death animation chosen by
 //! `death::choose` from the killing hit, and a body (`CaBody`) is left at
 //! the player's floor-snapped position + 0.1 u; it goes 5 s after its
@@ -185,6 +192,7 @@ use crate::{
     },
     map::{BodyName, BodyNumber, BodySkin, CharacterModels, Corpse, Held, anim::Animator},
     net::{NetAppExt, game::ServerTime, ordered::OrderedAppExt, server::Player},
+    slots::GameIdentity,
     weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, WeaponState},
 };
 
@@ -622,7 +630,7 @@ fn axes(yaw: f32) -> (Vec3, Vec3) {
 #[allow(clippy::type_complexity)]
 fn die(
     mut died: MessageReader<Died>,
-    mut characters: Query<(&mut CaAnim, &Transform, &Intent, Option<&CaPose>, &Selection)>,
+    mut characters: Query<(&mut CaAnim, &Transform, &Intent, Option<&CaPose>, &Selection, Option<&GameIdentity>)>,
     catalog: Res<crate::weapon::data::WeaponCatalog>,
     clock: Res<SimClock>,
     authoritative: Option<Res<NetRole>>,
@@ -630,9 +638,12 @@ fn die(
 ) {
     let server = authoritative.is_none_or(|r| *r != NetRole::Client);
     for d in died.read() {
-        let Ok((mut anim, t, intent, pose, look)) = characters.get_mut(d.entity) else {
+        let Ok((mut anim, t, intent, pose, look, identity)) = characters.get_mut(d.entity) else {
             continue;
         };
+        // Another game's character for now leaves its own body (its
+        // ragdoll), not ours.
+        let ours = GameIdentity::allows(identity, super::GAME);
         let yaw = pose.map_or(intent.yaw, |p| p.body_yaw);
         let (forward, right) = axes(yaw);
         let kind = death::kind_of(&catalog, d.damage.kind, d.damage.weapon);
@@ -664,7 +675,7 @@ fn die(
         }
         anim.death = Some(name.clone());
         anim.pitch = 0.0;
-        if !server {
+        if !server || !ours {
             continue;
         }
         // The body: the dead player's own yaw, or turned away from the
@@ -756,7 +767,7 @@ fn drive(
         (&mut CaAnim, &mut CaPose, Option<&mut CaAnimNet>),
         (&Intent, &MovementState, Option<&CaMovement>, &Health, Has<Dead>, Has<LocalPlayer>),
         (Option<&Inventory>, Option<&CaProtected>, Option<&Visibility>),
-        Option<&mut Animator>,
+        (Option<&mut Animator>, Option<&GameIdentity>),
     )>,
     weapons: Query<(&Weapon, Option<&WeaponState>, Option<&Magazine>, Option<&CaZoom>, Option<&CaSpread>)>,
     mut commands: Commands,
@@ -764,9 +775,12 @@ fn drive(
     let client = role.as_deref().is_some_and(|r| *r == NetRole::Client);
     let ms = (clock.delta.as_secs_f64() * 1000.0).round() as u32;
     let unit = unit();
-    for (e, (mut anim, mut pose, net), (intent, state, movement, health, dead, local), (inventory, protected, visibility), animator) in
+    for (e, (mut anim, mut pose, net), (intent, state, movement, health, dead, local), (inventory, protected, visibility), (animator, identity)) in
         &mut characters
     {
+        // Our body only on our characters (another game's identity wears
+        // its own); the trackers, pose and hit spheres run for every one.
+        let ours = GameIdentity::allows(identity, super::GAME);
         let alive = health.current > 0.0 && !dead;
         if alive && anim.death.is_some() {
             // Respawned: the trackers start over.
@@ -776,7 +790,7 @@ fn drive(
         }
         // The player object itself is invisible while dead: the body object
         // shows the death (Corrections 12).
-        if anim.rig.is_some() {
+        if anim.rig.is_some() && ours {
             let hidden = visibility == Some(&Visibility::Hidden);
             if !alive && !hidden {
                 commands.entity(e).insert(Visibility::Hidden);
@@ -828,7 +842,7 @@ fn drive(
             let server = anim.posed(r, squash, true);
             pose.server_spheres = pose_of(&anim, &server, body_yaw, squash).spheres;
         }
-        if let (true, Some(mut animator)) = (anim.rig.is_some(), animator) {
+        if let (true, Some(mut animator)) = (anim.rig.is_some() && ours, animator) {
             animator.fixed = Some(Arc::new(posed.locals_rh()));
             if animator.main.is_none() {
                 animator.main = Some(0);
@@ -1114,7 +1128,7 @@ fn dress(
         Option<&Team>,
         (Option<&BodyName>, Option<&BodyNumber>, Option<&BodySkin>),
         Option<&Inventory>,
-        Option<&Held>,
+        (Option<&Held>, Option<&GameIdentity>),
     )>,
     local: Query<Option<&Team>, With<LocalPlayer>>,
     weapons: Query<&Weapon>,
@@ -1133,7 +1147,15 @@ fn dress(
     dress_corpses(&data, &models, clock.now, &bodies, &mut commands);
     let quarantine = view.is_some_and(|v| v.mode == super::gear::QUARANTINE);
     let mine = local.iter().next().flatten().copied();
-    for (e, look, team, (name, number, skin), inventory, held) in &characters {
+    for (e, look, team, (name, number, skin), inventory, (held, identity)) in &characters {
+        // Another game's character for now (`GameIdentity`: the weapon it
+        // holds): our look comes off; that game dresses it.
+        if !GameIdentity::allows(identity, super::GAME) {
+            if name.is_some() || number.is_some() || skin.is_some() {
+                commands.entity(e).remove::<(BodyName, BodyNumber, BodySkin)>();
+            }
+            continue;
+        }
         let Some((want, body)) = models::drawn(&data, look) else { continue };
         if !models.0.iter().any(|m| m.name.as_deref() == Some(want.as_str())) {
             continue;

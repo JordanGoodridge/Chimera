@@ -189,3 +189,21 @@ fn without_refraction_the_view_clears_to_the_fog_colour() {
         assert_eq!(c, Color::srgb(fog[0], fog[1], fog[2]), "{name}");
     }
 }
+
+/// Changing the main camera's clear colour edits the camera in place: a
+/// copy inserted in its stead (cloned before that frame's `camera_system`
+/// computed the camera's target and projection) left a client's
+/// first-person camera, born the frame the sky's clear changed, drawing
+/// nothing for good (a networked player saw only the 3D skybox).
+#[test]
+fn the_main_camera_is_edited_in_place_not_replaced() {
+    #[derive(Resource, Default)]
+    struct Replaced(u32);
+    let (mut app, main, _) = app(nuke_pool(), WaterSettings::default());
+    app.init_resource::<Replaced>()
+        .add_observer(|_: On<Discard, Camera>, mut n: ResMut<Replaced>| n.0 += 1);
+    set_eye(&mut app, main, Vec3::new(0.0, -0.5, 0.0));
+    assert!(matches!(sky(&mut app, main).1, ClearColorConfig::Custom(_)), "the clear changed");
+    set_eye(&mut app, main, Vec3::new(0.0, 3.0, 0.0));
+    assert_eq!(app.world().resource::<Replaced>().0, 0, "the camera component was never replaced");
+}

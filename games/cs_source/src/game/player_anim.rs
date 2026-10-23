@@ -1,7 +1,8 @@
 //! What CS:S player bodies play: the player animation state of
 //! specs/cs_source/animation.md §12 (the SDK template the CS:S data
-//! follows) driving each character's `Animator`. The plugin also drives
-//! hostages (`hostage_anim`).
+//! follows) driving each character's `Animator`, on CS:S's bodies only
+//! (`CharacterModels::is_of`: in a mashup another game's bodies play its
+//! own). The plugin also drives hostages (`hostage_anim`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Player animation follows the SDK
 //! template (spec §12): ground speeds 100/250/85 make feet slide against CS:S's
@@ -622,16 +623,27 @@ pub fn suffix(weapon: Option<&str>) -> &'static str {
     }
 }
 
-/// Characters hold their active weapon's world model.
+/// Whether `body` is one of CS:S's models (or of no game in particular):
+/// the bodies this animation drives.
+fn ours(models: Option<&crate::map::CharacterModels>, body: Option<&crate::map::BodyModel>) -> bool {
+    models.is_none_or(|m| m.is_of(body, super::GAME))
+}
+
+/// Characters hold their active weapon's world model (in CS:S's bodies).
+#[allow(clippy::type_complexity)]
 fn hold_weapons(
     characters: Query<
-        (Entity, Option<&Inventory>, Option<&crate::map::Held>),
+        (Entity, Option<&Inventory>, Option<&crate::map::Held>, Option<&crate::map::BodyModel>),
         (With<Animator>, Without<crate::objectives::hostages::Hostage>),
     >,
     weapons: Query<(&Weapon, Option<&crate::weapon::AltModes>)>,
+    models: Option<Res<crate::map::CharacterModels>>,
     mut commands: Commands,
 ) {
-    for (e, inventory, held) in &characters {
+    for (e, inventory, held, body) in &characters {
+        if !ours(models.as_deref(), body) {
+            continue;
+        }
         // With the silencer on, its own world model.
         let id = inventory
             .and_then(|i| i.active)
@@ -759,18 +771,26 @@ fn drive(
         &MovementState,
         Option<&Health>,
         Option<&Inventory>,
-        Option<&crate::map::interp::RenderedView>,
+        (Option<&crate::map::interp::RenderedView>, Option<&crate::map::BodyModel>),
     ), Without<crate::objectives::hostages::Hostage>>,
     weapons: WeaponsQuery,
     loading: LoadingQuery,
     mut events: MessageReader<WeaponEvent>,
     hand_ik: Res<HandIk>,
+    models: Option<Res<crate::map::CharacterModels>>,
     mut commands: Commands,
 ) {
     let all: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
     let happened = Happened::of(&all, &weapons, &loading);
     let (dt, now) = (time.delta_secs(), time.elapsed_secs_f64());
-    for (e, mut animator, state, intent, velocity, movement, health, inventory, view) in &mut characters {
+    for (e, mut animator, state, intent, velocity, movement, health, inventory, (view, body)) in &mut characters {
+        // Only CS:S's bodies (another game's, in a mashup, play its own).
+        if !ours(models.as_deref(), body) {
+            if state.is_some() {
+                commands.entity(e).remove::<PlayerAnim>();
+            }
+            continue;
+        }
         let Some(mut state) = state else {
             commands.entity(e).insert(PlayerAnim::default());
             continue;
@@ -825,17 +845,24 @@ fn drive_sim(
         &Velocity,
         &MovementState,
         Option<&Health>,
-        Option<&Inventory>,
+        (Option<&Inventory>, Option<&crate::map::BodyModel>),
     ), Without<crate::objectives::hostages::Hostage>>,
     weapons: WeaponsQuery,
     loading: LoadingQuery,
     mut events: MessageReader<WeaponEvent>,
+    models: Option<Res<crate::map::CharacterModels>>,
     mut commands: Commands,
 ) {
     let all: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
     let happened = Happened::of(&all, &weapons, &loading);
     let (dt, now) = (clock.dt(), clock.now);
-    for (e, drawn, sim, state, intent, velocity, movement, health, inventory) in &mut characters {
+    for (e, drawn, sim, state, intent, velocity, movement, health, (inventory, body)) in &mut characters {
+        if !ours(models.as_deref(), body) {
+            if sim.is_some() || state.is_some() {
+                commands.entity(e).remove::<(crate::map::SimAnimator, SimPlayerAnim)>();
+            }
+            continue;
+        }
         let (Some(mut sim), Some(mut state)) = (sim, state) else {
             commands.entity(e).insert((
                 crate::map::SimAnimator(Animator::new(drawn.set.clone())),
