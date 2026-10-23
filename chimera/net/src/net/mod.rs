@@ -56,7 +56,8 @@
 //! (`motd.rs`), `SayRequest`, `RadioRequest`, `Notice`, `ChatMessage`,
 //! `RadioCall`, `ServerSound`, `CvarValues`, `NameRequest`, `NameChanged`,
 //! `decals::Decals`, voice (`voice::VoiceData`, `VoiceRelay`), votes' `CallVote`,
-//! `CastVote`, `VoteNews` (`vote`); then the parts' (`parts`, in name order: CS:S's
+//! `CastVote`, `VoteNews` (`vote`); then the parts' (`parts`, in name order: `minigame_net`'s
+//! `NetMinigame`, `MinigameNews`, `InMinigame` and `Rung`; CS:S's
 //! `NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`, `ClassRequest`,
 //! `ObjectiveNews`, `RoundOver`; Source's logic's `NetMover`, `MapHud`); `OwnState` also carries
 //! money, armour, kit and the freeze's end tick (arming and defusing the bomb
@@ -246,7 +247,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net29");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net30");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.

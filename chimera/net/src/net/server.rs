@@ -1036,6 +1036,11 @@ fn replicate_characters(
         } else {
             name.map_or_else(|| "Character".into(), |n| n.as_str().to_string())
         };
+        if local {
+            // The host's own character is called what the others see
+            // (the HUD's kill feed and leader line read `Name`).
+            commands.entity(e).insert(Name::new(name.clone()));
+        }
         commands.entity(e).insert((
             Replicated,
             NetCharacter {

@@ -155,6 +155,10 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   in-memory link. It uses `chimera_sim`, `chimera_world` and `chimera_core`,
   never the presentation, Source's logic, `mashup` or a game (checked);
   `mashup::net` re-exports it with the parts' replicated types.
+  `minigame_net` (its own module, above `net`) is the minigame runtime's
+  part of the network (`MinigameNetPlugin`: the match, the ladder rung and
+  the match's events replicated, a client starting the server's minigame);
+  an app that plays minigames over the network adds it.
   `cargo test -p chimera_net --features dev` tests it alone.
 - `cs_source_app` (apps/cs_source/) is the faithful CS:S app: the game
   binary (`cs_source`, the workspace's `default-run`) and the app's glue:
@@ -310,7 +314,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
 
 Exact edges: game_log uses core and console; net uses the engine's
 simulation (core, console, game_log, slots, character, movement, map,
-weapon) and names no game or Source logic:
+weapon) and names no game or Source logic (`minigame_net` uses net,
+minigame, mode and core):
 logic and games/<name> use it to register what they replicate (their
 parts, `net::parts`), and harness and client use it; bot uses core, console,
 slots, character, map, weapon (grenades

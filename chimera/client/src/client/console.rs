@@ -1021,6 +1021,11 @@ fn autoexec(
     for line in &args.0.console {
         console.submit(line.clone());
     }
+    // A map loaded before the console ran (`--map`): hosting with the
+    // command line's `+maxplayers` starts here, as `map` does after its load.
+    if args.0.map.is_some() {
+        console.submit("chimera_host_if_asked");
+    }
     if args.0.console_open {
         ui.open = true;
         for mut v in &mut root {
@@ -2093,6 +2098,15 @@ pub fn client_commands(app: &mut App) {
     // client's player).
     crate::net::cheats::player_commands(app);
     app.console_command(
+        "chimera_host_if_asked",
+        "Host the loaded map for other players when maxplayers asks for them (what map and the menu's \
+         Create Server do after a load); the command line's --map runs it after its +commands.",
+        |w, _| {
+            super::net::listen_if_hosting(w);
+            Ok(None)
+        },
+    )
+    .console_command(
         "getpos",
         "Your position and view, as a setpos/setang line (CS:S units).",
         |w, _| {

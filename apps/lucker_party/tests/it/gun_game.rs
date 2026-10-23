@@ -147,6 +147,10 @@ fn a_full_gun_game_runs_to_a_winner_with_both_games_guns() {
     assert!(fired_with.iter().any(|g| g.starts_with("combat_arms:")), "{fired_with:?}");
     assert_eq!(fired_with.last(), Some(&cs_source::game::weapons::AWP), "the last rung");
     assert!(events.contains(&("rung_up", 9)), "{events:?}");
+    assert!(
+        events.iter().all(|(n, _)| minigame::EVENT_NAMES.contains(n)),
+        "every event the match raises is one the network can send: {events:?}"
+    );
     let team_a = sim.app.world().get::<Team>(a).unwrap().0;
     assert_eq!(sim.app.world().resource::<Match>().winner, Some(team_a));
     sim.seconds(9.0);

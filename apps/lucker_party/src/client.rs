@@ -53,16 +53,26 @@ fn cs_source_names(games: Res<Games>, mut names: ResMut<ItemNames>) {
     names.0.extend(cs_source::game::weapons::display_names(&mount));
 }
 
+/// Whether the command line joins a server (`+connect <address>`).
+pub fn joins_server(console: &[String]) -> bool {
+    console.iter().any(|c| c.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("connect")))
+}
+
 /// The command line as the app plays it: `DEFAULT_MINIGAME` without
 /// `+minigame`, and without `--map` that minigame's first map (a minigame
 /// that isn't built in keeps the default's); `DEFAULT_BOTS` bots unless it
-/// sets `MaxPlayer`.
+/// sets `MaxPlayer`. A joiner (`+connect`) gets neither the minigame nor
+/// the bots: the server plays its minigame (`minigame_net`) and fills its
+/// own slots; the map is the default's, loaded at once, until the server
+/// says its own.
 pub fn with_defaults(mut args: Args) -> Args {
-    if !args.console.iter().any(|c| c.to_lowercase().starts_with("maxplayer")) {
+    let joining = joins_server(&args.console);
+    if !joining && !args.console.iter().any(|c| c.to_lowercase().starts_with("maxplayer")) {
         args.console.insert(0, format!("MaxPlayer {}", super::DEFAULT_BOTS));
     }
     let minigame = match super::minigame_of(&args.console) {
         Some(id) => id,
+        None if joining => super::DEFAULT_MINIGAME.to_string(),
         None => {
             args.console.push(format!("minigame {}", super::DEFAULT_MINIGAME));
             super::DEFAULT_MINIGAME.to_string()
@@ -92,5 +102,16 @@ mod tests {
         assert_eq!(own.map.as_deref(), Some("combat_arms:warehouse"));
         assert_eq!(own.console.len(), 2);
         assert_eq!(super::client_hooks().build, crate::BUILD);
+    }
+
+    #[test]
+    fn a_joiner_leaves_the_minigame_and_the_bots_to_the_server() {
+        let mut join = Args::default();
+        join.console.push("connect 127.0.0.1:28930".into());
+        let join = super::with_defaults(join);
+        assert!(super::joins_server(&join.console));
+        assert_eq!(join.console, ["connect 127.0.0.1:28930"], "no local minigame or bots");
+        assert_eq!(join.map.as_deref(), Some("cs_source:de_dust2"), "the default map meanwhile");
+        assert!(!super::joins_server(&super::with_defaults(Args::default()).console));
     }
 }
