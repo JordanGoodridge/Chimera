@@ -331,6 +331,7 @@ pub(super) fn welcome(world: &mut World, you: u64) -> Welcome {
     let settings = world.resource::<super::NetSettings>().clone();
     let players = super::server::players(world).len()
         + world.query_filtered::<(), With<crate::core::Bot>>().iter(world).count();
+    let manifest = super::manifest::current(world);
     Welcome {
         map: s.map,
         map_hash: s.hash,
@@ -342,6 +343,7 @@ pub(super) fn welcome(world: &mut World, you: u64) -> Welcome {
         server_name: world.resource::<super::query::Hosting>().hostname.clone(),
         players: players as u32,
         max_players: settings.maxplayers,
+        manifest,
     }
 }
 
@@ -401,6 +403,8 @@ fn watch_map(world: &mut World) {
     }
     let dl = world.resource::<DownloadSettings>().clone();
     let tick_nanos = world.resource::<Time<Fixed>>().timestep().as_nanos() as u64;
+    let manifest = super::manifest::current(world);
+    super::manifest::sent(world, &manifest);
     world.commands().server_trigger(ToClients {
         targets: SendTargets::All,
         message: ChangeLevel {
@@ -410,6 +414,7 @@ fn watch_map(world: &mut World) {
             download_url: dl.url.trim().to_string(),
             allow_download: dl.allow != 0,
             tick_nanos,
+            manifest,
         },
     });
 }
@@ -1065,6 +1070,7 @@ mod tests {
             server_name: String::new(),
             players: 1,
             max_players: 4,
+            manifest: Default::default(),
         };
         let fetch = start(&mut world, &welcome);
         assert!(matches!(fetch, Fetch::Loading), "the map is asked of the game");

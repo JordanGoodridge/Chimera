@@ -214,6 +214,9 @@ pub enum JoinFailure {
     Protocol,
     /// The map here is another version, and none could be fetched.
     MapDiffers,
+    /// The match needs a game this machine hasn't installed, or a
+    /// minigame this build can't play (`manifest`).
+    Mounts,
     /// No copy of the map here, and the server sends none.
     MapMissing,
     /// A download failed (the file, why).
@@ -332,6 +335,7 @@ pub(super) fn stop(world: &mut World) {
     world.remove_resource::<Joined>();
     world.remove_resource::<RefusedReason>();
     world.remove_resource::<ServerWelcome>();
+    world.remove_resource::<super::manifest::ServerManifest>();
     super::predict::reset(world);
     super::interp::reset(world);
     super::weapons::reset(world);
@@ -366,6 +370,11 @@ fn send_join(world: &mut World) {
             // game's `JoinRules`).
             let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
             info.push((super::server::JOIN_KEY.to_string(), (rules.choice)(world)));
+            // What this machine has (the mount doctor's report), if the
+            // app made one.
+            if let Some(m) = world.get_resource::<super::manifest::LocalMounts>() {
+                info.push((super::manifest::MOUNTS_KEY.to_string(), super::manifest::encode(&m.0)));
+            }
             info
         },
     };
@@ -401,6 +410,10 @@ fn welcome(w: On<Welcome>, mut commands: Commands) {
             p.map = Some(welcome.map.clone());
         }
         world.insert_resource(ServerWelcome(welcome.clone()));
+        // What the match needs, before anything loads.
+        if !super::manifest::accept_or_leave(world, &welcome.manifest) {
+            return;
+        }
         world.insert_resource(Handshake {
             welcome,
             fetch: default(),
@@ -443,7 +456,12 @@ fn change_level(c: On<ChangeLevel>, mut commands: Commands) {
         welcome.download_url = c.download_url.clone();
         welcome.allow_download = c.allow_download;
         welcome.tick_nanos = c.tick_nanos;
+        welcome.manifest = c.manifest.clone();
         world.insert_resource(ServerWelcome(welcome.clone()));
+        // What the new match needs, before the map loads.
+        if !super::manifest::accept_or_leave(world, &c.manifest) {
+            return;
+        }
         world.remove_resource::<Joined>();
         // What was predicted and drawn was on the old map.
         super::predict::reset(world);
@@ -526,6 +544,8 @@ pub fn classify(reason: &str, own_version: &str, joined: bool) -> JoinFailure {
             Some(std::cmp::Ordering::Less) => JoinFailure::NewServer,
             _ => JoinFailure::Other,
         }
+    } else if reason.starts_with(super::manifest::MISSING) || reason.starts_with(super::manifest::CANT_PLAY) {
+        JoinFailure::Mounts
     } else if reason.contains("network protocol differs") {
         JoinFailure::Protocol
     } else if reason.contains("TimedOut") || reason.contains("timed out") {

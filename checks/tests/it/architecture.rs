@@ -110,10 +110,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
     // The minigame runtime's part of the network (chimera/net): the match
     // and the players' ladder state replicated, a client starting the
-    // server's minigame. Above `net`, `minigame` and `mode`, which `net`
-    // itself may not use; an app that plays minigames over the network adds
-    // its plugin.
-    ("minigame_net", &["core", "net", "minigame", "mode"]),
+    // server's minigame, the manifest's minigame and `change_match` (a
+    // console command, as `net`'s). Above `net`, `minigame` and `mode`,
+    // which `net` itself may not use; an app that plays minigames over the
+    // network adds its plugin.
+    ("minigame_net", &["core", "console", "net", "minigame", "mode"]),
     // The headless harness (chimera_world's `Sim`, chimera_net's `NetSim`,
     // cs_source's base and test maps). `lib` = crate-root items such as
     // `SimPlugins`.
