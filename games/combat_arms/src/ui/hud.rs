@@ -17,7 +17,10 @@
 //! gauge too: `bound`, `BoundHud`; the hit overlay, the direction
 //! indicator and the gauge sight are the HUD layout attributes' images),
 //! telling the shell's fallback HUD (`client::hud::GameDraws`) to leave
-//! out its crosshair, health and ammo, hit marker and kill feed.
+//! out its crosshair, health and ammo, hit marker and kill feed. Its
+//! roots are `client::hud::HudRoot`s and its `GameDraws` in the shell's
+//! `HudDraws`, so in an app that switches HUDs it is up only while it is
+//! the gameplay's.
 //!
 //! Inputs: the viewed player (the local one, or whom it watches in first
 //! person), its `core::Health`, its armour (`game::weapons::CaArmor`'s
@@ -141,7 +144,12 @@ use bevy::{prelude::*, ui::UiTransform, window::PrimaryWindow};
 use serde::Deserialize;
 
 use crate::{
-    client::{FirstPersonCamera, aim, fonts::UiFonts, hud::GameDraws, spectate::SpecView},
+    client::{
+        FirstPersonCamera, aim,
+        fonts::UiFonts,
+        hud::{GameDraws, HudDraws, HudRoot},
+        spectate::SpecView,
+    },
     core::{
         Damage, DamageKind, DamageTaken, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, NetRole,
         RoundRestarts, SimClock, Team,
@@ -1181,12 +1189,11 @@ impl Plugin for CaHudPlugin {
             .insert_resource(InstallHud(panels))
             .insert_resource(bound)
             .add_plugins(CaHudStatePlugin)
-            .insert_resource(GameDraws {
-                crosshair: true,
-                status: true,
-                hit_marker: true,
-                killfeed: true,
-            })
+            .insert_resource(DRAWS);
+        // `GameDraws` is ours while our HUD is the gameplay's (an app with
+        // another game's HUD too: the shell's `HudDraws`).
+        app.world_mut().get_resource_or_init::<HudDraws>().0.push((crate::game::GAME, DRAWS));
+        app
             .add_systems(
                 Startup,
                 (spawn, score::spawn_root, draw::load_faces, draw::load_art, radar::spawn_root, full_map::spawn_root),
@@ -1224,6 +1231,14 @@ impl Plugin for CaHudPlugin {
             );
     }
 }
+
+/// What this HUD draws instead of the shell's fallback HUD.
+pub const DRAWS: GameDraws = GameDraws {
+    crosshair: true,
+    status: true,
+    hit_marker: true,
+    killfeed: true,
+};
 
 pub(crate) fn colour(c: Rgba) -> Color {
     Color::srgba_u8(c[0], c[1], c[2], c[3])
@@ -1349,15 +1364,15 @@ pub(crate) fn layer(z: i32) -> impl Bundle {
 pub const HUD_Z: i32 = 28;
 
 fn spawn(mut commands: Commands) {
-    commands.spawn((ActionRoot, layer(HUD_Z)));
-    commands.spawn((CrosshairRoot, layer(HUD_Z)));
-    commands.spawn((DamageRoot, layer(HUD_Z - 1)));
-    commands.spawn((StatusRoot, layer(HUD_Z)));
-    commands.spawn((WeaponRoot, layer(HUD_Z)));
-    commands.spawn((FeedRoot, layer(HUD_Z)));
-    commands.spawn((TagRoot, layer(HUD_Z - 2)));
-    commands.spawn((InstallRoot, layer(HUD_Z)));
-    commands.spawn((MinigameRoot, layer(HUD_Z)));
+    commands.spawn((ActionRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
+    commands.spawn((CrosshairRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
+    commands.spawn((DamageRoot, layer(HUD_Z - 1), HudRoot(crate::game::GAME)));
+    commands.spawn((StatusRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
+    commands.spawn((WeaponRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
+    commands.spawn((FeedRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
+    commands.spawn((TagRoot, layer(HUD_Z - 2), HudRoot(crate::game::GAME)));
+    commands.spawn((InstallRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
+    commands.spawn((MinigameRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
 }
 
 /// The game's panels (`InstallHud`) with this frame's values.

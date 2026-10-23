@@ -19,8 +19,11 @@
 //!   none of its game here: a capsule), and each game dresses and
 //!   animates only its own (Combat Arms' look by `GameIdentity::allows`,
 //!   CS:S's animation by the body's game, `CharacterModels::is_of`).
-//! - `hud_follows_identity`: the local player's identity's game made the
-//!   gameplay's `hud` slot (for an app that draws both games' HUDs).
+//! - The HUD (`hud_follows_identity`, each frame where a local player
+//!   follows its weapon): the local player's identity's game is the
+//!   gameplay's `hud` slot, so each client draws its own player's game's
+//!   HUD (an app that has both games' HUDs; the shell's `client::hud`
+//!   keeps only the active one up).
 //!
 //! `held_game`: the game of what a character holds (the weapon it
 //! switches to this tick, else the one in hand); `follow` and `unfollow`
@@ -48,7 +51,8 @@ impl Plugin for IdentityPlugin {
             .add_systems(
                 Predict::Select,
                 follow_weapon.in_set(SelectWeapons).after(crate::weapon::select_weapons),
-            );
+            )
+            .add_systems(PreUpdate, hud_follows_identity);
     }
 }
 

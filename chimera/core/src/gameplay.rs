@@ -35,7 +35,9 @@
 //! keeps in single-slot resources (`core::NewGame`, the network's join,
 //! bot and hold hooks) and its console commands aren't switched with the
 //! gameplay, and the shell reads the binds at start only. A HUD gated off
-//! keeps the nodes it spawned at start (only its updates stop).
+//! keeps the nodes it spawned unless it marks them for the shell to hide
+//! (`client::hud::HudRoot`) or builds them from the map's HUD look
+//! (Combat Arms' and CS:S's do).
 
 use std::time::Duration;
 

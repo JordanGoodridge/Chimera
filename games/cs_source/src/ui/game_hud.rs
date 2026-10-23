@@ -85,20 +85,26 @@ impl Plugin for GameHudPlugin {
             use crate::gameplay::{Gameplay, GameplayAppExt};
             app.default_gameplay(Gameplay::of(&crate::game::INFO));
         }
+        // The round's end it announces (an app without CS:S's rounds:
+        // never written).
+        app.add_message::<crate::rules::rounds::RoundEnded>();
         app.init_resource::<DeathNotices>()
             .init_resource::<LastHits>()
             .add_systems(
                 Update,
                 (
                     build.run_if(resource_exists_and_changed::<ActiveHud>),
-                    teardown.run_if(resource_removed::<ActiveHud>),
                     (remember_hits, death_notices, update)
                         .chain()
                         .run_if(resource_exists::<ActiveHud>),
                     round_banner,
                 )
                     .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
-            );
+            )
+            // Whatever the HUD: the look gone (a map without one, or put
+            // away while another game's HUD draws: `client::hud::
+            // HudLookOwner`), its parts go.
+            .add_systems(Update, teardown.run_if(resource_removed::<ActiveHud>));
     }
 }
 

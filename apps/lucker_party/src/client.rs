@@ -1,9 +1,22 @@
 //! The client's side of Lucker Party (feature `present`): the shell with
-//! this app's hooks and Combat Arms' HUD (`ClientPlugin`; CS:S's body
-//! animation for a player holding a CS:S gun), and the command line as the
-//! app plays it (`with_defaults`: the default minigame and its first map).
+//! this app's hooks and both games' HUDs (`ClientPlugin`, `with_huds`:
+//! Combat Arms' and CS:S's, the one drawn the local player's game, which
+//! follows its gun in the gun game: `chimera_sim::identity`; each shows the
+//! minigame's panel; CS:S's body animation for a player holding a CS:S
+//! gun), and the command line as the app plays it (`with_defaults`: the
+//! default minigame and its first map).
+//!
+//! CS:S's HUD here is its health, armour and ammo panels, death notices,
+//! damage sprites and weapon selection row (`ui::game_hud`,
+//! `hud_sprites`, `weapon_select`), from the map's CS:S HUD look (kept on
+//! CS:S's maps, `MapSources::players`; put away while Combat Arms' HUD
+//! draws: `client::hud::HudLookOwner`), with the shell's crosshair, and
+//! the minigame's panel (`ui::minigame_hud`). Known shortcuts: not its
+//! radar, spectator panel or overview (Combat Arms' radar is the party's);
+//! on Combat Arms' maps there is no CS:S HUD look (the shell's plain HUD
+//! with CS:S's guns).
 
-use bevy::prelude::*;
+use bevy::{app::PluginGroupBuilder, prelude::*};
 use chimera_client::client::{AppHooks, Args, ClientPlugins};
 use chimera_core::game_registry::Games;
 use combat_arms::ui::hud::ItemNames;
@@ -22,21 +35,37 @@ pub fn client_hooks() -> AppHooks {
     }
 }
 
-/// The client: the shell's plugins with the app's hooks and Combat Arms'
-/// HUD.
+/// The shell's plugins with both games' HUDs: Combat Arms' (`ui::
+/// with_hud`), then CS:S's panels, sprites and weapon selection (whose
+/// logic is the shell's `WeaponMenuPlugin`, added once, by CS:S's) and the
+/// minigame's panel on CS:S's HUD.
+pub fn with_huds(shell: PluginGroupBuilder) -> PluginGroupBuilder {
+    use chimera_client::client::{hud::HudPlugin, view::ViewPlugin, weapon_menu::WeaponMenuPlugin};
+    use cs_source::ui::{game_hud::GameHudPlugin, hud_sprites::HudSpritesPlugin, minigame_hud::MinigameHudPlugin};
+    combat_arms::ui::with_hud(shell)
+        .disable::<WeaponMenuPlugin>()
+        .add_after::<HudPlugin>(GameHudPlugin)
+        .add_after::<GameHudPlugin>(HudSpritesPlugin)
+        .add_after::<HudSpritesPlugin>(MinigameHudPlugin)
+        .add_after::<ViewPlugin>(cs_source::ui::weapon_select::WeaponSelectPlugin)
+}
+
+/// The client: the shell's plugins with the app's hooks and both games'
+/// HUDs (`with_huds`), the map's HUD look CS:S's (`HudLookOwner`).
 pub struct ClientPlugin {
     pub args: Args,
 }
 
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(combat_arms::ui::with_hud(
+        app.add_plugins(with_huds(
             ClientPlugins {
                 args: self.args.clone(),
                 hooks: client_hooks(),
             }
             .build(),
         ))
+        .insert_resource(chimera_client::client::hud::HudLookOwner(cs_source::game::GAME))
         // What CS:S's bodies play, for a player holding a CS:S gun (the
         // gun game's `identity = "weapon"`).
         .add_plugins(cs_source::game::player_anim::PlayerAnimPlugin)

@@ -5,5 +5,6 @@
 //! where tests go: docs/OBSERVABILITY.md, section 1.
 
 mod gun_game;
+mod hud;
 mod identity;
 mod startup;

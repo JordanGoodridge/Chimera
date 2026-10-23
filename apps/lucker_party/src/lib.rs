@@ -29,8 +29,8 @@
 //!   app and the server load unless the command line names a map.
 //! - With `present` (the default; not the dedicated server's,
 //!   apps/lucker_party_server): `ClientPlugin` (the shell with this app's
-//!   hooks and Combat Arms' HUD) and `with_defaults` (the command line as
-//!   the app plays it).
+//!   hooks and both games' HUDs, the local player's game's drawn) and
+//!   `with_defaults` (the command line as the app plays it).
 //!
 //! - Bots: Combat Arms' (the gun game's `bots` slot), with CS:S's guns'
 //!   types for their AI rows (data/bot_gun_types.toml); `MaxPlayer`.
@@ -203,7 +203,7 @@ pub fn ids() -> Vec<String> {
 #[cfg(feature = "present")]
 mod client;
 #[cfg(feature = "present")]
-pub use client::{ClientPlugin, client_hooks, with_defaults};
+pub use client::{ClientPlugin, client_hooks, with_defaults, with_huds};
 
 #[cfg(test)]
 mod tests {
