@@ -379,3 +379,50 @@ fn keyed() -> bool {
     }
     k
 }
+
+/// world_dat.md Corrections (2026-10-22) 1's census: every damaging
+/// volume of every readable map with its `Damage` (the map's, else the
+/// class default), `DamageType` and what the player takes per second now
+/// (Damage x 0.05 at the 20 Hz step) against before (Damage). Printed;
+/// the only check is that no volume's rate is the old one.
+#[test]
+fn volume_damage_census() {
+    let Some(mount) = mount() else { return };
+    let mut rows: std::collections::BTreeMap<(String, String), Vec<(String, f32)>> = Default::default();
+    let mut read = 0;
+    for name in world::map_names(&mount) {
+        let Some(path) = world::find(&mount, &name) else { continue };
+        let Ok(bytes) = mount.read(&path) else { continue };
+        let Ok(w) = World::parse(&bytes) else { continue };
+        read += 1;
+        for o in &w.objects {
+            let Some(defaults) = CaVolume::class_box(&o.class, Vec3::ZERO, Vec3::ZERO) else { continue };
+            let damage = match o.get("Damage") {
+                Some(Value::Real(r)) => *r,
+                _ => defaults.damage,
+            };
+            if damage <= 0.0 {
+                continue;
+            }
+            let kind = match o.get("DamageType") {
+                Some(Value::String(s)) => s.to_ascii_uppercase(),
+                _ => defaults.damage_type.clone(),
+            };
+            rows.entry((o.class.clone(), kind)).or_default().push((name.clone(), damage));
+        }
+    }
+    eprintln!("{read} maps read");
+    for ((class, kind), list) in &rows {
+        let mut values: Vec<f32> = list.iter().map(|(_, d)| *d).collect();
+        values.sort_by(|a, b| a.total_cmp(b));
+        values.dedup();
+        let maps: std::collections::BTreeSet<&str> = list.iter().map(|(m, _)| m.as_str()).collect();
+        eprintln!(
+            "{class} [{kind}]: {} in {} maps; Damage values {:?} -> HP/s now {:?} (was the Damage itself)",
+            list.len(),
+            maps.len(),
+            values,
+            values.iter().map(|d| d * 0.05).collect::<Vec<_>>()
+        );
+    }
+}

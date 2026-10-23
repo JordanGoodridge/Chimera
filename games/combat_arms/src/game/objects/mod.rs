@@ -46,7 +46,9 @@
 //! `ca_object_vars` lists the variables and pending commands.
 //!
 //! Known shortcuts: sounds play once where they start (attached ones
-//! don't follow, transition loops don't loop: `CaSound` has no loops);
+//! don't follow, transition loops don't loop and so aren't stopped: `CaSound`
+//! has no loops; the object world still says when a loop would stop,
+//! `Fx::StopSound`);
 //! the explosion's effect isn't drawn and its damage skips the armour
 //! step; riders are carried on the server only (a client's own player on
 //! a moving platform is corrected from the server, not carried by its
@@ -718,9 +720,23 @@ fn write_objects(world: &mut World, ids: &[ObjId], scale: f32) {
         }
         if let Some(e) = volume
             && let Some(base) = world.get::<VolumeAtLoad>(e).map(|b| b.0.clone())
-            && let Some(mut v) = world.get_mut::<CaVolume>(e)
+            && world.get::<CaVolume>(e).is_some()
         {
             let hidden = !visible;
+            // Messages' changes (`DamageVal`, `VELOCITY`, `LOCK`).
+            let mods = world.resource::<CaObjects>().world.objects[id as usize].vol;
+            let mut v = world.get_mut::<CaVolume>(e).expect("checked above");
+            if let Some(d) = mods.damage {
+                v.damage = d;
+            }
+            if let Some(speed) = mods.speed
+                && let Some(j) = v.jump_velocity
+            {
+                v.jump_velocity = Some(j.normalize_or_zero() * speed);
+            }
+            if let Some(l) = mods.locked {
+                v.locked = l;
+            }
             let offset = to_engine(pose.pos, scale) - to_engine(load.pos, scale);
             if v.hidden != hidden {
                 v.hidden = hidden;
@@ -760,6 +776,8 @@ fn effect(world: &mut World, f: Fx, scale: f32) {
                 server: true,
             });
         }
+        // Our sounds don't loop (`CaSound`), so there is nothing to stop.
+        Fx::StopSound { owner } => debug!("objects: {owner} stops its looping sound"),
         Fx::Music { id, on } => {
             let props = world.resource::<CaObjects>().world.objects[id as usize].props.clone();
             super::music::trigger::on_message(world, id, on, &props);

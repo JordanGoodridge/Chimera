@@ -62,6 +62,8 @@ mod weapon_classes;
 mod weapon_corrections;
 mod weapon_firing;
 mod world;
+mod volume_corrections;
+mod world_corrections;
 mod world_objects;
 mod world_objects_play;
 

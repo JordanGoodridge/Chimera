@@ -16,15 +16,15 @@ use combat_arms::game::objects::{
     runtime::{Kind, ObjectWorld, keys},
 };
 
-const DT: f32 = 0.05;
+pub(crate) const DT: f32 = 0.05;
 
 /// A vector property as the map entity carries it (entity axes).
-fn v(x: f32, y: f32, z: f32) -> String {
+pub(crate) fn v(x: f32, y: f32, z: f32) -> String {
     format!("{x} {z} {y}")
 }
 
 /// An object: class, name, properties.
-fn obj(class: &str, name: &str, props: &[(&str, String)]) -> (Vec<(String, String)>, Option<Vec3>) {
+pub(crate) fn obj(class: &str, name: &str, props: &[(&str, String)]) -> (Vec<(String, String)>, Option<Vec3>) {
     let mut kv = vec![("classname".to_string(), class.to_string()), ("targetname".to_string(), name.to_string())];
     kv.extend(props.iter().map(|(k, v)| (k.to_string(), v.clone())));
     (kv, None)
@@ -32,7 +32,7 @@ fn obj(class: &str, name: &str, props: &[(&str, String)]) -> (Vec<(String, Strin
 
 /// A world model at `centre` with box half-extents `half`, solid and
 /// ray-hit.
-fn wm(class: &str, name: &str, centre: Vec3, half: Vec3, props: &[(&str, String)]) -> (Vec<(String, String)>, Option<Vec3>) {
+pub(crate) fn wm(class: &str, name: &str, centre: Vec3, half: Vec3, props: &[(&str, String)]) -> (Vec<(String, String)>, Option<Vec3>) {
     let (mut kv, _) = obj(class, name, props);
     kv.push((keys::HALF.into(), v(half.x, half.y, half.z)));
     kv.push((keys::SOLID.into(), "1".into()));
@@ -41,71 +41,71 @@ fn wm(class: &str, name: &str, centre: Vec3, half: Vec3, props: &[(&str, String)
 }
 
 /// The object world of `objects`, at time 0.
-struct T {
-    w: ObjectWorld,
-    t: f64,
+pub(crate) struct T {
+    pub(crate) w: ObjectWorld,
+    pub(crate) t: f64,
 }
 
 impl T {
-    fn new(objects: Vec<(Vec<(String, String)>, Option<Vec3>)>) -> Self {
+    pub(crate) fn new(objects: Vec<(Vec<(String, String)>, Option<Vec3>)>) -> Self {
         Self {
             w: ObjectWorld::build(&objects),
             t: 0.0,
         }
     }
 
-    fn id(&self, name: &str) -> u32 {
+    pub(crate) fn id(&self, name: &str) -> u32 {
         self.w.named_all(name)[0]
     }
 
     /// One server frame at the current time, then the clock on.
-    fn frame(&mut self) {
+    pub(crate) fn frame(&mut self) {
         self.w.frame(self.t, DT);
         self.t += DT as f64;
     }
 
-    fn frames(&mut self, n: usize) {
+    pub(crate) fn frames(&mut self, n: usize) {
         for _ in 0..n {
             self.frame();
         }
     }
 
     /// A message now (before this frame's updates), from nobody.
-    fn send(&mut self, name: &str, message: &str) {
+    pub(crate) fn send(&mut self, name: &str, message: &str) {
         self.w.now = self.t;
         let id = self.id(name);
         self.w.deliver(id, message, Ctx::default());
     }
 
     /// A message from character `who`.
-    fn send_from(&mut self, name: &str, message: &str, who: Who) {
+    pub(crate) fn send_from(&mut self, name: &str, message: &str, who: Who) {
         self.w.now = self.t;
         let id = self.id(name);
-        self.w.deliver(id, message, Ctx { sender: who, target: None });
+        self.w.deliver(id, message, Ctx { sender: who, target: None, ..Ctx::default() });
     }
 
-    fn run(&mut self, text: &str) {
+    pub(crate) fn run(&mut self, text: &str) {
         self.w.now = self.t;
         self.w.run(text, Ctx::default());
     }
 
-    fn pos(&self, name: &str) -> Vec3 {
+    pub(crate) fn pos(&self, name: &str) -> Vec3 {
         self.w.objects[self.id(name) as usize].pose.pos
     }
 
-    fn state(&self, name: &str) -> State {
+    pub(crate) fn state(&self, name: &str) -> State {
         self.w.objects[self.id(name) as usize].awm().unwrap().state
     }
 
-    fn yaw(&self, name: &str) -> f32 {
+    pub(crate) fn yaw(&self, name: &str) -> f32 {
         self.w.objects[self.id(name) as usize].awm().unwrap().angles.y.to_degrees()
     }
 
-    fn var(&self, name: &str) -> Option<i32> {
+    pub(crate) fn var(&self, name: &str) -> Option<i32> {
         self.w.cmds.int(name)
     }
 
-    fn on(&self, name: &str) -> bool {
+    pub(crate) fn on(&self, name: &str) -> bool {
         match &self.w.objects[self.id(name) as usize].kind {
             Kind::Switchable { on, .. } => *on,
             _ => panic!("{name} isn't switchable"),
@@ -114,11 +114,11 @@ impl T {
 }
 
 /// A switchable object (a `SoundFX`) to see commands arrive.
-fn lamp(name: &str) -> (Vec<(String, String)>, Option<Vec3>) {
+pub(crate) fn lamp(name: &str) -> (Vec<(String, String)>, Option<Vec3>) {
     obj("SoundFX", name, &[("StartOn", "0".into())])
 }
 
-fn player(id: u64, min: Vec3, max: Vec3) -> CharBox {
+pub(crate) fn player(id: u64, min: Vec3, max: Vec3) -> CharBox {
     CharBox {
         who: Who::Character(id),
         min,
@@ -129,7 +129,7 @@ fn player(id: u64, min: Vec3, max: Vec3) -> CharBox {
     }
 }
 
-fn close(a: f32, b: f32, tol: f32, what: &str) {
+pub(crate) fn close(a: f32, b: f32, tol: f32, what: &str) {
     assert!((a - b).abs() <= tol, "{what}: {a} vs {b}");
 }
 
