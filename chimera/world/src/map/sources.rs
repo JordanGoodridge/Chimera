@@ -39,6 +39,12 @@
 //!   its players' bodies (after the gameplay's) and its HUD look
 //!   (`KitLoad::Players`: an app whose players may be the map's game's,
 //!   Lucker Party's `identity = "weapon"`).
+//! - Guests: games whose parts dress maps of every other game
+//!   (`MapSources::guests`, each a `MapDressing` that appends to the
+//!   map): the party's Combat Arms maps get CS:S's player bodies, held
+//!   and view models and HUD look from the CS:S install, so a player
+//!   holding a CS:S gun there is CS:S's, not the shell's capsule. A guest
+//!   is skipped on a map of its own game.
 //!
 //! The functions are plain `fn`s and the lists `'static` slices, so an
 //! app's `MapSources` is a `static` and its `client::AppHooks::load_map`
@@ -287,6 +293,11 @@ pub struct MapSources {
     /// (`KitLoad::Players`; an app whose players may be the map's game's,
     /// `slots::GameIdentity`).
     pub players: bool,
+    /// Games whose parts dress every map of another game (the party's
+    /// Combat Arms maps get CS:S's players and guns): each `dress` is
+    /// called with the map after the gameplay's own dressing, and appends
+    /// to the map's textures. Not for a map of the guest's own game.
+    pub guests: &'static [&'static MapDressing],
 }
 
 impl MapSources {
@@ -328,9 +339,18 @@ impl MapSources {
     /// parts taken off, its spawn teams mapped (`teams`) and the
     /// gameplay's parts added.
     pub fn dress(&self, game: &str, map: &mut MapData) {
-        let Some(gameplay) = self.gameplay.filter(|g| !g.game.eq_ignore_ascii_case(game)) else {
-            return;
-        };
+        if let Some(gameplay) = self.gameplay.filter(|g| !g.game.eq_ignore_ascii_case(game)) {
+            self.dress_with(gameplay, game, map);
+        }
+        for guest in self.guests.iter().filter(|g| !g.game.eq_ignore_ascii_case(game)) {
+            if let Err(e) = (guest.dress)(map) {
+                map.warnings.push(format!("{}'s parts: {e}", guest.game));
+            }
+        }
+    }
+
+    /// `dress` with the gameplay's own parts.
+    fn dress_with(&self, gameplay: &MapDressing, game: &str, map: &mut MapData) {
         map.kit = std::mem::take(&mut map.kit).stay(self.kept, self.players);
         // The map game's bodies go after the gameplay's (whose first is
         // the one everything without an identity is measured against).
@@ -427,6 +447,7 @@ mod tests {
         }],
         kept: &["a:gun"],
         players: false,
+        guests: &[],
     };
 
     #[test]
@@ -462,7 +483,7 @@ mod tests {
         }
         static L: MapLoader = MapLoader { game: "l", load: lean_only };
         static S: MapSources =
-            MapSources { loaders: &[&L], gameplay: None, teams: &[], surfaces: &[], kept: &[], players: false };
+            MapSources { loaders: &[&L], gameplay: None, teams: &[], surfaces: &[], kept: &[], players: false, guests: &[] };
         S.load_with("l:x", &MapLoadOptions::lean()).unwrap();
         assert!(MapLoadOptions::default().textures, "everything by default");
     }
@@ -482,6 +503,7 @@ mod tests {
             surfaces: &[],
             kept: &["a:gun"],
             players: false,
+            guests: &[],
         };
         assert_eq!(S2.load("a:x", 0).unwrap().name, "x/Only([\"a:gun\"])", "the world and the kept guns");
         assert_eq!(S2.load("b:x", 0).unwrap().name, "x/All", "the gameplay's own game: its whole kit");
@@ -533,6 +555,7 @@ mod tests {
             surfaces: &[],
             kept: &["a:gun"],
             players: true,
+            guests: &[],
         };
         let map = S3.load("a:x", 0).unwrap();
         let bodies: Vec<_> = map.kit.characters.iter().map(|c| (c.game, c.name.as_deref())).collect();
@@ -540,6 +563,35 @@ mod tests {
         assert!(map.kit.hud.is_some(), "the HUD look stays");
         assert!(map.kit.nav.is_none(), "the rest goes");
         assert_eq!(map.kit.held.len(), 1);
+    }
+
+    /// A guest dresses the maps of the other games only, after the
+    /// gameplay's own dressing, and a failing one is a warning.
+    #[test]
+    fn a_guest_dresses_the_maps_of_other_games() {
+        fn a_guest(map: &mut MapData) -> Result<(), String> {
+            map.kit.characters.push(body("a", Some("a_guest")));
+            Ok(())
+        }
+        fn a_broken_guest(_: &mut MapData) -> Result<(), String> {
+            Err("no install".into())
+        }
+        static A_GUEST: MapDressing = MapDressing { game: "a", dress: a_guest };
+        static C_GUEST: MapDressing = MapDressing { game: "c", dress: a_broken_guest };
+        static S4: MapSources = MapSources {
+            loaders: &[&A, &B],
+            gameplay: Some(&B_PARTS),
+            teams: &[],
+            surfaces: &[],
+            kept: &[],
+            players: false,
+            guests: &[&A_GUEST, &C_GUEST],
+        };
+        let other = S4.load("b:y", 0).unwrap();
+        assert!(other.kit.characters.iter().any(|c| c.name.as_deref() == Some("a_guest")), "a's guest on b's map");
+        assert!(other.warnings.iter().any(|w| w.contains("c's parts: no install")), "{:?}", other.warnings);
+        let own = S4.load("a:x", 0).unwrap();
+        assert!(own.kit.characters.iter().all(|c| c.name.as_deref() != Some("a_guest")), "not on its own game's map");
     }
 
     #[test]

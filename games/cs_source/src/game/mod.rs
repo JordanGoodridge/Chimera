@@ -289,6 +289,18 @@ pub fn load_installed_map(name: &str, options: &crate::map::MapLoadOptions) -> R
     bsp::load_level_with(&mount, name, options)
 }
 
+/// CS:S's players and the guns `kept` names on a map of another game
+/// (`map::MapSources::guests`), from the install; the map gets no CS:S
+/// parts when there is no install.
+pub fn dress_guest(map: &mut crate::map::MapData, kept: &'static [&'static str]) -> Result<(), String> {
+    let install = INFO
+        .install()
+        .ok_or_else(|| format!("no `{GAME}` install found (chimera_install <folder>, or chimera.local.toml)"))?;
+    let mount = mount::open(&install).map_err(|e| e.to_string())?;
+    bsp::dress_guest(&mount, map, kept);
+    Ok(())
+}
+
 /// CS:S's default binds as its `cfg/config_default.cfg` lists them (what a
 /// fresh CS:S config gets), in that file's order: the fallback when the
 /// install's file can't be read (the shell's `binds::read_install_defaults`

@@ -114,6 +114,7 @@ pub static MAP_SOURCES: MapSources = MapSources {
     surfaces: SURFACES,
     kept: KEPT,
     players: false,
+    guests: &[],
 };
 
 /// Map `id` (`cs_source:de_dust2`, `combat_arms:warehouse`; a bare name is

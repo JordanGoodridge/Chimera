@@ -10,4 +10,5 @@ mod greybox;
 mod heavy {
     mod dust2;
     mod spawns;
+    mod warehouse;
 }

@@ -1818,6 +1818,44 @@ client logged "the server changed match" and "playing the server's
 definition", stayed connected, and the server's `minigame_status` showed
 it on the new ladder's first rung.
 
+L2/L3 polish (10-24): the gun game's rotation, results and CS:S bodies on
+Warehouse.
+- Rotation: `MinigameDef::rotate` (default true; set in the gun game's
+  TOML). `minigame_net::serve_minigame` (a server or a standalone game,
+  `FixedLast`) waits `runtime::RESULTS_HOLD` (8 s) of `MatchOver`, then
+  picks the pool's next map in turn that every connected player can play
+  (`playable_on`; this map last) and calls `change_match`, so clients
+  follow on the same connection (a new manifest, or `ChangeLevel` to the
+  next map), the scores anew; `rotate = false` restarts on this map.
+- Results: `minigame::results::MatchResults` (title, ladder length, a row a
+  player: name, kills, deaths, final rung, winner first; sorted winner,
+  rung, kills, fewest deaths), collected by `results::record` as soon as
+  the match has its result (the intermission), gone at the next
+  `restart`; it rides `NetMinigame::results` to clients (names from
+  `NetCharacter`) and into `MinigameHud::results`, so both HUDs show it:
+  CS:S's `minigame_hud` (`PanelLine::Result`) and Combat Arms'
+  `MinigameView::results`, in the place of the notices.
+- CS:S bodies on Combat Arms' maps: `MapSources::guests` (a `MapDressing`
+  per guest game, called after the gameplay's dressing on maps of other
+  games): `lucker_party::CS_SOURCE_PARTS` -> `cs_source::game::
+  dress_guest` -> `bsp::dress_guest` reads CS:S's player bodies, the kept
+  guns' held and view models and (on a map without one) the HUD look from
+  the install with a `MaterialLoader::guest` whose texture and cubemap
+  lists begin past the map's own, so the models' indices are the map's
+  once the new textures are appended (no remapping). The kit loading
+  was split (`add_bodies`, `add_guns`) with CS:S's own maps unchanged. A
+  free-for-all player of an identity's game with interchangeable skins
+  wears one by its team id (`CharacterModels::varied`), not the one
+  counter-terrorist model. Tests: lucker_party's `rotation` (NetSim: the
+  results on both clients, the next map, scores anew, rotate off) and
+  `results_hud` (both HUDs), the sim's `minigame` results rows,
+  `sources`' guest unit test and, heavy, `lucker_party_server`'s
+  `warehouse` (a Glock holder on Warehouse wears a CS:S body, a varied one
+  per player).
+- Left: the guest kit is read from the install at every Combat Arms map
+  load (a cache would share its textures between loads); CS:S's radar,
+  spectator panel and target ids; a vote or lobby for the next map.
+
 Left of L3 (stage 4, M5): relevance culling. Not cheap here: replicon's
 per-client visibility removes a hidden entity on the client (its body
 despawns and comes back), so culling needs the client's handling of a
