@@ -31,9 +31,9 @@ This file is a map. Follow the links for detail; keep it short.
 - Third-party code never enters this repo and is never translated line by
   line. Behavior reaches us only as specs in our own words, written in a
   separate session. Implementation sessions read specs only.
-- Bevy is pinned in `Cargo.toml` (0.19.1) and its API changes often: check the
-  pinned crate source in `~/.cargo/registry/src/*/bevy_*-0.19.1/` or its
-  examples instead of memory. Same for avian3d (0.7).
+- Bevy is pinned in `Cargo.toml` (0.20.0) and its API changes often: check the
+  pinned crate source in `~/.cargo/registry/src/*/bevy_*-0.20.0/` or its
+  examples instead of memory. Same for avian3d (0.8).
 - Must build and run on Linux and Windows.
 - Scope: first-person games only; CS:S and Combat Arms first.
 

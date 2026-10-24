@@ -42,7 +42,7 @@ fn ldr_bump_page_encoding() {
 }
 
 // Detail combine, self-illum and texture transforms
-// (map::material_fx mirrors world.wgsl and prop.wgsl).
+// (map::material_fx mirrors world.wesl and prop.wesl).
 
 use bevy::math::{Vec2, Vec3, Vec4};
 use chimera_world::map::{ MapUvTransform, material_fx::{detail_combine, detail_post_lighting, self_illum}, };

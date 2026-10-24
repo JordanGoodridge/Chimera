@@ -159,7 +159,7 @@ fn shadow(sim: &mut Sim) -> (Entity, AssetId<Mesh>, Vec3) {
         .resource::<MeshExtraction>()
         .extracted
         .get(&mesh)
-        .and_then(|m| m.compute_aabb())
+        .and_then(|m| m.get_aabb())
         .expect("a shadow mesh with positions");
     (e, mesh, Vec3::from(aabb.center))
 }

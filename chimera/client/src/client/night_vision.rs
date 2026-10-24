@@ -11,7 +11,7 @@
 //!
 //! `nightvision` (N) toggles the local player's goggles when it carries them
 //! (`NightVisionOn`), playing their on/off sound to the player; the frame gets
-//! the green additive pass (`night_vision.wgsl`) on the last camera drawing the
+//! the green additive pass (`night_vision.wesl`) on the last camera drawing the
 //! view, after color correction; off without goggles (death).
 //!
 //! Known shortcuts (docs/tech-debt.md): Night vision: the overlay's colour (the
@@ -52,7 +52,7 @@ use crate::{
 
 /// The colour the frame is added to itself through (gamma space): the
 /// frame's green doubles, its red and blue stay. Ours; see the module
-/// doc. Mirrored in `night_vision.wgsl`.
+/// doc. Mirrored in `night_vision.wesl`.
 pub const NIGHT_VISION_TINT: [f32; 3] = [0.0, 1.0, 0.0];
 
 /// Whether the local player's night vision is on.
@@ -61,6 +61,7 @@ pub struct NightVisionOn(pub bool);
 
 /// On the camera that runs the pass this frame.
 #[derive(Component, Clone, Copy, Debug, Default, ExtractComponent)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct NightVisionPass;
 
 pub struct NightVisionPlugin;
@@ -85,7 +86,7 @@ impl Plugin for NightVisionPlugin {
         if app.get_sub_app(RenderApp).is_none() {
             return;
         }
-        embedded_asset!(app, "night_vision.wgsl");
+        embedded_asset!(app, "night_vision.wesl");
         app.add_plugins(ExtractComponentPlugin::<NightVisionPass>::default());
         app.sub_app_mut(RenderApp)
             .add_systems(RenderStartup, init_pipeline)
@@ -202,7 +203,7 @@ fn init_pipeline(
         ),
     );
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-    let shader = asset_server.load("embedded://chimera_client/client/night_vision.wgsl");
+    let shader = asset_server.load("embedded://chimera_client/client/night_vision.wesl");
     let pipeline = |format: TextureFormat| {
         pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: Some("night_vision_pipeline".into()),

@@ -161,7 +161,6 @@ pub fn build<L: MapLayers>(app: &mut App, data: Option<&Arc<MapData>>, view: Map
         app.insert_resource(PendingMap(data.clone(), view))
             .insert_resource(ActiveMapLook(data.look.clone()));
     }
-    contact_flags::plugin(app);
     ragdoll::plugin(app);
     layers.ragdolls(app);
     placed_ragdoll::plugin(app);

@@ -3,7 +3,7 @@
 // (the frozen after-image) at its own weight. The pipeline blends it
 // additively.
 
-#import bevy_ui::ui_vertex_output::UiVertexOutput
+import bevy_ui_render::ui_vertex_output::UiVertexOutput;
 
 struct FlashParams {
     // White amount, after-image amount, unused.

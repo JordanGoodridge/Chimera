@@ -3,7 +3,7 @@
 //! silhouette, seen along the map's shadow direction, goes into a coverage
 //! texture; the shadow is clipped onto the world surfaces behind the
 //! caster like a decal, and multiplies them toward the shadow colour with
-//! a 5-tap blur, fading with distance and vanishing in fog. See shadow.wgsl.
+//! a 5-tap blur, fading with distance and vanishing in fog. See shadow.wesl.
 //!
 //! Dynamic shadows as Video > Advanced's shadow detail asks (`ShadowSettings`:
 //! `r_shadows`, `r_shadowrendertotexture`, `r_flashlightdepthtexture`;
@@ -794,7 +794,7 @@ pub struct ShadowMaterial {
 
 impl Material for ShadowMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/shadow.wgsl".into()
+        "embedded://chimera_present/render/shadow.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -816,7 +816,7 @@ pub struct ShadowMaterialPlugin;
 
 impl Plugin for ShadowMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "shadow.wgsl");
+        embedded_asset!(app, "shadow.wesl");
         app.add_plugins(MaterialPlugin::<ShadowMaterial>::default());
     }
 }
@@ -936,7 +936,7 @@ pub fn apply_shadow_detail(
     for (prop, mesh) in built {
         // Physics props' shadows move with them: their clusters follow
         // the rebuilt mesh (`update_prop_shadows`).
-        let clusters = match (visibility, bevy::camera::primitives::MeshAabb::compute_aabb(&mesh)) {
+        let clusters = match (visibility, bevy::camera::primitives::MeshAabb::get_aabb(&mesh)) {
             (Some(v), Some(aabb)) => vis::box_clusters(v, Vec3::from(aabb.min()), Vec3::from(aabb.max())),
             _ => Vec::new(),
         };
@@ -1170,7 +1170,7 @@ pub fn update_prop_shadows(
                 Ok(handle) => {
                     // Hidden where the camera can't see where it now lies.
                     if let Some(v) = vis.as_ref()
-                        && let Some(aabb) = bevy::camera::primitives::MeshAabb::compute_aabb(&mesh)
+                        && let Some(aabb) = bevy::camera::primitives::MeshAabb::get_aabb(&mesh)
                         && let Ok(Some(mut tag)) = shadow_vis.get_mut(e)
                     {
                         let clusters = vis::box_clusters(&v.0, Vec3::from(aabb.min()), Vec3::from(aabb.max()));
@@ -1396,7 +1396,7 @@ mod tests {
                 .collect();
             found.first().map(|m| {
                 let mesh = world.resource::<Assets<Mesh>>().get(m).unwrap();
-                Vec3::from(bevy::camera::primitives::MeshAabb::compute_aabb(mesh).unwrap().center)
+                Vec3::from(bevy::camera::primitives::MeshAabb::get_aabb(mesh).unwrap().center)
             })
         };
         let set = |sim: &mut Sim, shadows: u8, rtt: u8| {
@@ -1419,7 +1419,7 @@ mod tests {
             let world = sim.app.world_mut();
             let m = world.query::<(&CharacterBlob, &Mesh3d)>().single(world).unwrap().1.0.clone();
             let mesh = world.resource::<Assets<Mesh>>().get(&m).unwrap();
-            let aabb = bevy::camera::primitives::MeshAabb::compute_aabb(mesh).unwrap();
+            let aabb = bevy::camera::primitives::MeshAabb::get_aabb(mesh).unwrap();
             (Vec3::from(aabb.center), Vec3::from(aabb.half_extents))
         };
         let first = blob_box(&mut sim);

@@ -41,17 +41,17 @@
 //! `core::DamageFilter`), game_player_equip/player_weaponstrip (as
 //! `core::Equip`).
 //!
-//! Known shortcuts (docs/tech-debt.md): avian 0.7 leaves "body disabled" on a
-//! collider's query-tree proxy after `RigidBodyDisabled` is removed (its
-//! `Discard` observer still sees the component); a new contact of that collider
-//! that touches in its first step is later linked into an island a second time,
-//! which trips avian's `contact.island.is_none()` assertion (that part is now
-//! guarded for every contact by `map::contact_flags`).
-//! `logic::bridge::set_prop_shown` re-enables the body before its colliders and
-//! rebuilds the proxies of colliders that stayed solid. Why it's OK for now: Contained
-//! to one function, guarded by
-//! `map_logic::restored_prop_contacts_join_islands_once`; drop the workaround
-//! once avian clears the flag itself.
+//! Known shortcuts (docs/tech-debt.md): avian (0.7 and 0.8) leaves "body
+//! disabled" on a collider's query-tree proxy after `RigidBodyDisabled` is
+//! removed (its `Discard` observer still sees the component), and the broad
+//! phase pairs no proxy so marked: a restored prop would meet nothing (with
+//! 0.7 a new contact that touched in its first step was also linked into an
+//! island twice). `logic::bridge::set_prop_shown` re-enables the body before
+//! its colliders and rebuilds the proxies of colliders that stayed solid.
+//! Why it's OK for now: Contained to one function, guarded by
+//! `map_logic::restored_prop_contacts_join_islands_once`;
+//! `tests::avian_still_leaves_body_disabled_on_the_proxy` fails once avian
+//! clears the flag itself, and the workaround can go.
 
 use avian3d::prelude::{
     AngularVelocity, Collider, ColliderAabb, ColliderDisabled, CollisionLayers, CollisionStart, ComputedMass,
@@ -505,11 +505,11 @@ fn set_prop_shown(world: &mut World, node: Entity, visible: bool, solid: bool, e
     }
     // The body comes back before its colliders do: avian's query tree
     // copies "body disabled" into a collider's proxy when the collider
-    // joins it and doesn't clear it when RigidBodyDisabled goes away. A
-    // stale flag makes each new contact pair of that collider start out
-    // generating no constraints and then switch on in the step it starts
-    // touching, which links the contact into an island twice and trips
-    // avian's island assertion a few rounds later (apps/cs_source/tests/it/map_logic.rs
+    // joins it and doesn't clear it when RigidBodyDisabled goes away
+    // (`tests::avian_still_leaves_body_disabled_on_the_proxy`). The broad
+    // phase skips proxies so marked; with avian 0.7 a stale flag also made
+    // each new contact pair of that collider link into an island twice
+    // (games/cs_source/tests/it/map_logic.rs
     // `restored_prop_contacts_join_islands_once`).
     let enable_body = {
         let mut e = world.entity_mut(node);
@@ -2869,4 +2869,54 @@ fn inspect_fired(world: &World, n: usize) -> Vec<String> {
             format!("tick {tick}: {who} {out}")
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use avian3d::{
+        collider_tree::{ColliderTreeProxyFlags, ColliderTreeProxyKey, ColliderTrees},
+        prelude::*,
+    };
+    use bevy::prelude::*;
+
+    /// The avian bug `set_prop_shown` works around (the module's known
+    /// shortcuts): a collider whose body had `RigidBodyDisabled` keeps
+    /// "body disabled" on its query-tree proxy after the component goes.
+    /// When this fails, avian clears the flag itself and the workaround
+    /// (and this test) can go.
+    #[test]
+    fn avian_still_leaves_body_disabled_on_the_proxy() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            TransformPlugin,
+            AssetPlugin::default(),
+            bevy::mesh::MeshPlugin,
+            PhysicsPlugins::default().build().disable::<PhysicsInterpolationPlugin>(),
+        ))
+        .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(1.0 / 64.0)));
+        app.finish();
+        app.cleanup();
+        app.update();
+        let body = app
+            .world_mut()
+            .spawn((RigidBody::Dynamic, Collider::cuboid(1.0, 1.0, 1.0), RigidBodyDisabled, Transform::default()))
+            .id();
+        for _ in 0..3 {
+            app.update();
+        }
+        app.world_mut().entity_mut(body).remove::<RigidBodyDisabled>();
+        for _ in 0..3 {
+            app.update();
+        }
+        let key = *app.world().get::<ColliderTreeProxyKey>(body).expect("in the tree");
+        let trees = app.world().resource::<ColliderTrees>();
+        let proxy = trees.tree_for_type(key.tree_type()).get_proxy(key.id()).expect("its proxy");
+        assert!(
+            proxy.flags.contains(ColliderTreeProxyFlags::BODY_DISABLED),
+            "avian clears the proxy's body-disabled flag now: drop the workaround in `set_prop_shown`"
+        );
+    }
 }

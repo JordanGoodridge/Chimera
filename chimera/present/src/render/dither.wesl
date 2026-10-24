@@ -4,8 +4,6 @@
 // (from the vertex stage's `visibility_range_dither`): 0 drawn, 1..15
 // fading out (that many sixteenths dropped), -15..-1 fading in, +-16 gone.
 
-#define_import_path mashup::dither
-
 fn dithered_out(frag_coord: vec4<f32>, level: i32) -> bool {
     if level == 0 {
         return false;

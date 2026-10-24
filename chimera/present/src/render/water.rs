@@ -21,7 +21,7 @@
 //! in black); other water (fog-only, refraction off) clears to its fog
 //! colour with no sky; and the material's
 //! `$underwateroverlay` (`MapScreenWarp`, `ScreenWarpMaterial`,
-//! screen_warp.wgsl) warps and blurs the finished frame from the view-model
+//! screen_warp.wesl) warps and blurs the finished frame from the view-model
 //! camera's transmissive phase (its layer then turns that camera on); when the near plane crosses a surface from above
 //! (`WaterView::intersect`) what lies below takes the water's height fog and
 //! that surface reads it already fogged; `WaterSettings` (the water cvars,
@@ -364,7 +364,7 @@ pub struct WaterMaterial {
 
 impl Material for WaterMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/water.wgsl".into()
+        "embedded://chimera_present/render/water.wesl".into()
     }
 
     /// Opaque, in the transmissive phase: the surface reads the opaque
@@ -389,10 +389,19 @@ impl Material for WaterMaterial {
 /// Registers the water material. Needs rendering.
 pub struct WaterMaterialPlugin;
 
+/// Every 3D camera keeps the view transmission texture (the scene behind
+/// what draws in the transmissive phase), which the water and sprite
+/// shaders read: Bevy gave every `Camera3d` a `ScreenSpaceTransmission`
+/// until 0.20 and leaves it to the app now. Either plugin may come first.
+pub(crate) fn views_keep_transmission(app: &mut App) {
+    let _ = app.try_register_required_components::<Camera3d, bevy::pbr::ScreenSpaceTransmission>();
+}
+
 impl Plugin for WaterMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "water.wgsl");
-        embedded_asset!(app, "screen_warp.wgsl");
+        embedded_asset!(app, "water.wesl");
+        embedded_asset!(app, "screen_warp.wesl");
+        views_keep_transmission(app);
         app.add_plugins((
             MaterialPlugin::<WaterMaterial>::default(),
             MaterialPlugin::<ScreenWarpMaterial>::default(),
@@ -1296,7 +1305,7 @@ pub fn underwater_fog(
     }
 }
 
-/// Uniforms of a screen warp (screen_warp.wgsl).
+/// Uniforms of a screen warp (screen_warp.wesl).
 #[derive(Clone, Copy, Debug, Default, bevy::render::render_resource::ShaderType)]
 pub struct ScreenWarpParams {
     /// Linear tint.
@@ -1325,11 +1334,11 @@ pub struct ScreenWarpMaterial {
 
 impl Material for ScreenWarpMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://chimera_present/render/screen_warp.wgsl".into()
+        "embedded://chimera_present/render/screen_warp.wesl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/screen_warp.wgsl".into()
+        "embedded://chimera_present/render/screen_warp.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {

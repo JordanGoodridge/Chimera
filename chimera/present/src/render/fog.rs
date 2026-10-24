@@ -1,7 +1,7 @@
 //! Source's fog for map shaders that draw after the world (ropes, runtime
 //! decals, particles): the world's range fog and, under or at the water,
 //! the water's fog (specs/cs_source/water.md sections 8 and 9). The maths
-//! is `fog.wgsl` (`mashup::fog::source_fog`); world and prop materials
+//! is `fog.wesl` (`chimera_present::render::fog::source_fog`); world and prop materials
 //! carry the same four values in their own uniforms.
 //!
 //! `SceneFog` holds the current values: the map's world part, inserted
@@ -10,7 +10,7 @@
 //! Materials take it when created (`apply_scene_fog` would update them
 //! when it changes; not scheduled).
 //!
-//! Source's fog shared by map shaders (`mashup::fog::source_fog`): world range
+//! Source's fog shared by map shaders (`chimera_present::render::fog::source_fog`): world range
 //! fog (in the 3D skybox the sky_camera's own, `render::material_fog`), the
 //! water's range fog under water and height fog at the surface; `SceneFog` (set
 //! by the map and `crate::render::water::underwater_fog`) taken by rope, decal and particle
@@ -18,7 +18,7 @@
 
 use bevy::prelude::*;
 
-/// Fog uniforms (see fog.wgsl): world fog linear colour (w = 1 when on)
+/// Fog uniforms (see fog.wesl): world fog linear colour (w = 1 when on)
 /// and range (start, end meters, max density); water fog linear colour
 /// (w: 0 off, 1 range fog under water, 2 height fog at the surface) and
 /// range (start, end meters, max density, plane height meters).
@@ -81,7 +81,7 @@ pub fn fog_at(f: &FogUniform, eye: Vec3, point: Vec3, depth: f32) -> (Vec3, f32)
 #[derive(Resource)]
 struct FogShaderLoaded;
 
-/// Loads `mashup::fog` for the map's shaders. Needs rendering.
+/// Loads `chimera_present::render::fog` for the map's shaders. Needs rendering.
 pub struct FogShaderPlugin;
 
 impl Plugin for FogShaderPlugin {
@@ -91,7 +91,7 @@ impl Plugin for FogShaderPlugin {
             return;
         }
         app.insert_resource(FogShaderLoaded);
-        bevy::shader::load_shader_library!(app, "fog.wgsl");
+        bevy::shader::load_shader_library!(app, "fog.wesl");
     }
 
     fn is_unique(&self) -> bool {

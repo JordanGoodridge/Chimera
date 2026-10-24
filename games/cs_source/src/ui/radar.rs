@@ -29,7 +29,7 @@ pub struct RadarPlugin;
 
 impl Plugin for RadarPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "radar.wgsl");
+        embedded_asset!(app, "radar.wesl");
         app.add_plugins(UiMaterialPlugin::<RadarMaterial>::default());
         radar_cvars(app);
         app.add_systems(
@@ -101,7 +101,7 @@ const DOT: f32 = 4.0;
 /// Also the spectators' overview's (`client::overview`).
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub(super) struct RadarMaterial {
-    /// Centre uv, span, angle, alpha, box size (see radar.wgsl).
+    /// Centre uv, span, angle, alpha, box size (see radar.wesl).
     #[uniform(0)]
     pub params: RadarParams,
     #[texture(1)]
@@ -121,7 +121,7 @@ pub(super) struct RadarParams {
 
 impl UiMaterial for RadarMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://cs_source/ui/radar.wgsl".into()
+        "embedded://cs_source/ui/radar.wesl".into()
     }
 }
 

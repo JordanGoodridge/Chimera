@@ -1612,7 +1612,7 @@ fn case_63_battle_and_search_events() {
     let (mut sim, p, bt) = duel(Level::Normal, 0, 800.0, RIFLE_KIT);
     sim.app.world_mut().resource_mut::<BotSettings>().stop = 0;
     let mut events: Vec<ChatEvent> = Vec::new();
-    let mut tick = |sim: &mut Sim, events: &mut Vec<ChatEvent>| {
+    let tick = |sim: &mut Sim, events: &mut Vec<ChatEvent>| {
         sim.ticks(1);
         let w = sim.app.world_mut();
         events.extend(w.resource_mut::<Messages<CaBotEvent>>().drain().filter(|e| e.bot == bt).map(|e| e.event));
@@ -1875,7 +1875,10 @@ fn case_68_blind_chase_fire() {
         bot.cycle = HitCycle::default();
     }
     let mut shots = 0;
-    for _ in 0..80 {
+    // Until just before the target comes nearer than the walled-off enemy
+    // (the bot walks 0.067 m a tick toward it; the two are level about 78
+    // ticks in, and the sight pass then hands the bot to the attack goal).
+    for _ in 0..72 {
         sim.ticks(1);
         let head = sim.position(p) + Vec3::Y * brain::HEAD;
         let w = sim.app.world_mut();

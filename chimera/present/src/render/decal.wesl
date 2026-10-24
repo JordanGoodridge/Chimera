@@ -14,8 +14,8 @@
 // the texel is opaque; on glass (where a stain on what shows through
 // wouldn't show) they are alpha-blended, lit by the light probe there.
 
-#import bevy_pbr::forward_io::VertexOutput
-#import mashup::fog::source_fog
+import bevy_pbr::render::forward_io::VertexOutput;
+import chimera_present::render::fog::source_fog;
 
 struct DecalParams {
     // 1: modulate 2x; 0: stain.
@@ -25,9 +25,9 @@ struct DecalParams {
     _pad2: f32,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: DecalParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var base_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var base_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: DecalParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var base_sampler: sampler;
 
 struct FogUniform {
     color: vec4<f32>,
@@ -36,10 +36,10 @@ struct FogUniform {
     water_range: vec4<f32>,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> fog: FogUniform;
+@group(constants::MATERIAL_BIND_GROUP) @binding(3) var<uniform> fog: FogUniform;
 // rgb: the surface's light; w 1: a lit decal drawn alpha-blended (on
 // glass), texel x light over what is there.
-@group(#{MATERIAL_BIND_GROUP}) @binding(4) var<uniform> light: vec4<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(4) var<uniform> light: vec4<f32>;
 
 // Share of the decal's width over which its edge fades out (about 3
 // texels of a 64-texel decal).
@@ -52,10 +52,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         // Lit, alpha-blended (the game's lightmapped alpha decals): the
         // texel lit by the light where it lies, fogged like a surface.
         var alpha = texel.a;
-#ifdef VERTEX_UVS_B
-        let e = min(min(in.uv_b.x, 1.0 - in.uv_b.x), min(in.uv_b.y, 1.0 - in.uv_b.y));
-        alpha = alpha * smoothstep(0.0, EDGE_FADE, e);
-#endif
+        @if(VERTEX_UVS_B) {
+            let e = min(min(in.uv_b.x, 1.0 - in.uv_b.x), min(in.uv_b.y, 1.0 - in.uv_b.y));
+            alpha = alpha * smoothstep(0.0, EDGE_FADE, e);
+        }
         if alpha < 0.004 {
             discard;
         }
@@ -74,11 +74,11 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // Fade to neutral over the decal's outer edge: decals share an atlas,
     // and filtering (most of all the small mip levels seen from afar)
     // pulls in the neighbouring decal's texels there, as dark lines.
-#ifdef VERTEX_UVS_B
-    let t = in.uv_b;
-    let edge = min(min(t.x, 1.0 - t.x), min(t.y, 1.0 - t.y));
-    factor = mix(vec3(1.0), factor, smoothstep(0.0, EDGE_FADE, edge));
-#endif
+    @if(VERTEX_UVS_B) {
+        let t = in.uv_b;
+        let edge = min(min(t.x, 1.0 - t.x), min(t.y, 1.0 - t.y));
+        factor = mix(vec3(1.0), factor, smoothstep(0.0, EDGE_FADE, edge));
+    }
     // Fog (specs/cs_source/shaders.md section 5, DecalModulate): toward
     // 0.5 grey, i.e. a neutral factor, by the fog factor raised to 0.4
     // before section 7's use of it: (f^0.4)^2 for range fog, f^0.4 for the

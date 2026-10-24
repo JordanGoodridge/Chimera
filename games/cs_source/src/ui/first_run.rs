@@ -22,6 +22,7 @@
 //! (`game_menu::reload_install`). `chimera_install [folder\|auto]` shows or sets
 //! it; `chimera_firstrun <input>` drives the dialog.
 
+use crate::client::widgets::Interaction;
 use std::path::{Path, PathBuf};
 
 use bevy::{

@@ -2,10 +2,10 @@
 // blurred over 5 taps, less the distance fade, darkens toward the shadow
 // colour; fog fades the shadow out (specs/cs_source/shadows_sky.md D).
 
-#import bevy_pbr::{
-    forward_io::VertexOutput,
-    view_transformations::position_world_to_view,
-}
+import bevy_pbr::{
+    render::forward_io::VertexOutput,
+    render::view_transformations::position_world_to_view,
+};
 
 struct ShadowParams {
     color: vec4<f32>,
@@ -14,9 +14,9 @@ struct ShadowParams {
     fog_range: vec4<f32>,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: ShadowParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var atlas: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var atlas_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: ShadowParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var atlas: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var atlas_sampler: sampler;
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -28,9 +28,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         + textureSample(atlas, atlas_sampler, uv + vec2<f32>(t.x, -t.y)).r
         + textureSample(atlas, atlas_sampler, uv + vec2<f32>(-t.x, t.y)).r;
     var fade = 0.0;
-#ifdef VERTEX_COLORS
-    fade = in.color.r;
-#endif
+    @if(VERTEX_COLORS) {
+        fade = in.color.r;
+    }
     let coverage = clamp(sum / 5.0 - fade, 0.0, 1.0);
     var result = mix(vec3<f32>(1.0), params.color.rgb, coverage);
     if params.fog_color.w > 0.5 {

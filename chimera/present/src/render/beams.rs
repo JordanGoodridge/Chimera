@@ -1,7 +1,7 @@
 //! Beams and glows from map entities, for any game (specs/source/
 //! visual_entities.md): point_spotlight's shaft and halo (2), env_laser and
 //! env_beam's beam between two points (3, 4.1), env_lightglow's
-//! screen-sized glow (6). Beams are drawn by `BeamMaterial` (beam.wgsl);
+//! screen-sized glow (6). Beams are drawn by `BeamMaterial` (beam.wesl);
 //! halos and light glows are glow sprites (`GlowSprite`, faded by how
 //! much of their occlusion proxy is seen) whose colour and size follow
 //! the eye each frame. The logic switches them through `EntityPart`.
@@ -85,11 +85,11 @@ pub struct BeamMaterial {
 
 impl Material for BeamMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://chimera_present/render/beam.wgsl".into()
+        "embedded://chimera_present/render/beam.wesl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/beam.wgsl".into()
+        "embedded://chimera_present/render/beam.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -328,7 +328,7 @@ pub struct BeamMaterialPlugin;
 
 impl Plugin for BeamMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "beam.wgsl");
+        embedded_asset!(app, "beam.wesl");
         app.add_plugins(MaterialPlugin::<BeamMaterial>::default());
     }
 }

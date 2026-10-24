@@ -3,15 +3,15 @@
 // scene's point lights, then Source's range fog (f^2), as for world
 // surfaces.
 
-#import bevy_pbr::{
-    forward_io::VertexOutput,
-    mesh_view_bindings::{view, globals},
-    mesh_view_bindings as view_bindings,
-    clustered_forward as clustering,
-    view_transformations::position_world_to_view,
-}
-#import mashup::fog::source_fog
-#import mashup::dither::dithered_out
+import bevy_pbr::{
+    render::forward_io::VertexOutput,
+    render::mesh_view_bindings::{view, globals},
+    render::mesh_view_bindings as view_bindings,
+    render::clustered_forward as clustering,
+    render::view_transformations::position_world_to_view,
+};
+import chimera_present::render::fog::source_fog;
+import chimera_present::render::dither::dithered_out;
 
 struct PropParams {
     base_color: vec4<f32>,
@@ -41,14 +41,14 @@ struct PropParams {
     selfillum_tint: vec4<f32>,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: PropParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var base_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var base_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var envmap_texture: texture_cube<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(4) var envmap_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(5) var envmap_mask_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(6) var detail_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(7) var selfillum_mask_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: PropParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var base_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(3) var envmap_texture: texture_cube<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(4) var envmap_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(5) var envmap_mask_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(6) var detail_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(7) var selfillum_mask_texture: texture_2d<f32>;
 
 // A texture transform (map::MapUvTransform): rows . (u, v, 1), plus the
 // TextureScroll translation, wrapped to [0, 1) as the proxy does.
@@ -97,7 +97,7 @@ fn probe_light(n: vec3<f32>) -> vec3<f32> {
 }
 
 // The scene's point lights (muzzle flashes; map::DynamicLight), in
-// lightmap units: colour x (1 - d^2/r^2) x cosine. Same as world.wgsl.
+// lightmap units: colour x (1 - d^2/r^2) x cosine. Same as world.wesl.
 fn dynamic_light(p: vec3<f32>, n: vec3<f32>, frag_coord: vec2<f32>) -> vec3<f32> {
     let view_z = dot(vec4<f32>(
         view.view_from_world[0].z,
@@ -119,12 +119,12 @@ fn dynamic_light(p: vec3<f32>, n: vec3<f32>, frag_coord: vec2<f32>) -> vec3<f32>
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
-#ifdef VISIBILITY_RANGE_DITHER
-    // Inside the prop's fade band (map::vis::fade_band).
-    if dithered_out(in.position, in.visibility_range_dither) {
-        discard;
+    @if(VISIBILITY_RANGE_DITHER) {
+        // Inside the prop's fade band (map::vis::fade_band).
+        if dithered_out(in.position, in.visibility_range_dither) {
+            discard;
+        }
     }
-#endif
     // $basetexturetransform: the base's coordinates, and the detail's
     // before $detailscale.
     let uv = transform_uv(in.uv, params.base_uv_u, params.base_uv_v);
@@ -149,9 +149,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let n = normalize(in.world_normal);
     var light = vec3<f32>(1.0);
-#ifdef VERTEX_COLORS
-    light = in.color.rgb;
-#endif
+    @if(VERTEX_COLORS) {
+        light = in.color.rgb;
+    }
     if params.probe > 0.5 {
         light = probe_light(n);
     }

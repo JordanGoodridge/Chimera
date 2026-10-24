@@ -80,7 +80,7 @@ fn dump(world: &mut World) -> String {
             let _ = writeln!(out, "{l}");
         }
     }
-    let mut resources: Vec<String> = world.iter_resources().map(|(info, _)| format!("{}", info.name())).collect();
+    let mut resources: Vec<String> = world.iter_resources().map(|(_, info, _)| format!("{}", info.name())).collect();
     resources.sort();
     let _ = writeln!(out, "resources:");
     for r in resources {

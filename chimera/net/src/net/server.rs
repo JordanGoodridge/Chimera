@@ -752,7 +752,7 @@ pub struct LeaveReason(pub String);
 /// a kick's reason, netcode's timeout ("timed out"), else the player
 /// hung up.
 fn left(
-    remove: On<Remove, ConnectedClient>,
+    remove: On<Remove<ConnectedClient>>,
     players: Query<(&Player, Option<&NetworkId>, Option<&LeaveReason>)>,
     mut commands: Commands,
 ) {

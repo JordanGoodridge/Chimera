@@ -912,7 +912,7 @@ fn show_through_eyes(
 ) {
     let mut set = |owner: Entity, want: Visibility| {
         if let Ok(kids) = children.get(owner) {
-            let mut it = bodies.iter_many_mut(kids);
+            let mut it = bodies.iter_many_mut(kids).matched();
             while let Some(mut v) = it.fetch_next() {
                 v.set_if_neq(want);
             }

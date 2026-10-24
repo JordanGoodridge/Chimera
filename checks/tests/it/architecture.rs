@@ -566,7 +566,7 @@ fn simulation_builds_no_drawn_parts() {
         .unwrap()
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".wgsl"))
+        .filter(|n| n.ends_with(".wgsl") || n.ends_with(".wesl"))
         .collect();
     if !wgsl.is_empty() {
         errors.push(format!(

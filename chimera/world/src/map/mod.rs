@@ -48,7 +48,6 @@ pub mod breakables;
 pub mod buoyancy;
 pub mod color_correction;
 pub mod contact_filter;
-pub mod contact_flags;
 pub mod controllers;
 pub mod copies;
 pub use breakables::{

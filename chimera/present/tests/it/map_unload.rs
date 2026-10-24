@@ -111,7 +111,7 @@ fn assets(world: &World) -> Vec<(&'static str, usize)> {
 }
 
 fn resources(world: &World) -> HashMap<TypeId, String> {
-    world.iter_resources().filter_map(|(info, _)| Some((info.type_id()?, info.name().to_string()))).collect()
+    world.iter_resources().filter_map(|(_, info, _)| Some((info.type_id()?, info.name().to_string()))).collect()
 }
 
 fn parts(world: &mut World) -> Vec<Entity> {

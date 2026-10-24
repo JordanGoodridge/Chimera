@@ -696,7 +696,7 @@ impl From<&DecalMaterial> for DecalMaterialKey {
 
 impl Material for DecalMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/decal.wgsl".into()
+        "embedded://chimera_present/render/decal.wesl".into()
     }
 
     /// Drawn right after the opaque world (alpha-mask phase), before
@@ -779,7 +779,7 @@ pub struct DecalMaterialPlugin;
 
 impl Plugin for DecalMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "decal.wgsl");
+        embedded_asset!(app, "decal.wesl");
         app.add_plugins((fog::FogShaderPlugin, MaterialPlugin::<DecalMaterial>::default()));
     }
 }

@@ -26,6 +26,7 @@ use bevy::{
 };
 
 use super::fonts::{Scheme, UiFonts};
+use super::widgets::Interaction;
 use crate::map::hud::{ActiveHud, GameHud, UiAlign, UiControl, UiKind, UiLayout};
 
 pub struct VguiPlugin;

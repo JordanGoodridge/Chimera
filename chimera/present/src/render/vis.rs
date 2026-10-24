@@ -35,7 +35,7 @@
 //! (physics, riders, animated) and loose items by their bounds, re-found when
 //! they move: `map::BrushEntityBounds`; water surfaces in chunks; beams and
 //! glows along their length), `fade_band` (prop fade bands as Bevy visibility
-//! ranges, dithered by `dither.wgsl` in the prop shaders), the `cull` system
+//! ranges, dithered by `dither.wesl` in the prop shaders), the `cull` system
 //! (hide parts no camera's cluster can see or whose clusters lie in no area it
 //! reaches, or beyond their fade distance; everything outside the map or with
 //! `r_novis 1`; `r_portalsopenall 1` ignores areaportals; the water reflection

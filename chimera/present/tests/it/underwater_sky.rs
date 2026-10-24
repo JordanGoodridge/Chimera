@@ -201,7 +201,7 @@ fn the_main_camera_is_edited_in_place_not_replaced() {
     struct Replaced(u32);
     let (mut app, main, _) = app(nuke_pool(), WaterSettings::default());
     app.init_resource::<Replaced>()
-        .add_observer(|_: On<Discard, Camera>, mut n: ResMut<Replaced>| n.0 += 1);
+        .add_observer(|_: On<Discard<Camera>>, mut n: ResMut<Replaced>| n.0 += 1);
     set_eye(&mut app, main, Vec3::new(0.0, -0.5, 0.0));
     assert!(matches!(sky(&mut app, main).1, ClearColorConfig::Custom(_)), "the clear changed");
     set_eye(&mut app, main, Vec3::new(0.0, 3.0, 0.0));

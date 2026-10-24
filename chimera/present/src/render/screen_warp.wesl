@@ -6,11 +6,11 @@
 // Drawn by the view-model camera in its transmissive phase: the
 // transmission texture then holds the world and the view models.
 
-#import bevy_pbr::{
-    forward_io::{Vertex, VertexOutput},
-    mesh_view_bindings as vb,
-    mesh_view_bindings::{view, globals},
-}
+import bevy_pbr::{
+    render::forward_io::{Vertex, VertexOutput},
+    render::mesh_view_bindings as vb,
+    render::mesh_view_bindings::{view, globals},
+};
 
 struct ScreenWarpParams {
     tint: vec4<f32>,
@@ -23,9 +23,9 @@ struct ScreenWarpParams {
     blur: f32,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: ScreenWarpParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var normal_texture: texture_2d_array<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var normal_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: ScreenWarpParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var normal_texture: texture_2d_array<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var normal_sampler: sampler;
 
 // The mesh is one triangle already in clip space.
 @vertex
@@ -34,15 +34,15 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.position = vec4<f32>(vertex.position.xy, 0.5, 1.0);
     out.world_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     out.world_normal = vec3<f32>(0.0, 0.0, 1.0);
-#ifdef VERTEX_UVS_A
-    out.uv = vertex.uv;
-#endif
-#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
-    out.instance_index = vertex.instance_index;
-#endif
-#ifdef VISIBILITY_RANGE_DITHER
-    out.visibility_range_dither = 0;
-#endif
+    @if(VERTEX_UVS_A) {
+        out.uv = vertex.uv;
+    }
+    @if(VERTEX_OUTPUT_INSTANCE_INDEX) {
+        out.instance_index = vertex.instance_index;
+    }
+    @if(VISIBILITY_RANGE_DITHER) {
+        out.visibility_range_dither = 0;
+    }
     return out;
 }
 

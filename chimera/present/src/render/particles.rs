@@ -1,7 +1,7 @@
 //! Drawing the particle pool (`map::particles::Particles`): each frame one
 //! rebuilt mesh per material (particles outside the playable area, in the
 //! 3D skybox, in a mesh of their own on the sky camera's layer)
-//! (`ParticleDrawMaterial`, particle.wgsl: fogged, added ones toward
+//! (`ParticleDrawMaterial`, particle.wesl: fogged, added ones toward
 //! black), camera-facing sprites, trails and flat quads, back to front.
 //! Sprites of sprite-card materials keep to their screen-size limits
 //! (`ParticleMaterial::screen`: capped and faded by their size on screen,
@@ -27,7 +27,7 @@ use crate::map::{
     water,
 };
 
-/// How particles are drawn (particle.wgsl): texture x vertex colour,
+/// How particles are drawn (particle.wesl): texture x vertex colour,
 /// blended or added, with the scene's fog (`fog::SceneFog`): blended
 /// particles fog toward the fog colour, added ones toward black.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -57,7 +57,7 @@ impl From<&ParticleDrawMaterial> for ParticleDrawKey {
 
 impl Material for ParticleDrawMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/particle.wgsl".into()
+        "embedded://chimera_present/render/particle.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -96,7 +96,7 @@ pub struct ParticleMaterialPlugin;
 
 impl Plugin for ParticleMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "particle.wgsl");
+        embedded_asset!(app, "particle.wesl");
         app.add_plugins((fog::FogShaderPlugin, MaterialPlugin::<ParticleDrawMaterial>::default()));
     }
 }

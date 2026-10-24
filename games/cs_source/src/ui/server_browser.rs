@@ -41,6 +41,7 @@
 //! in History. A model (`ServerBrowser::handle`: clicks and keys in, console
 //! lines and queries out) and its drawing (the game menu's `Look` and helpers).
 
+use crate::client::widgets::Interaction;
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},

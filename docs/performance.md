@@ -132,7 +132,7 @@ Prop fade distances: static props' `fademaxdist` (static prop lump) and
 prop entities' `fademaxdist` key hide the prop beyond that distance from
 its origin. Between `fademindist` and `fademaxdist` the prop's meshes are
 dithered out (`vis::fade_band`: a Bevy `VisibilityRange` per mesh, a 4x4
-screen-door pattern in `prop.wgsl`/`prop_prepass.wgsl`, and for opaque
+screen-door pattern in `prop.wesl`/`prop_prepass.wesl`, and for opaque
 props a dither-only fragment stage added to Bevy's depth-only prepass).
 Dithering keeps props in the opaque passes (no blending, no sorting) at
 the cost of a stipple instead of a smooth alpha. A negative `fademindist`

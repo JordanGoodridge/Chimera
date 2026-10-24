@@ -30,6 +30,7 @@
 //! they stay up under it and work again once it closes, as under CS:S's
 //! GameUI.
 
+use crate::client::widgets::Interaction;
 use bevy::{prelude::*, window::CursorOptions};
 
 use crate::client::fonts::UiFonts;

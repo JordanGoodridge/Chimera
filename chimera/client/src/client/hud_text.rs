@@ -17,7 +17,7 @@
 //! system faces) rasterized here with `ab_glyph` (cell height `tall`, em over
 //! the face's Windows line height in whole pixels, baseline by the hhea
 //! ascender, whole-pixel advances), placed on whole pixels and blended
-//! additively for `additive` fonts (a `UiMaterial`, `hud_text.wgsl`, which also
+//! additively for `additive` fonts (a `UiMaterial`, `hud_text.wesl`, which also
 //! draws sprite-sheet rectangles); `ink_rect` says where a text's ink lands
 //! (tests).
 
@@ -44,7 +44,7 @@ pub struct HudTextPlugin;
 
 impl Plugin for HudTextPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "hud_text.wgsl");
+        embedded_asset!(app, "hud_text.wesl");
         app.add_plugins(UiMaterialPlugin::<HudGlyphMaterial>::default())
             .init_resource::<GlyphCache>()
             .add_systems(PostUpdate, draw.before(bevy::ui::UiSystems::Prepare));
@@ -317,7 +317,7 @@ impl From<&HudGlyphMaterial> for HudGlyphKey {
 
 impl UiMaterial for HudGlyphMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_client/client/hud_text.wgsl".into()
+        "embedded://chimera_client/client/hud_text.wesl".into()
     }
 
     fn specialize(descriptor: &mut RenderPipelineDescriptor, key: UiMaterialKey<Self>) {

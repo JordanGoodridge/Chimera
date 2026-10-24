@@ -1260,8 +1260,30 @@ fn a_breakable_parented_to_a_physics_prop_rides_its_body() {
     assert!(logic_at.distance(want) < 1.0, "logic place {logic_at}, on the prop {want}");
     assert!(node_at.distance(want) < 1.0, "node place {node_at}, on the prop {want}");
     assert!(node_rot.angle_between(rot) < 0.02, "node turn {node_rot}, the prop's {rot}");
+    // Its own brush didn't shove it: it lands where the same prop without
+    // the brush does (avian 0.8 solves friction only in its relax pass,
+    // so a crate dropped flat bounces off one pair of corners first and
+    // lands a few units aside either way).
     let crate_xy = to_source(sim.app.world().get::<Position>(node).unwrap().0).truncate();
-    assert!(crate_xy.length() < 2.0, "its own brush didn't shove it: {crate_xy}");
+    let alone_xy = {
+        let monitor = entity(
+            &[
+                ("classname", "prop_physics_multiplayer"),
+                ("targetname", "monitor"),
+                ("origin", "0 0 100"),
+            ],
+            Vec::new(),
+            false,
+        );
+        let mut data = map(vec![monitor]);
+        add_prop(&mut data, 0, Vec3::new(0.0, 0.0, 100.0), PushAway::Collide, false, 20.0);
+        let mut alone = self::sim(data);
+        alone.seconds(2.0);
+        let world = alone.app.world_mut();
+        let node = world.query::<(Entity, &PropEntity)>().iter(world).next().unwrap().0;
+        to_source(world.get::<Position>(node).unwrap().0).truncate()
+    };
+    assert!(crate_xy.distance(alone_xy) < 0.5, "its own brush didn't shove it: {crate_xy}, alone {alone_xy}");
     // Shots still hit it (its collider is on), physics bodies don't.
     {
         use avian3d::prelude::{ColliderDisabled, CollisionLayers, LayerMask, SpatialQuery, SpatialQueryFilter};

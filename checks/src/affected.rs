@@ -965,7 +965,7 @@ mod tests {
         );
         // A folder only a feature compiles (`feature-paths`).
         assert_eq!(
-            classify(&ws, "games/cs_source/src/ui/radar.wgsl", true),
+            classify(&ws, "games/cs_source/src/ui/radar.wesl", true),
             Change::Feature {
                 package: "cs_source".into(),
                 feature: "ui".into(),

@@ -4,13 +4,13 @@
 // sprite sheet x the sprite's baked light, alpha tested, then fogged.
 // Vertex layout: see detail.rs.
 
-#import bevy_pbr::{
-    forward_io::{Vertex, VertexOutput},
-    mesh_functions,
-    mesh_view_bindings::{view, globals},
-    view_transformations::position_world_to_clip,
-}
-#import mashup::fog::source_fog
+import bevy_pbr::{
+    render::forward_io::{Vertex, VertexOutput},
+    render::mesh_functions,
+    render::mesh_view_bindings::{view, globals},
+    render::view_transformations::position_world_to_clip,
+};
+import chimera_present::render::fog::source_fog;
 
 struct FogUniform {
     color: vec4<f32>,
@@ -25,9 +25,9 @@ struct DetailParams {
     fog: FogUniform,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: DetailParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var sheet: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var sheet_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: DetailParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var sheet: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var sheet_sampler: sampler;
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -71,12 +71,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.uv_b = vertex.uv_b;
     out.world_tangent = vertex.tangent;
     out.color = vec4<f32>(vertex.color.rgb, shown);
-#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
-    out.instance_index = vertex.instance_index;
-#endif
-#ifdef VISIBILITY_RANGE_DITHER
-    out.visibility_range_dither = 0;
-#endif
+    @if(VERTEX_OUTPUT_INSTANCE_INDEX) {
+        out.instance_index = vertex.instance_index;
+    }
+    @if(VISIBILITY_RANGE_DITHER) {
+        out.visibility_range_dither = 0;
+    }
     return out;
 }
 

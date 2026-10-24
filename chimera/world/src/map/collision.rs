@@ -157,7 +157,7 @@ pub(super) fn contact_hulls(points: &[Vec3]) -> Vec<Collider> {
             .into_iter()
             .map(|p| Collider::from(avian3d::parry::shape::SharedShape::new(p)))
             .collect(),
-        None => Collider::convex_hull(points.to_vec()).into_iter().collect(),
+        None => Collider::convex_hull(points).into_iter().collect(),
     }
 }
 

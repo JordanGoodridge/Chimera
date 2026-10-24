@@ -34,6 +34,7 @@
 //! `spec_menuinput` drives it (tests, screenshots); the mouse is free while it
 //! is open (`VguiOpen::spectator`).
 
+use crate::client::widgets::Interaction;
 use std::collections::{HashMap, HashSet};
 
 use bevy::{prelude::*, window::CursorOptions};

@@ -5,7 +5,7 @@
 //! the colour, texture and solid render modes blend by their alpha, in
 //! normal mode they are opaque (specs/cs_source/sprites_dust.md 3). The
 //! shader reads the scene behind (the view transmission texture) so the
-//! sum or blend is formed in gamma space, as in the game. See sprite.wgsl.
+//! sum or blend is formed in gamma space, as in the game. See sprite.wesl.
 //!
 //! Known shortcuts (docs/tech-debt.md): Sprites: glow visibility is 5 line
 //! tests to the occlusion proxy (the game uses GPU occlusion queries) with no
@@ -54,11 +54,11 @@ pub struct SpriteMaterial {
 
 impl Material for SpriteMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://chimera_present/render/sprite.wgsl".into()
+        "embedded://chimera_present/render/sprite.wesl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/sprite.wgsl".into()
+        "embedded://chimera_present/render/sprite.wesl".into()
     }
 
     /// Opaque here only so Bevy draws sprites in the transmissive phase,
@@ -151,7 +151,8 @@ pub struct SpriteMaterialPlugin;
 
 impl Plugin for SpriteMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "sprite.wgsl");
+        embedded_asset!(app, "sprite.wesl");
         app.add_plugins(MaterialPlugin::<SpriteMaterial>::default());
+        super::water::views_keep_transmission(app);
     }
 }

@@ -16,6 +16,13 @@ guard tests, so items in one phase can go to parallel agents. Mark items
 done in the review as they land. N5 (CI on GitHub Actions) waits for
 the user's go-ahead: no Actions runs unless asked.
 
+- After the Bevy 0.20 upgrade (L5): move the menus from Bevy UI's
+  deprecated `Interaction`/`Button` (`client::widgets::Interaction`) to
+  picking's `Hovered` and `ui::Pressed` before Bevy removes them; the
+  menus act on a press as the mouse goes down, so each one's input needs
+  checking (docs/tech-debt.md). And `bevy_replicon_renet` back to a
+  crates.io release once one supports Bevy 0.20.
+
 ## 0. Playtest feedback (2026-10-07), top priority
 
 ### Decisions 2026-10-13 (user)
@@ -209,7 +216,7 @@ Looks:
   meanwhile (2026-10-10): DecalModulate decals and overlays (blood, dirt,
   scratches) had no texture, so their infodecals were never placed and
   their overlays drew untextured; now they multiply the surface 2x as in
-  the game (`MapMesh::modulate`, world.wgsl;
+  the game (`MapMesh::modulate`, world.wesl;
   `heavy::map_community::modulate_decals_multiply_the_surface`,
   gg_bk_warehouse_v1's blood). Needed: the map's name and a `setpos`
   there (F9 report) to identify the panels.

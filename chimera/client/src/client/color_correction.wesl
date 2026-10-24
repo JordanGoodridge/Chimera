@@ -2,7 +2,7 @@
 // through the map's blended 32x32x32 colour table, which works on the
 // 8-bit gamma values the game's framebuffer holds.
 
-#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
+import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 
 @group(0) @binding(0) var screen: texture_2d<f32>;
 @group(0) @binding(1) var screen_sampler: sampler;

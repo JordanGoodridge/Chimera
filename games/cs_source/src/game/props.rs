@@ -27,7 +27,7 @@
 //! a crate further out. Shadow rays ignore other props; a leaf's ambient
 //! samples are blended by inverse distance (the engine's weighting is not
 //! public); dynamic lights add a simple 1 − d²/r² × cosine term without
-//! shadows (prop.wgsl). Why it's OK for now: the model matches the maps' lightmaps at a
+//! shadows (prop.wesl). Why it's OK for now: the model matches the maps' lightmaps at a
 //! median ratio of 1.05 (`prop_lighting_model_predicts_lightmaps`); the
 //! rule needs a spec session or a capture (plans/active/parity-gaps.md).
 

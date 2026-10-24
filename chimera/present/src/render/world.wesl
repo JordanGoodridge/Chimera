@@ -5,17 +5,17 @@
 // squared, normalised alignment of the tangent-space normal with three
 // fixed basis directions.
 
-#import bevy_pbr::{
-    forward_io::VertexOutput,
-    mesh_view_bindings::{view, globals},
-    mesh_view_bindings as view_bindings,
-    clustered_forward as clustering,
-    view_transformations::position_world_to_view,
-}
-#import mashup::fog::source_fog
+import bevy_pbr::{
+    render::forward_io::VertexOutput,
+    render::mesh_view_bindings::{view, globals},
+    render::mesh_view_bindings as view_bindings,
+    render::clustered_forward as clustering,
+    render::view_transformations::position_world_to_view,
+};
+import chimera_present::render::fog::source_fog;
 
 // The scene's point lights (muzzle flashes; map::DynamicLight), in
-// lightmap units: colour x (1 - d^2/r^2) x cosine. Same as prop.wgsl.
+// lightmap units: colour x (1 - d^2/r^2) x cosine. Same as prop.wesl.
 fn dynamic_light(p: vec3<f32>, n: vec3<f32>, frag_coord: vec2<f32>) -> vec3<f32> {
     let view_z = dot(vec4<f32>(
         view.view_from_world[0].z,
@@ -163,24 +163,24 @@ fn apply_fog(color: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
     return mix(color, f.rgb, f.a);
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: WorldParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var base_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var base_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var normal_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(4) var normal_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(5) var lightmap: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(6) var lightmap_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(7) var lightmap_b0: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(8) var lightmap_b1: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(9) var lightmap_b2: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(10) var base2_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(11) var normal2_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(12) var blend_mask: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(13) var detail_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(14) var envmap_texture: texture_cube<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(15) var envmap_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(16) var envmap_mask_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(17) var flat_envmap_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: WorldParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var base_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(3) var normal_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(4) var normal_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(5) var lightmap: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(6) var lightmap_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(7) var lightmap_b0: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(8) var lightmap_b1: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(9) var lightmap_b2: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(10) var base2_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(11) var normal2_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(12) var blend_mask: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(13) var detail_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(14) var envmap_texture: texture_cube<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(15) var envmap_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(16) var envmap_mask_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(17) var flat_envmap_texture: texture_2d<f32>;
 
 const LUMA = vec3<f32>(0.299, 0.587, 0.114);
 
@@ -248,7 +248,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // texel in gamma space, unlit; transparent texels (alpha 0) leave it,
     // partial alpha doesn't fade it. The blend is src x dst + dst x src,
     // so this returns half the factor (in our linear framebuffer the
-    // factor raised to 2.2, as decal.wgsl). Fog fades it to neutral by
+    // factor raised to 2.2, as decal.wesl). Fog fades it to neutral by
     // the fog amount^0.4.
     if params.translucent > 2.5 {
         if albedo.a <= 0.0 {
@@ -269,9 +269,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // alpha, optionally shaped by the mask (green: transition point, red:
     // softness). Colors blend in linear space; alpha stays the first's.
     var b = 0.0;
-#ifdef VERTEX_COLORS
-    b = in.color.a;
-#endif
+    @if(VERTEX_COLORS) {
+        b = in.color.a;
+    }
     if params.blend > 0.5 {
         if params.blend_masked > 0.5 {
             let m = textureSample(blend_mask, normal_sampler, in.uv);
@@ -281,11 +281,11 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
             b = t * t * (3.0 - 2.0 * t);
         }
         var uv2 = transform_uv(in.uv, params.base2_uv_u, params.base2_uv_v);
-#ifdef VERTEX_COLORS
-        if params.blend_uv2 > 0.5 {
-            uv2 = in.color.xy;
+        @if(VERTEX_COLORS) {
+            if params.blend_uv2 > 0.5 {
+                uv2 = in.color.xy;
+            }
         }
-#endif
         let second = textureSample(base2_texture, base_sampler, uv2) * params.base_color;
         if params.blend_mode < 0.5 {
             albedo = vec4<f32>(mix(albedo.rgb, second.rgb, b), albedo.a);
@@ -383,17 +383,17 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // WorldTwoTextureBlend lights with one bilinear lightmap tap times a
     // fixed 2.0, not 2^2.2; its bump uses the detail coordinates and
     // unsquared weights.
-#ifdef VERTEX_COLORS
-    if params.pane_mask > 0.5 {
-        // Square tiles side by side, the blue picking one; clamped half a
-        // texel inside it, so the solid edge doesn't wrap or bleed.
-        let size = vec2<f32>(textureDimensions(blend_mask));
-        let tiles = max(1.0, round(size.x / size.y));
-        let m = clamp(in.color.xy, vec2<f32>(0.004), vec2<f32>(0.996));
-        let at = vec2<f32>((in.color.z + m.x) / tiles, m.y);
-        albedo.a = albedo.a * textureSample(blend_mask, normal_sampler, at).a;
+    @if(VERTEX_COLORS) {
+        if params.pane_mask > 0.5 {
+            // Square tiles side by side, the blue picking one; clamped half a
+            // texel inside it, so the solid edge doesn't wrap or bleed.
+            let size = vec2<f32>(textureDimensions(blend_mask));
+            let tiles = max(1.0, round(size.x / size.y));
+            let m = clamp(in.color.xy, vec2<f32>(0.004), vec2<f32>(0.996));
+            let at = vec2<f32>((in.color.z + m.x) / tiles, m.y);
+            albedo.a = albedo.a * textureSample(blend_mask, normal_sampler, at).a;
+        }
     }
-#endif
     if params.alpha_cutoff > 0.0 && albedo.a < params.alpha_cutoff {
         discard;
     }

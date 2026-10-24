@@ -628,7 +628,7 @@ pub fn camera_motion(
         return;
     };
     let (body, movement, map_view, children) = *player;
-    let mut cams = cameras.iter_many_mut(children);
+    let mut cams = cameras.iter_many_mut(children).matched();
     let Some(mut cam) = cams.fetch_next() else { return };
     let at = body.transform_point(cam.translation);
     let mut offset = Vec3::ZERO;

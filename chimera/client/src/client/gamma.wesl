@@ -3,7 +3,7 @@
 // on sampling, encoded on writing); a power is the same in linear and
 // display space, so it applies here as it is.
 
-#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
+import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 
 struct MonitorGamma {
     exponent: f32,
