@@ -2138,30 +2138,6 @@ pub fn client_commands(app: &mut App) {
             )))
         },
     )
-    .console_command("kill", "Kill yourself (CS:S's suicide: you die where you stand, which can end the round).", |w, _| {
-        use crate::core::{Damage, DamageKind, Health, Hitgroup};
-        use crate::core::Dead;
-        let p = local_player(w)?;
-        if w.get::<Dead>(p).is_some() {
-            return Ok(None);
-        }
-        let t = *w.get::<Transform>(p).ok_or("no transform")?;
-        let _ = w.get::<Health>(p).ok_or("no health")?;
-        // God mode would refuse the damage; a suicide goes through it.
-        w.entity_mut(p).remove::<crate::core::God>();
-        w.write_message(Damage {
-            force: Vec3::ZERO,
-            target: p,
-            attacker: Some(p),
-            amount: 1000.0,
-            point: t.translation,
-            dir: Vec3::NEG_Y,
-            hitgroup: Hitgroup::Generic,
-            kind: DamageKind::Generic,
-            weapon: None,
-        });
-        Ok(None)
-    })
     .console_command(
         "chimera_hurtme",
         "chimera_hurtme <head|chest|stomach|leftarm|rightarm|leftleg|rightleg|generic> [amount=100] [from yaw, degrees: 0 = shot from the front] [attacker name]: a bullet hit on yourself at that hitbox (e.g. to see your ragdoll in thirdperson; killed by a named player, its death cam and freeze cam).",

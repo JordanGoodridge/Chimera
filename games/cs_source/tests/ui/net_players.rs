@@ -144,6 +144,22 @@ fn a_clients_cheats_run_on_the_server_with_sv_cheats() {
     assert_eq!(sim.server.app.world().resource::<crate::stack::console::Cheats>().0, 1);
 }
 
+/// A client's `kill` is a request to the server, which kills the
+/// client's player there; it needs no `sv_cheats`.
+#[test]
+fn a_clients_kill_is_a_request_to_the_server() {
+    let mut sim = joined(92, 1);
+    let theirs = sim.character_of(0).unwrap();
+    assert!(sim.server.app.world().get::<crate::stack::rules::Dead>(theirs).is_none());
+    assert_eq!(sim.server.app.world().resource::<crate::stack::console::Cheats>().0, 0);
+    run(sim.clients[0].app.world_mut(), "kill");
+    sim.ticks(20);
+    assert!(
+        sim.server.app.world().get::<crate::stack::rules::Dead>(theirs).is_some(),
+        "the server killed the client's player"
+    );
+}
+
 /// Two characters started on one spot walk opposite ways for a second;
 /// how far apart they get.
 fn walk_apart(noblock: u8, teams: (u8, u8)) -> f32 {
