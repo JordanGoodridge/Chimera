@@ -74,8 +74,8 @@ migration of each; section 11 orders them for parallel agents):
 | P4 | Test support module | **partial** (X8: `sim()` and readers lifted where identical) | `games/cs_source/tests/common/` exists; still 45 `fn sim(`, 24 `fn load(`, 12 `fn feet(`, 10 `fn active_id(` across test files; T4 |
 | P4b | Heavy tier: measure, split, more slots, cache | **steps 1, 3, 4 done; 2 open** | full suite 1,812 s to 1,009 s (10-14), then 1,757 s with Combat Arms (10-19); the lean load path is in (N3, 10-21: servers' and tests' memory halved, time saved per load 0.4-1.3 s); no cache yet |
 | P5 | Game composition as plugin groups | **partial** | `CsSourcePlugins`, `CombatArmsPlugins`, `CsSim`, `CaSim` exist; the materials (`chimera_present::PresentationPlugins`) and the physics (`chimera_world::physics_plugins`) are one group each since N7; the tick and log layer still per app; A4 |
-| P6 | One VGUI dialog layer | **open, lower** | 7 copies of the UI scale clamp, no shared `Hit<T>`; Combat Arms built its own canvas (`client::canvas`), so this is CS:S-internal now |
-| P7 | One KeyValues tokenizer, one binary reader | **tokenizer done; reader open, grown** | six private cursor types now (`nav`, `pcf`, `vpk`, `net::query`, LithTech `ltb` and `world`) |
+| P6 | One VGUI dialog layer | **partial** (model 10-24, L6) | `chimera_client::client::dialog` (message, confirm, input/password) is shared by Combat Arms' lobby and CS:S' server browser; the 7 UI scale clamps and a shared `Hit<T>` stay open, and each game still draws its own popups |
+| P7 | One KeyValues tokenizer, one binary reader | **done** (reader 10-24, L6) | `chimera_vfs::bytes::Le`; `nav`, `pcf`, `vpk`, `ltb` and `world` use it; `net::query`'s 3-method `Option` reader stays (chimera_net does not depend on the VFS) |
 | P8 | Split the giant systems | **open, grown** | `bot::think` 696 lines (was 667), Combat Arms' `movement::step` 634 (new), `apply_effects` 439; E3 |
 | P9 | The crate split along fine lines; cheap wins first | **done**, beyond the plan | 23 crates; tools behind `tools`; mold and `line-tables-only` still unmeasured on a full cycle |
 
@@ -1512,6 +1512,30 @@ L5, done for Bevy 0.20.0 and avian3d 0.8.0 (10-23):
   components), and a falling prop's first step differs by about 2 mm.
   Screenshots of de_dust2 and WAREHOUSE match (differences at the
   run-to-run level).
+
+L6, P7 done (10-24): `chimera_vfs::bytes::Le` is the one bounds-checked
+little-endian reader (`take`, `array`, `u8`..`f32`, `f32s`, `cstr`,
+`left`) with a `Truncated { at, wanted, left }` error that converts into
+`String` and `io::Error`; `source_formats`' `nav`, `pcf` and `vpk` and
+`lithtech_formats`' `ltb` and `world` lost their private cursors and keep
+only their format's helpers (`vec3`, `lstring`, `count`, ...) as a small
+trait on `Le`, their own errors made `From<Truncated>`. Format tests and
+the heavy install tests are unchanged and pass. Truncation messages of
+`.nav` and `.pcf` now read "N bytes wanted, M left (at byte K)".
+
+L6, P6 partly done (10-24): `chimera_client::client::dialog::Dialog` is
+the shared model of a modal popup (`Kind::Message | Confirm | Input`,
+`Dialog::password` masks; `handle(Press) -> Option<Outcome>`; the entry
+is `widgets`' `Caret`/`Edit`, with a byte limit). Combat Arms' lobby uses
+it for the password box (`LobbyScreen::password_box`, 8 characters,
+replacing `join_password`) and the message box's OK; CS:S' server
+browser for its password dialog (`Dialog::Password { entry }`). Unit
+tests in `dialog.rs`, a lobby UI test for the limit and Cancel. Drawing
+stays per game (XML layouts; GameUI widgets), as do the scale clamps.
+E3: nothing was touched, so no system was split; the candidates are
+listed with their sizes in E3 (`bot::think` 696 lines, Combat Arms'
+`movement::step` 634, `apply_effects` 439, `class_input` 394,
+`client_commands` 335, `weapon_frame` 324).
 
 L6, two items done (10-22): `bevy` without default features for the
 servers (A5) and bots' sight in parallel (F4).

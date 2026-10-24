@@ -45,6 +45,8 @@
 
 use std::fmt;
 
+use chimera_vfs::bytes::{Le, Truncated};
+
 /// "Header": the only version this reader takes.
 pub const VERSION: u32 = 85;
 /// "Header": its length; the info string starts here.
@@ -670,7 +672,7 @@ pub struct World {
 impl World {
     /// Parse a whole world file (the bytes the archive returns).
     pub fn parse(bytes: &[u8]) -> Result<World> {
-        let mut c = Cursor { b: bytes, pos: 0 };
+        let mut c = Le::new(bytes);
         let mut w = World {
             file_len: bytes.len(),
             ..Default::default()
@@ -715,7 +717,7 @@ impl World {
 
         // "World info string, extents and offset".
         let len = c.u32()? as usize;
-        w.info = latin1(c.take(len).map_err(|e| e.context("the info string"))?);
+        w.info = latin1(c.take(len).map_err(|e| WorldError::from(e).context("the info string"))?);
         w.extents_min = c.vec3()?;
         w.extents_max = c.vec3()?;
         w.world_offset = c.vec3()?;
@@ -729,7 +731,7 @@ impl World {
         w.models = Vec::with_capacity(count);
         for i in 0..count {
             let prefix = c.u32()?;
-            let mut m = parse_bsp(&mut c).map_err(|e| e.context(&format!("world model {i}")))?;
+            let mut m = parse_bsp(&mut c).map_err(|e| WorldError::from(e).context(&format!("world model {i}")))?;
             m.prefix = prefix;
             w.models.push(m);
         }
@@ -739,7 +741,7 @@ impl World {
         let count = c.count(2, "objects")?;
         w.objects = Vec::with_capacity(count);
         for i in 0..count {
-            let (o, warning) = parse_object(&mut c).map_err(|e| e.context(&format!("object {i}")))?;
+            let (o, warning) = parse_object(&mut c).map_err(|e| WorldError::from(e).context(&format!("object {i}")))?;
             w.objects.push(o);
             w.warnings.extend(warning.map(|m| format!("object {i}: {m}")));
         }
@@ -959,53 +961,35 @@ impl WorldError {
     }
 }
 
-/// A bounds-checked little-endian reader.
-struct Cursor<'a> {
-    b: &'a [u8],
-    pos: usize,
+/// The shared bounds-checked little-endian reader.
+type Cursor<'a> = Le<'a>;
+
+impl From<Truncated> for WorldError {
+    fn from(t: Truncated) -> Self {
+        WorldError {
+            offset: t.at,
+            message: format!("{} bytes wanted, {} left", t.wanted, t.left),
+        }
+    }
 }
 
-impl<'a> Cursor<'a> {
+/// What the format adds to the shared reader.
+trait ReadWorldError {
+    fn err(&self, message: impl Into<String>) -> WorldError;
+    fn vec3(&mut self) -> Result<Vec3>;
+    fn plane(&mut self) -> Result<Plane>;
+    fn lstring(&mut self) -> Result<String>;
+    fn count(&mut self, min_size: usize, what: &str) -> Result<usize>;
+    fn check_count(&self, n: usize, min_size: usize, what: &str, at: usize) -> Result<usize>;
+    fn expect_end(&mut self, next: u32, block: &str, next_block: &str) -> Result<()>;
+}
+
+impl ReadWorldError for Le<'_> {
     fn err(&self, message: impl Into<String>) -> WorldError {
         WorldError {
             offset: self.pos,
             message: message.into(),
         }
-    }
-
-    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
-        let end = self
-            .pos
-            .checked_add(n)
-            .filter(|&e| e <= self.b.len())
-            .ok_or_else(|| self.err(format!("{n} bytes wanted, {} left", self.b.len() - self.pos)))?;
-        let s = &self.b[self.pos..end];
-        self.pos = end;
-        Ok(s)
-    }
-
-    fn array<const N: usize>(&mut self) -> Result<[u8; N]> {
-        Ok(self.take(N)?.try_into().unwrap())
-    }
-
-    fn u8(&mut self) -> Result<u8> {
-        Ok(self.take(1)?[0])
-    }
-
-    fn u16(&mut self) -> Result<u16> {
-        Ok(u16::from_le_bytes(self.array()?))
-    }
-
-    fn u32(&mut self) -> Result<u32> {
-        Ok(u32::from_le_bytes(self.array()?))
-    }
-
-    fn i32(&mut self) -> Result<i32> {
-        Ok(i32::from_le_bytes(self.array()?))
-    }
-
-    fn f32(&mut self) -> Result<f32> {
-        Ok(f32::from_le_bytes(self.array()?))
     }
 
     fn vec3(&mut self) -> Result<Vec3> {
@@ -1050,8 +1034,7 @@ impl<'a> Cursor<'a> {
             return Err(self.err(format!("{block} end at {}, but {next_block} starts at {next}", self.pos)));
         }
         Ok(())
-    }
-}
+    }}
 
 fn parse_tree(c: &mut Cursor) -> Result<WorldTree> {
     let min = c.vec3()?;
@@ -1065,7 +1048,7 @@ fn parse_tree(c: &mut Cursor) -> Result<WorldTree> {
             message: "the world tree has no nodes (the root counts)".into(),
         });
     }
-    let bits = c.take(n.div_ceil(8)).map_err(|e| e.context("the world tree's bits"))?;
+    let bits = c.take(n.div_ceil(8)).map_err(|e| WorldError::from(e).context("the world tree's bits"))?;
     let bit = |i: usize| bits[i / 8] & (1 << (i % 8)) != 0;
     // Pre-order: each node read takes one bit; a 1 adds four nodes to read.
     let (mut produced, mut pending) = (0usize, 1usize);
@@ -1128,7 +1111,7 @@ fn parse_bsp(c: &mut Cursor) -> Result<WorldModel> {
 
     // Texture names: T NUL-terminated strings in exactly T_len bytes.
     let at = c.pos;
-    let names = c.take(t_len).map_err(|e| e.context("the texture names"))?;
+    let names = c.take(t_len).map_err(|e| WorldError::from(e).context("the texture names"))?;
     let mut rest = names;
     for _ in 0..t {
         let end = rest.iter().position(|&b| b == 0).ok_or_else(|| WorldError {
@@ -1397,7 +1380,7 @@ fn parse_render_world(c: &mut Cursor, depth: usize) -> Result<RenderWorld> {
     for i in 0..count {
         world
             .blocks
-            .push(parse_render_block(c).map_err(|e| e.context(&format!("render block {i}")))?);
+            .push(parse_render_block(c).map_err(|e| WorldError::from(e).context(&format!("render block {i}")))?);
     }
     for (i, b) in world.blocks.iter().enumerate() {
         if let Some(child) = b.child_blocks().find(|&k| k as usize >= count) {
@@ -1414,7 +1397,7 @@ fn parse_render_world(c: &mut Cursor, depth: usize) -> Result<RenderWorld> {
     }
     for _ in 0..models {
         let name = c.lstring()?;
-        let nested = parse_render_world(c, depth + 1).map_err(|e| e.context(&format!("render world {name}")))?;
+        let nested = parse_render_world(c, depth + 1).map_err(|e| WorldError::from(e).context(&format!("render world {name}")))?;
         world.models.push((name, nested));
     }
     Ok(world)
@@ -1457,7 +1440,7 @@ fn parse_render_block(c: &mut Cursor) -> Result<RenderBlock> {
     };
     let n = c.count(2 + 2 + 1 + 4 + 2 + 12, "sections")?;
     b.sections = (0..n)
-        .map(|i| parse_section(c).map_err(|e| e.context(&format!("section {i}"))))
+        .map(|i| parse_section(c).map_err(|e| WorldError::from(e).context(&format!("section {i}"))))
         .collect::<Result<_>>()?;
 
     let at = c.pos;

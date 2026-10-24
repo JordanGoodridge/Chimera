@@ -4,6 +4,8 @@
 //! order, like a game's search path) and path normalization. Neutral and
 //! dependency-free: it sits under both format crates and Chimera's `mount`.
 
+pub mod bytes;
+
 use std::{
     collections::BTreeMap,
     fs, io,

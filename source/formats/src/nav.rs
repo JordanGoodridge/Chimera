@@ -4,6 +4,7 @@
 //! (ids to indices, ladders, encounters) is the game's side
 //! (`mashup::games::cs_source::nav`).
 
+use chimera_vfs::bytes::Le;
 use glam::Vec3;
 
 const MAGIC: u32 = 0xFEED_FACE;
@@ -74,40 +75,20 @@ pub struct NavFile {
     pub ladders: Vec<Ladder>,
 }
 
-struct Reader<'a> {
-    b: &'a [u8],
-    at: usize,
+/// The reader plus the format's vector.
+trait NavRead {
+    fn vec3(&mut self) -> Result<Vec3, String>;
 }
 
-impl Reader<'_> {
-    fn take(&mut self, n: usize) -> Result<&[u8], String> {
-        let s = self
-            .b
-            .get(self.at..self.at + n)
-            .ok_or_else(|| format!("nav: truncated at byte {}", self.at))?;
-        self.at += n;
-        Ok(s)
-    }
-    fn u8(&mut self) -> Result<u8, String> {
-        Ok(self.take(1)?[0])
-    }
-    fn u16(&mut self) -> Result<u16, String> {
-        Ok(u16::from_le_bytes(self.take(2)?.try_into().unwrap()))
-    }
-    fn u32(&mut self) -> Result<u32, String> {
-        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
-    }
-    fn f32(&mut self) -> Result<f32, String> {
-        Ok(f32::from_le_bytes(self.take(4)?.try_into().unwrap()))
-    }
+impl NavRead for Le<'_> {
     fn vec3(&mut self) -> Result<Vec3, String> {
-        Ok(Vec3::new(self.f32()?, self.f32()?, self.f32()?))
+        Ok(Vec3::from(self.f32s::<3>()?))
     }
 }
 
 /// Read a `.nav` file.
 pub fn parse(bytes: &[u8]) -> Result<NavFile, String> {
-    let mut r = Reader { b: bytes, at: 0 };
+    let mut r = Le::new(bytes);
     if r.u32()? != MAGIC {
         return Err("nav: bad magic".into());
     }
@@ -269,7 +250,7 @@ pub fn parse(bytes: &[u8]) -> Result<NavFile, String> {
             });
         }
     }
-    info.trailing = bytes.len() - r.at;
+    info.trailing = bytes.len() - r.pos;
     Ok(NavFile {
         info,
         places,

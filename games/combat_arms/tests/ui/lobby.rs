@@ -729,3 +729,17 @@ fn corr_options_open_from_the_room_list() {
     s.seconds(0.2);
     assert!(s.app.world().resource::<combat_arms::game::options::CaOptions>().open);
 }
+
+#[test]
+fn the_password_box_takes_eight_characters_and_cancel_forgets_them() {
+    let mut s = sim();
+    their_room(&mut s, 11, create_spec("TDM", 16, "locked", "ab"));
+    click(&mut s, "row_0");
+    click(&mut s, "button_Join");
+    type_text(&mut s, "abcdefghij");
+    assert_eq!(label(&s, "input_password"), "********");
+    click(&mut s, "button_cancel");
+    assert!(screen(&s).password_room.is_none());
+    click(&mut s, "button_Join");
+    assert_eq!(screen(&s).password_box.input, "", "the box opens empty");
+}
