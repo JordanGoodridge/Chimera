@@ -1406,8 +1406,64 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (**done 2026-10-22**; note below) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L  (**stages 1-3 done 2026-10-23**: manifest, doctor, `ChangeMatch`, playable set; relevance culling left; note below) |
 | L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
-| L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M |
+| L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M (**done 2026-10-23** for Bevy 0.20 and avian 0.8; note below) |
 | L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4) **done**, `bevy` without default features for servers (A5) **done** | none | S each (two done 10-22, note below) |
+
+L5, done for Bevy 0.20.0 and avian3d 0.8.0 (10-23):
+
+- Dependencies: bevy_replicon 0.45.2, bevy_egui 0.43.1,
+  bevy-inspector-egui 0.38, wgpu-types 30, glam 0.33.
+  `bevy_replicon_renet` has no Bevy 0.20 release yet: it, `bevy_renet` and
+  our `renetcode` come from the authors' upstream commits (git, pinned by
+  Cargo.lock; tech-debt.md, backlog.md).
+- Shaders: naga_oil is gone, so the 25 shaders with imports or defs are
+  WESL (`.wesl`): `import ...;`, `@if(DEF) { }`, `constants::NAME`, Bevy's
+  modules at their new paths (`bevy_pbr::render::forward_io`,
+  `bevy_pbr::prepass::io`, `bevy_ui_render::ui_vertex_output`), ours as
+  `chimera_present::render::{fog, dither}`. Every `Camera3d` keeps a
+  `ScreenSpaceTransmission` (0.20 dropped it as a required component; the
+  water and sprite shaders read the scene behind), and our
+  `Tonemapping::None` cameras are `Linear` (0.20's `None` skips the
+  deband dither too).
+- Avian 0.8's new defaults reverted to 0.7's (`chimera_world`'s
+  `ContactDefaults`, in `physics_plugins`): speculative contacts on every
+  body, no automatic swept CCD, `contact_tolerance` 5 mm, no contact
+  recycling. With 0.8's, crates rebounded low, ragdoll joints pulled
+  apart, a cupboard on a player hurt it twice as much and ragdolls on
+  steps never slept. What's left of 0.8's solver (friction solved only in
+  its relax pass): a crate dropped flat lands a few units aside, so the
+  breakable-on-a-prop test compares with the same prop alone, and an arm
+  on a de_inferno step slides off 3.4-3.8 s after the fall, so the ragdoll
+  settle test's quiet time is 4 s. Characters stand on their 0.1 u skin
+  now (0.7's shape cast let them touch the floor); a Combat Arms bot case
+  ran its chase a tick past the moment the target came nearest and was
+  shortened.
+- Workarounds: `map::contact_flags` removed (0.8 clears the started flag
+  itself, avian #1068, `avian_still_needs_the_guard` failed; ported, its
+  handle matching broke 0.8's deferred constraint bookkeeping). The
+  disabled-body flag is still left on proxies by 0.8 (same `Discard`
+  observer): `set_prop_shown` keeps its workaround, now guarded by
+  `logic::bridge::tests::avian_still_leaves_body_disabled_on_the_proxy`.
+  The change-detection bypasses: 0.8 still wakes a body on a velocity
+  write (`wake_on_changed`), so the six in prop_physics and ragdoll (and
+  the test's) stay; contact_flags' two went with it; the rest were never
+  avian's (UI and net state). Ragdolls' gyroscopic torque is still cleared
+  by hand (0.8 has no switch). Bevy UI's `Interaction`/`Button` are
+  deprecated in 0.20; the menus keep the state under its undeprecated name
+  (`client::widgets::Interaction`, backlog.md).
+- Dumps: system dumps of the four clients and three servers (patched
+  servers) keep every fixed-tick and `Predict` schedule's order of our
+  systems exactly (contact_flags' two systems gone); the per-frame
+  schedules (`Update`, `PostUpdate`, `PreUpdate`, `First`, `Last`) order
+  our unordered systems differently because Bevy's own systems changed;
+  the schedule ratchets and X2's counts are unchanged. Spawn dumps of
+  de_dust2, de_nuke, mg_lego_multigames_v2, gg_tbr_water_basin and
+  surf_demise: the same entities with the same components and values of
+  ours; avian's own components changed (`SolverBodyIndex` for
+  `SolverBody`, `BodySizeMetrics`, `ColliderAabbMargin`, the CCD
+  components), and a falling prop's first step differs by about 2 mm.
+  Screenshots of de_dust2 and WAREHOUSE match (differences at the
+  run-to-run level).
 
 L6, two items done (10-22): `bevy` without default features for the
 servers (A5) and bots' sight in parallel (F4).
