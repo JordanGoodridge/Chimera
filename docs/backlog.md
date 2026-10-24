@@ -489,16 +489,17 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   few resolutions (the loading dialog, `LoadingDialogNoBanner.res`,
   and the interface sounds are in; CS:S has no menu music: its install
   holds none), whether keyboard moves in the menu make the rollover
-  sound, a loading dialog for maps changed from inside a game (the old
-  map plays on until the new one is in),
-  the server browser (needs networking). The Chimera debug-options page is in
-  (`menu debug`, the overlay cvars as check boxes; 2026-10-24).
+  sound, the server browser (needs networking). The Chimera debug-options page is in
+  (`menu debug`, the overlay cvars as check boxes; 2026-10-24). A map
+  changed from inside a game shows the loading dialog (2026-10-24).
 - Debug overlays: `chimera_drawhitboxes`, `chimera_healthbars`,
-  `chimera_drawnav`, `chimera_drawbots` exist; add more as features need
-  them (sound radii, triggers).
+  `chimera_drawnav`, `chimera_drawbots`, `chimera_drawsound` (sound
+  radii) and `chimera_drawtriggers` exist (2026-10-24); add more as features
+  need them.
 - Debug UI (F8, `client/debug_ui.rs`) is in. Each bot's row has kick and freeze
-  buttons (`bot_kick <name>`, `bot_freeze`/`bot_unfreeze`, 2026-10-24). Left: turning fog off (no such cvar yet;
-  a "Clear decals" button runs `r_cleardecals`, 2026-10-24), starting a trace from the running game (needs
+  buttons (`bot_kick <name>`, `bot_freeze`/`bot_unfreeze`, 2026-10-24), a "Clear decals" button
+  (`r_cleardecals`) and a Fog check box (`fog_enable`, CS:S's name; 2026-10-24).
+  Left: starting a trace from the running game (needs
   the profile build), a fixed tick-rate control, a history graph per
   render pass.
 

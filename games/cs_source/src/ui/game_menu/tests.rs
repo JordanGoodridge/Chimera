@@ -63,6 +63,20 @@ fn cancel_stops_a_load_and_nothing_else_works_meanwhile() {
 }
 
 #[test]
+fn a_map_loaded_from_inside_a_game_shows_the_loading_dialog() {
+    let mut m = menu();
+    assert!(m.in_game);
+    m.begin_loading("de_nuke".into());
+    assert_eq!(m.loading.as_deref(), Some("de_nuke"));
+    assert!(m.open && !m.in_game && m.page == Page::Main);
+    // Once per load: a second call keeps the first.
+    m.begin_loading("de_dust2".into());
+    assert_eq!(m.loading.as_deref(), Some("de_nuke"));
+    // Cancel is `disconnect`.
+    assert_eq!(m.handle(Input::Click(Target::Cancel, 0)).lines, ["disconnect"]);
+}
+
+#[test]
 fn the_loading_line_follows_the_load() {
     let m = main_menu();
     assert_eq!(loading_text(&m, None, "de_nuke"), "Loading de_nuke ...");

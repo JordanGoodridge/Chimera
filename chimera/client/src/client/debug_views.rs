@@ -3,7 +3,9 @@
 //! ladders and their get-on points) and ragdolls (`chimera_ragdoll_debug
 //! 1`: each body's bounds and axes, each joint from its parent body's
 //! anchor to the child body). A game's own overlays (CS:S's bots:
-//! `games::cs_source::ui::debug`) come from its front end.
+//! `games::cs_source::ui::debug`) come from its front end. `fog_enable` (the
+//! map's fog on or off in the materials: `render::fog::FogSetting`) is
+//! registered here too, beside the other debug switches.
 
 use bevy::prelude::*;
 
@@ -39,6 +41,12 @@ impl Plugin for DebugViewsPlugin {
             "ragdoll_sleepaftertime",
             "After this many seconds of being basically stationary, the ragdoll will go to sleep.",
             |s| &mut s.sleep_after,
+        );
+        resource_cvar::<crate::render::fog::FogSetting, u8>(
+            app,
+            "fog_enable",
+            "0: the map's fog is off (world, props, ropes, decals, particles; water fog stays); 1: on (default).",
+            |f| &mut f.enabled,
         );
         resource_cvar::<DebugViews, u8>(
             app,

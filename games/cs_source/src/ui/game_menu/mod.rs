@@ -38,7 +38,11 @@
 //! dialog (`GameUi::loading`, the install's `LoadingDialogNoBanner.res`: the
 //! stage the loader reported through `map::loading`, worded by the game's
 //! `LoadingProgress_*` strings, a progress bar, Cancel back to the main menu)
-//! until `console::finish_map_load` puts the game in (`entered_game`); in a
+//! until `console::finish_map_load` puts the game in (`entered_game`); a map
+//! changed from inside a game (`map`, a server's level change, a minigame's
+//! rotation) shows it the same way (`GameMenu::begin_loading`, from
+//! `after_load`): the game's view gives way to the main menu's background
+//! until the new map is in, Cancel is `disconnect`; in a
 //! game, over the darkened game, a dialog's frame over the world drawn again,
 //! dimmed (`world_behind_dialogs`: while a dialog is open the 3D view draws
 //! into a picture shown under the UI and, at 40 %, under each frame, so the

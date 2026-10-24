@@ -6,7 +6,8 @@
 //! hints: `hints`; a playing minigame's panel, `minigame_hud`, for an app
 //! with minigames), the spectator menu and freeze cam panel, the vote panels
 //! (`vote_hud`), the
-//! scoreboard, the window icon and `playdemo` (`demo`). Built on the client
+//! scoreboard, the map logic's debug overlays (`debug_world`: sound radii,
+//! triggers), the window icon and `playdemo` (`demo`). Built on the client
 //! shell (`client`: input, console, fonts, the VGUI-like widgets); the
 //! shell reaches these only through `client::front_end`'s hooks, and the
 //! app adds them (`CsSourceUiPlugin`). The simulation side of `cs_source`
@@ -15,6 +16,7 @@
 pub mod bomb_fx;
 pub mod buy_menu;
 pub mod debug;
+pub mod debug_world;
 pub mod demo;
 pub mod first_run;
 pub mod freeze_cam;
@@ -55,6 +57,7 @@ use crate::client;
 pub fn with_hud(shell: PluginGroupBuilder) -> PluginGroupBuilder {
     shell
         .add_after::<client::debug_views::DebugViewsPlugin>(debug::BotDebugPlugin)
+        .add_after::<client::debug_views::DebugViewsPlugin>(debug_world::WorldDebugPlugin)
         .add_after::<client::hud::HudPlugin>(game_hud::GameHudPlugin)
         .add_after::<game_hud::GameHudPlugin>(hud_sprites::HudSpritesPlugin)
         .add_after::<client::game_text::GameTextPlugin>(radar::RadarPlugin)

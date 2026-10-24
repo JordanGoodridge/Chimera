@@ -1013,6 +1013,8 @@ fn rendering_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
             "chimera_ragdoll_debug",
             "chimera_objectives",
             "snd_show",
+            "chimera_drawsound",
+            "chimera_drawtriggers",
             "developer",
         ],
     );

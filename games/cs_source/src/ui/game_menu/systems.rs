@@ -808,22 +808,14 @@ pub(super) fn cursor(
 /// Run a new game's bot lines once its map is in (or if the load never
 /// started: the `map` line failed).
 pub(super) fn after_load(w: &mut World) {
-    // A load started at the main menu (a menu, the console): its dialog.
-    // A server's own map change too (its players load it as well): the
-    // dialog over the game, as theirs (single player keeps playing the
-    // old map until the new one is in).
-    let serving = w.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Server);
+    // A load started at the main menu (a menu, the console) or from inside
+    // a game (`map`, a server's map change): its dialog, over the main
+    // menu's background; the old map is out of sight until the new one is
+    // in (`entered_game`), Cancel is `disconnect`.
     if let Some(map) = crate::client::console::loading_map(w)
         && let Some(mut menu) = w.get_resource_mut::<GameMenu>()
-        && (!menu.in_game || serving)
-        && menu.loading.is_none()
     {
-        if menu.in_game {
-            menu.in_game = false;
-            menu.open = true;
-            menu.page = Page::Main;
-        }
-        menu.loading = Some(map);
+        menu.begin_loading(map);
     }
     let loading = crate::client::console::map_loading(w);
     let mut after = w.resource_mut::<AfterLoad>();
