@@ -67,7 +67,8 @@
 //! profiles at `bot_difficulty` (`map::bot_profiles`, with `bot_prefix`; "Bot
 //! N" without them), `bot_stop`, `bot_dont_shoot`, `bot_reaction`,
 //! `bot_turn_rate`, `bot_aim_error`, `bot_grenades`, `bot_give` (a weapon to
-//! every bot); bots let go of the trigger between semi-automatic shots;
+//! every bot), `bot_freeze` / `bot_unfreeze [name|number|all]` (ours: one bot
+//! held still and not firing, `Bot::frozen`; the debug UI's per-bot row); bots let go of the trigger between semi-automatic shots;
 //! `objectives.rs`: the bomb carrier leads the attackers to their site and
 //! plants at its target; after the plant (`Retake`) defenders fall back to a
 //! rally point, gather and go in together, one defusing while the others take
@@ -425,6 +426,36 @@ impl Plugin for BotPlugin {
             }),
             complete: None,
         });
+        for (name, freeze) in [("bot_freeze", true), ("bot_unfreeze", false)] {
+            console.add_command(Command {
+                name: name.into(),
+                help: format!(
+                    "{name} [<name>|<number>|all]: {} (a bot's number is the one in \"Bot 3\"); no argument: every bot.",
+                    if freeze { "hold a bot still and stop its fire" } else { "let a frozen bot move and fire again" }
+                ),
+                run: Arc::new(move |w, a| {
+                    let wanted = a.join(" ");
+                    let all = wanted.is_empty() || wanted.eq_ignore_ascii_case("all");
+                    let by_number = wanted.parse::<u32>().ok();
+                    let mut n = 0;
+                    let mut q = w.query::<(&mut Bot, Option<&Name>)>();
+                    for (mut b, nm) in q.iter_mut(w) {
+                        if all
+                            || by_number == Some(b.number)
+                            || nm.is_some_and(|nm| nm.as_str().eq_ignore_ascii_case(&wanted))
+                        {
+                            b.frozen = freeze;
+                            n += 1;
+                        }
+                    }
+                    if n == 0 && !all {
+                        return Err(format!("no bot \"{wanted}\""));
+                    }
+                    Ok(Some(format!("{} {n} bots", if freeze { "froze" } else { "unfroze" })))
+                }),
+                complete: None,
+            });
+        }
         console.add_command(Command {
             name: "bot_goto".into(),
             help: "bot_goto <x> <y> <z>: send every bot to a feet position (CS:S units, as getpos less the eye height); \
@@ -709,6 +740,9 @@ pub struct Bot {
     /// the difficulty it plays at (`difficulty::*` bits; `bot_kick hard`).
     pub profile: Option<String>,
     pub difficulty: u8,
+    /// Held still and not firing (`bot_freeze <name|number>`, the debug UI's
+    /// per-bot row); `bot_unfreeze` lets it go.
+    pub frozen: bool,
     /// Route noise seed, fixed per bot: from its number and team, never
     /// its entity id (`core::Seed`). The dice (`rng`) restart from it and
     /// the round number each round.
@@ -1422,6 +1456,7 @@ fn think(
                 intent.pitch += (want_pitch - intent.pitch).clamp(-step, step);
                 let off = wrap(want_yaw - intent.yaw).abs().max((want_pitch - intent.pitch).abs());
                 intent.fire = cfg.dont_shoot == 0
+                    && !bot.frozen
                     && bot.seen >= cfg.reaction
                     && off.to_degrees() < FIRE_CONE_DEG
                     && !(semi && pressed);
@@ -1491,7 +1526,7 @@ fn think(
                 0.0
             };
         }
-        intent.move_axis = if cfg.stop == 0 && bot.target.is_some() {
+        intent.move_axis = if cfg.stop == 0 && !bot.frozen && bot.target.is_some() {
             Vec2::new(bot.strafe, 0.0)
         } else {
             Vec2::ZERO
@@ -1523,7 +1558,7 @@ fn think(
         if bot.roam.is_some_and(|at| at.distance(feet) < ARRIVED) {
             bot.roam = None;
         }
-        if cfg.stop != 0 {
+        if cfg.stop != 0 || bot.frozen {
             bot.route.clear();
             bot.goal = None;
             bot.activity = Activity::Idle;
@@ -1801,6 +1836,7 @@ fn think(
             let slow = now - bot.toward.1 > BREAK_SLOW;
             if (b > BREAK_AFTER || slow || step.dismount)
                 && cfg.dont_shoot == 0
+                && !bot.frozen
                 && let Some(target) = step.target
             {
                 // Along the way at a few heights, and at the route point.

@@ -245,10 +245,10 @@ impl Plugin for GameMenuPlugin {
         app.console_command(
             "menu",
             "menu [main|newgame|game|bot|bots|team|options|keyboard|mouse|audio|video|voice|multiplayer|advanced|\
-             videoadvanced|gamma|mpadvanced|extras|players]: open the game menu (Esc) on a page (newgame: Create Server, \
+             videoadvanced|gamma|mpadvanced|extras|debug|players]: open the game menu (Esc) on a page (newgame: Create Server, \
              game and bot its other pages; options: on a tab; advanced: the keyboard tab's Advanced dialog, videoadvanced \
              the video tab's, gamma its brightness dialog, mpadvanced the multiplayer tab's; extras: Lucker Party \
-             Options; bots: add and kick bots; team: join a team; players: the player list, to mute players).",
+             Options; debug: Chimera Debug Options, the overlay cvars as check boxes; bots: add and kick bots; team: join a team; players: the player list, to mute players).",
             |w, a| {
                 let arg = a.first().map(|s| s.to_lowercase());
                 let tab = TABS.iter().find(|(t, ..)| Some(t.page()) == arg.as_deref()).map(|(t, ..)| *t);
@@ -260,6 +260,7 @@ impl Plugin for GameMenuPlugin {
                     Some("team") => Page::Team,
                     Some("options" | "settings" | "advanced" | "videoadvanced" | "gamma" | "mpadvanced") => Page::Settings,
                     Some("extras") => Page::Extras,
+                    Some("debug") => Page::Debug,
                     Some("players" | "playerlist") => Page::PlayerList,
                     Some(p) => return Err(format!("no menu page \"{p}\"")),
                 };
@@ -382,6 +383,8 @@ pub enum Page {
     MultiplayerAdvanced,
     /// Ours: Lucker Party Options (what CS:S's options don't have).
     Extras,
+    /// Ours: Chimera Debug Options (the overlay cvars as check boxes).
+    Debug,
     /// The player list (`PlayerListDialog.res`): mute players' voice.
     PlayerList,
     /// The vote setup dialog (`vote_setup.rs`).
@@ -402,6 +405,7 @@ impl Page {
             Page::Gamma => "gamma",
             Page::MultiplayerAdvanced => "multiplayeradvanced",
             Page::Extras => "extras",
+            Page::Debug => "debugoptions",
             Page::PlayerList => "playerlist",
             Page::Vote => "votesetup",
         }

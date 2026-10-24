@@ -62,7 +62,7 @@ pub(super) fn dialog_size(menu: &GameMenu, page: Page) -> (f32, f32) {
             .and_then(|u| u.options.get("multiplayer_advanced"))
             .and_then(|l| l.get("MultiplayerAdvancedDialog"))
             .map_or((540.0, 376.0), |c| (c.wide, c.tall)),
-        Page::Extras => {
+        Page::Extras | Page::Debug => {
             let n = menu.rows().len() as f32;
             (420.0, 44.0 + n * 28.0 + 12.0)
         }
@@ -248,6 +248,7 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
         Page::Gamma => menu.text("#GameUI_AdjustGamma_Title", "Adjust brightness levels"),
         Page::MultiplayerAdvanced => menu.text("#GameUI_MultiplayerAdvanced", "Multiplayer Advanced"),
         Page::Extras => "Lucker Party Options".into(),
+        Page::Debug => "Chimera Debug Options".into(),
         Page::PlayerList => menu.player_list_title(),
         // Ours (the file gives none).
         Page::Vote => "Call Vote".into(),
@@ -307,7 +308,7 @@ pub(super) fn dialog(commands: &mut Commands, ctx: &Ctx, page: Page) {
                 dialog_buttons(commands, ctx, frame, (w, h), &[Action::Ok, Action::Cancel]);
             }
         }
-        Page::Extras => {
+        Page::Extras | Page::Debug => {
             column(commands, ctx, frame, (16.0, 36.0, w - 32.0), true);
             dialog_buttons(commands, ctx, frame, (w, h), &[Action::Ok, Action::Cancel]);
         }

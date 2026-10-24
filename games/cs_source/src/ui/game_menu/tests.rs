@@ -3,7 +3,7 @@ use super::*;
 use crate::ui::options::setting_index;
 use crate::map::hud::{GameUiItem, ServerSetting};
 
-const CVARS: [(&str, &str); 17] = [
+const CVARS: [(&str, &str); 19] = [
     ("sensitivity", "3"),
     ("m_pitch", "0.022"),
     ("zoom_sensitivity_ratio", "1.2"),
@@ -11,6 +11,8 @@ const CVARS: [(&str, &str); 17] = [
     ("viewmodel_fov", "54"),
     ("cl_righthand", "1"),
     ("cl_showfps", "0"),
+    ("chimera_drawhitboxes", "0"),
+    ("snd_show", "1"),
     ("mat_vsync", "1"),
     ("mat_antialias", "4"),
     ("chimera_resolution", ""),
@@ -467,6 +469,7 @@ fn the_camera_and_crosshair_are_the_windows_after_every_dialog() {
         Page::Gamma,
         Page::MultiplayerAdvanced,
         Page::Extras,
+        Page::Debug,
         Page::NewGame,
         Page::Bots,
         Page::Team,
@@ -838,6 +841,24 @@ fn video_options_and_its_advanced_dialog() {
     assert!(m.rows().iter().all(|r| r.field() != Some(Field::Setting(setting("cl_showfps")))));
     m.go_to(Page::Extras);
     assert!(m.rows().iter().any(|r| r.field() == Some(Field::Setting(setting("cl_showfps")))));
+}
+
+/// Chimera Debug Options (`menu debug`): the overlay cvars as check
+/// boxes, set at once like the other options, Cancel puts them back.
+#[test]
+fn the_debug_options_page_lists_the_overlays_as_check_boxes() {
+    let mut m = menu();
+    m.go_to(Page::Debug);
+    // Only the cvars this build has (the test's table has two).
+    let hit = row_of(&m, "chimera_drawhitboxes");
+    let snd = row_of(&m, "snd_show");
+    assert!(matches!(control(&m, hit), Control::Check(false)), "{:?}", control(&m, hit));
+    assert!(matches!(control(&m, snd), Control::Check(true)));
+    assert!(m.rows().iter().all(|r| r.field() != Some(Field::Setting(setting("cl_showfps")))));
+    let o = press(&mut m, &[Input::Click(Target::Row(hit), 0)]);
+    assert_eq!(o.lines, ["chimera_drawhitboxes 1"]);
+    let o = click_on(&mut m, |m| button(m, Action::Cancel));
+    assert_eq!(o.lines, ["chimera_drawhitboxes 0"]);
 }
 
 #[test]
@@ -1593,7 +1614,7 @@ fn the_voice_tab_sets_voice_chats_cvars() {
         ..default()
     };
     let cvars = |n: &str| match n {
-        "voice_modenable" | "voice_scale" => Some("1".to_string()),
+        "voice_modenable" | "voice_scale" | "voice_transmit" => Some("1".to_string()),
         "voice_boost" => Some("0".to_string()),
         n => get(n),
     };
@@ -1604,7 +1625,7 @@ fn the_voice_tab_sets_voice_chats_cvars() {
     assert_eq!(m.tab, Tab::Voice);
     let rows = m.rows();
     let settings = rows.iter().filter(|r| !matches!(r, Row::Button { .. })).count();
-    assert_eq!(settings, 3, "{rows:?}");
+    assert_eq!(settings, 4, "{rows:?}");
     let boost = rows
         .iter()
         .position(|r| matches!(r, Row::Control { field: Field::Setting(i), .. } if SETTINGS[*i].cvar == "voice_boost"))

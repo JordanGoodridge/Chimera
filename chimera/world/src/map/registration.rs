@@ -181,6 +181,7 @@ pub fn build<L: MapLayers>(app: &mut App, data: Option<&Arc<MapData>>, view: Map
         .add_message::<SpawnGibs>()
         .add_message::<breakables::BreakProp>()
         .add_message::<prop_physics::PropAwakened>()
+        .add_message::<props::PropAnimationDone>()
         .add_message::<GlassShatter>()
         .add_message::<TeslaSpark>()
         .add_message::<BeamStrike>()

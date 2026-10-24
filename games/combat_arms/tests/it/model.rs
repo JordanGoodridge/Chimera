@@ -196,7 +196,8 @@ fn placed_prop_animates() {
 
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, props::CaPropsPlugin));
-    app.add_systems(Update, map::animate_props.after(props::start_props));
+    app.add_message::<map::PropAnimationDone>()
+        .add_systems(Update, map::animate_props.after(props::start_props));
     let set = data.models[0].rig.as_ref().unwrap().animations.clone();
     let joints: Vec<Entity> = (0..2).map(|_| app.world_mut().spawn(Transform::default()).id()).collect();
     let prop = app
@@ -206,6 +207,7 @@ fn placed_prop_animates() {
             joints: joints.clone(),
             seen: None,
             default: None,
+            done: false,
         })
         .id();
     app.update();

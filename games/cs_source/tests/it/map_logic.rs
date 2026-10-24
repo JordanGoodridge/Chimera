@@ -775,3 +775,62 @@ fn a_fall_after_noclip_ends_in_the_air_hurts_as_any_fall() {
     assert!(walking > 0.0, "a 364-unit fall hurts");
     assert_eq!(drop(true), walking);
 }
+
+/// A prop_dynamic's animation outputs through the bridge: the map's
+/// animation reporting the end of a sequence (`PropAnimationDone`) fires
+/// the logic prop's OnAnimationDone (here: `Kill` itself).
+#[test]
+fn a_prop_animation_ending_fires_on_animation_done() {
+    use crate::stack::map::{MapModel, MapProp, PropAnimationDone, PropEntity, PropSolid};
+    let car = entity(
+        &[
+            ("classname", "prop_dynamic"),
+            ("targetname", "car"),
+            ("origin", "300 0 0"),
+            ("DefaultAnim", "hide"),
+            ("OnAnimationDone", "car,Kill,,0,-1"),
+        ],
+        Vec::new(),
+        false,
+    );
+    let mut data = map(vec![car]);
+    data.models.push(MapModel::default());
+    data.props.push(MapProp {
+        pose: None,
+        ragdoll: None,
+        model: 0,
+        translation: to_engine(Vec3::new(300.0, 0.0, 0.0)),
+        rotation: Quat::IDENTITY,
+        solid: PropSolid::None,
+        skybox: false,
+        lighting: None,
+        vertex_light: None,
+        casts_shadow: false,
+        physics: None,
+        fade: None,
+        parent: None,
+        entity: Some(0),
+        skin: 0,
+        body: 0,
+        detail: false,
+    });
+    let mut sim = Sim::new(CsSim, (MapPlugin::new(data), SourceMovementPlugin));
+    sim.set_tick_interval(cs_source::TICK_INTERVAL);
+    sim.spawn_character(to_engine(Vec3::new(-300.0, 0.0, 37.0)), movement::ID);
+    sim.ticks(10);
+    let world = sim.app.world_mut();
+    let node = world
+        .query::<(Entity, &PropEntity)>()
+        .iter(world)
+        .find(|(_, p)| p.0 == 0)
+        .expect("car node")
+        .0;
+    assert!(exists(&sim, 0));
+    // A report for another sequence than the logic's is ignored.
+    sim.app.world_mut().write_message(PropAnimationDone { node, serial: 7 });
+    sim.ticks(3);
+    assert!(exists(&sim, 0), "an old sequence's end");
+    sim.app.world_mut().write_message(PropAnimationDone { node, serial: 0 });
+    sim.ticks(3);
+    assert!(!exists(&sim, 0), "OnAnimationDone killed it");
+}

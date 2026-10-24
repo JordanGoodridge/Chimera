@@ -5,7 +5,7 @@
 //! The options dialogs' settings (cvar, or several set together (water detail,
 //! sound quality, captioning, filtering); where it shows: a tab, the keyboard
 //! or video tab's Advanced dialog, the brightness dialog, or ours
-//! (`Place::Extras`); the game layout's control showing it (`fieldName`); the
+//! (`Place::Extras`, `Place::Debug`: Chimera Debug Options, `menu debug`); the game layout's control showing it (`fieldName`); the
 //! game's label token; slider / choice / check box / check box setting a value
 //! / reverse-mouse / window-size kinds, stepping, showing and a combo box's
 //! entries).
@@ -116,6 +116,8 @@ pub enum Place {
     /// The video tab's brightness dialog (Adjust brightness levels...).
     Gamma,
     Extras,
+    /// Ours: Chimera Debug Options (`menu debug`): the overlay cvars.
+    Debug,
 }
 
 /// A setting on the options page: one cvar (archived, so config.cfg keeps
@@ -373,6 +375,17 @@ pub const SETTINGS: &[Setting] = &[
     // `game_menu`'s own.
     setting(Options(Tab::Voice), "voice_modenable", Some("voice_modenable"), Some("#GameUI_EnableVoice"), "Enable voice", SettingKind::Toggle),
     setting(Options(Tab::Voice), "voice_scale", Some("VoiceReceive"), Some("#GameUI_VoiceReceiveVolume"), "Voice receive volume", range(0.0, 1.0, 0.05, 2)),
+    // The transmit volume: a Panel in the layout (`#GameUI_MicrophoneVolume`)
+    // that CS:S fills with a slider over the sound card's microphone level;
+    // ours scales the samples (`voice_transmit`).
+    setting(
+        Options(Tab::Voice),
+        "voice_transmit",
+        Some("#GameUI_MicrophoneVolume"),
+        Some("#GameUI_VoiceTransmitVolume"),
+        "Voice transmit volume",
+        range(0.0, 1.0, 0.05, 2),
+    ),
     setting(Options(Tab::Voice), "voice_boost", Some("MicBoost"), Some("#GameUI_BoostMicrophone"), "Boost microphone gain", SettingKind::Toggle),
     // Multiplayer (`OptionsSubMultiplayer.res`). The player name: older
     // CS:S had it here ("Player name", `#GameUI_PlayerName`); the
@@ -469,6 +482,17 @@ pub const SETTINGS: &[Setting] = &[
     ),
     setting(Extras, "viewmodel_fov", None, None, "View model FOV", range(40.0, 90.0, 1.0, 0)),
     setting(Extras, "cl_showfps", None, None, "Show FPS", SettingKind::Choice(&[("0", "Off"), ("1", "On"), ("2", "Detailed")])),
+    // Chimera Debug Options: the overlay cvars as check boxes.
+    setting(Place::Debug, "cl_showpos", None, None, "Show position", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_drawhitboxes", None, None, "Hitboxes", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_drawcollision", None, None, "Collision shapes", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_drawphys", None, None, "Physics bodies", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_drawnav", None, None, "Navigation mesh", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_drawbots", None, None, "Bots' plans", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_healthbars", None, None, "Health bars", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_ragdoll_debug", None, None, "Ragdoll joints", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_objectives", None, None, "Objective markers", SettingKind::Toggle),
+    setting(Place::Debug, "snd_show", None, None, "Sound sources", SettingKind::Toggle),
 ];
 
 /// Text entries beside a slider that show its value (`fieldName` of the
@@ -745,7 +769,7 @@ mod tests {
         }
         // Each of the game's dialogs names its controls; ours have none.
         for s in SETTINGS {
-            assert_eq!(s.field.is_none(), s.place == Place::Extras, "{}", s.cvar);
+            assert_eq!(s.field.is_none(), matches!(s.place, Place::Extras | Place::Debug), "{}", s.cvar);
         }
         assert_eq!(Tab::Keyboard.step(-1), Tab::Multiplayer);
     }

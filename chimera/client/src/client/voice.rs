@@ -9,7 +9,8 @@
 //!   gate for `VOX_HANG` seconds of audio (frames under it while it is
 //!   closed are dropped, the key still talks).
 //!   The microphone's samples (48 kHz mono, `VoiceInput`), times `BOOST`
-//!   with `voice_boost 1` (the Voice tab's "Boost microphone gain"), are
+//!   with `voice_boost 1` (the Voice tab's "Boost microphone gain") and
+//!   scaled by `voice_transmit` (its transmit volume slider), are
 //!   cut into
 //!   20 ms frames, each encoded with Opus (VoIP, `BITRATE`) and sent as
 //!   `net::voice::VoiceData`, at most `net::voice::MAX_FRAMES` a frame;
@@ -44,7 +45,7 @@
 //! Opus at 48 kHz mono in 20 ms frames (`mousiki`), per-talker decoders with
 //! loss concealment, muted players dropped (`VoiceMutes`), a jitter-buffered
 //! mixer, `voice_enable`, `voice_modenable`, `voice_scale`, `voice_loopback`,
-//! `voice_boost`, `voice_test` and `VoiceLevel` (the Voice tab's microphone
+//! `voice_boost`, `voice_transmit`, `voice_test` and `VoiceLevel` (the Voice tab's microphone
 //! test and meter).
 //!
 //! Known shortcuts (docs/tech-debt.md): Voice chat (`client::voice`): the
@@ -59,7 +60,8 @@
 //! resampling; a 60 ms jitter buffer and at most 0.5 s of microphone backlog
 //! (ours); the system's default devices only (no device choice);
 //! `voice_boost` (CS:S's box sets the sound card's microphone boost; here
-//! x4, +12 dB) and `voice_test` (CS:S's button runs its voice tweak mode)
+//! x4, +12 dB), `voice_transmit` (CS:S's slider sets the sound card's microphone volume;
+//! here it scales the samples) and `voice_test` (CS:S's button runs its voice tweak mode)
 //! are ours; `voice_loopback` decodes locally (Source's server echoes it).
 
 use std::{
@@ -229,6 +231,9 @@ pub struct VoiceSettings {
     /// `voice_boost` (ours; the Voice tab's "Boost microphone gain"): 1
     /// multiplies the microphone by `BOOST`.
     pub boost: u8,
+    /// `voice_transmit` (ours; the Voice tab's transmit volume slider): the
+    /// microphone's volume, 0 to 1, before the boost.
+    pub transmit: f32,
 }
 
 impl Default for VoiceSettings {
@@ -241,6 +246,7 @@ impl Default for VoiceSettings {
             vox: 0,
             threshold: 4000.0,
             boost: 0,
+            transmit: 1.0,
         }
     }
 }
@@ -380,11 +386,26 @@ impl Plugin for VoicePlugin {
             "1: boost the microphone's gain (+12 dB; the Voice tab's \"Boost microphone gain\").",
             |s| &mut s.boost,
         );
+        resource_cvar::<VoiceSettings, f32>(
+            app,
+            "voice_transmit",
+            "The microphone's volume, 0 to 1 (the Voice tab's transmit volume slider; ours: scales the samples).",
+            |s| &mut s.transmit,
+        );
         let mut console = app.world_mut().resource_mut::<crate::console::Console>();
-        for c in ["voice_enable", "voice_modenable", "voice_scale", "voice_vox", "voice_threshold", "voice_boost"] {
+        for c in [
+            "voice_enable",
+            "voice_modenable",
+            "voice_scale",
+            "voice_vox",
+            "voice_threshold",
+            "voice_boost",
+            "voice_transmit",
+        ] {
             console.archive(c);
         }
         console.set_range("voice_scale", 0.0, 1.0);
+        console.set_range("voice_transmit", 0.0, 1.0);
         console.set_range("voice_threshold", 0.0, 32767.0);
     }
 }
@@ -480,7 +501,7 @@ fn capture(
         state.pending.clear();
     }
     let hang = (VOX_HANG * RATE as f32 / FRAME as f32).round() as u32;
-    let gain = if settings.boost != 0 { BOOST } else { 1.0 };
+    let gain = settings.transmit.clamp(0.0, 1.0) * if settings.boost != 0 { BOOST } else { 1.0 };
     let mut frames = Vec::new();
     let mut back = Vec::new();
     let mut loudest = None;
@@ -1066,11 +1087,16 @@ mod tests {
         speak(&mut app, &mic, 300.0, 0.06);
         let boosted = app.world().resource::<VoiceLevel>().0;
         assert!((boosted - BOOST * level).abs() < 0.02, "{boosted}");
+        app.world_mut().resource_mut::<VoiceSettings>().boost = 0;
+        app.world_mut().resource_mut::<VoiceSettings>().transmit = 0.5;
+        speak(&mut app, &mic, 300.0, 0.06);
+        let halved = app.world().resource::<VoiceLevel>().0;
+        assert!((halved - level * 0.5).abs() < 0.02, "transmit volume scales the microphone: {halved}");
         app.world_mut().resource_mut::<crate::console::Console>().submit("voice_test 0");
         app.update();
         speak(&mut app, &mic, 300.0, 0.1);
         assert_eq!(app.world().resource::<VoiceLevel>().0, 0.0, "closed");
-        assert_eq!(out.samples(Entity::PLACEHOLDER), 13 * FRAME, "no more played back");
+        assert_eq!(out.samples(Entity::PLACEHOLDER), 16 * FRAME, "no more played back");
     }
 
     #[test]

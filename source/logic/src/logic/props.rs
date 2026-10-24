@@ -30,8 +30,11 @@
 //! one on an unlocked +use (the move 0.2 s later) and on an Open input; collision is the `.phy` pieces
 //! as pusher brushes. Skin/SetBodyGroup/SetAnimation follow
 //! specs/source/prop_damage.md 8-9 except: a skin the model lacks is ignored,
-//! OnAnimationBegun/OnAnimationDone don't fire (the map plays sequences, the
-//! logic doesn't know their length), the cycle advances every frame (not 0.1 s
+//! OnAnimationBegun fires for any SetAnimation, even a sequence the model lacks,
+//! and not at spawn for DefaultAnim; OnAnimationDone comes from the client's animation
+//! (`map::PropAnimationDone`, when a non-looping sequence ends: a server without
+//! the models' skeletons never fires it, and it is checked per frame, not at 0.1 s
+//! thinks), the cycle advances every frame (not 0.1 s
 //! thinks), sequences pick up no animation events (sounds), skinned props keep
 //! their spawn-time per-vertex light and draw without frustum culling; a skin
 //! swap drops a prop's nearest-cubemap reflection variant; only prop_dynamic

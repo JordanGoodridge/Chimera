@@ -1,4 +1,5 @@
-//! Placed props after spawning: their animated sequences and the
+//! Placed props after spawning: their animated sequences (and
+//! `PropAnimationDone` when one ends, for the logic's OnAnimationDone) and the
 //! components that tag them (their looks as drawn: `render::props`;
 //! their dynamic shadows: `render::shadows`).
 
@@ -36,6 +37,19 @@ pub struct PropRig {
     pub joints: Vec<Entity>,
     pub seen: Option<PropSequence>,
     pub default: Option<usize>,
+    /// The sequence that ended was reported (`PropAnimationDone`); until it
+    /// restarts.
+    pub done: bool,
+}
+
+/// An animated prop's non-looping sequence reached its end (the logic
+/// fires OnAnimationDone for the prop on `node`). `serial` is the logic's
+/// serial of the sequence that played (0: the spawn-time default); a
+/// default animation that restarts reports at each pass.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PropAnimationDone {
+    pub node: Entity,
+    pub serial: u32,
 }
 
 /// Inverse bind poses of a rig's bones in the reference pose under its
@@ -61,11 +75,12 @@ pub fn rig_inverse_bindposes(rig: &MapRig) -> bevy::mesh::skinning::SkinnedMeshI
 /// sequence that ends starts the default again, if there is one.
 pub fn animate_props(
     time: Res<Time>,
-    mut props: Query<(&mut PropRig, Option<&PropSequence>)>,
+    mut props: Query<(Entity, &mut PropRig, Option<&PropSequence>)>,
+    mut done: MessageWriter<PropAnimationDone>,
     mut joints: Query<&mut Transform>,
 ) {
     let (now, dt) = (time.elapsed_secs_f64(), time.delta_secs());
-    for (mut rig, seq) in &mut props {
+    for (node, mut rig, seq) in &mut props {
         let rig = &mut *rig;
         if let Some(seq) = seq
             && rig.seen.as_ref() != Some(seq)
@@ -84,11 +99,13 @@ pub fn animate_props(
                     });
                     rig.animator.restart(s, now);
                     rig.animator.fading.clear();
+                    rig.done = false;
                 }
                 // No default: its first sequence (the model's idle).
                 None if new_round => {
                     rig.animator.restart(rig.default.unwrap_or(0), now);
                     rig.animator.fading.clear();
+                    rig.done = false;
                 }
                 _ => {}
             }
@@ -97,12 +114,20 @@ pub fn animate_props(
             continue;
         }
         rig.animator.advance(dt, now);
-        // A non-looping default restarts too, forever.
-        if rig.animator.finished()
-            && let Some(d) = rig.default
-        {
-            rig.animator.restart(d, now);
-            rig.animator.fading.clear();
+        // The end of a non-looping sequence is reported once (the logic's
+        // OnAnimationDone); a non-looping default restarts too, forever,
+        // reporting each pass.
+        if rig.animator.finished() {
+            if !rig.done {
+                rig.done = true;
+                let serial = rig.seen.as_ref().and_then(|s| s.play.as_ref()).map_or(0, |p| p.1);
+                done.write(PropAnimationDone { node, serial });
+            }
+            if let Some(d) = rig.default {
+                rig.animator.restart(d, now);
+                rig.animator.fading.clear();
+                rig.done = false;
+            }
         }
         let pose = rig.animator.pose(now);
         for (joint, (q, p)) in rig.joints.iter().zip(pose) {

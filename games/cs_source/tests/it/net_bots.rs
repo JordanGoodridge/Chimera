@@ -20,7 +20,7 @@ use crate::stack::{
     bot::{Bot, BotConfig, BotQuota},
     map::bot_profiles::BotProfiles,
     console::{Console, execute, parse},
-    core::{Seed, Team},
+    core::{Health, Seed, Team},
     games::cs_source::{
         movement::{self as source, SourceMovementPlugin},
         weapons::CsWeaponsPlugin,
@@ -491,4 +491,53 @@ fn bot_names_profiles_and_kicks() {
     assert!(sim.character_of(0).is_none() && sim.character_of(1).is_none(), "their characters gone");
     let out = run(sim.server.app.world_mut(), "kick nobody");
     assert!(out.iter().any(|l| l.contains("No player named")), "{out:?}");
+}
+
+/// `bot_freeze <name|number>` holds one bot still and quiet (the debug UI's
+/// per-bot row): in a face-to-face duel the frozen bot never fires and the
+/// other one hurts it; `bot_unfreeze` lets it go; a client can't.
+#[test]
+fn one_bot_can_be_frozen() {
+    let mut sim = NetSim::new(CsSim, link(), 71, 1, setup);
+    sim.until_joined(400);
+    {
+        let mut c = sim.server.app.world_mut().resource_mut::<BotConfig>();
+        c.stop = 1;
+        c.grenades = 0;
+    }
+    run(sim.server.app.world_mut(), "bot_add 1; bot_add 2");
+    sim.ticks(320);
+    let out = run(sim.clients[0].app.world_mut(), "bot_freeze 1");
+    assert!(out.iter().any(|l| l.contains("Can't use server command bot_freeze")), "{out:?}");
+    let out = run(sim.server.app.world_mut(), "bot_freeze nobody");
+    assert!(out.iter().any(|l| l.contains("no bot")), "{out:?}");
+    let out = run(sim.server.app.world_mut(), "bot_freeze \"Bot 1\"");
+    assert!(out.iter().any(|l| l.contains("froze 1 bots")), "{out:?}");
+    let me = sim.character_of(0).unwrap();
+    let pair = bots(sim.server.app.world_mut());
+    let w = sim.server.app.world_mut();
+    w.entity_mut(me).insert(crate::stack::core::God);
+    place(w, me, Vec3::new(35.0, 1.0, 35.0));
+    place(w, pair[0].0, Vec3::new(0.0, 1.0, 0.0));
+    place(w, pair[1].0, Vec3::new(0.0, 1.0, 12.0));
+    let health = |sim: &mut NetSim, e: Entity| sim.server.app.world().get::<Health>(e).map(|h| h.current);
+    let mut hurt_frozen = false;
+    for _ in 0..640 {
+        sim.step();
+        assert_eq!(health(&mut sim, pair[1].0), Some(1.0), "the frozen bot never hurt the other");
+        hurt_frozen |= health(&mut sim, pair[0].0).is_none_or(|h| h < 1.0);
+        if hurt_frozen {
+            break;
+        }
+    }
+    assert!(hurt_frozen, "the free bot shot the frozen one");
+    // By number, and everyone.
+    let held = |sim: &mut NetSim| {
+        let w = sim.server.app.world_mut();
+        w.query::<&Bot>().iter(w).filter(|b| b.frozen).count()
+    };
+    run(sim.server.app.world_mut(), "bot_unfreeze 1");
+    assert_eq!(held(&mut sim), 0);
+    run(sim.server.app.world_mut(), "bot_freeze");
+    assert_eq!(held(&mut sim), bots(sim.server.app.world_mut()).len());
 }

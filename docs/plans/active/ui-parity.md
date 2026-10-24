@@ -95,7 +95,7 @@ from its `.res`, controls Chimera lacks greyed.
 | | `TextureDetail` | ComboBox | `mat_picmip`: Low (2), Medium (1), High (0, the default), Very High (-1, as High): each map texture starts that many levels down its mips (`client::video::TextureSettings`), from the next map |
 | | `FilteringMode` | ComboBox | `mat_trilinear` and `mat_forceaniso` together: Bilinear (0 1, CS:S's default), Trilinear (1 1), Anisotropic 2X-16X (0 N); from the next map |
 | | `ShaderDetail`, `ColorCorrection`, `MotionBlur`, `Multicore` | ComboBox | greyed (see below; the plan: docs/plans/active/video-settings.md) |
-| Voice (`OptionsSubVoice.res`; the tab was missing) | `voice_modenable`, `VoiceReceive`, `MicBoost`, `TestMicrophone`, `MicMeter` | CheckButton / CCvarSlider / Button / ImagePanel | `voice_modenable` and `voice_scale` (voice chat, `client::voice`); `MicBoost`: `voice_boost` (ours: x4 on the microphone; CS:S's sets the sound card's boost); `TestMicrophone`: `voice_test` ("Stop Microphone Test" while it runs: one's voice through the encoder and decoder to the speakers, nothing sent; stops when the tab or dialog closes); `MicMeter` / `MicMeter2`: the install's dark and lit bar pictures at their own size, `barCount` 19 lit bars `barSpacing` 8 apart following the microphone's level (decibels from -48, ours); `#GameUI_MicrophoneVolume` (transmit volume: a Panel CS:S fills in code) not drawn |
+| Voice (`OptionsSubVoice.res`; the tab was missing) | `voice_modenable`, `VoiceReceive`, `MicBoost`, `TestMicrophone`, `MicMeter` | CheckButton / CCvarSlider / Button / ImagePanel | `voice_modenable` and `voice_scale` (voice chat, `client::voice`); `MicBoost`: `voice_boost` (ours: x4 on the microphone; CS:S's sets the sound card's boost); `TestMicrophone`: `voice_test` ("Stop Microphone Test" while it runs: one's voice through the encoder and decoder to the speakers, nothing sent; stops when the tab or dialog closes); `MicMeter` / `MicMeter2`: the install's dark and lit bar pictures at their own size, `barCount` 19 lit bars `barSpacing` 8 apart following the microphone's level (decibels from -48, ours); `#GameUI_MicrophoneVolume` (transmit volume: a Panel CS:S fills in code): our slider for `voice_transmit` in its rect |
 | Multiplayer (`cstrike/resource/OptionsSubMultiplayer.res`) | `CrosshairColorComboBox` | ComboBox | `cl_crosshaircolor`: Green, Red, Blue, Yellow, Cyan, Custom (5) |
 | | `Red/Green/Blue Color Slider` | CCvarSlider | `cl_crosshaircolor_r`, `_g`, `_b` (50, 250, 50): the Custom colour |
 | | `Size Slider`, `Thickness Slider` | CCvarSlider | `cl_crosshairsize` (5; 0 to 10), `cl_crosshairthickness` (0.5; 0 to 3): line length and width, 5 and 0.5 our lines as they were |
@@ -187,7 +187,7 @@ chosen here; a capture of the reference client would settle each:
 - Whether CS:S shows the video Advanced dialog's FOV slider at all
   (the file has it visible; multiplayer mods may hide it).
 - The Voice tab with its meter lit (its scale and fall) and the transmit
-  volume slider CS:S puts in `#GameUI_MicrophoneVolume`.
+  volume slider checked against CS:S's.
 
 The options' words now come from every copy of the strings files along
 the search path (CS:S merges them): cstrike's `gameui_english.txt` lacks
