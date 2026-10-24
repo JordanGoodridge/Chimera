@@ -1826,7 +1826,10 @@ Warehouse.
   picks the pool's next map in turn that every connected player can play
   (`playable_on`; this map last) and calls `change_match`, so clients
   follow on the same connection (a new manifest, or `ChangeLevel` to the
-  next map), the scores anew; `rotate = false` restarts on this map.
+  next map), the scores anew; `rotate = false` restarts on this map. A
+  standalone game (no server) loads the next map with `map`, not
+  `changelevel`, and the minigame goes on (live: the gun game's short
+  match on Warehouse, results, then de_dust2 and a new match).
 - Results: `minigame::results::MatchResults` (title, ladder length, a row a
   player: name, kills, deaths, final rung, winner first; sorted winner,
   rung, kills, fewest deaths), collected by `results::record` as soon as

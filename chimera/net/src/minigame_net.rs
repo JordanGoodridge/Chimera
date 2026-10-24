@@ -29,8 +29,11 @@
 //! - **Changing match** (`change_match`, console `change_match <id>
 //!   [map]`): the server starts another minigame, players kept and
 //!   connected, scores anew, and changes level through the app's
-//!   `changelevel` when the map differs; only one every connected player
-//!   can play there.
+//!   `changelevel` (a standalone game's `map`) when the map differs; only
+//!   one every connected player can play there. A server rotates through
+//!   it by itself once a match has been over for `RESULTS_HOLD` s
+//!   (`serve_minigame`, `MinigameDef::rotate`) and puts the results up
+//!   meanwhile (`NetMinigame::results`).
 //! - **The playable set** (`playable`, `PartyOffer`, console
 //!   `party_offer`): each registered minigame on its pool's first map
 //!   against the players' mount doctor reports (their userinfo); the
@@ -374,9 +377,12 @@ pub fn change_match(world: &mut World, id: &str, map: Option<&str>) -> Result<St
     }
     minigame::start(world, id)?;
     if target != here {
+        // A server moves its players with it; a standalone game (no
+        // server) just loads the map.
+        let command = if world.get_resource::<NetRole>() == Some(&NetRole::Server) { "changelevel" } else { "map" };
         world
             .resource_mut::<crate::console::Console>()
-            .submit(format!("changelevel {target}"));
+            .submit(format!("{command} {target}"));
         return Ok(format!("playing {id}: {}; changing level to {target}", def.name));
     }
     Ok(format!("playing {id}: {} on {target}", def.name))
