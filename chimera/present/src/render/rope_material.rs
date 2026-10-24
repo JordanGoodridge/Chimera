@@ -3,7 +3,7 @@
 //! pushes the pair apart sideways, facing the camera. Widths follow
 //! specs/cs_source/ropes.md, including the fake anti-aliasing pair: a
 //! translucent "back" strip at least a fraction of a pixel wide, and the
-//! main strip narrowed with distance. See rope.wgsl.
+//! main strip narrowed with distance. See rope.wesl.
 //!
 //! Ropes as camera-facing strips (Source Cable shader, fake anti-aliasing back
 //! strip), fogged (`render::fog`).
@@ -47,11 +47,11 @@ pub struct RopeMaterial {
 
 impl Material for RopeMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://chimera_present/render/rope.wgsl".into()
+        "embedded://chimera_present/render/rope.wesl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/rope.wgsl".into()
+        "embedded://chimera_present/render/rope.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -123,7 +123,7 @@ pub struct RopeMaterialPlugin;
 
 impl Plugin for RopeMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "rope.wgsl");
+        embedded_asset!(app, "rope.wesl");
         app.add_plugins((super::fog::FogShaderPlugin, MaterialPlugin::<RopeMaterial>::default()));
     }
 }

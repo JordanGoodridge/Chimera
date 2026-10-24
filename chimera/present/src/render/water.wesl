@@ -8,12 +8,12 @@
 // the refraction view) is rebuilt from the depth prepass: the point behind
 // each pixel, how much of the eye's path to it is under water and how far.
 
-#import bevy_pbr::{
-    forward_io::VertexOutput,
-    mesh_view_bindings as vb,
-    mesh_view_bindings::{view, globals},
-    view_transformations::{position_world_to_view, position_ndc_to_world},
-}
+import bevy_pbr::{
+    render::forward_io::VertexOutput,
+    render::mesh_view_bindings as vb,
+    render::mesh_view_bindings::{view, globals},
+    render::view_transformations::{position_world_to_view, position_ndc_to_world},
+};
 
 struct WaterParams {
     fog_linear: vec4<f32>,
@@ -48,13 +48,13 @@ struct WaterParams {
     refract_fog_only: f32,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: WaterParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var normal_texture: texture_2d_array<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var normal_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var reflection_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(4) var reflection_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(5) var envmap_texture: texture_cube<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(6) var envmap_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: WaterParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var normal_texture: texture_2d_array<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var normal_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(3) var reflection_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(4) var reflection_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(5) var envmap_texture: texture_cube<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(6) var envmap_sampler: sampler;
 
 fn srgb_encode(c: vec3<f32>) -> vec3<f32> {
     let x = max(c, vec3<f32>(0.0));
@@ -69,13 +69,13 @@ fn srgb_decode(c: vec3<f32>) -> vec3<f32> {
 // Depth behind a screen position from the depth prepass: 0 where nothing
 // was drawn, -1 without a prepass.
 fn scene_depth(uv: vec2<f32>) -> f32 {
-#ifdef DEPTH_PREPASS
-    let size = vec2<f32>(textureDimensions(vb::depth_prepass_texture));
-    let p = vec2<i32>(clamp(uv * size, vec2<f32>(0.0), size - 1.0));
-    return textureLoad(vb::depth_prepass_texture, p, 0);
-#else
-    return -1.0;
-#endif
+    @if(DEPTH_PREPASS) {
+        let size = vec2<f32>(textureDimensions(vb::depth_prepass_texture));
+        let p = vec2<i32>(clamp(uv * size, vec2<f32>(0.0), size - 1.0));
+        return textureLoad(vb::depth_prepass_texture, p, 0);
+    } @else {
+        return -1.0;
+    }
 }
 
 // The refraction texture at `uv`: colour (linear) already moved toward the

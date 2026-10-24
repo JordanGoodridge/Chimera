@@ -35,10 +35,6 @@ const MASS: f32 = 3.0;
 /// lands a little sooner and stops at about 72 with this (0.5 gave 66;
 /// lower barely helps).
 const FRICTION: f32 = 0.5;
-/// Swept collision only above these speeds (m/s, rad/s): slower, an item
-/// moves under a centimetre a tick, which the contact margin catches.
-const CCD_SPEED: f32 = 0.5;
-const CCD_SPIN: f32 = 6.0;
 
 #[derive(Resource, Default)]
 pub struct LooseAssets(pub HashMap<String, LooseAsset>);
@@ -114,11 +110,14 @@ pub fn attach_loose(
             LinearDamping(0.1),
             AngularDamping(0.5),
             // Small and fast when shot: swept so it can't pass through
-            // thin surfaces. Only while it moves: unthresholded, every
-            // resting item swept itself against everything its box touches
-            // each tick (the world's colliders included; 250 placed
-            // weapons on mg_swag_multigames_v1: 19 ms a tick).
-            SweptCcd::default().with_velocity_threshold(CCD_SPEED, CCD_SPIN),
+            // thin surfaces, against everything (avian sweeps a dynamic
+            // body against static and kinematic ones by default). Only
+            // while it moves: avian 0.8 sweeps a body once it travels more
+            // than half its thinnest collider in a step (`threshold`); an
+            // unthresholded sweep (avian 0.7's default) of every resting
+            // item against everything its box touched cost 19 ms a tick
+            // with 250 placed weapons on mg_swag_multigames_v1.
+            SweptCcd::default().with_filter(CcdFilter::ALL),
             MaxLinearSpeed(2000.0 * 0.0254),
             MaxAngularSpeed(3600f32.to_radians()),
             PhysicsProp {

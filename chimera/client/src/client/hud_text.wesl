@@ -2,7 +2,7 @@
 // pipeline adds it to the screen for additive fonts and sprites, else
 // blends it. Glyph coverage images are white with the coverage in alpha.
 
-#import bevy_ui::ui_vertex_output::UiVertexOutput
+import bevy_ui_render::ui_vertex_output::UiVertexOutput;
 
 struct GlyphParams {
     color: vec4<f32>,

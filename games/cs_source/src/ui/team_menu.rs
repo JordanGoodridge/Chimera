@@ -15,6 +15,7 @@
 //! greyed when the server's `mp_allowspectators`, replicated, is 0); else a
 //! plain list (1, 2, 5, 6, 0).
 
+use crate::client::widgets::Interaction;
 use bevy::{prelude::*, window::CursorOptions};
 
 use crate::client::fonts::UiFonts;

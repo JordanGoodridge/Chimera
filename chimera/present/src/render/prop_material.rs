@@ -2,7 +2,7 @@
 //! light baked into the mesh's vertex colors (static props), or x the
 //! probe evaluated per pixel from uniforms (moving models: view models),
 //! plus the scene's point lights (muzzle flashes), with Source's range fog
-//! (the same f^2 curve as the world, see world.wgsl). See prop.wgsl.
+//! (the same f^2 curve as the world, see world.wesl). See prop.wesl.
 //!
 //! Props lit by a light probe (vertex colours, or per pixel from uniforms for
 //! moving models such as view models), plus the scene's point lights
@@ -28,7 +28,7 @@ pub struct PropParams {
     /// Cut out below this alpha (0: off).
     pub alpha_cutoff: f32,
     /// `$basetexturetransform` rows (m0, m1, m2, scroll), see
-    /// `MapUvTransform::shader_rows`; prop_prepass.wgsl reads them too.
+    /// `MapUvTransform::shader_rows`; prop_prepass.wesl reads them too.
     pub base_uv_u: Vec4,
     pub base_uv_v: Vec4,
     /// Linear fog color, w = 1 when fog is on.
@@ -49,7 +49,7 @@ pub struct PropParams {
     /// Linear tint (the model shader converts the material's gamma value).
     pub envmap_tint: Vec4,
     /// 1: add the scene's point lights (`DynamicLight`s), see
-    /// `dynamic_light` in prop.wgsl.
+    /// `dynamic_light` in prop.wesl.
     pub dynamic: f32,
     /// 1: lit per pixel by the probe below instead of vertex colours.
     pub probe: f32,
@@ -120,11 +120,11 @@ pub struct PropMaterial {
 
 impl Material for PropMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/prop.wgsl".into()
+        "embedded://chimera_present/render/prop.wesl".into()
     }
 
     /// Alpha-tested surfaces count as masked, so the depth prepass (main
-    /// views with water) runs `prop_prepass.wgsl` and drops the same texels.
+    /// views with water) runs `prop_prepass.wesl` and drops the same texels.
     fn alpha_mode(&self) -> AlphaMode {
         if self.alpha_mode == AlphaMode::Opaque && self.params.alpha_cutoff > 0.0 {
             return AlphaMode::Mask(self.params.alpha_cutoff);
@@ -133,7 +133,7 @@ impl Material for PropMaterial {
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/prop_prepass.wgsl".into()
+        "embedded://chimera_present/render/prop_prepass.wesl".into()
     }
 
     fn specialize(
@@ -154,6 +154,7 @@ impl Material for PropMaterial {
                 shader_defs: descriptor.vertex.shader_defs.clone(),
                 entry_point: Some("fragment".into()),
                 targets: Vec::new(),
+                constants: Vec::new(),
             });
         }
         descriptor.primitive.cull_mode = face_cull(key.bind_group_data.double_sided, key.bind_group_data.cull_front);
@@ -192,7 +193,7 @@ impl From<&PropMaterial> for PropMaterialKey {
     }
 }
 
-/// `prop_dither_prepass.wgsl`: the depth prepass fragment stage for opaque
+/// `prop_dither_prepass.wesl`: the depth prepass fragment stage for opaque
 /// props in a fade band (see `specialize`).
 const DITHER_PREPASS_SHADER: Handle<Shader> = bevy::asset::uuid_handle!("6f3d2b8e-5c1a-4e7f-9a42-1d8b7c3e5f60");
 
@@ -200,10 +201,10 @@ pub struct PropMaterialPlugin;
 
 impl Plugin for PropMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "prop.wgsl");
-        embedded_asset!(app, "prop_prepass.wgsl");
-        bevy::shader::load_shader_library!(app, "dither.wgsl");
-        bevy::asset::load_internal_asset!(app, DITHER_PREPASS_SHADER, "prop_dither_prepass.wgsl", Shader::from_wgsl);
+        embedded_asset!(app, "prop.wesl");
+        embedded_asset!(app, "prop_prepass.wesl");
+        bevy::shader::load_shader_library!(app, "dither.wesl");
+        bevy::asset::load_internal_asset!(app, DITHER_PREPASS_SHADER, "prop_dither_prepass.wesl", Shader::from_wesl);
         app.add_plugins((super::fog::FogShaderPlugin, MaterialPlugin::<PropMaterial>::default()));
     }
 }

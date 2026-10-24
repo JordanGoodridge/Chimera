@@ -1,6 +1,6 @@
 //! The material for lightmapped world surfaces: texture x baked light, with
 //! radiosity normal mapping where the surface has directional lightmaps.
-//! See world.wgsl.
+//! See world.wesl.
 //!
 //! World surfaces: texture x baked light with radiosity normal mapping, plus
 //! the scene's point lights (muzzle flashes), plus baked-cubemap reflections
@@ -52,7 +52,7 @@ pub struct WorldParams {
     pub normal_g_sign: f32,
     pub alpha_cutoff: f32,
     /// `$basetexturetransform` rows (m0, m1, m2, scroll), see
-    /// `MapUvTransform::shader_rows`; world_prepass.wgsl reads them too.
+    /// `MapUvTransform::shader_rows`; world_prepass.wesl reads them too.
     pub base_uv_u: Vec4,
     pub base_uv_v: Vec4,
     pub debug_view: f32,
@@ -216,11 +216,11 @@ pub struct WorldMaterial {
 
 impl Material for WorldMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/world.wgsl".into()
+        "embedded://chimera_present/render/world.wesl".into()
     }
 
     /// Alpha-tested surfaces count as masked, so the depth prepass (main
-    /// views with water) runs `world_prepass.wgsl` and drops the same texels.
+    /// views with water) runs `world_prepass.wesl` and drops the same texels.
     fn alpha_mode(&self) -> AlphaMode {
         if self.decal {
             return AlphaMode::Blend;
@@ -232,7 +232,7 @@ impl Material for WorldMaterial {
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/world_prepass.wgsl".into()
+        "embedded://chimera_present/render/world_prepass.wesl".into()
     }
 
     fn specialize(
@@ -313,8 +313,8 @@ pub struct WorldMaterialPlugin;
 
 impl Plugin for WorldMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "world.wgsl");
-        embedded_asset!(app, "world_prepass.wgsl");
+        embedded_asset!(app, "world.wesl");
+        embedded_asset!(app, "world_prepass.wesl");
         app.add_plugins((super::fog::FogShaderPlugin, MaterialPlugin::<WorldMaterial>::default()));
     }
 }

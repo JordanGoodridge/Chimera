@@ -986,7 +986,7 @@ fn spawn_flash_light(
         Name::new("Muzzle flash light"),
         PointLight {
             // The shaders read colour x intensity / (4 pi) as lightmap
-            // units (see `dynamic_light` in world.wgsl).
+            // units (see `dynamic_light` in world.wesl).
             color,
             intensity: 4.0 * std::f32::consts::PI,
             range: radius,

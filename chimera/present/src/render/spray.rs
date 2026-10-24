@@ -8,7 +8,7 @@
 //! logo named `map::decal::CUSTOM_LOGO` (its own import) isn't drawn: this
 //! install's file of that name is a different picture.
 //!
-//! Players' sprays drawn (`SprayMaterial`, `spray.wgsl`): the logo projected
+//! Players' sprays drawn (`SprayMaterial`, `spray.wesl`): the logo projected
 //! onto the world near the spray, alpha blended, times the baked light at its
 //! centre; a child of the `map::decal::Spray` entity; others' imported logos
 //! (`CUSTOM_LOGO`) left out.
@@ -123,7 +123,7 @@ pub struct SprayMaterial {
 
 impl Material for SprayMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/spray.wgsl".into()
+        "embedded://chimera_present/render/spray.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -143,7 +143,7 @@ pub struct SprayMaterialPlugin;
 
 impl Plugin for SprayMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "spray.wgsl");
+        embedded_asset!(app, "spray.wesl");
         app.add_plugins(MaterialPlugin::<SprayMaterial>::default());
     }
 }

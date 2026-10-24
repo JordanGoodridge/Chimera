@@ -334,8 +334,8 @@ pub fn rebase(world: &mut World, e: Entity) {
 
 /// A character's own dice seed, for rolls that should repeat run to run
 /// (bots' route noise and choices, buying, bullet spread). Entity ids
-/// won't do: every spawn shifts them, resources included (Bevy 0.19
-/// resources are entities). Bots get one from their number and team
+/// won't do: every spawn shifts them, resources included (since Bevy
+/// 0.19 resources are entities). Bots get one from their number and team
 /// (`bot::add_bot`); without one, systems fall back to the entity id.
 #[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq)]
 #[reflect(Component)]

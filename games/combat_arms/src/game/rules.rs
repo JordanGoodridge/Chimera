@@ -504,7 +504,7 @@ pub fn update_team_counts(world: &mut World) {
 /// the mode's rule, with the leaver still counted.
 #[allow(clippy::type_complexity)]
 fn on_leave(
-    leave: On<Remove, Team>,
+    leave: On<Remove<Team>>,
     players: Query<
         (Entity, &Team, &Health, Has<Dead>, Option<&CaStats>),
         (With<Intent>, Without<Connecting>, Without<Spectating>, Without<Npc>),

@@ -88,8 +88,11 @@ fn spawns(map: &MapData, class: &str) -> Vec<Vec3> {
 /// sleeps within `LIMIT` s, half of them within 4 s. Run three ways in
 /// fresh sims, so the bounds hold whatever the solver's order (the spawns
 /// in map order, in reverse, and every other one first). Measured: up to
-/// 1.74 rad/s after 3 s (a hand still swinging from its wrist), asleep in
-/// 1.9-7.0 s, median 3.2 s, 51 of 60 by 5 s. Before ragdoll joints were
+/// 1.49 rad/s after 4 s, asleep in 1.5-5.7 s, median 2.9 s, 57 of 60 by
+/// 5 s (avian 0.8; with 0.7 up to 1.74 rad/s after 3 s, asleep in
+/// 1.9-7.0 s, median 3.2 s, 51 of 60 by 5 s: 0.8 solves friction only in
+/// its relax pass, so an arm lying on a de_inferno step's edge slides off
+/// it at up to 5 rad/s 3.4-3.8 s after the fall). Before ragdoll joints were
 /// solved in the contacts' passes (and lost avian's gyroscopic torque), a
 /// limb or two kept jittering against the floor at up to 10-16 rad/s and
 /// almost none slept but by the forced rule (5.25-5.7 s; docs/performance.md,
@@ -97,7 +100,7 @@ fn spawns(map: &MapData, class: &str) -> Vec<Vec3> {
 /// (`ragdoll::a_ragdoll_kept_moving_is_put_to_sleep_after_five_seconds`).
 #[test]
 fn ragdolls_settle_and_sleep() {
-    const QUIET: f64 = 3.0;
+    const QUIET: f64 = 4.0;
     const REST: f32 = 2.5;
     const LIMIT: f64 = 8.0;
     let mut late = Vec::new();

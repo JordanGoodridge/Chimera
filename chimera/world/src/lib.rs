@@ -38,4 +38,36 @@ pub fn physics_plugins() -> bevy::app::PluginGroupBuilder {
         .with_collision_hooks::<map::MapCollisionHooks>()
         .build()
         .disable::<PhysicsInterpolationPlugin>()
+        .add(ContactDefaults)
+}
+
+/// Every body predicts its contacts as far ahead as its velocity reaches
+/// and is swept only when it asks for it (`SweptCcd`): avian 0.7's
+/// defaults, which the props, ragdolls and movers were tuned against
+/// (CS:S's rebounds, landings, crushing). Avian 0.8 made speculative
+/// contacts opt-in (`SpeculativeCcd`) and sweeps every fast dynamic body
+/// instead; without this a crate dropped on the floor rebounds a third as
+/// high, a crate floats too low in water, ragdoll joints pull apart and a
+/// cupboard landing on a player hurts it twice as much
+/// (`cs_source`'s prop_motion, logic_physics and ragdoll tests). Contacts
+/// are made within 5 mm (0.8: 2 cm) and found again each step, never
+/// carried over from the last one (0.8 recycles a pair's points while it
+/// moved under 5 cm and turned under 10 degrees): with 0.8's values
+/// ragdolls lying on steps kept twitching and some never slept
+/// (`heavy::map_debris_settle::ragdolls_settle_and_sleep`).
+struct ContactDefaults;
+
+impl bevy::app::Plugin for ContactDefaults {
+    fn build(&self, app: &mut bevy::app::App) {
+        use avian3d::prelude::*;
+        app.register_required_components_with::<RigidBody, SpeculativeCcd>(|| SpeculativeCcd::MAX)
+            .register_required_components_with::<RigidBody, SweptCcd>(|| {
+                SweptCcd::default().with_filter(CcdFilter::NONE)
+            })
+            .insert_resource(NarrowPhaseConfig {
+                contact_tolerance: 0.005,
+                recycle_distance: 0.0,
+                ..Default::default()
+            });
+    }
 }

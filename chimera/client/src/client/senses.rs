@@ -41,7 +41,7 @@ pub struct SensesPlugin;
 
 impl Plugin for SensesPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "flash.wgsl");
+        embedded_asset!(app, "flash.wesl");
         app.add_plugins(UiMaterialPlugin::<FlashMaterial>::default())
             .init_resource::<AfterImage>()
             .init_resource::<FlashFade>()
@@ -122,7 +122,7 @@ fn fade_to_black(
 /// The flash overlay's material: white and the frozen frame, added.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct FlashMaterial {
-    /// White amount, after-image amount (see flash.wgsl).
+    /// White amount, after-image amount (see flash.wesl).
     #[uniform(0)]
     params: Vec4,
     #[texture(1)]
@@ -132,7 +132,7 @@ pub struct FlashMaterial {
 
 impl UiMaterial for FlashMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_client/client/flash.wgsl".into()
+        "embedded://chimera_client/client/flash.wesl".into()
     }
 
     /// Additive, as the game's flash materials.

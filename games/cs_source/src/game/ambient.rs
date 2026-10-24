@@ -518,7 +518,7 @@ impl Occluders {
         use avian3d::prelude::Collider;
         let parts: Vec<_> = hulls
             .iter()
-            .filter_map(|h| Collider::convex_hull(h.iter().map(|p| Vec3::from(*p)).collect()))
+            .filter_map(|h| Collider::convex_hull(&h.iter().map(|p| Vec3::from(*p)).collect::<Vec<_>>()))
             .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
             .collect();
         let colliders = if parts.is_empty() { Vec::new() } else { vec![Collider::compound(parts)] };
@@ -545,7 +545,7 @@ impl Occluders {
         use avian3d::prelude::Collider;
         let parts: Vec<_> = hulls
             .iter()
-            .filter_map(|h| Collider::convex_hull(h.iter().map(|p| Vec3::from(*p)).collect()))
+            .filter_map(|h| Collider::convex_hull(&h.iter().map(|p| Vec3::from(*p)).collect::<Vec<_>>()))
             .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
             .collect();
         self.sky = (!parts.is_empty()).then(|| Collider::compound(parts));

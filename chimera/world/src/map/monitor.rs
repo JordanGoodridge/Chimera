@@ -2,7 +2,7 @@
 //! entity docs), for any game: what the simulation and the drawing share.
 //! The logic writes the active camera (`MonitorCamera`) and its fog
 //! (`MonitorFog`, here as a view's `DistanceFog` marked `SOURCE_VIEW_FOG`,
-//! which the map's shaders read as the view's fog: `fog.wgsl`,
+//! which the map's shaders read as the view's fog: `fog.wesl`,
 //! `view_fog`); `render::monitor` draws the screen with cameras of
 //! its own (`ScreenCamera`, `ScreenSkyCamera`), which every main-view
 //! system leaves out.
@@ -10,14 +10,14 @@
 //! Monitors for any game (Source's func_monitor and point_camera): the screen
 //! cameras' markers (`ScreenCamera`, `ScreenSkyCamera`, kept out of every
 //! main-view query) and the point_camera's fog as a `DistanceFog` marked
-//! `SOURCE_VIEW_FOG`, which `fog.wgsl` reads as the view's fog.
+//! `SOURCE_VIEW_FOG`, which `fog.wesl` reads as the view's fog.
 
 use bevy::prelude::*;
 
 use super::MonitorFog;
 
 /// `DistanceFog::directional_light_exponent` marking a view's fog as
-/// Source fog for the map's shaders (`fog.wgsl`): its colour alpha 1 when
+/// Source fog for the map's shaders (`fog.wesl`): its colour alpha 1 when
 /// on, its linear start and end in meters, its max density in the
 /// directional light colour's red (alpha 0, so Bevy's own scattering stays
 /// off).

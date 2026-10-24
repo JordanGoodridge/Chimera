@@ -423,7 +423,7 @@ pub enum BlendMode {
 }
 
 impl BlendMode {
-    /// The world shader's `blend_mode` parameter (see world.wgsl).
+    /// The world shader's `blend_mode` parameter (see world.wesl).
     pub fn shader_value(self) -> f32 {
         match self {
             Self::VertexTransition => 0.0,

@@ -63,6 +63,7 @@ impl MonitorGammaSetting {
 /// same in linear and display space (both are powers of each other), so
 /// the shader raises the linear colour to `exponent`.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, ExtractComponent, ShaderType)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct MonitorGamma {
     pub exponent: f32,
     pub _pad: Vec3,
@@ -92,7 +93,7 @@ impl Plugin for GammaPlugin {
         if app.get_sub_app(RenderApp).is_none() {
             return;
         }
-        embedded_asset!(app, "gamma.wgsl");
+        embedded_asset!(app, "gamma.wesl");
         app.add_plugins((
             ExtractComponentPlugin::<MonitorGamma>::default(),
             UniformComponentPlugin::<MonitorGamma>::default(),
@@ -152,7 +153,7 @@ fn init_pipeline(
         ),
     );
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-    let shader = asset_server.load("embedded://chimera_client/client/gamma.wgsl");
+    let shader = asset_server.load("embedded://chimera_client/client/gamma.wesl");
     let pipelines = [TextureFormat::Rgba8UnormSrgb, TextureFormat::Rgba16Float].map(|format| {
         let id = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: Some("monitor_gamma_pipeline".into()),

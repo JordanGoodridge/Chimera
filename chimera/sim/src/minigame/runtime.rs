@@ -441,7 +441,7 @@ pub(super) fn plugin(app: &mut App) {
         );
 }
 
-fn number_players(add: On<Add, Team>, mut next: Local<u64>, mut commands: Commands) {
+fn number_players(add: On<Add<Team>>, mut next: Local<u64>, mut commands: Commands) {
     *next += 1;
     if let Ok(mut e) = commands.get_entity(add.entity) {
         e.try_insert(JoinOrder(*next));

@@ -5,7 +5,7 @@
 //! view (sky, world, view model) render in HDR into one shared texture;
 //! the last of them adds bloom and, at level 2, auto exposure kept within
 //! the map's `env_tonemap_controller` bounds, then a linear scale-and-clamp
-//! tone map (hdr_tonemap.wgsl).
+//! tone map (hdr_tonemap.wesl).
 //!
 //! The controller's inputs fired while the map runs (SetAutoExposureMin,
 //! SetAutoExposureMax, SetBloomScale, SetTonemapRate,
@@ -34,7 +34,7 @@ use bevy::{
         schedule::{Core3d, Core3dSystems},
         tonemapping::tonemapping,
     },
-    math::cubic_splines::LinearSpline,
+    curve::cubic_splines::LinearSpline,
     post_process::{
         auto_exposure::{AutoExposure, AutoExposureCompensationCurve, AutoExposurePlugin},
         bloom::Bloom,
@@ -98,7 +98,7 @@ impl Plugin for HdrPlugin {
         if app.get_sub_app(RenderApp).is_none() {
             return;
         }
-        embedded_asset!(app, "hdr_tonemap.wgsl");
+        embedded_asset!(app, "hdr_tonemap.wesl");
         app.add_plugins((
             AutoExposurePlugin,
             ExtractComponentPlugin::<SourceTonemap>::default(),
@@ -151,6 +151,7 @@ pub fn startup_level(console_lines: &[String]) -> u8 {
 
 /// The tone-map pass's settings, on the camera that runs it.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, ExtractComponent, ShaderType)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct SourceTonemap {
     pub min_scale: f32,
     pub max_scale: f32,
@@ -328,7 +329,7 @@ fn init_pipeline(
         layout: vec![layout.clone()],
         vertex: fullscreen_shader.to_vertex_state(),
         fragment: Some(FragmentState {
-            shader: asset_server.load("embedded://chimera_client/client/hdr_tonemap.wgsl"),
+            shader: asset_server.load("embedded://chimera_client/client/hdr_tonemap.wesl"),
             targets: vec![Some(ColorTargetState {
                 format: TextureFormat::Rgba16Float,
                 blend: None,
@@ -398,7 +399,7 @@ mod tests {
         // de_dust2: max 1 (its logic_auto), min 0.5 (the default).
         let points = compensation_points(EXPOSURE_TARGET, 0.5, 1.0);
         let spline = LinearSpline::new(points.clone());
-        let curve = bevy::math::cubic_splines::CubicGenerator::to_curve(&spline).unwrap();
+        let curve = bevy::curve::cubic_splines::CubicGenerator::to_curve(&spline).unwrap();
         for avg in [-7.5f32, -3.0, -1.2, -1.0, -0.5, 0.0, 2.0, 7.5] {
             // Find the curve's value at avg by sampling along it.
             let n = curve.segments().len() as f32;

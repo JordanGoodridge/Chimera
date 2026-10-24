@@ -2,11 +2,11 @@
 // lit by the baked light where it lies, as the game draws a lightmapped
 // translucent decal.
 
-#import bevy_pbr::forward_io::VertexOutput
+import bevy_pbr::render::forward_io::VertexOutput;
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> light: vec4<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var logo: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var logo_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> light: vec4<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var logo: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var logo_sampler: sampler;
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {

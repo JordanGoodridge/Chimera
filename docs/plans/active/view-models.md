@@ -62,7 +62,7 @@ A loader (new model kind), so the plan comes first (CLAUDE.md).
   view-facing additive sprites of CS:S's `effects/muzzleflashx` strung
   along the model's forward from attachment `1`, re-projected into the
   world pass (spec 5), 0.05 s; and a `DynamicLight` (a pooled Bevy
-  `PointLight`) that `world.wgsl` and `prop.wgsl` read from Bevy's light
+  `PointLight`) that `world.wesl` and `prop.wesl` read from Bevy's light
   clusters, so it lights world surfaces, props and view models. Other
   characters (and the local player in third person) flash at their held
   world model's `muzzle_flash` attachment.

@@ -24,6 +24,7 @@
 //! box for the gun carried in that slot. `,` and `.` run `buyammo1`/`buyammo2`
 //! (weapon/mod.rs), menu open or not.
 
+use crate::client::widgets::Interaction;
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
 

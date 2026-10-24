@@ -6,11 +6,11 @@
 // beam over its fade length; a spotlight's beam also fades out as the eye
 // comes near its axis.
 
-#import bevy_pbr::{
-    forward_io::{Vertex, VertexOutput},
-    mesh_view_bindings::view,
-    view_transformations::position_world_to_clip,
-}
+import bevy_pbr::{
+    render::forward_io::{Vertex, VertexOutput},
+    render::mesh_view_bindings::view,
+    render::view_transformations::position_world_to_clip,
+};
 
 struct BeamParams {
     start: vec4<f32>,
@@ -31,9 +31,9 @@ fn noise_sample(i: u32) -> f32 {
     return params.noise[i / 4u][i % 4u];
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: BeamParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var base_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var base_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: BeamParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var base_sampler: sampler;
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -88,12 +88,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.world_normal = normalize(to_camera);
     out.uv = vec2<f32>(vertex.uv.x, params.strip.z + j * params.strip.w);
     out.color = vec4<f32>(params.color.rgb * b, 1.0);
-#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
-    out.instance_index = vertex.instance_index;
-#endif
-#ifdef VISIBILITY_RANGE_DITHER
-    out.visibility_range_dither = 0;
-#endif
+    @if(VERTEX_OUTPUT_INSTANCE_INDEX) {
+        out.instance_index = vertex.instance_index;
+    }
+    @if(VISIBILITY_RANGE_DITHER) {
+        out.visibility_range_dither = 0;
+    }
     return out;
 }
 

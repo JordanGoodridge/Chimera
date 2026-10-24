@@ -1,7 +1,7 @@
 //! Detail sprites (`MapDetailProps`: Source detail props' grass and weeds)
 //! drawn in a few merged meshes, one per ground cell, each culled whole by
 //! distance (`VisibilityRange`), the view frustum and the map's
-//! visibility. The vertex shader (detail.wgsl) turns facing sprites to the
+//! visibility. The vertex shader (detail.wesl) turns facing sprites to the
 //! view, sways tops in the map's wind and fades each sprite by its
 //! distance (dithered out, as faded props are); its fragment is the
 //! sprite sheet x the sprite's baked light, alpha tested, then fogged.
@@ -70,11 +70,11 @@ pub struct DetailMaterial {
 
 impl Material for DetailMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://chimera_present/render/detail.wgsl".into()
+        "embedded://chimera_present/render/detail.wesl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_present/render/detail.wgsl".into()
+        "embedded://chimera_present/render/detail.wesl".into()
     }
 
     fn specialize(
@@ -102,7 +102,7 @@ pub fn fade(props: &MapDetailProps) -> (f32, f32) {
 }
 
 /// How much of a sprite shows at `dist` meters from the view (1 near, 0
-/// past the end; linear between), as detail.wgsl computes it.
+/// past the end; linear between), as detail.wesl computes it.
 pub fn fade_amount(dist: f32, (start, end): (f32, f32)) -> f32 {
     if end <= start {
         return if dist < end { 1.0 } else { 0.0 };
@@ -255,7 +255,7 @@ pub struct DetailMaterialPlugin;
 
 impl Plugin for DetailMaterialPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "detail.wgsl");
+        embedded_asset!(app, "detail.wesl");
         app.add_plugins((crate::render::fog::FogShaderPlugin, MaterialPlugin::<DetailMaterial>::default()))
             .add_systems(Update, apply_fog);
     }

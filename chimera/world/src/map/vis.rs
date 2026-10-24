@@ -610,7 +610,7 @@ pub struct FadeDistance(pub f32);
 /// `far`, gone beyond it. The distance is from the view to the mesh's
 /// origin (the prop's), per view. None without a band (`near` negative,
 /// "use fademaxdist", or not below `far`): the prop pops at `far`.
-/// Prop shaders apply the dither (`prop.wgsl`, `prop_prepass.wgsl`).
+/// Prop shaders apply the dither (`prop.wesl`, `prop_prepass.wesl`).
 pub fn fade_band(near: f32, far: f32) -> Option<bevy::camera::visibility::VisibilityRange> {
     (near >= 0.0 && near < far).then(|| bevy::camera::visibility::VisibilityRange {
         start_margin: 0.0..0.0,

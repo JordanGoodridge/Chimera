@@ -21,26 +21,30 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 ahash = { version = "0.8", features = ["no-rng"] }
 arrayvec = { version = "0.7" }
-bevy_diagnostic = { version = "0.19", features = ["sysinfo_plugin"] }
-bevy_image = { version = "0.19", features = ["hdr", "ktx2", "png", "serialize", "zstd_rust"] }
-bevy_mesh = { version = "0.19", features = ["bevy_mikktspace", "morph", "serialize"] }
-bevy_reflect = { version = "0.19", features = ["glam", "petgraph", "reflect_documentation", "smol_str", "uuid", "wgpu-types"] }
-bevy_state = { version = "0.19" }
-bevy_tasks = { version = "0.19", features = ["multi_threaded"] }
-bevy_time = { version = "0.19", features = ["serialize"] }
-bevy_utils = { version = "0.19", features = ["debug", "std"] }
+bevy_curve = { version = "0.20", features = ["approx", "bevy_reflect", "serialize"] }
+bevy_diagnostic = { version = "0.20", features = ["sysinfo_plugin"] }
+bevy_image = { version = "0.20", features = ["hdr", "ktx2", "png", "serialize", "zstd_rust"] }
+bevy_mesh = { version = "0.20", features = ["bevy_mikktspace", "morph", "serialize"] }
+bevy_platform = { version = "0.20", features = ["bytemuck", "futures-lite", "serialize"] }
+bevy_reflect = { version = "0.20", features = ["glam", "petgraph", "reflect_documentation", "smol_str", "uuid", "wgpu-types"] }
+bevy_state = { version = "0.20" }
+bevy_tasks = { version = "0.20", features = ["multi_threaded"] }
+bevy_time = { version = "0.20", features = ["serialize"] }
+bevy_utils = { version = "0.20", features = ["debug", "serialize", "std"] }
 bitflags = { version = "2", default-features = false, features = ["bytemuck", "serde", "std"] }
 blake3 = { version = "1" }
 bytemuck = { version = "1", default-features = false, features = ["aarch64_simd", "derive", "extern_crate_alloc", "min_const_generics", "must_cast", "wasm_simd"] }
 bytes = { version = "1" }
 constant_time_eq = { version = "0.4", default-features = false, features = ["std"] }
 crossbeam-channel = { version = "0.5" }
+derive_more = { version = "2", features = ["as_ref", "constructor", "deref", "deref_mut", "display", "from", "into", "is_variant", "try_unwrap", "unwrap"] }
 either = { version = "1", features = ["use_std"] }
 fixedbitset = { version = "0.5" }
 foldhash = { version = "0.2", default-features = false, features = ["std"] }
-glam = { version = "0.32", features = ["approx", "bytemuck", "encase", "nostd-libm", "rand", "serde"] }
+glam = { version = "0.33", features = ["approx", "bytemuck", "encase", "nostd-libm", "rand", "serde"] }
 half = { version = "2", features = ["bytemuck", "num-traits", "serde"] }
-hashbrown = { version = "0.17", default-features = false, features = ["default-hasher", "raw-entry"] }
+harfrust = { version = "0.12" }
+hashbrown = { version = "0.17", default-features = false, features = ["default-hasher", "inline-more", "raw-entry"] }
 icu_locale_core = { version = "2", default-features = false, features = ["alloc", "zerovec"] }
 icu_provider = { version = "2", default-features = false, features = ["alloc", "baked"] }
 image = { version = "0.25", default-features = false, features = ["hdr", "jpeg", "png", "tga"] }
@@ -60,6 +64,7 @@ regex-syntax = { version = "0.8" }
 ron = { version = "0.12" }
 serde_core = { version = "1", features = ["alloc"] }
 serde_json = { version = "1", features = ["raw_value"] }
+skrifa = { version = "0.44", default-features = false, features = ["autohint_shaping", "std"] }
 slotmap = { version = "1", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new", "serde", "union"] }
 stable_deref_trait = { version = "1", default-features = false, features = ["alloc"] }
@@ -69,7 +74,7 @@ toml_parser = { version = "1" }
 tracing = { version = "0.1" }
 typenum = { version = "1", default-features = false, features = ["const-generics"] }
 uuid = { version = "1", features = ["serde", "v4"] }
-wgpu-types = { version = "29", features = ["fragile-send-sync-non-atomic-wasm", "serde", "web"] }
+wgpu-types = { version = "30", features = ["fragile-send-sync-non-atomic-wasm", "serde", "web"] }
 winnow = { version = "1" }
 writeable = { version = "0.6", default-features = false, features = ["alloc"] }
 yoke = { version = "0.8", default-features = false, features = ["alloc", "derive"] }
@@ -78,17 +83,17 @@ zerotrie = { version = "0.2", default-features = false, features = ["alloc", "yo
 zerovec = { version = "0.11", default-features = false, features = ["alloc", "derive", "yoke"] }
 
 [build-dependencies]
-bevy_reflect_derive = { version = "0.19", features = ["auto_register_inventory", "reflect_documentation"] }
+bevy_reflect_derive = { version = "0.20", features = ["auto_register_inventory", "reflect_documentation"] }
+derive_more-impl = { version = "2", features = ["as_ref", "constructor", "deref", "deref_mut", "display", "from", "into", "is_variant", "try_unwrap", "unwrap"] }
 either = { version = "1", features = ["use_std"] }
 foldhash = { version = "0.2", default-features = false, features = ["std"] }
-hashbrown = { version = "0.17", default-features = false, features = ["default-hasher", "raw-entry"] }
+hashbrown = { version = "0.17", default-features = false, features = ["default-hasher", "inline-more", "raw-entry"] }
 indexmap = { version = "2", features = ["serde"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 regex-automata = { version = "0.4" }
 regex-syntax = { version = "0.8" }
 serde_core = { version = "1", features = ["alloc"] }
-syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit"] }
-syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "full", "visit", "visit-mut"] }
+syn = { version = "3", features = ["extra-traits", "fold", "full", "visit"] }
 toml_datetime = { version = "1", features = ["serde"] }
 toml_parser = { version = "1" }
 winnow = { version = "1" }
@@ -110,7 +115,7 @@ memchr = { version = "2" }
 getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 image = { version = "0.25", default-features = false, features = ["bmp"] }
 memchr = { version = "2" }
-windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.x86_64-pc-windows-msvc.build-dependencies]
 memchr = { version = "2" }

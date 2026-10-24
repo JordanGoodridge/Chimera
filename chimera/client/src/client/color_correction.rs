@@ -58,10 +58,12 @@ pub struct ColorCorrectionSet;
 
 /// On the camera that runs the pass this frame.
 #[derive(Component, Clone, Copy, Debug, Default, ExtractComponent)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct ColorCorrectionPass;
 
 /// The blended table, for the render world.
 #[derive(Resource, Clone, Debug, ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
 struct ColorCorrectionImage(Handle<Image>);
 
 pub struct ColorCorrectionPlugin;
@@ -86,7 +88,7 @@ impl Plugin for ColorCorrectionPlugin {
         if app.get_sub_app(RenderApp).is_none() {
             return;
         }
-        embedded_asset!(app, "color_correction.wgsl");
+        embedded_asset!(app, "color_correction.wesl");
         app.add_plugins((
             ExtractComponentPlugin::<ColorCorrectionPass>::default(),
             ExtractResourcePlugin::<ColorCorrectionImage>::default(),
@@ -175,7 +177,7 @@ fn init_pipeline(
         ),
     );
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-    let shader = asset_server.load("embedded://chimera_client/client/color_correction.wgsl");
+    let shader = asset_server.load("embedded://chimera_client/client/color_correction.wesl");
     let pipeline = |format: TextureFormat| {
         pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: Some("color_correction_pipeline".into()),

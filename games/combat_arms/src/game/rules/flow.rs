@@ -105,7 +105,7 @@ pub fn players(world: &mut World) -> Vec<(Entity, u8)> {
 pub struct CaJoinOrder(pub u64);
 
 /// Characters with a team numbered as they come (`CaJoinOrder`).
-pub(super) fn number_players(add: On<Add, Team>, mut next: Local<u64>, mut commands: Commands) {
+pub(super) fn number_players(add: On<Add<Team>>, mut next: Local<u64>, mut commands: Commands) {
     *next += 1;
     if let Ok(mut e) = commands.get_entity(add.entity) {
         e.try_insert(CaJoinOrder(*next));

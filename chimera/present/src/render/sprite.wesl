@@ -2,21 +2,21 @@
 // plane (view right/up, so camera roll turns it too), added to the image:
 // texture x color, weighted by texture alpha x color alpha.
 
-#import bevy_pbr::{
-    forward_io::{Vertex, VertexOutput},
-    mesh_functions,
-    mesh_view_bindings::{view, view_transmission_texture, view_transmission_sampler},
-    view_transformations::position_world_to_clip,
-}
+import bevy_pbr::{
+    render::forward_io::{Vertex, VertexOutput},
+    render::mesh_functions,
+    render::mesh_view_bindings::{view, view_transmission_texture, view_transmission_sampler},
+    render::view_transformations::position_world_to_clip,
+};
 
 struct SpriteParams {
     color: vec4<f32>,
     size: vec2<f32>,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: SpriteParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var sprite_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var sprite_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: SpriteParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var sprite_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var sprite_sampler: sampler;
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -32,12 +32,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.world_normal = -normalize(view.world_from_view[2].xyz);
     out.uv = vertex.uv;
     out.uv_b = corner;
-#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
-    out.instance_index = vertex.instance_index;
-#endif
-#ifdef VISIBILITY_RANGE_DITHER
-    out.visibility_range_dither = 0;
-#endif
+    @if(VERTEX_OUTPUT_INSTANCE_INDEX) {
+        out.instance_index = vertex.instance_index;
+    }
+    @if(VISIBILITY_RANGE_DITHER) {
+        out.visibility_range_dither = 0;
+    }
     return out;
 }
 
@@ -60,17 +60,16 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let c = to_gamma(t.rgb) * params.color.rgb * t.a * params.color.a;
     let uv = (in.position.xy - view.viewport.xy) / view.viewport.zw;
     let behind = textureSampleLevel(view_transmission_texture, view_transmission_sampler, uv, 0.0).rgb;
-#ifdef SPRITE_REPLACE
-    // Blended (or opaque): the finished pixel, mixed in gamma space.
-#ifdef SPRITE_OPAQUE
-    let a = 1.0;
-#else
-    let a = saturate(t.a * params.color.a);
-#endif
-    let lit = to_gamma(t.rgb) * params.color.rgb;
-    return vec4<f32>(to_linear(saturate(mix(to_gamma(saturate(behind)), lit, a))), 1.0);
-#else
-    let sum = to_linear(saturate(to_gamma(saturate(behind)) + c));
-    return vec4<f32>(max(sum - behind, vec3<f32>(0.0)), 0.0);
-#endif
+    @if(SPRITE_REPLACE) {
+        // Blended (or opaque): the finished pixel, mixed in gamma space.
+        @if(SPRITE_OPAQUE)
+        let a = 1.0;
+        @else
+        let a = saturate(t.a * params.color.a);
+        let lit = to_gamma(t.rgb) * params.color.rgb;
+        return vec4<f32>(to_linear(saturate(mix(to_gamma(saturate(behind)), lit, a))), 1.0);
+    } @else {
+        let sum = to_linear(saturate(to_gamma(saturate(behind)) + c));
+        return vec4<f32>(max(sum - behind, vec3<f32>(0.0)), 0.0);
+    }
 }

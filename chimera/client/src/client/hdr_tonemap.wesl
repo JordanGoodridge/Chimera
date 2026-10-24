@@ -3,8 +3,8 @@
 // the map's tone-map controller bounds, then clamped as an 8-bit
 // framebuffer would. No curve: Source's HDR keeps the LDR look in range.
 
-#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
-#import bevy_render::view::View
+import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
+import bevy_render::view::View;
 
 struct SourceTonemap {
     min_scale: f32,

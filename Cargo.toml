@@ -113,13 +113,13 @@ cs_source_app = { path = "apps/cs_source", default-features = false }
 # (`debug-plugin`, `bevy_picking`, `bevy_scene`): `chimera_present` and
 # `chimera_client` turn them back on for the clients (the dedicated servers
 # don't build them).
-avian3d = { version = "0.7", default-features = false, features = [
-    "3d", "f32", "parry-f32", "xpbd_joints", "parallel", "collider-from-mesh",
+avian3d = { version = "0.8", default-features = false, features = [
+    "3d", "parry-f32", "xpbd_joints", "parallel", "collider-from-mesh",
 ] }
 # serialize: predicted components (Transform among them) travel as serde
 # (`core::PredictedAppExt::predicted_net`); `dev` got it through
 # bevy_remote, so builds without `dev` (playtest, release) failed.
-bevy = { version = "0.19.1", default-features = false, features = [
+bevy = { version = "0.20.0", default-features = false, features = [
     "serialize", "std", "async_executor", "multi_threaded", "bevy_asset", "bevy_log",
     "bevy_state", "reflect_auto_register", "bevy_color", "bevy_image", "bevy_mesh",
     "bevy_camera", "bevy_light", "bevy_window",
@@ -129,7 +129,7 @@ bevy = { version = "0.19.1", default-features = false, features = [
 # The texture types (`Extent3d`, `TextureFormat`) of the images the loaders
 # build; Bevy re-exports them only from `bevy_render`. The version
 # bevy_image uses.
-wgpu-types = { version = "29", default-features = false }
+wgpu-types = { version = "30", default-features = false }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0.229", features = ["derive"] }
 # Per-thread hardware counters (instructions, cycles, cache and branch
@@ -140,15 +140,22 @@ perf-event2 = "0.7.4"
 libc = "0.2"
 # Networking (docs/plans/active/multiplayer.md): replication over renet's
 # netcode UDP transport.
-bevy_replicon = { version = "0.44.3", default-features = false, features = ["client", "server"] }
-bevy_replicon_renet = "0.20.0"
-renetcode = "2.0"
+bevy_replicon = { version = "0.45.2", default-features = false, features = ["client", "server"] }
+# Its release for Bevy 0.20 isn't out (the last, 0.20.0, is on Bevy 0.19):
+# the upstream commit that moved it to Bevy 0.20 and replicon 0.45, which
+# takes bevy_renet from its authors' `bevy-0.20` branch (Cargo.lock pins
+# that too). Back to a crates.io version once one is published
+# (docs/tech-debt.md).
+bevy_replicon_renet = { git = "https://github.com/simgine/bevy_replicon_renet", rev = "0a8dd5b36548bf3b5b8b9403613ecd2bc0b93522" }
+# The one bevy_replicon_renet's bevy_renet uses: from the same branch
+# (above), or the two crates' types differ.
+renetcode = { git = "https://github.com/simgine/renet", branch = "bevy-0.20" }
 igd-next = { version = "0.18", default-features = false, features = ["io_sync"] }
 half = "2.7.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tga"] }
 # Bevy's math types (`bevy::math::Vec3` is `glam::Vec3`): the version
-# bevy_math 0.19 uses, so a format crate's vectors are the game's.
-glam = "0.32"
+# bevy_math 0.20 uses, so a format crate's vectors are the game's.
+glam = "0.33"
 # LZMA-compressed BSP lumps and pakfile entries (bspzip -repack; vbsp
 # already depends on it).
 lzma-rs = "0.3"
@@ -180,8 +187,8 @@ symphonia = { version = "0.5.5", default-features = false, features = ["mp3"] }
 ab_glyph = "0.2.32"
 # The client shell's debug UI and inspector (chimera_client); egui drawn
 # over Bevy's UI (the debug UI over the HUD).
-bevy-inspector-egui = "0.37"
-bevy_egui = { version = "0.40", default-features = false, features = ["bevy_ui"] }
+bevy-inspector-egui = "0.38"
+bevy_egui = { version = "0.43.1", default-features = false, features = ["bevy_ui"] }
 # Copy and paste (the console, the front end's text fields).
 arboard = "3.6"
 serde_json = "1.0.151"

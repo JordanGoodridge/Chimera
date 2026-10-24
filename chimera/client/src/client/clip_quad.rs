@@ -16,7 +16,7 @@ pub struct ClipQuadPlugin;
 
 impl Plugin for ClipQuadPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "clip_quad.wgsl");
+        embedded_asset!(app, "clip_quad.wesl");
         app.add_plugins(UiMaterialPlugin::<ClipQuadMaterial>::default());
     }
 }
@@ -43,7 +43,7 @@ pub struct ClipQuadMaterial {
 
 impl UiMaterial for ClipQuadMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://chimera_client/client/clip_quad.wgsl".into()
+        "embedded://chimera_client/client/clip_quad.wesl".into()
     }
 }
 

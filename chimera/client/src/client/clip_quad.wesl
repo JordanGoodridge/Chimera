@@ -4,7 +4,7 @@
 // parallelogram and discards what lies outside it. Bevy's own clip does
 // not work on turned nodes, hence this.
 
-#import bevy_ui::ui_vertex_output::UiVertexOutput
+import bevy_ui_render::ui_vertex_output::UiVertexOutput;
 
 struct QuadParams {
     color: vec4<f32>,

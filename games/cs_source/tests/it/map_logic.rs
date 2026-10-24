@@ -479,9 +479,12 @@ fn island_bookkeeping_errors(world: &World) -> Vec<String> {
     };
     let mut errors = Vec::new();
     let graph = world.resource::<ContactGraph>();
+    let islands = world.resource::<avian3d::dynamics::solver::islands::PhysicsIslands>();
     for p in graph.active_pairs().iter().chain(graph.sleeping_pairs()) {
-        let Some(edge) = graph.get_edge_by_id(p.contact_id) else { continue };
-        if edge.island.is_some() && p.flags.contains(ContactPairFlags::STARTED_GENERATING_CONSTRAINTS) {
+        if graph.get_edge_by_id(p.contact_id).is_none() {
+            continue;
+        }
+        if islands.contact_node(p.contact_id).is_some() && p.flags.contains(ContactPairFlags::STARTED_GENERATING_CONSTRAINTS) {
             errors.push(format!("contact {} / {} is in an island and about to join one", p.collider1, p.collider2));
         }
     }

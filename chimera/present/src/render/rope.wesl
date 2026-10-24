@@ -7,13 +7,13 @@
 // wide, with alpha ramping 0.2 -> 0.5 between 0.3 and 1.75 px; the rope in
 // front is narrowed by depth * 1.4 / screen width.
 
-#import bevy_pbr::{
-    forward_io::{Vertex, VertexOutput},
-    mesh_functions,
-    mesh_view_bindings::view,
-    view_transformations::{position_world_to_clip, position_world_to_view},
-}
-#import mashup::fog::source_fog
+import bevy_pbr::{
+    render::forward_io::{Vertex, VertexOutput},
+    render::mesh_functions,
+    render::mesh_view_bindings::view,
+    render::view_transformations::{position_world_to_clip, position_world_to_view},
+};
+import chimera_present::render::fog::source_fog;
 
 struct FogUniform {
     color: vec4<f32>,
@@ -30,11 +30,11 @@ struct RopeParams {
     fog: FogUniform,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: RopeParams;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var base_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var base_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var normal_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(4) var normal_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: RopeParams;
+@group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(2) var base_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(3) var normal_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(4) var normal_sampler: sampler;
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -65,12 +65,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.world_normal = normalize(to_camera);
     out.uv = vertex.uv;
     out.color = vec4<f32>(vertex.color.rgb, alpha);
-#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
-    out.instance_index = vertex.instance_index;
-#endif
-#ifdef VISIBILITY_RANGE_DITHER
-    out.visibility_range_dither = 0;
-#endif
+    @if(VERTEX_OUTPUT_INSTANCE_INDEX) {
+        out.instance_index = vertex.instance_index;
+    }
+    @if(VISIBILITY_RANGE_DITHER) {
+        out.visibility_range_dither = 0;
+    }
     return out;
 }
 

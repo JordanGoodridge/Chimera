@@ -752,7 +752,7 @@ fn send_drops(mut asked: MessageReader<DropRequested>, mut out: MessageWriter<Dr
 }
 
 /// A loose weapon or grenade from the server: drawn with its model.
-fn item_arrived(add: On<Add, NetItem>, q: Query<&NetItem>, role: Option<Res<NetRole>>, mut commands: Commands) {
+fn item_arrived(add: On<Add<NetItem>>, q: Query<&NetItem>, role: Option<Res<NetRole>>, mut commands: Commands) {
     if role.as_deref() != Some(&NetRole::Client) {
         return;
     }

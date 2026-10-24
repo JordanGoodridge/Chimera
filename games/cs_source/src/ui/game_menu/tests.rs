@@ -1,3 +1,4 @@
+use crate::client::widgets::Interaction;
 use super::*;
 use crate::ui::options::setting_index;
 use crate::map::hud::{GameUiItem, ServerSetting};

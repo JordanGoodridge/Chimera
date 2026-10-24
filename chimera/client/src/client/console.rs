@@ -43,7 +43,7 @@ use bevy::{
     window::CursorOptions,
 };
 
-use super::{FirstPersonCamera, fonts::UiFonts};
+use super::{FirstPersonCamera, fonts::UiFonts, widgets::Interaction};
 use crate::{
     console::{Console, ConsoleAppExt, Level, cfg_dir, parse, resource_cvar},
     core::{LocalPlayer, MovementState, Velocity},
@@ -1972,7 +1972,7 @@ fn finish_map_load(w: &mut World) {
         let t = if tonemapping {
             bevy::core_pipeline::tonemapping::Tonemapping::default()
         } else {
-            bevy::core_pipeline::tonemapping::Tonemapping::None
+            bevy::core_pipeline::tonemapping::Tonemapping::Linear
         };
         w.entity_mut(c).insert(t);
     }

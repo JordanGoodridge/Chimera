@@ -12,15 +12,12 @@
 // is f^2 (f with `range.w` 1, a map's linear fog), height fog is f (not
 // squared).
 
-#define_import_path mashup::fog
-
-#import bevy_pbr::{
-    mesh_view_bindings::view,
-    view_transformations::position_world_to_view,
-}
-#ifdef DISTANCE_FOG
-#import bevy_pbr::mesh_view_bindings::fog
-#endif
+import bevy_pbr::{
+    render::mesh_view_bindings::view,
+    render::view_transformations::position_world_to_view,
+};
+@if(DISTANCE_FOG)
+import bevy_pbr::render::mesh_view_bindings::fog;
 
 // A view with Source fog of its own (a monitor's camera: map::monitor,
 // `SOURCE_VIEW_FOG`) carries it as Bevy's linear distance fog, marked by
@@ -29,11 +26,11 @@
 const SOURCE_VIEW_FOG: f32 = -7.0;
 
 fn view_fog() -> bool {
-#ifdef DISTANCE_FOG
-    return fog.mode == 1u && fog.directional_light_exponent == SOURCE_VIEW_FOG;
-#else
-    return false;
-#endif
+    @if(DISTANCE_FOG) {
+        return fog.mode == 1u && fog.directional_light_exponent == SOURCE_VIEW_FOG;
+    } @else {
+        return false;
+    }
 }
 
 fn range_amount(range: vec4<f32>, depth: f32) -> f32 {
@@ -62,15 +59,15 @@ fn source_fog(
     let depth = -position_world_to_view(world).z;
     // The view's own fog replaces the scene's, water fog included (that
     // follows the player's eye).
-#ifdef DISTANCE_FOG
-    if view_fog() {
-        if fog.base_color.a < 0.5 {
-            return vec4<f32>(0.0);
+    @if(DISTANCE_FOG) {
+        if view_fog() {
+            if fog.base_color.a < 0.5 {
+                return vec4<f32>(0.0);
+            }
+            let r = vec4<f32>(fog.be.x, fog.be.y, fog.directional_light_color.r, 0.0);
+            return vec4<f32>(fog.base_color.rgb, range_amount(r, depth));
         }
-        let r = vec4<f32>(fog.be.x, fog.be.y, fog.directional_light_color.r, 0.0);
-        return vec4<f32>(fog.base_color.rgb, range_amount(r, depth));
     }
-#endif
     if water_color.w > 0.5 && world.y < water_range.w {
         if water_color.w > 1.5 {
             return vec4<f32>(water_color.rgb, height_amount(water_range, world, depth));

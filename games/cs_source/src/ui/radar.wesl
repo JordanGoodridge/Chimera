@@ -2,7 +2,7 @@
 // overview picture sampled around a point, turned so the way the player
 // faces is up. Outside the picture: transparent.
 
-#import bevy_ui::ui_vertex_output::UiVertexOutput
+import bevy_ui_render::ui_vertex_output::UiVertexOutput;
 
 struct RadarParams {
     // Overview uv of the box's centre.

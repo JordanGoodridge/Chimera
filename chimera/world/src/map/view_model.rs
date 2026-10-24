@@ -325,7 +325,7 @@ pub fn screen_corners(model: &MapViewModel) -> Option<(usize, Transform, Vec2)> 
 }
 
 /// A brief point light (muzzle flash) that lights the world, props and
-/// view models (see `dynamic_light` in world.wgsl and prop.wgsl): its
+/// view models (see `dynamic_light` in world.wesl and prop.wesl): its
 /// radius shrinks to 0 over its life.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DynamicLight {

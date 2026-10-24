@@ -251,7 +251,7 @@ pub fn show_local_body(
 ) {
     let want = body_visibility(true, *show);
     for children in &local {
-        let mut it = bodies.iter_many_mut(children);
+        let mut it = bodies.iter_many_mut(children).matched();
         while let Some(mut vis) = it.fetch_next() {
             if *vis != want {
                 *vis = want;

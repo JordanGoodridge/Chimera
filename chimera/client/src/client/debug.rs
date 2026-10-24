@@ -122,7 +122,7 @@ fn spawn_ui_camera(mut commands: Commands) {
         // its own (`hdr::hdr_cameras` gives it `Hdr` with theirs, so they
         // share one target; with a different format it would replace the
         // world with its own empty image).
-        bevy::core_pipeline::tonemapping::Tonemapping::None,
+        bevy::core_pipeline::tonemapping::Tonemapping::Linear,
         Camera2d,
         Camera {
             order: UI_CAMERA_ORDER,

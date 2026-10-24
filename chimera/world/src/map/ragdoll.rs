@@ -60,7 +60,7 @@
 //! proposal); damping uses avian's law; joints are soft (twice avian's contact
 //! stiffness, as Box2D's), not rigid, so a yanked chain closes over a few
 //! ticks; gyroscopic torque is cleared on avian's solver bodies each step
-//! (avian 0.7 has no switch); resting uses props' stillness thresholds (ours,
+//! (avian 0.8 has no switch either); resting uses props' stillness thresholds (ours,
 //! Source's are inside vphysics); ragdolls collide with every prop
 //! (CS:S's client world has no server props); the dead's drawn body never
 //! culls. Why it's OK for now: Bodies fall, settle and look right; each item is
@@ -72,13 +72,12 @@ use avian3d::{
     collision::hooks::CollisionHooks,
     dynamics::{
         integrator::IntegrationSystems,
-        joints::EntityConstraint,
+        joints::{EntityConstraint, joint_graph::JointGraphPlugin},
         solver::{
             SolverConfig,
-            joint_graph::JointGraphPlugin,
             schedule::SubstepSolverSystems,
             softness_parameters::{SoftnessCoefficients, SoftnessParameters},
-            solver_body::{SolverBody, SolverBodyFlags, SolverBodyInertia},
+            solver_body::{SolverBodies, SolverBody, SolverBodyFlags, SolverBodyIndex, SolverBodyInertia},
             xpbd::XpbdSolverSystems,
         },
     },
@@ -1323,17 +1322,26 @@ fn joint_softness(config: &SolverConfig, step: f32, substep: f32) -> SoftnessCoe
 /// momentum's size, not the energy): on thin light limbs held at their
 /// limits (clavicles, 1 kg) it kept feeding a tremble of up to 7 rad/s that
 /// never died down. Source's physics of the time had no such term
-/// (*inferred*). Avian 0.7 has no switch for it, so the solver bodies' flag
+/// (*inferred*). Avian (0.8) has no switch for it, so the solver bodies' flag
 /// is cleared each step after avian sets it.
-fn no_gyroscopic_torque(mut bodies: Query<&mut SolverBody, With<RagdollBody>>) {
-    for mut b in &mut bodies {
-        b.flags.set(SolverBodyFlags::GYROSCOPIC_MOTION, false);
+fn no_gyroscopic_torque(mut solver: ResMut<SolverBodies>, bodies: Query<&SolverBodyIndex, With<RagdollBody>>) {
+    for index in &bodies {
+        if let Some(b) = solver.get_mut(*index) {
+            b.flags.set(SolverBodyFlags::GYROSCOPIC_MOTION, false);
+        }
     }
+}
+
+/// A joint's two solver bodies, if both have one (awake, enabled, not
+/// static) and they differ.
+fn joint_bodies(index: &Query<&SolverBodyIndex>, joint: &RagdollJoint) -> Option<(SolverBodyIndex, SolverBodyIndex)> {
+    let (Ok(a), Ok(b)) = (index.get(joint.parent), index.get(joint.child)) else { return None };
+    (a.is_valid() && b.is_valid() && a != b).then_some((*a, *b))
 }
 
 /// Each joint's bodies at the step's start (before the substeps).
 fn prepare_ragdoll_joints(
-    bodies: Query<(&Position, &Rotation, &ComputedCenterOfMass), With<SolverBody>>,
+    bodies: Query<(&Position, &Rotation, &ComputedCenterOfMass), With<SolverBodyIndex>>,
     mut joints: Query<(&RagdollJoint, &mut RagdollJointSolverData), Without<JointDisabled>>,
 ) {
     for (joint, mut data) in &mut joints {
@@ -1372,32 +1380,34 @@ fn apply_joint_impulse(
 
 /// Warm start: the ball and socket's impulse from the last substep.
 fn warm_start_ragdoll_joints(
-    bodies: Query<(&mut SolverBody, &SolverBodyInertia)>,
+    mut solver: ResMut<SolverBodies>,
+    index: Query<&SolverBodyIndex>,
     joints: Query<(&RagdollJoint, &RagdollJointSolverData)>,
     config: Res<SolverConfig>,
 ) {
+    let access = solver.access();
     for (joint, data) in &joints {
         if !data.active || joint.parent == joint.child {
             continue;
         }
-        // SAFETY: a joint's two bodies are different entities, and nothing
-        // else holds them.
-        let (Ok((mut b1, i1)), Ok((mut b2, i2))) =
-            (unsafe { bodies.get_unchecked(joint.parent) }, unsafe { bodies.get_unchecked(joint.child) })
-        else {
+        let Some((x1, x2)) = joint_bodies(&index, joint) else { continue };
+        // SAFETY: two different valid indices into the bodies (checked in
+        // `joint_bodies`), and joints are solved one at a time.
+        let (Some((b1, i1)), Some((b2, i2))) = (unsafe { access.get_pair_unchecked_mut(x1, x2) }) else {
             continue;
         };
         let r = (b1.delta_rotation * data.r1, b2.delta_rotation * data.r2);
-        let (_, dual) = joint.limit_axes(b1.delta_rotation.0 * data.rotation1, b2.delta_rotation.0 * data.rotation2);
+        let (_, dual) = joint.limit_axes(b1.delta_rotation * data.rotation1, b2.delta_rotation * data.rotation2);
         let c = config.warm_start_coefficient;
-        apply_joint_impulse(&mut b1, &mut b2, i1, i2, r, data.point_impulse * c, data.limit_torque(&dual) * c);
+        apply_joint_impulse(b1, b2, i1, i2, r, data.point_impulse * c, data.limit_torque(&dual) * c);
     }
 }
 
 /// One velocity pass over the joints: with the position bias (soft, after
 /// the contacts' biased pass) or without it (relax, after theirs).
 fn solve_ragdoll_joints<const BIAS: bool>(
-    bodies: Query<(&mut SolverBody, &SolverBodyInertia)>,
+    mut solver: ResMut<SolverBodies>,
+    index: Query<&SolverBodyIndex>,
     mut joints: Query<(&RagdollJoint, &mut RagdollJointSolverData)>,
     config: Res<SolverConfig>,
     time: Res<Time>,
@@ -1408,15 +1418,15 @@ fn solve_ragdoll_joints<const BIAS: bool>(
         return;
     }
     let soft = joint_softness(&config, step.delta_secs().max(h), h);
+    let access = solver.access();
     for (joint, mut data) in &mut joints {
         if !data.active || joint.parent == joint.child {
             continue;
         }
-        // SAFETY: a joint's two bodies are different entities, and nothing
-        // else holds them.
-        let (Ok((mut b1, i1)), Ok((mut b2, i2))) =
-            (unsafe { bodies.get_unchecked(joint.parent) }, unsafe { bodies.get_unchecked(joint.child) })
-        else {
+        let Some((x1, x2)) = joint_bodies(&index, joint) else { continue };
+        // SAFETY: two different valid indices into the bodies (checked in
+        // `joint_bodies`), and joints are solved one at a time.
+        let (Some((b1, i1)), Some((b2, i2))) = (unsafe { access.get_pair_unchecked_mut(x1, x2) }) else {
             continue;
         };
         let (r1, r2) = (b1.delta_rotation * data.r1, b2.delta_rotation * data.r2);
@@ -1435,12 +1445,12 @@ fn solve_ragdoll_joints<const BIAS: bool>(
         };
         if impulse.is_finite() {
             data.point_impulse += impulse;
-            apply_joint_impulse(&mut b1, &mut b2, i1, i2, (r1, r2), impulse, Vec3::ZERO);
+            apply_joint_impulse(b1, b2, i1, i2, (r1, r2), impulse, Vec3::ZERO);
         }
         // Limits: a row per angle and side (Box2D's joint limits): soft
         // when past the limit, else speculative (it may come up to the
         // limit, not past it).
-        let (angles, dual) = joint.limit_axes(b1.delta_rotation.0 * data.rotation1, b2.delta_rotation.0 * data.rotation2);
+        let (angles, dual) = joint.limit_axes(b1.delta_rotation * data.rotation1, b2.delta_rotation * data.rotation2);
         for i in 0..3 {
             let (lo, hi) = joint.limits[i];
             for (side, sign, gap) in [(0, 1.0, angles[i] - lo), (1, -1.0, hi - angles[i])] {
@@ -1461,7 +1471,7 @@ fn solve_ragdoll_joints<const BIAS: bool>(
                 // It only pushes back into the limits.
                 let total = (held + lambda).max(0.0);
                 data.limit_impulse[i][side] = total;
-                apply_joint_impulse(&mut b1, &mut b2, i1, i2, (r1, r2), Vec3::ZERO, n * (total - held));
+                apply_joint_impulse(b1, b2, i1, i2, (r1, r2), Vec3::ZERO, n * (total - held));
             }
         }
     }

@@ -134,7 +134,7 @@ impl Sim {
     }
 
     /// Spawn `n` empty entities and a resource: every entity spawned
-    /// after gets another id (Bevy 0.19 resources are entities too).
+    /// after gets another id (since Bevy 0.19 resources are entities too).
     /// Nothing may depend on entity ids; `CHIMERA_TEST_PAD=<n>` pads
     /// every `Sim` this way, to check a test's result doesn't change.
     pub fn pad(&mut self, n: usize) {

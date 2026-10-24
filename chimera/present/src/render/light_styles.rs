@@ -34,7 +34,7 @@ use bevy::{
     prelude::*,
     render::{
         Render, RenderApp, RenderSystems,
-        extract_plugin::{ExtractSchedule, MainWorld},
+        ExtractSchedule, MainWorld,
         render_asset::RenderAssets,
         render_resource::{
             Buffer, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Extent3d, Origin3d, TexelCopyBufferInfo,

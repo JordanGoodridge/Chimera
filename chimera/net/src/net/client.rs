@@ -678,7 +678,7 @@ fn check_map(world: &mut World) {
 /// (no movement: the server moves it), ours marked `LocalPlayer`, others
 /// drawn from snapshots (`NetDrawn`, `interp`).
 fn character_arrived(
-    add: On<Add, NetCharacter>,
+    add: On<Add<NetCharacter>>,
     q: Query<(&NetCharacter, Option<&NetBody>, Option<&Team>)>,
     me: Option<Res<LocalClientId>>,
     role: Option<Res<NetRole>>,

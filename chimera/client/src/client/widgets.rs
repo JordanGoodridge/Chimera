@@ -28,9 +28,10 @@
 //! it (`FocusPolicy::Block`) and every node above that one, so whatever
 //! is clickable must block, or a click on it also lands on what is under
 //! it (a row under a scroll bar's thumb, the box under an open list's
-//! catcher). Bevy's `Button` asks for `Block`, but `Node` requires `Pass`
-//! and wins when it comes first in the bundle or the button is inserted
-//! later, as most of ours are; so clickables spawn with `clickable()`,
+//! catcher). An `Interaction` (Bevy UI's pointer state; Bevy 0.20
+//! deprecates that name and `Button`: see `Interaction` here) doesn't stop
+//! the pointer by itself and `Node` requires `Pass`; so clickables spawn
+//! with `clickable()`,
 //! and `block_clicks` makes anything that gains an `Interaction` block
 //! (`PassClicks` opts out, for a node that only watches the pointer).
 //! Plain nodes keep Bevy's `Pass`: labels and pictures on a button, HUD
@@ -62,6 +63,12 @@
 //! `WorldPicture`) and following a held slider (`SliderDrag`); `vgui_windows`
 //! lists and moves frames; also the spectator menu's drop-downs
 //! (`spectator_menu.rs`).
+//!
+//! Known shortcuts (docs/tech-debt.md): the menus read Bevy UI's
+//! `Interaction` (named here by Bevy's undeprecated `DeprecatedInteraction`),
+//! which Bevy 0.20 deprecates with `Button` for picking's `Hovered` and
+//! `ui::Pressed`. Why it's OK for now: Bevy 0.20 still runs it; moving every
+//! menu to the new press semantics is its own change (docs/backlog.md).
 
 use std::collections::HashMap;
 
@@ -153,15 +160,22 @@ fn point(a: &[String], i: usize) -> Option<Vec2> {
 // ---------------------------------------------------------------------------
 // Clicks: what stops them.
 
-/// What a clickable node spawns with: a `Button` (its `Interaction`)
-/// that stops the pointer (`FocusPolicy::Block`), so a press reaches it
-/// and nothing under it. Spelled out because `Button`'s own `Block` loses
-/// to the `Pass` that `Node` requires whenever `Node` comes first in the
-/// bundle or the node was spawned before the button was inserted (as most
-/// of ours are); `block_clicks` makes the same correction for anything
-/// that forgets.
+/// The pointer on a node that takes clicks: pressed, hovered or neither,
+/// as Bevy UI's focus system (`ui_focus_system`) sets it each frame.
+/// Bevy 0.20 deprecates the name `Interaction` (and `Button`, which only
+/// added it) for picking's `Hovered` and `ui::Pressed`, but still runs the
+/// system; every menu reads this one's changes (a press on mouse down), so
+/// it stays under the name Bevy keeps for it until the menus move
+/// (docs/backlog.md).
+pub type Interaction = bevy::ui::DeprecatedInteraction;
+
+/// What a clickable node spawns with: an `Interaction` that stops the
+/// pointer (`FocusPolicy::Block`), so a press reaches it and nothing under
+/// it (what Bevy's deprecated `Button` gave, without its accessibility
+/// role). Spelled out because `Node` requires `Pass`; `block_clicks` makes
+/// the same correction for anything that forgets.
 pub fn clickable() -> impl Bundle {
-    (Button, bevy::ui::FocusPolicy::Block)
+    (Interaction::default(), bevy::ui::FocusPolicy::Block)
 }
 
 /// A node with an `Interaction` that lets the pointer through to what is
@@ -182,10 +196,10 @@ fn pass_clicks(mut world: bevy::ecs::world::DeferredWorld, ctx: bevy::ecs::lifec
 }
 
 /// Anything the pointer can press or hover (an `Interaction` added: a
-/// `Button`, a hover-lit row) stops the pointer at itself, as `Button`
+/// clickable, a hover-lit row) stops the pointer at itself, as Bevy's `Button`
 /// means to, unless marked `PassClicks`.
 fn block_clicks(
-    add: On<Add, Interaction>,
+    add: On<Add<Interaction>>,
     mut nodes: Query<&mut bevy::ui::FocusPolicy, Without<PassClicks>>,
     pass: Query<(), With<PassClicks>>,
     mut commands: Commands,
@@ -2574,15 +2588,15 @@ mod tests {
     }
 
     /// Anything with an `Interaction` stops the pointer however it was
-    /// spawned (`block_clicks`): `Node` first and `Button` inserted after
-    /// included; `PassClicks` lets the press through as well.
+    /// spawned (`block_clicks`): `Node` first and the `Interaction`
+    /// inserted after included; `PassClicks` lets the press through as well.
     #[test]
     fn an_interaction_blocks_unless_it_passes_clicks() {
         for (pass, want) in [(false, vec!["top"]), (true, vec!["top", "under"])] {
             let ui = |commands: &mut Commands, look: &Look, root: Entity| {
-                commands.spawn((place(look, 0.0, 0.0, 100.0, 100.0), Clicked("under"), ChildOf(root))).insert(Button);
+                commands.spawn((place(look, 0.0, 0.0, 100.0, 100.0), Clicked("under"), ChildOf(root))).insert(Interaction::default());
                 let mut top = commands.spawn((place(look, 0.0, 0.0, 50.0, 50.0), ChildOf(root)));
-                top.insert((Button, Clicked("top")));
+                top.insert((Interaction::default(), Clicked("top")));
                 if pass {
                     top.insert(PassClicks);
                 }

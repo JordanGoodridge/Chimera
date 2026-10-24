@@ -590,7 +590,7 @@ fn attach_camera(commands: &mut Commands, player: Entity, debug_view: bool) {
         for cam in cams {
             world
                 .entity_mut(cam)
-                .insert(bevy::core_pipeline::tonemapping::Tonemapping::None);
+                .insert(bevy::core_pipeline::tonemapping::Tonemapping::Linear);
         }
     });
     if debug_view {
@@ -600,7 +600,7 @@ fn attach_camera(commands: &mut Commands, player: Entity, debug_view: bool) {
             let cams: Vec<Entity> = q.iter(world).collect();
             for cam in cams {
                 world.entity_mut(cam).insert((
-                    bevy::core_pipeline::tonemapping::Tonemapping::None,
+                    bevy::core_pipeline::tonemapping::Tonemapping::Linear,
                     Camera {
                         clear_color: ClearColorConfig::Custom(Color::srgb(1.0, 0.0, 1.0)),
                         ..default()
@@ -727,7 +727,7 @@ fn follow_eye(
             let inv = at.compute_affine().inverse();
             (inv.transform_point3(p), at.rotation.inverse() * q)
         };
-        let mut cams = cameras.iter_many_mut(children);
+        let mut cams = cameras.iter_many_mut(children).matched();
         // Blasts shake the eye's view (not a detached camera's).
         let (offset, look) = if watched.is_none() && freecam.mode == 0 && spectating.pose.is_none() && camera.is_none() {
             (offset + shake.offset, look * Quat::from_rotation_z(shake.roll))

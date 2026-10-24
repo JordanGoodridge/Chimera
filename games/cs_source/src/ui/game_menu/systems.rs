@@ -2,6 +2,7 @@
 //! menu, keys, the pointer, the cursor, lines run after a map load, the
 //! interface sounds.
 
+use crate::client::widgets::Interaction;
 use super::*;
 
 /// Lines waiting for a map load the menu started (`map` loads in the

@@ -887,7 +887,7 @@ pushes run the affected crates' tests (`repo_checks`' `affected`).
 |---|---|---|
 | `src/core.rs`, `console.rs`, `slots.rs`, `harness.rs` | engine | done: `chimera/core`; `harness.rs` split by layer: `Sim` in `chimera/world`, `NetSim` in `chimera/net`, CS:S's base in `games/cs_source` |
 | `src/logic` | source | done: `source/logic` (`source_logic`) |
-| `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wgsl, water); audio already out (`src/audio`) |
+| `src/map` | split | neutral runtime (MapData, culling, particles) vs Source materials/shaders (world.wesl, water); audio already out (`src/audio`) |
 | `src/games/cs_source` | split | simulation with `rules`/`objectives` done: `games/cs_source` (crate `cs_source`); `ui/` still in `mashup`; formats (bsp, material, mdl, sound) to source later |
 | `src/games/combat_arms` | games/combat_arms, lithtech/ | the `.rez` reader done: `lithtech/formats` (`lithtech_formats`); the game crate from specs |
 | `specs/` | split | `source/` to source (after review), `cs_source/` to cs_source, `combat_arms/` in the repo since 2026-10-18 ([combat-arms.md](combat-arms.md)) |
