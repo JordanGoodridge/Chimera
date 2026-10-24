@@ -1883,6 +1883,23 @@ Warehouse.
   load (a cache would share its textures between loads); CS:S's radar,
   spectator panel and target ids; a vote or lobby for the next map.
 
+L2 playtest fixes (10-24): a switch of game seats the new movement on
+the old one's feet (`slots::Footing`, `MovementImpl::footing`/`seat`,
+called by `set_movement`; each movement frees and grounds its hull in its
+next predicted step: CS:S `Mover::reseat`, Combat Arms `reseat`; a
+crouched Combat Arms player switching to CS:S stood 7.6 units in the
+floor); the kit by game (`SpawnDef::kit` a list or a table by game,
+`runtime::refit_kit` on a rung's swap: the gun game's knife is the gun's
+game's); Combat Arms' camera rise only on its own movement (it smoothed
+every CS:S jump and step: "floaty"); CS:S's sounds in the guest kit on
+Combat Arms' maps (`bsp::add_guest_sounds`: CS:S guns were silent on
+Warehouse); Combat Arms' bodies under a minigame go as in its like mode
+(free for all: One Man Army's 5 s after the respawn). Tests:
+lucker_party's `switches` (feet, walls, air, kit, knife demotion with
+both knives, CS:S movement parity tick for tick, bodies, slots, fire
+sounds), `identity`'s NetSim with client-predicted switches standing and
+crouched, `lucker_party_server`'s heavy `cs_source_guns_sound_on_both_maps`.
+
 Left of L3 (stage 4, M5): relevance culling. Not cheap here: replicon's
 per-client visibility removes a hidden entity on the client (its body
 despawns and comes back), so culling needs the client's handling of a

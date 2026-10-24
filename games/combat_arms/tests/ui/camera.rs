@@ -90,6 +90,18 @@ fn no_smoothing_in_a_jump() {
     assert!((rig.frame() - (30.0 + EYE)).abs() < 1e-3);
 }
 
+/// A player moving as another game (Lucker Party's CS:S identity: no
+/// `CaMovement`) keeps its own eye: a step or a jump up isn't smoothed
+/// (it was, every rise lagging: the CS:S movement felt floaty).
+#[test]
+fn no_smoothing_without_combat_arms_movement() {
+    let mut rig = Rig::new();
+    rig.app.world_mut().entity_mut(rig.player).remove::<CaMovement>();
+    let start = rig.frame();
+    rig.feet(30.0);
+    assert!((rig.frame() - (start + 30.0)).abs() < 1e-3, "the camera at the eye at once");
+}
+
 /// CamJitter: every frame a random offset in [−a, a] u on each axis, a
 /// the scale key now × the falloff (full within the inner radius).
 #[test]

@@ -130,7 +130,7 @@ use crate::{
         CHARACTER_FILTER, Damage, DamageKind, Dead, FirstTimePredicted, Hitgroup, Intent, MovementState, Predict,
         PredictedAppExt, SimClock, Velocity,
     },
-    slots::{Loadout, RegisterSlots},
+    slots::{Footing, Loadout, RegisterSlots},
     weapon::Zoomed,
 };
 
@@ -549,6 +549,7 @@ impl Plugin for CaMovementPlugin {
         app.insert_resource(movement)
             .insert_resource(Loadout { movement: ID })
             .register_movement::<CaMovement>(ID)
+            .seat_movement(ID, footing, seat)
             .add_message::<super::volumes::PadLaunch>()
             .add_systems(Predict::Movement, (step, sync_collider).chain())
             .predicted_net::<CaMovement>()
@@ -668,6 +669,11 @@ pub struct CaMovement {
     pub friction_k: f32,
     brake_blocked: bool,
     initialized: bool,
+    /// Just switched to from another movement (`seat`): this tick's step
+    /// first frees the hull and, when it stood on the ground (true), puts
+    /// it down on the floor below.
+    #[serde(default)]
+    pub seat: Option<bool>,
 }
 
 impl CaMovement {
@@ -675,6 +681,89 @@ impl CaMovement {
     pub fn stamina_points(&self) -> f32 {
         self.stamina.floor()
     }
+}
+
+/// Where a Combat Arms character stands (`slots::Footing`): its hull's
+/// bottom, crouched from half way down.
+fn footing(world: &World, e: Entity) -> Option<Footing> {
+    let me = world.get::<CaMovement>(e)?;
+    let t = world.get::<Transform>(e)?;
+    let d = world.get_resource::<MovementData>()?;
+    let h = if me.half_height > 0.0 { me.half_height } else { d.stand_half_extents[1] };
+    Some(Footing {
+        feet: t.translation - Vec3::Y * h * d.meters_per_unit,
+        crouched: me.crouch_rate >= 0.5,
+        on_ground: me.on_ground || me.seat == Some(true),
+    })
+}
+
+/// A character switched to Combat Arms' movement (`slots::set_movement`)
+/// put on the old movement's feet, in the crouched hull if it crouched
+/// (let go, it stands when there's room); its fall counts from there. The
+/// step frees and grounds it (`reseat`).
+fn seat(world: &mut World, e: Entity, f: Footing) {
+    let Some(d) = world.get_resource::<MovementData>() else { return };
+    let s = d.meters_per_unit;
+    let h = if f.crouched { d.crouch_half_extents[1] } else { d.stand_half_extents[1] };
+    let at = f.feet + Vec3::Y * h * s;
+    let Ok(mut ent) = world.get_entity_mut(e) else { return };
+    if let Some(mut me) = ent.get_mut::<CaMovement>() {
+        me.half_height = h;
+        me.crouch_rate = if f.crouched { 1.0 } else { 0.0 };
+        me.crouch_held = f.crouched;
+        me.crouch = f.crouched;
+        me.fall_top = Some(at.y / s);
+        me.seat = Some(f.on_ground);
+    }
+    if let Some(mut t) = ent.get_mut::<Transform>() {
+        t.translation = at;
+    }
+    if let Some(mut p) = ent.get_mut::<Position>() {
+        p.0 = at;
+    }
+}
+
+/// After a switch from another movement (`seat`): a standing hull that
+/// doesn't fit crouches (feet kept); one still overlapping something goes
+/// to the nearest free place up to a stair step up or a radius aside;
+/// then, if it stood on the ground, down onto a walkable floor within a
+/// stair step below. Its fall counts from there.
+fn reseat(space: &Space, d: &MovementData, me: &mut CaMovement, mut pos: Vec3, on_ground: bool) -> Vec3 {
+    let crouch_h = d.crouch_half_extents[1];
+    if me.half_height > crouch_h && !space.fits(pos, me.half_height) {
+        let low = Vec3::new(pos.x, pos.y - me.half_height + crouch_h, pos.z);
+        if space.fits(low, crouch_h) {
+            pos = low;
+            me.half_height = crouch_h;
+            me.crouch_rate = 1.0;
+            me.crouch_held = true;
+            me.crouch = true;
+        }
+    }
+    if !space.fits(pos, me.half_height) {
+        const D: f32 = std::f32::consts::FRAC_1_SQRT_2;
+        let dirs = [(1.0, 0.0), (D, D), (0.0, 1.0), (-D, D), (-1.0, 0.0), (-D, -D), (0.0, -1.0), (D, -D)];
+        let r = space.radius;
+        let mut offsets = Vec::new();
+        for y in [0.0, 0.05, 0.1, 0.25, 0.5, 1.0].map(|k: f32| k * d.stair_step) {
+            offsets.push(Vec3::new(0.0, y, 0.0));
+            for k in [0.1f32, 0.25, 0.5, 0.75, 1.0] {
+                offsets.extend(dirs.iter().map(|&(x, z)| Vec3::new(x * k * r, y, z * k * r)));
+            }
+        }
+        offsets.sort_by(|a, b| a.length_squared().total_cmp(&b.length_squared()));
+        if let Some(o) = offsets.into_iter().find(|o| space.fits(pos + *o, me.half_height)) {
+            pos += o;
+        }
+    }
+    if on_ground
+        && let Some(hit) = space.cast(pos, me.half_height, Vec3::NEG_Y * d.stair_step)
+        && hit.normal.y >= d.walkable_normal
+    {
+        pos.y -= hit.distance;
+    }
+    me.fall_top = Some(pos.y);
+    pos
 }
 
 /// The spec's crouch curve: the Hermite-like shape with tangents `t0`, `t1`.
@@ -1136,7 +1225,9 @@ fn step(
         let crouch_h = d.crouch_half_extents[1];
         if !me.initialized {
             me.initialized = true;
-            me.half_height = stand_h;
+            if me.half_height <= 0.0 {
+                me.half_height = stand_h;
+            }
             me.jump_factor = 1.0;
             me.ramp_forward = d.start_accel;
             me.ramp_strafe = d.start_accel;
@@ -1148,6 +1239,9 @@ fn step(
             me.friction_k = d.friction;
         }
         let mut pos = transform.translation / s;
+        if let Some(on_ground) = me.seat.take() {
+            pos = reseat(&space, d, me, pos, on_ground);
+        }
         pos = space.depenetrate(pos, me.half_height);
         // Spawn and respawn (spec "Falling and fall damage"): the server
         // puts the player on the floor below the spawn point, and the fall

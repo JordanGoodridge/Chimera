@@ -575,6 +575,11 @@ pub fn dress_guest(mount: &Mount, map: &mut MapData, kept: &'static [&'static st
     if map.kit.hud.is_none() {
         guest.hud = super::hud::load(&mut materials, "").map(std::sync::Arc::new);
     }
+    // The guns' sounds (and the rest CS:S's maps always carry: steps,
+    // pain, impacts) where the map hasn't an entry of that name: a CS:S
+    // gun fired on another game's map plays its own sound.
+    let sounds = super::sound::load(&mut materials, "", &surfaces, &[]);
+    add_guest_sounds(std::sync::Arc::make_mut(&mut map.sounds), sounds);
     materials.finish_textures();
     warnings.extend(materials.missing);
     map.textures.extend(materials.textures.split_off(textures));
@@ -587,6 +592,26 @@ pub fn dress_guest(mount: &Mount, map: &mut MapData, kept: &'static [&'static st
     if map.kit.hud.is_none() {
         map.kit.hud = guest.hud;
     }
+}
+
+/// A guest's sound entries added to a map's (`dress_guest`): each entry
+/// the map lacks, its clips appended (their indices moved past the map's
+/// own). The map's entries, surfaces and soundscapes stay.
+pub fn add_guest_sounds(map: &mut crate::map::sound::MapSounds, guest: crate::map::sound::MapSounds) {
+    let base = map.clips.len();
+    let mut used = std::collections::BTreeMap::new();
+    let mut entries: Vec<_> = guest.entries.into_iter().filter(|(k, _)| !map.entries.contains_key(k)).collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (name, mut entry) in entries {
+        for w in &mut entry.waves {
+            let next = base + used.len();
+            *w = *used.entry(*w).or_insert(next);
+        }
+        map.entries.insert(name, entry);
+    }
+    let mut order: Vec<(usize, usize)> = used.into_iter().collect();
+    order.sort_by_key(|&(_, new)| new);
+    map.clips.extend(order.into_iter().map(|(old, _)| guest.clips[old].clone()));
 }
 
 /// The BSP with its entity and texture-name lumps made valid UTF-8 in

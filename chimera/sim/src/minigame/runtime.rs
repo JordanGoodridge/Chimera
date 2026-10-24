@@ -16,7 +16,9 @@
 //! - Spawning (`respawn`): at a spawn point the definition's `points`
 //!   pick (`spawn_point`), revived (`spawning::revive`), the definition's
 //!   movement set, the weapons taken and the life's given (the kit, then
-//!   the rules module's `loadout`, the last drawn); with `identity =
+//!   the rules module's `loadout`, the last drawn; a kit by game is the
+//!   loadout's last weapon's game's, `refit_kit` when the rules swap
+//!   that weapon); with `identity =
 //!   "weapon"` the player follows its weapon's game (`slots::
 //!   FollowsWeapon`; `identity::follow` at once for the drawn one),
 //!   protected from damage
@@ -34,8 +36,8 @@ use avian3d::prelude::ColliderDisabled;
 use bevy::{ecs::message::MessageCursor, prelude::*};
 
 use super::{
-    ActiveMinigame, MINIGAME,
-    def::{IdentityDef, Points, SpawnDef},
+    ActiveMinigame, MINIGAME, MinigameDef,
+    def::{IdentityDef, Kit, Points, SpawnDef},
 };
 use crate::{
     core::{
@@ -167,9 +169,8 @@ pub fn respawn(world: &mut World, e: Entity) {
         crate::identity::unfollow(world, e);
     }
     crate::weapon::equip::strip(world, e);
-    let catalog = world.get_resource::<crate::weapon::data::WeaponCatalog>().cloned().unwrap_or_default();
-    let kit: Vec<&'static str> = def.spawn.kit.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
-    for id in kit.into_iter().chain((active.rules.loadout)(world, e)) {
+    let loadout = (active.rules.loadout)(world, e);
+    for id in kit_for(world, def, loadout.last().copied()).into_iter().chain(loadout) {
         give(world, e, id);
     }
     // Following the weapon: the life starts as the drawn weapon's game.
@@ -253,6 +254,42 @@ pub fn spawn_point_in(world: &mut World, e: Entity, points: Points, min_distance
                 }
             }
             best.map(|(_, t)| t)
+        }
+    }
+}
+
+/// The kit (`SpawnDef::kit`) that goes with the rules' weapon `gun`: the
+/// list, or `gun`'s game's.
+fn kit_for(world: &World, def: &MinigameDef, gun: Option<&str>) -> Vec<&'static str> {
+    let empty = crate::weapon::data::WeaponCatalog::default();
+    let catalog = world.get_resource::<crate::weapon::data::WeaponCatalog>().unwrap_or(&empty);
+    let game = gun.and_then(|g| g.split_once(':')).map(|(g, _)| g);
+    def.spawn.kit.for_game(game).into_iter().filter_map(|id| super::weapon(def, catalog, id).ok()).collect()
+}
+
+/// A kit by game (`Kit::ByGame`) changed to go with `e`'s new rules weapon
+/// `gun` (the ladder's swap): the other games' kit weapons taken, the new
+/// game's given (before the rules give `gun`, which is then drawn). A kit
+/// list stays as it is.
+pub fn refit_kit(world: &mut World, e: Entity, gun: &str) {
+    let Some(def) = world.get_resource::<ActiveMinigame>().map(|a| a.def) else { return };
+    if !matches!(def.spawn.kit, Kit::ByGame(_)) {
+        return;
+    }
+    let wanted = kit_for(world, def, Some(gun));
+    let any = def.spawn.kit.all();
+    let have: Vec<(Entity, &'static str)> = world
+        .get::<Inventory>(e)
+        .map(|i| i.weapons.iter().filter_map(|w| world.get::<crate::weapon::Weapon>(*w).map(|x| (*w, x.id))).collect())
+        .unwrap_or_default();
+    for &(w, id) in &have {
+        if any.contains(&id) && !wanted.contains(&id) {
+            take_weapon(world, e, w);
+        }
+    }
+    for id in wanted {
+        if !have.iter().any(|(_, h)| *h == id) {
+            give(world, e, id);
         }
     }
 }
@@ -357,6 +394,21 @@ fn handle_deaths(world: &mut World, mut cursor: Local<MessageCursor<Died>>) {
 
 fn on_died(world: &mut World, d: &Died) {
     let Some(mode) = current_mode(world) else { return };
+    // What the killer held when it killed, for the hooks: the rules' swap
+    // (a rung up) may take it before `died` runs (the ladder's melee
+    // death reads it).
+    let mut d = d.clone();
+    if d.damage.weapon.is_none()
+        && let Some(id) = d
+            .attacker
+            .and_then(|k| world.get::<Inventory>(k))
+            .and_then(|i| i.active)
+            .and_then(|w| world.get::<crate::weapon::Weapon>(w))
+            .map(|w| w.id)
+    {
+        d.damage.weapon = Some(id);
+    }
+    let d = &d;
     let victim = d.entity;
     if world.get::<Intent>(victim).is_none() || world.get::<InMinigame>(victim).is_none() {
         return;
