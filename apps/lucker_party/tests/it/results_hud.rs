@@ -1,0 +1,68 @@
+//! The end-of-match results on whichever HUD is up (the HUD follows the
+//! held gun's game): the winner and a line for each player on CS:S's HUD
+//! (an AWP in hand) and on Combat Arms' (the M60), through the
+//! intermission, gone with the next match. Headless, on the same setup as
+//! `hud` (both HUDs' plugins and the shell's switching).
+
+use bevy::prelude::*;
+use chimera_core::core::{Damage, DamageKind, Hitgroup};
+use chimera_sim::minigame::{self, MatchResults, runtime};
+use combat_arms::ui::hud::CaHud;
+use cs_source::ui::minigame_hud::PanelLine;
+
+use crate::{
+    gun_game::held,
+    hud::{cs_minigame_lines, hud, party_with_huds, shown, swap_to},
+};
+
+/// The match ends with `me` on the last rung killing `other`.
+fn win_the_match(sim: &mut chimera_world::harness::Sim, me: Entity, other: Entity) {
+    swap_to(sim, me, 9);
+    sim.seconds(1.0);
+    let at = sim.position(other);
+    sim.app.world_mut().write_message(Damage {
+        target: other,
+        attacker: Some(me),
+        amount: 5.0,
+        point: at,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Chest,
+        kind: DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.seconds(runtime::ROUND_OVER as f64 + 1.0);
+}
+
+#[test]
+fn the_results_panel_shows_on_both_huds() {
+    let (mut sim, me, other) = party_with_huds();
+    sim.seconds(0.5);
+    win_the_match(&mut sim, me, other);
+    assert!(sim.app.world().get_resource::<MatchResults>().is_some(), "the match is decided");
+    // CS:S's HUD: the winner, then each player, in the panel.
+    assert_eq!(held(&sim, me), Some(cs_source::game::weapons::AWP));
+    assert_eq!(hud(&sim), cs_source::game::GAME);
+    let lines: Vec<String> = cs_minigame_lines(&mut sim)
+        .into_iter()
+        .filter(|(k, _)| *k == PanelLine::Result)
+        .map(|(_, t)| t)
+        .collect();
+    assert_eq!(lines.len(), 3, "the winner and two players: {lines:?}");
+    assert!(lines[0].ends_with("wins the match"), "{lines:?}");
+    assert!(lines[1].starts_with("1. ") && lines[1].contains("rung 10/10") && lines[1].contains("1 kills"), "{lines:?}");
+    assert!(lines[2].starts_with("2. ") && lines[2].contains("rung 1/10") && lines[2].contains("1 deaths"), "{lines:?}");
+    assert!(shown(&mut sim, cs_source::game::GAME));
+    // Combat Arms' HUD (the M60 in hand): the same results in its view.
+    swap_to(&mut sim, me, 8);
+    assert_eq!(hud(&sim), combat_arms::game::GAME);
+    assert!(shown(&mut sim, combat_arms::game::GAME));
+    let ca = sim.app.world().resource::<CaHud>().minigame.clone().expect("the minigame on Combat Arms' HUD");
+    assert_eq!(ca.results.len(), 3, "{ca:?}");
+    assert!(ca.results[0].ends_with("wins the match"), "{ca:?}");
+    assert!(ca.results[1].starts_with("1. "), "{ca:?}");
+    // The next match: the results are gone from the HUD's data.
+    minigame::restart(sim.app.world_mut());
+    sim.seconds(0.5);
+    assert!(sim.app.world().resource::<CaHud>().minigame.as_ref().is_some_and(|m| m.results.is_empty()));
+}

@@ -15,7 +15,9 @@
 //! navigation mesh) is read as far as `MapLoadOptions::kit` says: all of it
 //! by default, and for a mashup's map (`map::KitLoad::Only`) none but the
 //! kept guns' models, so its textures and materials aren't loaded
-//! (`KitLoad::Players`: the players' bodies and the HUD look too).
+//! (`KitLoad::Players`: the players' bodies and the HUD look too). On a map of
+//! another game the same parts are read from the install without a map
+//! (`dress_guest`, `map::MapSources::guests`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Non-mover brush entities (other than breakables) are static where they spawn
 //! and ignore render modes other than 10. Overlays and infodecals on movers go
@@ -305,27 +307,7 @@ pub fn load_level_bytes_with(
     // The kit (`MapData::kit`) is read only as far as `options.kit` says:
     // a mashup's map takes none of it but the kept weapons' models.
     let kit = options.kit;
-    if kit.bodies() {
-        for (path, team) in [
-            (CLASS_MODELS[0], Some(crate::core::Team(1))),
-            (CLASS_MODELS[4], None),
-        ] {
-            match super::props::load_character(&mut materials, &surfaces, path, team) {
-                Ok(c) => data.kit.characters.push(c),
-                Err(e) => data.warnings.push(e),
-            }
-        }
-        for (i, path) in CLASS_MODELS.iter().enumerate().filter(|(i, _)| i % 4 != 0) {
-            let team = crate::core::Team(1 + i as u8 / 4);
-            match super::props::load_character(&mut materials, &surfaces, path, Some(team)) {
-                Ok(mut c) => {
-                    c.class = Some(i as u8 + 1);
-                    data.kit.characters.push(c);
-                }
-                Err(e) => data.warnings.push(e),
-            }
-        }
-    }
+    add_bodies(&mut materials, &surfaces, kit, &mut data.kit, &mut data.warnings);
     if kit.parts() {
         // Hostages' bodies, on maps with hostages (picked by name).
         if data.entities.iter().any(|e| e.classname().eq_ignore_ascii_case("hostage_entity")) {
@@ -375,47 +357,7 @@ pub fn load_level_bytes_with(
     // What characters hold: the weapons' world models.
     // (They are held on the player skeleton; a mashup's kept ones take
     // the body's bones without keeping the body.)
-    let skeleton = match data.kit.characters.first() {
-        Some(c) => Some(c.bones.clone()),
-        None if !kit.parts() && kit.any_models() => {
-            super::props::load_character(&mut materials, &surfaces, CLASS_MODELS[0], None)
-                .ok()
-                .map(|c| c.bones)
-        }
-        None => None,
-    };
-    if let Some(skeleton) = skeleton {
-        for (weapon, path) in super::weapons::world_models()
-            .iter()
-            .chain(super::objectives::WORLD_MODELS)
-            .filter(|(weapon, _)| kit.wants(weapon))
-        {
-            match super::props::load_held(&mut materials, path, weapon, &skeleton) {
-                Ok(h) => data.kit.held.push(h),
-                Err(e) => data.warnings.push(e),
-            }
-        }
-        for (weapon, path) in super::weapons::silenced_world_models() {
-            let key = super::weapons::silenced_key(weapon);
-            if !kit.wants(&key) {
-                continue;
-            }
-            match super::props::load_held(&mut materials, path, &key, &skeleton) {
-                Ok(h) => data.kit.held.push(h),
-                Err(e) => data.warnings.push(e),
-            }
-        }
-    }
-    // What the local player sees of them: the view models.
-    for (weapon, path, right_handed) in super::weapons::view_models() {
-        if !kit.wants(weapon) {
-            continue;
-        }
-        match super::props::load_view_model(&mut materials, path, weapon, right_handed) {
-            Ok(v) => data.kit.view_models.push(v),
-            Err(e) => data.warnings.push(e),
-        }
-    }
+    add_guns(&mut materials, &surfaces, kit, &mut data.kit, &mut data.warnings);
     if kit.parts() {
         data.kit.muzzle_flash = Some(super::view_anim::muzzle_flash(&mut materials));
         for (key, path, bounce) in super::view_anim::SHELLS {
@@ -525,6 +467,125 @@ pub fn load_level_bytes_with(
     // Left: putting it in the world (`map::change_map`).
     report(0.95, "LoadingProgress_SignonLocal");
     Ok(data)
+}
+
+/// The players' character bodies `kit` asks for into `into`: a T and a CT
+/// model (CS:S teams 2 and 3; ours are 1 and 2), the CT one for anyone
+/// else; then the other classes' (`core::PlayerClass`, the class menu).
+fn add_bodies(
+    materials: &mut MaterialLoader,
+    surfaces: &super::surfaceprops::SurfaceProps,
+    kit: crate::map::KitLoad,
+    into: &mut crate::map::GameKit,
+    warnings: &mut Vec<String>,
+) {
+    if kit.bodies() {
+        for (path, team) in [
+            (CLASS_MODELS[0], Some(crate::core::Team(1))),
+            (CLASS_MODELS[4], None),
+        ] {
+            match super::props::load_character(materials, surfaces, path, team) {
+                Ok(c) => into.characters.push(c),
+                Err(e) => warnings.push(e),
+            }
+        }
+        for (i, path) in CLASS_MODELS.iter().enumerate().filter(|(i, _)| i % 4 != 0) {
+            let team = crate::core::Team(1 + i as u8 / 4);
+            match super::props::load_character(materials, surfaces, path, Some(team)) {
+                Ok(mut c) => {
+                    c.class = Some(i as u8 + 1);
+                    into.characters.push(c);
+                }
+                Err(e) => warnings.push(e),
+            }
+        }
+    }
+}
+
+/// The weapons' world models (held on the player skeleton: a mashup's
+/// kept ones take the body's bones without keeping the body) and view
+/// models `kit` wants into `into`.
+fn add_guns(
+    materials: &mut MaterialLoader,
+    surfaces: &super::surfaceprops::SurfaceProps,
+    kit: crate::map::KitLoad,
+    into: &mut crate::map::GameKit,
+    warnings: &mut Vec<String>,
+) {
+    let skeleton = match into.characters.first() {
+        Some(c) => Some(c.bones.clone()),
+        None if !kit.parts() && kit.any_models() => {
+            super::props::load_character(materials, surfaces, CLASS_MODELS[0], None)
+                .ok()
+                .map(|c| c.bones)
+        }
+        None => None,
+    };
+    if let Some(skeleton) = skeleton {
+        for (weapon, path) in super::weapons::world_models()
+            .iter()
+            .chain(super::objectives::WORLD_MODELS)
+            .filter(|(weapon, _)| kit.wants(weapon))
+        {
+            match super::props::load_held(materials, path, weapon, &skeleton) {
+                Ok(h) => into.held.push(h),
+                Err(e) => warnings.push(e),
+            }
+        }
+        for (weapon, path) in super::weapons::silenced_world_models() {
+            let key = super::weapons::silenced_key(weapon);
+            if !kit.wants(&key) {
+                continue;
+            }
+            match super::props::load_held(materials, path, &key, &skeleton) {
+                Ok(h) => into.held.push(h),
+                Err(e) => warnings.push(e),
+            }
+        }
+    }
+    // What the local player sees of them: the view models.
+    for (weapon, path, right_handed) in super::weapons::view_models() {
+        if !kit.wants(weapon) {
+            continue;
+        }
+        match super::props::load_view_model(materials, path, weapon, right_handed) {
+            Ok(v) => into.view_models.push(v),
+            Err(e) => warnings.push(e),
+        }
+    }
+}
+
+/// CS:S's players' bodies, the guns `kept` names (held and view models)
+/// and, on a map without one, its HUD look, read from `mount` into a map
+/// of another game (the party's Combat Arms maps, where a player holding
+/// a CS:S gun is CS:S's, `slots::GameIdentity`). The kit's textures are
+/// appended to the map's (`MaterialLoader::guest`: its indices begin past
+/// them), so the bodies and models are the same as CS:S's own maps give.
+/// The bodies go after the map's own.
+pub fn dress_guest(mount: &Mount, map: &mut MapData, kept: &'static [&'static str]) {
+    let (textures, cubemaps) = (map.textures.len(), map.cubemaps.len());
+    let mut materials = MaterialLoader::guest(mount, textures, cubemaps);
+    let surfaces = super::surfaceprops::SurfaceProps::load(&mut materials);
+    let kit = crate::map::KitLoad::Players(kept);
+    let mut guest = crate::map::GameKit::default();
+    let mut warnings = Vec::new();
+    add_bodies(&mut materials, &surfaces, kit, &mut guest, &mut warnings);
+    add_guns(&mut materials, &surfaces, kit, &mut guest, &mut warnings);
+    if map.kit.hud.is_none() {
+        guest.hud = super::hud::load(&mut materials, "").map(std::sync::Arc::new);
+    }
+    materials.finish_textures();
+    warnings.extend(materials.missing);
+    map.textures.extend(materials.textures.split_off(textures));
+    map.cubemaps.extend(materials.cubemaps.split_off(cubemaps));
+    map.texture_anims.extend(materials.texture_anims);
+    map.warnings.extend(warnings);
+    map.kit.characters.extend(guest.characters);
+    map.kit.held.extend(guest.held);
+    map.kit.view_models.extend(guest.view_models);
+    if map.kit.hud.is_none() {
+        map.kit.hud = guest.hud;
+    }
 }
 
 /// The BSP with its entity and texture-name lumps made valid UTF-8 in

@@ -59,6 +59,8 @@ pub struct MinigameHud {
     /// Brief notices, oldest first, each with when (`Time`'s seconds) it
     /// goes.
     pub notices: Vec<(HudLine, f64)>,
+    /// The finished match's results while the match is decided.
+    pub results: Option<super::results::MatchResults>,
 }
 
 impl MinigameHud {
@@ -101,6 +103,7 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
     hud.title = active.def.name.clone();
     hud.notices.retain(|(_, until)| *until > now);
     hud.lines.clear();
+    hud.results = world.get_resource::<super::results::MatchResults>().cloned();
     if let Some(v) = viewer {
         hud.lines.extend((active.rules.status)(world, v));
         hud.lines.extend(phase_line(world));

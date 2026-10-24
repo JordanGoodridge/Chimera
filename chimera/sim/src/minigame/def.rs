@@ -9,6 +9,7 @@
 //! maps = ["cs_source:de_dust2", "combat_arms:warehouse"]   # a pool, the first played first
 //! teams = "free_for_all"                                  # or "two", "one_team"
 //! time_limit = "10m"                                      # "90s", "1.5s", "500ms", or seconds
+//! rotate = true                                           # default: after the match, the pool's next map
 //!
 //! [slots]                     # the gameplay's slots by game id (`chimera_core::gameplay`)
 //! hud = "combat_arms"         # the HUD drawn
@@ -59,6 +60,10 @@ pub struct MinigameDef {
     /// The match's length (seconds).
     #[serde(deserialize_with = "seconds")]
     pub time_limit: f32,
+    /// After the match: the next map of the pool and a new match (a
+    /// server; the default), else this map again.
+    #[serde(default = "yes")]
+    pub rotate: bool,
     #[serde(default)]
     pub slots: Slots,
     #[serde(default)]
@@ -67,6 +72,10 @@ pub struct MinigameDef {
     /// Modifiers by name, each with its value (`ModifierAppExt`).
     #[serde(default)]
     pub modifiers: toml::Table,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// How many players a match takes: it waits for `min`.

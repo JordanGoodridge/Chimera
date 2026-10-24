@@ -12,6 +12,7 @@ players = { min = 2, max = 16 }
 maps = ["cs_source:de_dust2", "combat_arms:warehouse"]
 teams = "free_for_all"
 time_limit = "10m"
+rotate = true   # after the match: the pool's next map (Dust II, Warehouse, Dust II, ...)
 
 [slots]
 hud = "combat_arms"

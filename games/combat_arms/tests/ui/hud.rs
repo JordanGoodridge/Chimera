@@ -2157,12 +2157,36 @@ fn t102_minigame_state_on_the_hud() {
             HudLine::new("Leader: {player}").player(foe),
         ],
         notices: vec![(HudLine::new("Rung up! {weapon}").weapon(RIFLE), 1e9)],
+        ..default()
     });
     sim.ticks(1);
     let m = hud(&sim).minigame.expect("shown while one plays");
     assert_eq!(m.title, "Gun Game");
     assert_eq!(m.lines, ["Rung 3/10: Rifle One", "Leader: AI_Bravo_7"]);
     assert_eq!(m.notices, ["Rung up! Rifle One"]);
+    assert!(m.results.is_empty(), "no results while the match plays");
+    // A finished match's results: the winner (a character here, named as
+    // the HUD names it; one from the network has its name in the row) and a
+    // line a player.
+    use chimera_sim::minigame::results::{MatchResults, ResultRow};
+    let row = |name: &str, player, winner| ResultRow {
+        name: name.into(),
+        kills: 4,
+        deaths: 1,
+        rung: Some(10),
+        winner,
+        player,
+    };
+    sim.app.world_mut().resource_mut::<MinigameHud>().results = Some(MatchResults {
+        title: "Gun Game".into(),
+        rungs: 10,
+        rows: vec![row("Remote", None, true), row("ignored", Some(foe), false)],
+    });
+    sim.ticks(1);
+    let m = hud(&sim).minigame.expect("still shown");
+    assert_eq!(m.results[0], "Remote wins the match");
+    assert_eq!(m.results[1], "1. Remote  rung 10/10  4 kills  1 deaths");
+    assert_eq!(m.results[2], "2. AI_Bravo_7  rung 10/10  4 kills  1 deaths", "a local character by the HUD's name");
     sim.app.world_mut().insert_resource(MinigameHud::default());
     sim.ticks(1);
     assert_eq!(hud(&sim).minigame, None);

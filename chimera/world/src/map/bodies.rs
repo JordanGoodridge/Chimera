@@ -1,7 +1,9 @@
 //! Character bodies, the simulation's side: which model a character uses
 //! (its team's, its class's or the one `BodyName` names, among its
 //! identity's game's models when it has one: `slots::GameIdentity`,
-//! `CharacterModels::for_identity`), what it holds
+//! `CharacterModels::for_identity`; a free-for-all player of an identity's
+//! game with interchangeable skins (player classes) wears one by its team
+//! id, so the players differ), what it holds
 //! (`Held`), its animations and its hitboxes following the skeleton (also
 //! headless, for the server's hit tests). The drawn body, held model and
 //! their posing are `render::bodies`, which draws what these say.
@@ -107,8 +109,29 @@ impl CharacterModels {
                         .enumerate()
                         .find(|(_, m)| Self::wears(game, m) && m.class == Some(c.0))
                 })
+                .or_else(|| identity.and_then(|_| self.varied(game, team)))
                 .or_else(|| self.for_team_of(game, team)),
         }
+    }
+
+    /// A free-for-all player's body (a team id past the two sides, one
+    /// each) among its game's skins when the game has interchangeable ones
+    /// (player classes): by its team id, so the players of a match wear
+    /// different bodies instead of all the fallback's. None for a side's
+    /// player, a game with one body per team, or no identity's game.
+    fn varied(&self, game: Option<&str>, team: Option<Team>) -> Option<(usize, &MapCharacterModel)> {
+        // The sides are ids 1 and 2 (`mode::ALPHA`, `BRAVO`).
+        let t = team.filter(|t| t.0 > 2)?;
+        let pool: Vec<(usize, &MapCharacterModel)> = self
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| Self::wears(game, m) && m.name.is_none())
+            .collect();
+        if !pool.iter().any(|(_, m)| m.class.is_some()) {
+            return None;
+        }
+        Some(pool[(t.0 as usize - 3) % pool.len()])
     }
 
     /// Whether the body a character wears (`BodyModel`) is game `game`'s,

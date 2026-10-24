@@ -24,7 +24,10 @@
 //!   dressing, CS:S's terrorist and counter-terrorist spawns as Alpha's and
 //!   Bravo's, CS:S's surfaces as Combat Arms' through the mashup's table
 //!   (apps/mashup_demo/data/surfaces_cs_source_combat_arms.toml, read from
-//!   there: one table for both apps) and CS:S's guns' models kept.
+//!   there: one table for both apps) and CS:S's guns' models kept. On
+//!   Combat Arms' maps CS:S is a guest (`CS_SOURCE_PARTS`,
+//!   `MapSources::guests`): its player bodies, guns' held and view models
+//!   and HUD look are read from the CS:S install and added to the map.
 //! - `minigame_of`, `first_map`: the minigame a command line asks for
 //!   (`DEFAULT_MINIGAME` without one) and its pool's first map, which the
 //!   app and the server load unless the command line names a map.
@@ -58,7 +61,7 @@
 use bevy::{app::PluginGroupBuilder, prelude::*};
 use chimera_core::game_registry::GameAppExt;
 use chimera_sim::minigame::{MinigameDef, MinigamePlugin};
-use chimera_world::map::{MapData, MapLoadOptions, MapSources, SpawnTeams, SurfaceTable};
+use chimera_world::map::{MapData, MapDressing, MapLoadOptions, MapSources, SpawnTeams, SurfaceTable};
 
 /// This build's version (`version`, bug reports): stamped by build.rs.
 pub const VERSION: &str = env!("CHIMERA_VERSION");
@@ -104,6 +107,16 @@ pub static MAP_SOURCES: MapSources = MapSources {
     // A player holding a CS:S gun is CS:S's (the gun game's `identity =
     // "weapon"`): CS:S's player bodies and HUD look stay on its maps.
     players: true,
+    // On Combat Arms' maps (Warehouse) too: a CS:S gun's holder is CS:S's
+    // (its player models, its guns' view models and held models, its HUD
+    // look), read from the CS:S install behind the map.
+    guests: &[&CS_SOURCE_PARTS],
+};
+
+/// CS:S's players, guns and HUD look on the maps of other games.
+pub static CS_SOURCE_PARTS: MapDressing = MapDressing {
+    game: cs_source::game::GAME,
+    dress: |map| cs_source::game::dress_guest(map, KEPT),
 };
 
 /// Map `id` (`cs_source:de_dust2`, `combat_arms:warehouse`) for the party.
