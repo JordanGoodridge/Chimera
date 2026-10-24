@@ -321,8 +321,10 @@ Looks:
   attach in our sim (a clip face flush with them wins the probe; bots
   sidestep), worth comparing with CS:S.
 - `kill` (fixed 2026-10-10): it moved you to a spawn alive; it is now
-  CS:S's suicide, so a lone player can end a round. Left: a network
-  client's `kill` should be a request to the server.
+  CS:S's suicide, so a lone player can end a round. A network client's
+  `kill` is a request to the server (2026-10-24, `net::cheats`,
+  `PLAYER_COMMANDS`, no `sv_cheats` needed;
+  `net_players::a_clients_kill_is_a_request_to_the_server`).
 
 - Spectator mode (done 2026-10-10): CS:S's spectator team (team menu's
   Spectate, `spectate`, `jointeam 1`, `mp_allowspectators`): no body,
@@ -495,8 +497,8 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   `chimera_drawnav`, `chimera_drawbots` exist; add more as features need
   them (sound radii, triggers).
 - Debug UI (F8, `client/debug_ui.rs`) is in. Left: kicking or freezing
-  one bot (the bot commands act on all), clearing decals and turning fog
-  off (no such cvars yet), starting a trace from the running game (needs
+  one bot (the bot commands act on all), turning fog off (no such cvar yet;
+  a "Clear decals" button runs `r_cleardecals`, 2026-10-24), starting a trace from the running game (needs
   the profile build), a fixed tick-rate control, a history graph per
   render pass.
 

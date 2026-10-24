@@ -519,7 +519,7 @@ pub fn execute(world: &mut World, words: &[String], depth: usize) {
             Err(format!(
                 "Can't use server command {name} from a client: only the server operator can run it."
             ))
-        } else if is_cheat(&name, args)
+        } else if (is_cheat(&name, args) || PLAYER_COMMANDS.contains(&name.as_str()))
             && world.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client)
         {
             // A network client's cheat acts on its player on the server,
@@ -704,6 +704,10 @@ pub const CHEATS: &[&str] = &[
     "chimera_setarmor",
     "chimera_setmoney",
 ];
+
+/// Commands a network client sends to its server to act on its player,
+/// with no `sv_cheats` needed (`net::cheats`): CS:S's `kill`.
+pub const PLAYER_COMMANDS: &[&str] = &["kill"];
 
 /// Impulses that aren't cheats (Source's player impulses): `impulse 100`
 /// (the flashlight) and `impulse 201` (the spray). Every other impulse

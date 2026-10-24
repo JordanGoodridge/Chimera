@@ -1105,6 +1105,7 @@ fn perf_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
     );
     ui.horizontal(|ui| {
         command_button(ui, world, "Log particles", "chimera_particles");
+        command_button(ui, world, "Clear decals", "r_cleardecals");
         command_button(ui, world, "Bug report (F9)", "bugreport");
     });
     ui.collapsing("Traces", |ui| {

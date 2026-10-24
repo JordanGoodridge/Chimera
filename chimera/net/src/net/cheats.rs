@@ -9,8 +9,11 @@
 //! remembers the movement it left (`movement::noclip::NoclipBack`), which
 //! a game's spawn goes back to (`noclip::end_toggled`).
 //!
+//! `kill` (`PLAYER_COMMANDS`) goes the same way but needs no `sv_cheats`:
+//! the server kills the client's player.
+//!
 //! Also the player commands both a game and a dedicated server run for a
-//! player: `noclip`, `god`, `setpos`, `setang` (the game's client adds
+//! player: `noclip`, `god`, `kill`, `setpos`, `setang` (the game's client adds
 //! the rest, `client::console`).
 
 use bevy::prelude::*;
@@ -19,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use super::server::Player;
 use crate::{
-    console::{CommandPlayer, Console, ConsoleAppExt, Level, cheats_allowed, command_player, execute, is_cheat, parse},
+    console::{CommandPlayer, Console, ConsoleAppExt, Level, PLAYER_COMMANDS, cheats_allowed, command_player, execute, is_cheat, parse},
     core::{MovementState, NetRole, Velocity},
     movement::noclip::NoclipBack,
     slots::{Loadout, MovementSlot, set_movement},
@@ -101,10 +104,11 @@ pub fn run_for(world: &mut World, client: Entity, line: &str) {
         let Some(name) = words.first().map(|w| w.to_lowercase()) else {
             continue;
         };
-        if !is_cheat(&name, &words[1..]) {
+        let cheat = is_cheat(&name, &words[1..]);
+        if !cheat && !PLAYER_COMMANDS.contains(&name.as_str()) {
             continue;
         }
-        if !cheats_allowed(world) {
+        if cheat && !cheats_allowed(world) {
             // Source's words.
             lines.push((
                 format!("Can't use cheat command {name} in multiplayer, unless the server has sv_cheats set to 1."),
@@ -199,6 +203,33 @@ pub fn player_commands(app: &mut App) {
             let mut i = w.get_mut::<crate::core::Intent>(p).ok_or("no intent")?;
             i.pitch = -pitch.to_radians();
             i.yaw = (yaw - 90.0).to_radians();
+            Ok(None)
+        },
+    )
+    .console_command(
+        "kill",
+        "Kill yourself (CS:S's suicide: you die where you stand, which can end the round).",
+        |w, _| {
+            use crate::core::{Damage, DamageKind, Dead, Health, Hitgroup};
+            let p = command_player(w)?;
+            if w.get::<Dead>(p).is_some() {
+                return Ok(None);
+            }
+            let t = *w.get::<Transform>(p).ok_or("no transform")?;
+            let _ = w.get::<Health>(p).ok_or("no health")?;
+            // God mode would refuse the damage; a suicide goes through it.
+            w.entity_mut(p).remove::<crate::core::God>();
+            w.write_message(Damage {
+                force: Vec3::ZERO,
+                target: p,
+                attacker: Some(p),
+                amount: 1000.0,
+                point: t.translation,
+                dir: Vec3::NEG_Y,
+                hitgroup: Hitgroup::Generic,
+                kind: DamageKind::Generic,
+                weapon: None,
+            });
             Ok(None)
         },
     )
