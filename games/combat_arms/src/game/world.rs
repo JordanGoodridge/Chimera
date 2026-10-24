@@ -1068,7 +1068,7 @@ fn decode_all(files: Vec<(String, Vec<u8>)>, decode: bool) -> Vec<Result<(MapTex
 /// The file's blocks from `level` down (`MapTexture::bc`): DXT1/3/5 as
 /// stored, its own mip levels (the files stop at 4 x 4). None for BGRA
 /// ones and for sizes that are not whole blocks.
-fn dtx_bc(dtx: &Dtx, level: u32) -> Option<crate::map::MapBc> {
+pub(crate) fn dtx_bc(dtx: &Dtx, level: u32) -> Option<crate::map::MapBc> {
     use crate::map::{MapBc, MapBcFormat};
     use lithtech_formats::dtx::Format;
 

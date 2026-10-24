@@ -17,6 +17,12 @@ use bevy::prelude::*;
 /// decode to).
 pub use source_formats::wav::SoundClip as MapSoundClip;
 
+/// A sound file decoded (RIFF WAVE, else MP3): what the presentation's
+/// sound assets load (`audio::clip_asset`).
+pub fn decode_clip(bytes: &[u8]) -> Result<MapSoundClip, String> {
+    source_formats::wav::decode_any(bytes)
+}
+
 /// How a sound falls off with distance.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SoundLevel {

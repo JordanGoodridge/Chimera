@@ -35,6 +35,7 @@ pub mod spectator_hud;
 pub mod spectator_menu;
 pub mod target_id;
 pub mod team_menu;
+pub mod textures;
 pub mod voice_hud;
 pub mod vote_hud;
 pub mod weapon_select;
@@ -85,7 +86,12 @@ impl Plugin for CsSourceUiPlugin {
             freeze_cam::FreezeCamPlugin,
             demo::DemoUiPlugin,
         ));
-        app.add_plugins((voice_hud::VoiceHudPlugin, vote_hud::VoteHudPlugin, hints::HintsHudPlugin));
+        app.add_plugins((
+            voice_hud::VoiceHudPlugin,
+            vote_hud::VoteHudPlugin,
+            hints::HintsHudPlugin,
+            textures::CsTexturesPlugin,
+        ));
     }
 }
 

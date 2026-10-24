@@ -25,6 +25,11 @@ pub trait FileSource: Send + Sync {
     fn entries(&self) -> Vec<Entry>;
     /// `None` if this source doesn't have `path` (already normalized).
     fn read(&self, path: &str) -> Option<io::Result<Vec<u8>>>;
+    /// Whether this source has `path` (already normalized): `read` would
+    /// give `Some`. Sources override it to answer without reading.
+    fn contains(&self, path: &str) -> bool {
+        self.read(path).is_some()
+    }
     /// The files directly in folder `dir` (normalized, no trailing slash),
     /// as normalized paths. Sources override it to avoid listing
     /// everything.
@@ -73,6 +78,13 @@ impl Mount {
             .iter()
             .find_map(|l| l.read(&path))
             .unwrap_or_else(|| Err(io::Error::new(io::ErrorKind::NotFound, format!("not in mount: {path}"))))
+    }
+
+    /// Whether a layer has `path` (`read` finds it, though reading may
+    /// still fail), without reading it.
+    pub fn contains(&self, path: &str) -> bool {
+        let path = normalize(path);
+        self.layers.iter().any(|l| l.contains(&path))
     }
 
     /// The files directly in folder `dir` in any layer, sorted by path
@@ -181,13 +193,25 @@ impl FileSource for LooseDir {
     }
 
     fn read(&self, path: &str) -> Option<io::Result<Vec<u8>>> {
+        self.locate(path).map(fs::read)
+    }
+
+    fn contains(&self, path: &str) -> bool {
+        self.locate(path).is_some()
+    }
+}
+
+impl LooseDir {
+    /// The file at `path` (normalized) on disk, if it is there and not
+    /// hidden.
+    fn locate(&self, path: &str) -> Option<PathBuf> {
         if self.hidden(path) {
             return None;
         }
         // Fast path: exact case. Otherwise match case-insensitively.
         let direct = self.root.join(path);
         if direct.is_file() {
-            return Some(fs::read(direct));
+            return Some(direct);
         }
         let mut dir = self.root.clone();
         for part in path.split('/') {
@@ -197,7 +221,7 @@ impl FileSource for LooseDir {
                 .find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(part))?;
             dir = found.path();
         }
-        dir.is_file().then(|| fs::read(dir))
+        dir.is_file().then_some(dir)
     }
 }
 
@@ -219,6 +243,8 @@ mod tests {
             vec!["materials/vgui/logos/spray_a.vtf"]
         );
         assert!(mount.files_in("materials/none").is_empty());
+        assert!(mount.contains("MATERIALS/vgui/logos/spray_a.vtf"));
+        assert!(!mount.contains("materials/vgui/logos/spray_b.vtf"));
         fs::remove_dir_all(&root).ok();
     }
 

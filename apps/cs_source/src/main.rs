@@ -59,6 +59,10 @@ fn main() {
         }
     }
     app.add_plugins((
+        // The install as `cs_source://` assets (before `AssetPlugin`).
+        chimera_present::assets::InstallSourcesPlugin(vec![chimera_present::assets::InstallSource::of(
+            &cs_source_app::games::cs_source::INFO,
+        )]),
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {

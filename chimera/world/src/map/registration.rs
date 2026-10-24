@@ -158,7 +158,7 @@ pub struct Effects {
 /// runs (`MapHooks::spawn`), both with `L::Drawer`.
 pub fn build<L: MapLayers>(app: &mut App, data: Option<&Arc<MapData>>, view: MapDebugView, layers: &L) {
     if let Some(data) = data {
-        app.insert_resource(PendingMap(data.clone(), view))
+        app.insert_resource(PendingMap(data.clone(), view, prepare::Prepared::default()))
             .insert_resource(ActiveMapLook(data.look.clone()));
     }
     ragdoll::plugin(app);
@@ -288,7 +288,9 @@ pub fn build<L: MapLayers>(app: &mut App, data: Option<&Arc<MapData>>, view: Map
     );
     app.add_systems(Startup, spawn_map::<L::Drawer>.run_if(resource_exists::<PendingMap>));
     app.init_resource::<MapHooks>();
-    app.world_mut().resource_mut::<MapHooks>().spawn = Some(spawn_pending_map::<L::Drawer>);
+    let mut hooks = app.world_mut().resource_mut::<MapHooks>();
+    hooks.spawn = Some(spawn_pending_map::<L::Drawer>);
+    hooks.prepare.push(spawn::prepare_world);
     scoped_resources(app);
 }
 

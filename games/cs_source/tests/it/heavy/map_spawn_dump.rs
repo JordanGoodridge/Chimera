@@ -10,7 +10,9 @@
 //! systems in the order they run (the order Bevy's topological sort gives,
 //! which follows registration order where systems aren't ordered) go to
 //! `<dir>/<map>.systems.txt`, for refactors of the map's registration
-//! (`map::build`).
+//! (`map::build`). `CHIMERA_SPAWN_DUMP_PREPARED=1` spawns each map with its
+//! parts prepared ahead (`map::prepare`, as the client's background load
+//! does): the dumps must not differ.
 //!
 //! `cargo test --features dev --test it heavy::map_spawn_dump -- --nocapture`
 
@@ -118,7 +120,15 @@ fn dump_spawned_maps() {
                 continue;
             }
         };
-        let mut sim = Sim::new(CsSim, (render_assets, MapPlugin::new(map)));
+        let mut sim = Sim::with(CsSim, |app| {
+            app.add_plugins((render_assets, MapPlugin::new(map)));
+            // `CHIMERA_SPAWN_DUMP_PREPARED=1`: its spawn's parts computed
+            // ahead, as a background load does (`map::prepare`).
+            if chimera_core::env::var("CHIMERA_SPAWN_DUMP_PREPARED").is_ok_and(|v| v == "1") {
+                let parts = crate::stack::map::prepare::prepare_pending(app.world_mut());
+                eprintln!("{name}: {parts} parts prepared ahead");
+            }
+        });
         sim.app.update();
         eprintln!("{name}: resident {} MB after load", rss_mb());
         let text = dump(sim.app.world_mut());

@@ -40,5 +40,6 @@ mod weapon_select;
 mod heavy {
     mod bot_radio;
     mod hud_layout;
+    mod install_assets;
     mod lightmap_probe;
 }

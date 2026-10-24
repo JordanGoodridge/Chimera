@@ -7,8 +7,10 @@
 //! The simulation's side of sounds (the map's sound data, `PlaySound`,
 //! `SoundControl`, the distance model) is `map::sound`; nothing in the
 //! simulation uses this module. `SoundPlugin` is added with
-//! `map::MapPlugin` (`crate::map_plugin`).
+//! `map::MapPlugin` (`crate::map_plugin`). `clip_asset`: sound files as
+//! assets (`SoundAsset`, loaded through the installs' asset sources).
 
+pub mod clip_asset;
 pub mod hearing;
 pub mod live_sound;
 pub mod room;

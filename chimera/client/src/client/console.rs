@@ -1861,7 +1861,7 @@ pub fn loading_map(w: &World) -> Option<String> {
 #[derive(Resource)]
 struct MapLoad {
     id: String,
-    task: bevy::tasks::Task<Result<crate::map::MapData, String>>,
+    task: bevy::tasks::Task<Result<(crate::map::MapData, crate::map::prepare::Prepared), String>>,
 }
 
 /// Load map `id` in the background (from `file` when given: a copy
@@ -1873,16 +1873,20 @@ pub fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>)
     // At the HDR level set now (mat_hdr_level), as the game does.
     let hdr_level = w.get_resource::<super::hdr::HdrSettings>().map_or(0, |s| s.level);
     crate::map::loading::reset();
-    // The app loads it (`AppHooks`).
+    // The app loads it (`AppHooks`), then the spawn's own work is done
+    // there too (`map::prepare`): the frame that swaps it in only spawns.
     let hooks = w.get_resource::<super::AppHooks>().copied();
+    let prepare = crate::map::prepare::preparation(w);
     let task = bevy::tasks::AsyncComputeTaskPool::get().spawn({
         let id = id.to_string();
         async move {
             let hooks = hooks.ok_or("this app loads no maps")?;
-            match file {
+            let data = match file {
                 Some(f) => (hooks.load_map_file)(&id, &f, hdr_level),
                 None => (hooks.load_map)(&id, hdr_level),
-            }
+            }?;
+            let prepared = prepare.run(&data);
+            Ok((data, prepared))
         }
     });
     w.insert_resource(MapLoad { id: id.to_string(), task });
@@ -1914,7 +1918,7 @@ fn finish_map_load(w: &mut World) {
     };
     let id = load.id.clone();
     w.remove_resource::<MapLoad>();
-    let data = match result {
+    let (data, prepared) = match result {
         Ok(d) => d,
         Err(e) => {
             w.resource_mut::<Console>()
@@ -1948,7 +1952,7 @@ fn finish_map_load(w: &mut World) {
         data.spawns.len()
     );
     unload_greybox(w);
-    crate::map::change_map(w, data, crate::map::MapDebugView::Normal);
+    crate::map::prepare::change_map_prepared(w, data, prepared, crate::map::MapDebugView::Normal);
     // At the gameplay's server tick (a mashup plays another game's map at
     // its gameplay's tick); without a gameplay the default game's, else
     // the map's game's.

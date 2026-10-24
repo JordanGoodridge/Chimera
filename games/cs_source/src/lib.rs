@@ -55,7 +55,7 @@ use source_logic::logic;
 #[cfg(feature = "ui")]
 use chimera_client::client;
 #[cfg(feature = "ui")]
-use chimera_present::{audio, render};
+use chimera_present::{assets, audio, render};
 
 use bevy::prelude::*;
 

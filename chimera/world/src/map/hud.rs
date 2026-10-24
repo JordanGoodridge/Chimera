@@ -546,8 +546,9 @@ pub struct GameUi {
     /// The loading dialog's layout (its frame `LoadingDialog`, `InfoLabel`,
     /// `Progress`, `CancelButton`).
     pub loading: Option<UiLayout>,
-    /// The interface's sounds by what they are for (`UiSound`).
-    pub sounds: HashMap<UiSound, super::sound::MapSoundClip>,
+    /// The interface's sound files by what they are for (`UiSound`), as
+    /// install paths (the front end loads them as assets).
+    pub sound_files: HashMap<UiSound, String>,
     /// The server browser's layouts by name (`dialog`: the frame, its
     /// tabs and status line; `page`, `page_filters`: a tab's list and
     /// buttons, without and with the filters shown; `add`: the add server

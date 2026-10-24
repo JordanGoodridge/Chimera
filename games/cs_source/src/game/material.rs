@@ -1219,7 +1219,7 @@ impl<'a> MaterialLoader<'a> {
 }
 
 /// A VTF file's full-size image and its own mip levels as RGBA8.
-fn decode_bytes(bytes: &[u8]) -> Result<MapTexture, String> {
+pub(crate) fn decode_bytes(bytes: &[u8]) -> Result<MapTexture, String> {
     let vtf = vtf::from_bytes(bytes).map_err(|e| e.to_string())?;
     let image = decode_full(bytes, &vtf, 0)?;
     let mips = mip_levels(bytes, &vtf.header).unwrap_or_default();

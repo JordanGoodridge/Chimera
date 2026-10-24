@@ -1405,9 +1405,57 @@ at start; the character kit and weapon sets aren't slots yet (L1, L2).
 | L1 | The mode runtime (`chimera_sim::mode`) lifted from `CaMode`; Combat Arms' modes, then CS:S's rounds, on it, their spec tests unchanged (D2) | X1 | L (**done 2026-10-22**) |
 | L2 | Minigame definitions and primitives; `games/originals` and `minigames/`; `chimera:ladder`; the first original minigames; `apps/lucker_party` and its server (D2, A5) | L1 | L (**done 2026-10-22**; note below) |
 | L3 | Party networking: `ChangeMatch`, the match manifest, the mount doctor at join, the lobby's playable set, relevance culling where cheap (M1-M5) | X6, L2 | L  (**stages 1-3 done 2026-10-23**: manifest, doctor, `ChangeMatch`, playable set; relevance culling left; note below) |
-| L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L |
+| L4 | Asset pipeline: the installs as an `AssetSource` over the VFS, loaders for textures, models and sounds, maps converted in the background behind the loading screen (F6) | X7, X9 | L (**stages 1-3 done 2026-10-23**: sources, texture and sound loaders with first consumers, spawn work prepared on the loading task; models, the remaining consumers and maps as assets left; note below) |
 | L5 | Bevy and avian upgrades as their own lane, each release: the workarounds listed (contact flags, the disabled-body flag, the 18 change-detection bypasses), spawn and system dumps compared, full suite | any time, alone | M (**done 2026-10-23** for Bevy 0.20 and avian 0.8; note below) |
 | L6 | Opportunistic: giant systems split when touched (E3), the dialog layer (P6), one binary reader (P7), bots' sight in parallel (F4) **done**, `bevy` without default features for servers (A5) **done** | none | S each (two done 10-22, note below) |
+
+L4, stages 1-3 done (10-23):
+
+- Sources (`chimera_present::assets`): each game's install is a Bevy
+  asset source named by its id (`cs_source://materials/...`,
+  `combat_arms://...`), read through its `chimera_vfs::Mount`
+  (case-insensitive, read-only, no `.meta` files), the mount opened on
+  the first read (`InstallSource::of(&INFO)`, retried until an install
+  exists) or shared with the game (`InstallSource::shared`: Combat Arms'
+  `world::mount`). Bevy takes sources only before `AssetPlugin`, so the
+  four client apps add `InstallSourcesPlugin` ahead of `DefaultPlugins`;
+  the dedicated servers never link it. `Mount::contains` /
+  `FileSource::contains` (VPK, rez and loose folders answer without
+  reading).
+- Loaders: Combat Arms `.dtx` (`ui::textures::DtxLoader`; default as the
+  maps upload them, X9's blocks or RGBA8 with mips; `plain` the decoded
+  top level), CS:S `.vtf` (`ui::textures::VtfLoader`, the map loader's
+  decode and `render::to_image`), `.wav`/`.mp3` as
+  `audio::clip_asset::SoundAsset`; `assets::texture_bc` is read in each
+  loader plugin's `finish`. Consumers moved: Combat Arms' effect textures
+  (`effects::FxImages`: decals, tracers, casing skins, muzzle flashes,
+  plain look, so unchanged) and CS:S's interface sounds (menu and freeze
+  cam; `GameUi::sound_files` replaces the decoded `sounds`). Heavy
+  `install_assets` (cs_source ui tests): a VTF and a WAV through
+  `cs_source://` equal the by-hand decode.
+- Maps behind the loading screen: the parse and convert already ran on
+  the async pool; the spawn's data-only work now does too (`map::prepare`:
+  `MapHooks::prepare` jobs made from the world as the load starts, run
+  after it, taken by the spawn phases, computed in place without them).
+  Prepared: the world's colliders and terrain, the models' colliders and
+  hulls, the props' placed brushes (on threads: de_nuke's bevels were
+  10.3 s of one frame), the textures', cubemaps' and lightmap's images.
+  Swap frames: de_dust2 495 to 166 ms, de_nuke 10.7 s to 510 ms,
+  warehouse 244 to 118 ms; the loading screen stays at 60 fps
+  (performance.md, "Map changes behind the loading screen"). A client
+  joining a listen server loads and joins.
+- Guards: spawn dumps of the five maps identical (before/after, and
+  after with `CHIMERA_SPAWN_DUMP_PREPARED=1`); system dumps of the four
+  clients: stage 1 and 3 identical, stage 2 adds `SoundAsset`'s two asset
+  systems in `Last` and Bevy reorders unordered systems of `PreUpdate`
+  and `PostUpdate` (fixed, `Predict` and `Update` unchanged); X2 and the
+  schedule ratchets unchanged.
+- Left: model loaders (Combat Arms' view and character model caches,
+  CS:S `.mdl`) and the other by-hand consumers (CS:S's menu backgrounds
+  and option pictures, HUD textures, Combat Arms' UI art and music); a
+  map as an asset with its textures as dependencies, shared between maps
+  (hl2's textures loaded once); the servers' level change and startup
+  `--map` still spawn in place; `MapBrush::from_planes`' cost.
 
 L5, done for Bevy 0.20.0 and avian3d 0.8.0 (10-23):
 

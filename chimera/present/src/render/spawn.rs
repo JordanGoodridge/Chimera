@@ -174,7 +174,21 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
         return drawn;
     };
     let (data, view) = (s.data, s.view);
-    let (textures, cubemaps) = load_images(commands, data, images, super::images::bc_wanted(compressed.as_deref()));
+    // The images, built ahead on the loading thread (`prepare_images`)
+    // when they were for this device's formats, else here.
+    let bc = super::images::bc_wanted(compressed.as_deref());
+    let parts = s
+        .prepared
+        .take::<ImageParts>()
+        .filter(|p| p.bc == bc)
+        .unwrap_or_else(|| image_parts(data, bc));
+    let ImageParts {
+        textures: texture_images,
+        cubemaps: cubemap_images,
+        lightmaps: lightmap_layers,
+        ..
+    } = parts;
+    let (textures, cubemaps) = load_images(commands, data, images, texture_images, cubemap_images);
     drawn.cubemaps = cubemaps.clone();
     drawn.textures = textures.clone();
     // Character bodies, drawn by `attach_bodies`: skinned when the
@@ -191,7 +205,7 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
             sprite_materials,
         );
     }
-    let lightmaps = build_lightmaps(commands, data, images, world_materials.is_none());
+    let lightmaps = build_lightmaps(commands, data, images, lightmap_layers, world_materials.is_none());
     let sky_handle = spawn_sky(commands, s, images, meshes);
     // Water surfaces have their own material (`water`).
     let water_drawn = water_materials.is_some() && view == MapDebugView::Normal;
@@ -297,12 +311,25 @@ fn image_sizes(images: &Assets<Image>, textures: &[Handle<Image>]) -> (usize, us
 
 /// The map's textures and cubemaps as images (the monitor screen's
 /// texture is its render target), and the resources that name them.
-fn load_images(
-    commands: &mut Commands,
-    data: &MapData,
-    images: &mut Assets<Image>,
+/// A map's images as its drawer builds them from the data alone: each
+/// texture's (None for the monitor's screen, made at the spawn), the
+/// baked cubemaps and the lightmap's layers, for a device that does or
+/// doesn't take BC (`bc`).
+pub struct ImageParts {
     bc: bool,
-) -> (Vec<Handle<Image>>, Vec<Handle<Image>>) {
+    textures: Vec<Option<Image>>,
+    cubemaps: Vec<Image>,
+    lightmaps: Option<LightmapLayers>,
+}
+
+/// The drawer's job for `MapHooks::prepare`: the images, for the device's
+/// formats as the load starts.
+pub fn prepare_images(world: &World) -> crate::map::prepare::PrepareJob {
+    let bc = super::images::bc_wanted(world.get_resource::<bevy::image::CompressedImageFormatSupport>());
+    Box::new(move |data, prepared| prepared.insert(image_parts(data, bc)))
+}
+
+fn image_parts(data: &MapData, bc: bool) -> ImageParts {
     // HUD pictures are clamped at their edges: wrapped, the scope
     // ring's outer edge blends with its clear centre and lets the
     // scene through at the screen's edges.
@@ -311,19 +338,46 @@ fn load_images(
         .iter()
         .flat_map(|h| h.sprites.values().map(|s| s.texture))
         .collect();
-    let textures: Vec<Handle<Image>> = data
+    let textures = data
         .textures
         .iter()
         .enumerate()
         .map(|(i, t)| {
-            if Some(i) == data.camera_texture {
-                return monitor::screen_image(images);
-            }
-            let mut image = to_image(t, &data.look, bc);
-            if hud.contains(&i) {
-                clamp_edges(&mut image);
-            }
-            images.add(image)
+            (Some(i) != data.camera_texture).then(|| {
+                let mut image = to_image(t, &data.look, bc);
+                if hud.contains(&i) {
+                    clamp_edges(&mut image);
+                }
+                image
+            })
+        })
+        .collect();
+    let cubemaps = data.cubemaps.iter().map(cube_image).collect();
+    let source_ldr = data.look.source_ldr_lightmaps;
+    let lightmaps = data
+        .lightmap
+        .as_ref()
+        .map(|l| LightmapLayers::build(&l.rgb, l.bumped.as_ref(), l.width, l.height, source_ldr));
+    ImageParts {
+        bc,
+        textures,
+        cubemaps,
+        lightmaps,
+    }
+}
+
+fn load_images(
+    commands: &mut Commands,
+    data: &MapData,
+    images: &mut Assets<Image>,
+    texture_images: Vec<Option<Image>>,
+    cubemap_images: Vec<Image>,
+) -> (Vec<Handle<Image>>, Vec<Handle<Image>>) {
+    let textures: Vec<Handle<Image>> = texture_images
+        .into_iter()
+        .map(|image| match image {
+            Some(image) => images.add(image),
+            None => monitor::screen_image(images),
         })
         .collect();
     let (compressed, bytes) = image_sizes(images, &textures);
@@ -344,7 +398,7 @@ fn load_images(
         ));
     }
     commands.insert_resource(super::texture_anim::TextureAnims::new(data, &textures));
-    let cubemaps: Vec<Handle<Image>> = data.cubemaps.iter().map(|c| images.add(cube_image(c))).collect();
+    let cubemaps: Vec<Handle<Image>> = cubemap_images.into_iter().map(|c| images.add(c)).collect();
     (textures, cubemaps)
 }
 
@@ -453,13 +507,10 @@ fn build_lightmaps(
     commands: &mut Commands,
     data: &MapData,
     images: &mut Assets<Image>,
+    built: Option<LightmapLayers>,
     no_world_material: bool,
 ) -> Lightmaps {
     let source_ldr = data.look.source_ldr_lightmaps;
-    let built = data
-        .lightmap
-        .as_ref()
-        .map(|l| LightmapLayers::build(&l.rgb, l.bumped.as_ref(), l.width, l.height, source_ldr));
     let (mut lightmap, mut world_lightmap, mut bumped_lightmaps) = (None, None, None::<[Handle<Image>; 3]>);
     if let Some(b) = built {
         let plain = images.add(b.plain);

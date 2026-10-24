@@ -73,6 +73,7 @@ pub mod options;
 pub mod options_apply;
 pub mod scoreboard;
 pub mod talk;
+pub mod textures;
 pub mod visuals;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
@@ -109,6 +110,7 @@ impl Plugin for CaUiPlugin {
             hud::death::CaDeathScreenPlugin,
             talk::CaTalkPlugin,
             music::CaMusicPlayPlugin,
+            textures::CaTexturesPlugin,
         ))
         // Key 6, the objective class (inventory.md 2, 3: the mission
         // bomb), through the shell's selection as slot 6.

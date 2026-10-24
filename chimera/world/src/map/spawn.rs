@@ -11,6 +11,11 @@
 //! draws nothing, `MapSimPlugin`'s), called at their places in that order. `MapDrawer` is a system
 //! parameter: `world_material`, `draws`, `spawn_undrawn`, `spawn_drawn`,
 //! `spawn_prop`, `textures`, `insert_drawn` (`DrawnResource`).
+//!
+//! What needs only the data (the world's colliders, the models' colliders
+//! and hulls, the props' brushes: `WorldParts`) comes prepared ahead when
+//! the map was loaded in the background (`prepare`, `prepare_world`), else
+//! is computed here by the same functions (the props' brushes on threads).
 
 use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 
@@ -109,6 +114,9 @@ pub struct MapSpawn<'a> {
     /// The visibility drawn parts are culled by (none when the world is
     /// spawned merged, `merged_world`).
     pub visibility: Option<&'a vis::MapVisibility>,
+    /// Parts computed ahead of the spawn (`prepare`): each phase takes its
+    /// own, else computes it.
+    pub prepared: &'a prepare::Prepared,
 }
 
 impl MapSpawn<'_> {
@@ -144,8 +152,10 @@ pub fn spawn_map<D: MapDrawer>(mut commands: Commands, pending: Res<PendingMap>,
     let assets = &mut *assets;
     let data = &pending.0;
     let view = pending.1;
+    let prepared = &pending.2;
+    let world = prepared.take::<WorldParts>().unwrap_or_else(|| world_parts(data));
     let (root, statics) = spawn_roots(&mut commands, data, D::world_material(assets));
-    spawn_world_collision(&mut commands, data, root);
+    spawn_world_collision(&mut commands, data, world.collision, root);
     super::physics_clip::spawn_clips(&mut commands, data, root);
     let entity_nodes = spawn_entity_nodes(&mut commands, data, root);
     let s = MapSpawn {
@@ -155,12 +165,13 @@ pub fn spawn_map<D: MapDrawer>(mut commands: Commands, pending: Res<PendingMap>,
         statics,
         entity_nodes,
         visibility: data.visibility.as_deref().filter(|_| !merged_world()),
+        prepared,
     };
     insert_entities(&mut commands, &s);
     insert_headless_assets(&mut commands, &s, D::draws(assets));
     D::spawn_undrawn(assets, &mut commands, &s);
     let mut drawn = D::spawn_drawn(assets, &mut commands, &s);
-    let brushes = spawn_props::<D>(&mut commands, &s, assets, &mut drawn);
+    let brushes = spawn_props::<D>(&mut commands, &s, assets, &mut drawn, world.props);
     insert_resources::<D>(&mut commands, &s, &drawn, brushes);
     spawn_sun_and_spawn_points(&mut commands, data);
     // Last: the pending data goes (nothing reads it after the spawn), and
@@ -214,28 +225,89 @@ fn spawn_roots(commands: &mut Commands, data: &MapData, world_material: bool) ->
     (root, statics)
 }
 
-/// The world's collision: its surfaces (and a smoothed copy for loose
-/// items) and its solids.
-fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) {
-    if !data.collision_indices.is_empty() {
-        commands.insert_resource(MapTerrain::from_triangles(
+/// What the world's spawn computes from the data alone (`prepare`): the
+/// collision's colliders and the props' colliders and brushes.
+pub(super) struct WorldParts {
+    collision: CollisionParts,
+    props: PropParts,
+}
+
+/// The world's job for `MapHooks::prepare`.
+pub(super) fn prepare_world(_: &World) -> prepare::PrepareJob {
+    Box::new(|data, prepared| prepared.insert(world_parts(data)))
+}
+
+fn world_parts(data: &MapData) -> WorldParts {
+    WorldParts {
+        collision: collision_parts(data),
+        props: prop_parts(data),
+    }
+}
+
+/// The world's collision as colliders: the surfaces (with the terrain
+/// queries' copy and a smoothed collider for loose items), each set's
+/// triangles, the solids and the glass.
+struct CollisionParts {
+    terrain: Option<(MapTerrain, Collider, Option<Collider>)>,
+    /// Per collision set, its collider (None: not spawned).
+    sets: Vec<Option<Collider>>,
+    /// The solids, then the glass and grates (None: no hulls).
+    solids: [Option<Collider>; 2],
+}
+
+fn collision_parts(data: &MapData) -> CollisionParts {
+    let terrain = (!data.collision_indices.is_empty()).then(|| {
+        let terrain = MapTerrain::from_triangles(
             data.collision_indices
                 .iter()
                 .map(|t| t.map(|i| Vec3::from(data.collision_positions[i as usize]))),
             TERRAIN_THICKNESS,
-        ));
+        );
         let positions: Vec<Vec3> = data.collision_positions.iter().map(|p| Vec3::from(*p)).collect();
+        let surfaces = Collider::trimesh(positions.clone(), data.collision_indices.clone());
+        (terrain, surfaces, smooth_terrain(positions, &data.collision_indices))
+    });
+    let sets = data
+        .collision_sets
+        .iter()
+        .map(|set| {
+            (!set.indices.is_empty() && (set.characters || set.traces)).then(|| {
+                let positions: Vec<Vec3> = data.collision_positions.iter().map(|p| Vec3::from(*p)).collect();
+                Collider::trimesh(positions, set.indices.clone())
+            })
+        })
+        .collect();
+    let see_through: std::collections::HashSet<usize> = data.see_through_hulls.iter().copied().collect();
+    let solids = [false, true].map(|glass| {
+        let hulls: Vec<_> = data
+            .collision_hulls
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| see_through.contains(i) == glass)
+            .flat_map(|(_, h)| contact_hulls(&h.iter().map(|p| Vec3::from(*p)).collect::<Vec<_>>()))
+            .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
+            .collect();
+        (!hulls.is_empty()).then(|| Collider::compound(hulls))
+    });
+    CollisionParts { terrain, sets, solids }
+}
+
+/// The world's collision: its surfaces (and a smoothed copy for loose
+/// items) and its solids.
+fn spawn_world_collision(commands: &mut Commands, data: &MapData, parts: CollisionParts, root: Entity) {
+    if let Some((terrain, surfaces, smooth)) = parts.terrain {
+        commands.insert_resource(terrain);
         commands.entity(root).with_child((
             Name::new("Map collision (surfaces)"),
             MapPart,
             MapTerrainCollider,
             RigidBody::Static,
-            Collider::trimesh(positions.clone(), data.collision_indices.clone()),
+            surfaces,
             // Loose items slide on their own copy (below).
             CollisionLayers::new(LayerMask::DEFAULT, LayerMask::ALL & !crate::core::ITEM_LAYER),
             Transform::default(),
         ));
-        if let Some(smooth) = smooth_terrain(positions, &data.collision_indices) {
+        if let Some(smooth) = smooth {
             commands.entity(root).with_child((
                 Name::new("Map collision (surfaces, for loose items)"),
                 MapPart,
@@ -249,21 +321,18 @@ fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) 
     }
     // Triangles only some things meet (`MapCollisionSet`): no contacts
     // but with characters for the players-only ones.
-    for set in &data.collision_sets {
-        if set.indices.is_empty() || !(set.characters || set.traces) {
-            continue;
-        }
+    for (set, collider) in data.collision_sets.iter().zip(parts.sets) {
+        let Some(collider) = collider else { continue };
         let layers = match (set.characters, set.traces) {
             (true, false) => CollisionLayers::new(crate::core::PLAYER_CLIP_LAYER, LayerMask::DEFAULT),
             (false, true) => CollisionLayers::new(crate::core::TRACE_ONLY_LAYER, LayerMask::NONE),
             _ => CollisionLayers::new(LayerMask::DEFAULT, LayerMask::ALL & !crate::core::ITEM_LAYER),
         };
-        let positions: Vec<Vec3> = data.collision_positions.iter().map(|p| Vec3::from(*p)).collect();
         let mut e = commands.spawn((
             Name::new(format!("Map collision ({})", set.name)),
             MapPart,
             RigidBody::Static,
-            Collider::trimesh(positions, set.indices.clone()),
+            collider,
             layers,
             Transform::default(),
             ChildOf(root),
@@ -273,19 +342,8 @@ fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) 
         }
     }
     // Glass and grates get a collider of their own, marked `SeeThrough`.
-    let see_through: std::collections::HashSet<usize> = data.see_through_hulls.iter().copied().collect();
-    for glass in [false, true] {
-        let hulls: Vec<_> = data
-            .collision_hulls
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| see_through.contains(i) == glass)
-            .flat_map(|(_, h)| contact_hulls(&h.iter().map(|p| Vec3::from(*p)).collect::<Vec<_>>()))
-            .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
-            .collect();
-        if hulls.is_empty() {
-            continue;
-        }
+    for (glass, collider) in [false, true].into_iter().zip(parts.solids) {
+        let Some(collider) = collider else { continue };
         let mut e = commands.spawn((
             Name::new(if glass {
                 "Map collision (glass and grates)"
@@ -295,7 +353,7 @@ fn spawn_world_collision(commands: &mut Commands, data: &MapData, root: Entity) 
             MapPart,
             MapBrushCollider,
             RigidBody::Static,
-            Collider::compound(hulls),
+            collider,
             Transform::default(),
             ChildOf(root),
         ));
@@ -431,21 +489,19 @@ fn insert_headless_assets(commands: &mut Commands, s: &MapSpawn, draws: Draws) {
     }
 }
 
-/// Placed props: a node each with its collision, culling, meshes,
-/// skeleton and what the logic may switch. Returns the map's brushes for
-/// movement (the world's, plus props that are (close to) convex).
-fn spawn_props<D: MapDrawer>(
-    commands: &mut Commands,
-    s: &MapSpawn,
-    a: &mut SystemParamItem<D>,
-    drawn: &mut D::Drawn,
-) -> Vec<MapBrush> {
-    let data = s.data;
+/// What the props' spawn computes from the data alone (`prepare`): each
+/// model's collider and hull, and each prop's brushes for movement.
+struct PropParts {
+    model_colliders: Vec<Option<Collider>>,
+    model_hulls: Vec<Option<Vec<(Vec3, f32)>>>,
+    /// Per prop: whether its pieces are brushes for movement, and them
+    /// placed in the world.
+    brushes: Vec<(bool, Vec<MapBrush>)>,
+}
+
+fn prop_parts(data: &MapData) -> PropParts {
     // Prop models: one collider per model (shared by its placements).
-    let model_colliders: Vec<Option<Collider>> = data.models.iter().map(model_collider).collect();
-    // Exact brushes for movement that sweeps them (Source): the world's,
-    // plus props that are (close to) convex, in world space.
-    let mut brushes = data.collision_brushes.clone();
+    let model_colliders: Vec<Option<Collider>> = super::parallel::par_map(data.models.iter().collect(), model_collider);
     // Comparison hook: CHIMERA_NO_PROP_BRUSHES=1 sweeps props as meshes.
     let no_prop_brushes = chimera_core::env::var("CHIMERA_NO_PROP_BRUSHES").is_ok_and(|v| v == "1");
     // Models without a collision model: their hull, when (nearly) convex.
@@ -459,47 +515,30 @@ fn spawn_props<D: MapDrawer>(
                 .flatten()
         })
         .collect();
-    info!(
-        "props: {} of {} models collide by their collision model, {} more as convex hulls; {} have levels of detail",
-        data.models.iter().filter(|m| m.collision.is_some()).count(),
-        data.models.len(),
-        model_hulls.iter().filter(|h| h.is_some()).count(),
-        data.models.iter().filter(|m| !m.lods.is_empty()).count(),
-    );
-    for (i, prop) in data.props.iter().enumerate() {
-        spawn_prop::<D>(
-            commands,
-            s,
-            a,
-            drawn,
-            &mut brushes,
-            i,
-            prop,
-            &model_colliders,
-            &model_hulls,
-            no_prop_brushes,
-        );
+    // A piece with many planes takes long to bevel (`MapBrush::from_planes`,
+    // de_nuke's tens of seconds of props one after another): on threads.
+    let brushes = super::parallel::par_map(data.props.iter().collect(), |prop| {
+        prop_brushes(data, prop, &model_hulls, no_prop_brushes)
+    });
+    PropParts {
+        model_colliders,
+        model_hulls,
+        brushes,
     }
-    brushes
 }
 
-/// One placed prop.
-#[allow(clippy::too_many_arguments)]
-fn spawn_prop<D: MapDrawer>(
-    commands: &mut Commands,
-    s: &MapSpawn,
-    a: &mut SystemParamItem<D>,
-    drawn: &mut D::Drawn,
-    brushes: &mut Vec<MapBrush>,
-    i: usize,
+/// A prop's convex pieces as brushes for movement, placed in the world,
+/// and whether it has them (`prop_brush`): the model's collision model
+/// (each piece exactly), else its hull when (nearly) convex, else the
+/// bounds box; none for bodies that move (swept through physics queries;
+/// frozen ones stay put like static props until enabled,
+/// `prop_physics::FrozenBody`), riders, the 3D skybox's props.
+fn prop_brushes(
+    data: &MapData,
     prop: &MapProp,
-    model_colliders: &[Option<Collider>],
     model_hulls: &[Option<Vec<(Vec3, f32)>>],
     no_prop_brushes: bool,
-) {
-    let (data, root, statics) = (s.data, s.root, s.statics);
-    // Convex pieces as planes: the model's collision model (each piece
-    // exactly), else its hull when (nearly) convex, else the bounds box.
+) -> (bool, Vec<MapBrush>) {
     let model = &data.models[prop.model];
     let pieces: Vec<Vec<(Vec3, f32)>> = match (prop.solid, &model.collision) {
         (PropSolid::Mesh, Some(c)) => c.pieces.iter().map(|p| p.planes.clone()).collect(),
@@ -526,16 +565,10 @@ fn spawn_prop<D: MapDrawer>(
     } else {
         prop.rotation
     };
-    // Bodies that move are swept through physics queries, not as brushes.
-    // Frozen ones stay put like static props until enabled
-    // (`prop_physics::FrozenBody`).
     let dynamic = prop.physics.as_ref().filter(|p| !prop.skybox && !p.frozen);
     let prop_brush =
-        (prop.parent.is_none() && !prop.skybox && !no_prop_brushes && !pieces.is_empty() && dynamic.is_none())
-            .then_some(());
-    // A prop entity's brushes go on its node (`MovingSolid`, still), so
-    // they stop blocking once the logic removes it; others join the map's.
-    let placed_brushes: Vec<MapBrush> = if prop_brush.is_some() {
+        prop.parent.is_none() && !prop.skybox && !no_prop_brushes && !pieces.is_empty() && dynamic.is_none();
+    let placed = if prop_brush {
         pieces
             .iter()
             .map(|planes| place_brush(planes, prop.translation, rotation, model.surfaceprop.clone()))
@@ -543,6 +576,55 @@ fn spawn_prop<D: MapDrawer>(
     } else {
         Vec::new()
     };
+    (prop_brush, placed)
+}
+
+/// Placed props: a node each with its collision, culling, meshes,
+/// skeleton and what the logic may switch. Returns the map's brushes for
+/// movement (the world's, plus props that are (close to) convex).
+fn spawn_props<D: MapDrawer>(
+    commands: &mut Commands,
+    s: &MapSpawn,
+    a: &mut SystemParamItem<D>,
+    drawn: &mut D::Drawn,
+    parts: PropParts,
+) -> Vec<MapBrush> {
+    let data = s.data;
+    // Exact brushes for movement that sweeps them (Source): the world's,
+    // plus props that are (close to) convex, in world space.
+    let mut brushes = data.collision_brushes.clone();
+    info!(
+        "props: {} of {} models collide by their collision model, {} more as convex hulls; {} have levels of detail",
+        data.models.iter().filter(|m| m.collision.is_some()).count(),
+        data.models.len(),
+        parts.model_hulls.iter().filter(|h| h.is_some()).count(),
+        data.models.iter().filter(|m| !m.lods.is_empty()).count(),
+    );
+    for ((i, prop), placed) in data.props.iter().enumerate().zip(parts.brushes) {
+        spawn_prop::<D>(commands, s, a, drawn, &mut brushes, i, prop, &parts.model_colliders, placed);
+    }
+    brushes
+}
+
+/// One placed prop (`placed`: its brushes, `prop_brushes`).
+#[allow(clippy::too_many_arguments)]
+fn spawn_prop<D: MapDrawer>(
+    commands: &mut Commands,
+    s: &MapSpawn,
+    a: &mut SystemParamItem<D>,
+    drawn: &mut D::Drawn,
+    brushes: &mut Vec<MapBrush>,
+    i: usize,
+    prop: &MapProp,
+    model_colliders: &[Option<Collider>],
+    (prop_brush, placed_brushes): (bool, Vec<MapBrush>),
+) {
+    let (data, root, statics) = (s.data, s.root, s.statics);
+    let model = &data.models[prop.model];
+    // Bodies that move are swept through physics queries, not as brushes.
+    let dynamic = prop.physics.as_ref().filter(|p| !prop.skybox && !p.frozen);
+    // A prop entity's brushes go on its node (`MovingSolid`, still), so
+    // they stop blocking once the logic removes it; others join the map's.
     let own_solid = (prop.entity.is_some() && !placed_brushes.is_empty()).then(|| MovingSolid {
         brushes: placed_brushes.clone(),
         velocity: Vec3::ZERO,
@@ -612,7 +694,7 @@ fn spawn_prop<D: MapDrawer>(
         solid,
         model_colliders[prop.model].as_ref(),
         dynamic,
-        prop_brush.is_some(),
+        prop_brush,
     );
     let id = e.id();
     D::spawn_prop(

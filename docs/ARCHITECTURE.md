@@ -32,7 +32,7 @@ cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ i
   |    |   /
   |    chimera_net (chimera/net/)   net: transport, replication, prediction; harness::NetSim
   |    |
-chimera_present (chimera/present/)   render, audio, MapPlugin
+chimera_present (chimera/present/)   render, audio, MapPlugin, assets (installs as asset sources)
   |    chimera_sim (chimera/sim/)   weapon, movement, rule_module, mode, minigame, identity, spawning; SimBasePlugins; testkit (feature)
   |    |
 chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; music; greybox, harness::Sim
@@ -86,8 +86,11 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
 - `chimera_present` is the presentation beside the simulation: `render`,
   `audio` and `map_plugin` (`MapPlugin`: map's registration with audio's
   and render's systems at the places `map::MapLayers` keeps, in one
-  order). It uses `chimera_world` and `chimera_core`, never `mashup` or a
-  game (checked); `mashup` re-exports `render` and `audio` at their old
+  order) and `assets` (each game's install as a Bevy asset source,
+  `<game>://<path>` read through its mount; apps add
+  `InstallSourcesPlugin` before `DefaultPlugins`). It uses
+  `chimera_world` and `chimera_core`, never `mashup` or a game
+  (checked); `mashup` re-exports `render` and `audio` at their old
   paths. An edit in it rebuilds it and `mashup`, not the map; an edit in
   `mashup` rebuilds neither.
   `cargo test -p chimera_present --features dev` tests it alone.
@@ -341,7 +344,10 @@ materials and their shaders) uses core and map, and only `client`,
 `map::MapPlugin` (its type, re-exported into `map`): map's registration
 (`map::build`) with audio's and render's systems at the places map keeps
 for them (`map::MapLayers`), in one fixed order; the dedicated server
-adds `map::MapSimPlugin` (map's alone). Animation evaluation stays on the
+adds `map::MapSimPlugin` (map's alone). `assets` (the games' installs as
+asset sources, read through `mount`; the loaders' device check from
+`render`) uses core, mount, game_registry and render; apps and a game's
+`ui/` use it. Animation evaluation stays on the
 simulation's side (the server poses hitboxes); see
 docs/plans/active/engine-split.md, "Crates and compile time".
 
