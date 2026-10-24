@@ -457,8 +457,8 @@ pub fn load(mount: &Mount) -> Option<GameUi> {
     }
     ui.strings = strings;
     for (sound, file) in UI_SOUNDS {
-        if let Some(clip) = mount.read(file).ok().and_then(|b| super::wav::decode(&b).ok()) {
-            ui.sounds.insert(sound, clip);
+        if mount.contains(file) {
+            ui.sound_files.insert(sound, file.to_string());
         }
     }
     main_menu_look(mount, &mut ui);

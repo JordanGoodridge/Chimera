@@ -185,6 +185,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "map",
             "audio",
             "render",
+            "assets",
             "weapon",
             "objectives",
             "rules",

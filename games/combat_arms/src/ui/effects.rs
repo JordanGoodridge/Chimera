@@ -18,6 +18,10 @@
 //!   (grade C and Red silencers). Its light and every effect group's
 //!   `DynaLight` are point lights without shadows (`lights`).
 //! - Effect groups' particles are Chimera's pool's (drawn by the map).
+//! - The textures load through the asset server (`FxImages`,
+//!   `textures::DtxLoader`), off the main thread: the first time a
+//!   texture is used its effect shows once the texture has arrived (a few
+//!   milliseconds later).
 //! - The first-person camera (`camera_motion`, after the shell places it
 //!   and before transforms propagate): while it is the eye (first person,
 //!   no spectating, free or map camera), its upward smoothing
@@ -43,7 +47,7 @@ use bevy::{
     prelude::*,
     render::render_resource::{AsBindGroup, CompareFunction, RenderPipelineDescriptor, SpecializedMeshPipelineError},
 };
-use lithtech_formats::{dtx::Dtx, fxf::sample_keys};
+use lithtech_formats::fxf::sample_keys;
 
 use crate::{
     client::{
@@ -107,12 +111,15 @@ impl MaterialExtension for OnTop {
     }
 }
 
-/// The install's effect textures as images (None: doesn't read).
+/// The install's effect textures as images (None: not in the install),
+/// loaded by the asset server (`textures::DtxLoader`, the effects' plain
+/// look) from `combat_arms://`; a sprite (`.spr`) is its first frame's
+/// texture, named in the sprite file (read here: a few bytes).
 #[derive(Resource)]
 pub struct FxImages {
     /// The install (None: nothing reads; `CaData::mount`).
     mount: Option<std::sync::Arc<crate::mount::Mount>>,
-    images: HashMap<String, Option<(Handle<Image>, UVec2)>>,
+    images: HashMap<String, Option<Handle<Image>>>,
 }
 
 impl FxImages {
@@ -128,35 +135,30 @@ impl FxImages {
         self.mount.clone()
     }
 
-    /// A texture (`.dtx`) or a sprite's (`.spr`: its first frame's).
-    pub fn get(&mut self, path: &str, images: &mut Assets<Image>) -> Option<(Handle<Image>, UVec2)> {
+    /// A texture (`.dtx`) or a sprite's (`.spr`: its first frame's), once
+    /// asked for loading: None when the install hasn't the file (or the
+    /// load failed: the effect then draws untextured from then on).
+    pub fn get(&mut self, path: &str, server: &AssetServer) -> Option<Handle<Image>> {
         let path = normalize(path);
         let mount = self.mount.clone();
-        self.images
-            .entry(path.clone())
-            .or_insert_with(|| {
-                let mount = mount?;
-                let tex = if path.ends_with(".spr") {
-                    library::sprite_texture(&mount.read(&path).ok()?)?
-                } else {
-                    path.clone()
-                };
-                let dtx = Dtx::parse(mount.read(&tex).ok()?).ok()?;
-                let size = UVec2::new(dtx.width, dtx.height);
-                let image = Image::new(
-                    bevy::render::render_resource::Extent3d {
-                        width: dtx.width,
-                        height: dtx.height,
-                        depth_or_array_layers: 1,
-                    },
-                    bevy::render::render_resource::TextureDimension::D2,
-                    dtx.rgba(0),
-                    bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
-                    bevy::asset::RenderAssetUsages::RENDER_WORLD,
-                );
-                Some((images.add(image), size))
+        let entry = self.images.entry(path.clone()).or_insert_with(|| {
+            let mount = mount?;
+            let tex = if path.ends_with(".spr") {
+                library::sprite_texture(&mount.read(&path).ok()?)?
+            } else {
+                path.clone()
+            };
+            mount.contains(&tex).then(|| {
+                server
+                    .load_builder()
+                    .with_settings(|s: &mut super::textures::DtxSettings| s.plain = true)
+                    .load(crate::assets::install_path(crate::game::INFO.id, &tex))
             })
-            .clone()
+        });
+        if entry.as_ref().is_some_and(|h| server.load_state(h).is_failed()) {
+            *entry = None;
+        }
+        entry.clone()
     }
 }
 
@@ -175,7 +177,7 @@ struct DecalQuad(usize);
 fn decals(
     marks: Res<rules::CaMarks>,
     mut drawn: Query<(Entity, &DecalQuad, &mut Transform, &MeshMaterial3d<StandardMaterial>, &mut Visibility)>,
-    mut images: ResMut<Assets<Image>>,
+    server: Res<AssetServer>,
     mut fx_images: ResMut<FxImages>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -194,7 +196,7 @@ fn decals(
         let pose = Transform::from_translation(m.at * UNIT + n * 0.002)
             .with_rotation(rot)
             .with_scale(Vec3::splat(m.width * UNIT));
-        let tex = fx_images.get(&m.sprite, &mut images).map(|t| t.0);
+        let tex = fx_images.get(&m.sprite, &server);
         let color = Color::srgba(m.grey * 2.0, m.grey * 2.0, m.grey * 2.0, alpha);
         match slots.remove(&i) {
             Some((_, mut t, mat, mut v)) => {
@@ -243,7 +245,7 @@ fn tracers(
     list: Res<CaTracers>,
     camera: Option<Single<&GlobalTransform, With<FirstPersonCamera>>>,
     mut drawn: Query<(&TracerQuad, &mut Transform, &MeshMaterial3d<OnTopMaterial>, &mut Visibility)>,
-    mut images: ResMut<Assets<Image>>,
+    server: Res<AssetServer>,
     mut fx_images: ResMut<FxImages>,
     mut materials: ResMut<Assets<OnTopMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -275,7 +277,7 @@ fn tracers(
         let alpha = tr.look.initial_alpha + (tr.look.final_alpha - tr.look.initial_alpha) * (tr.age / life).min(1.0);
         let [r, g, bl] = tr.look.color.map(|c| c / 255.0);
         let color = Color::srgba(r, g, bl, alpha);
-        let tex = fx_images.get(&tr.look.texture, &mut images).map(|t| t.0);
+        let tex = fx_images.get(&tr.look.texture, &server);
         match slots.remove(&i) {
             Some((mut t, mat, mut v)) => {
                 *t = pose;
@@ -328,7 +330,7 @@ fn casings(
     new: Query<(Entity, &CaShell), Without<Mesh3d>>,
     mut shells: Query<(&CaShell, &mut Transform), With<Mesh3d>>,
     tables: Res<CaFxTables>,
-    mut images: ResMut<Assets<Image>>,
+    server: Res<AssetServer>,
     mut fx_images: ResMut<FxImages>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -347,7 +349,7 @@ fn casings(
                     .map(|m| meshes.add(m))
                     .unwrap_or_else(|| meshes.add(Cuboid::new(0.006, 0.006, 0.016)));
                 let tex = (!record.shell_skin.is_empty())
-                    .then(|| fx_images.get(&record.shell_skin, &mut images).map(|t| t.0))
+                    .then(|| fx_images.get(&record.shell_skin, &server))
                     .flatten();
                 let material = materials.add(StandardMaterial {
                     base_color: if tex.is_some() { Color::WHITE } else { Color::srgb(0.8, 0.62, 0.25) },
@@ -417,7 +419,7 @@ fn muzzle_flash(
     tables: Res<CaFxTables>,
     mut quads: Query<(&mut Transform, &mut Visibility, &MeshMaterial3d<StandardMaterial>), (With<FlashQuad>, Without<FlashLight>)>,
     mut light: Query<(&mut Transform, &mut PointLight, &mut Visibility), (With<FlashLight>, Without<FlashQuad>)>,
-    mut images: ResMut<Assets<Image>>,
+    server: Res<AssetServer>,
     mut fx_images: ResMut<FxImages>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -503,7 +505,7 @@ fn muzzle_flash(
             let s = sample_keys(&p.scale_keys(), t, 0.5);
             let ck = p.color_keys();
             let ch = |i: usize| sample_keys(&ck.iter().map(|(k, c)| (*k, c[i])).collect::<Vec<_>>(), t, 1.0);
-            let tex = lib.texture_of(p).and_then(|path| fx_images.get(&path, &mut images)).map(|t| t.0);
+            let tex = lib.texture_of(p).and_then(|path| fx_images.get(&path, &server));
             // A particle of size s is a square of side 4 s view units.
             (4.0 * s * VIEW_SCALE, Vec3::new(ch(0), ch(1), ch(2)), tex, l.map(|l| (l.scale_keys(), l.color_keys(), l.end - l.start)))
         }

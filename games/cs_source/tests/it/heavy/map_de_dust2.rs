@@ -82,7 +82,7 @@ fn the_scoreboard_spectator_bars_and_bomb_look_load() {
     assert_eq!(loading.get("LoadingDialog").map(|c| (c.wide, c.tall)), Some((380.0, 112.0)));
     assert!(loading.get("Progress").is_some() && loading.get("InfoLabel").is_some());
     for s in [UiSound::Rollover, UiSound::Click, UiSound::Release] {
-        assert!(ui.sounds.contains_key(&s), "{s:?}");
+        assert!(ui.sound_files.contains_key(&s), "{s:?}");
     }
     assert_eq!(ui.string("LoadingProgress_LoadMap"), Some("Loading world..."));
 }

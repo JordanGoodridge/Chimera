@@ -42,9 +42,12 @@ use chimera_net::net;
 use chimera_sim::{mode, rule_module, spawning, weapon};
 use chimera_world::{map, music};
 
-// The front end's: the shell.
+// The front end's: the shell, the presentation's drawing and the
+// installs as asset sources.
 #[cfg(feature = "ui")]
 use chimera_client::client;
+#[cfg(feature = "ui")]
+use chimera_present::{assets, render};
 
 use bevy::prelude::*;
 

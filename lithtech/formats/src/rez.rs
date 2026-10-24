@@ -425,6 +425,10 @@ impl FileSource for RezArchive {
             .collect()
     }
 
+    fn contains(&self, path: &str) -> bool {
+        self.files.contains_key(path)
+    }
+
     /// The file's bytes, decrypted when the archive is keyed; a keyed
     /// archive without its key fails with `PermissionDenied`.
     fn read(&self, path: &str) -> Option<io::Result<Vec<u8>>> {

@@ -170,6 +170,7 @@ use crate::client::{
     },
 };
 use crate::{
+    audio::clip_asset::SoundAsset,
     console::{Console, ConsoleAppExt},
     core::{Intent, Team},
     map::hud::{GameUi, KeyAction, ServerSettingKind, UiControl, UiKind, UiLayout},

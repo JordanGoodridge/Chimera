@@ -76,7 +76,8 @@ fn freeze(
     who: Query<(Option<&Name>, Option<&crate::core::Health>)>,
     hud: Option<Res<ActiveHud>>,
     fonts: Res<crate::client::fonts::UiFonts>,
-    menu: Option<Res<super::game_menu::GameMenu>>,
+    menu_ui: Option<Res<super::game_menu::MenuUi>>,
+    sounds: Option<Res<Assets<crate::audio::clip_asset::SoundAsset>>>,
     clips: Option<ResMut<Assets<crate::audio::live_sound::LiveClip>>>,
     mut commands: Commands,
 ) {
@@ -112,10 +113,11 @@ fn freeze(
                 frozen.image = Some(images.add(shot.image.clone()));
             });
         // The freeze sound.
-        let sound = menu
-            .as_ref()
-            .and_then(|m| m.ui.0.clone())
-            .and_then(|ui| ui.sounds.get(&crate::map::hud::UiSound::FreezeCam).cloned());
+        let sound = super::game_menu::ui_sound(
+            menu_ui.as_deref(),
+            sounds.as_deref(),
+            crate::map::hud::UiSound::FreezeCam,
+        );
         if let (Some(clip), Some(mut clips)) = (sound, clips) {
             let gains = std::sync::Arc::new(crate::audio::live_sound::Gains::new(1.0, 1.0));
             let handle = clips.add(crate::audio::live_sound::LiveClip::new(clip, gains, default()));

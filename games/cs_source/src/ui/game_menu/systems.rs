@@ -22,7 +22,7 @@ pub(super) struct RegrabCursor(pub(super) bool);
 
 /// The install's GameUI look, read in the background at startup.
 #[derive(Resource, Default)]
-pub(super) struct MenuUi {
+pub(in crate::ui) struct MenuUi {
     pub(super) loading: Option<Arc<Mutex<Option<Option<GameUi>>>>>,
     pub(super) ui: Option<Arc<GameUi>>,
     /// The main menu's backgrounds: 4:3, widescreen.
@@ -32,6 +32,19 @@ pub(super) struct MenuUi {
     pub(super) title_font: Option<(Handle<Font>, f32, f32)>,
     /// The options' pictures by name (`GameUi::option_images`).
     pub(super) pictures: HashMap<String, Handle<Image>>,
+    /// The interface's sounds, loading from the install as assets
+    /// (`GameUi::sound_files`).
+    pub(in crate::ui) sounds: HashMap<crate::map::hud::UiSound, Handle<SoundAsset>>,
+}
+
+/// An interface sound to play now (`MenuUi::sounds`), once loaded.
+pub(in crate::ui) fn ui_sound(
+    menu_ui: Option<&MenuUi>,
+    sounds: Option<&Assets<SoundAsset>>,
+    sound: crate::map::hud::UiSound,
+) -> Option<crate::map::MapSoundClip> {
+    let handle = menu_ui?.sounds.get(&sound)?;
+    Some(sounds?.get(handle)?.0.clone())
 }
 
 impl MenuUi {
@@ -104,6 +117,7 @@ pub(super) fn ui_loaded(
     mut images: ResMut<Assets<Image>>,
     mut fonts: ResMut<Assets<Font>>,
     mut ui_fonts: ResMut<UiFonts>,
+    server: Option<Res<AssetServer>>,
     mut commands: Commands,
 ) {
     let Some(slot) = ui.loading.clone() else { return };
@@ -116,6 +130,13 @@ pub(super) fn ui_loaded(
         return;
     };
     ui.backgrounds = [&game_ui.background, &game_ui.background_wide].map(|p| p.as_ref().map(|p| ui_image(p, &mut images)));
+    ui.sounds = server.map_or_else(HashMap::new, |server| {
+        game_ui
+            .sound_files
+            .iter()
+            .map(|(sound, file)| (*sound, server.load(crate::assets::install_path(crate::game::GAME, file))))
+            .collect()
+    });
     ui.pictures = game_ui
         .option_images
         .iter()
@@ -833,10 +854,11 @@ pub(super) fn menu_sounds(
     menu_ui: Option<Res<MenuUi>>,
     hits: Query<(&Interaction, &Hit), Changed<Interaction>>,
     clips: Option<ResMut<Assets<crate::audio::live_sound::LiveClip>>>,
+    sounds: Option<Res<Assets<SoundAsset>>>,
     mut last: Local<(Option<Target>, Option<Target>)>,
     mut commands: Commands,
 ) {
-    let (Some(ui), Some(mut clips)) = (menu_ui.and_then(|u| u.ui.clone()), clips) else {
+    let (Some(menu_ui), Some(mut clips)) = (menu_ui.filter(|u| u.ui.is_some()), clips) else {
         return;
     };
     if !menu.open {
@@ -845,9 +867,9 @@ pub(super) fn menu_sounds(
     }
     use crate::map::hud::UiSound;
     let mut play = |sound: UiSound| {
-        if let Some(clip) = ui.sounds.get(&sound) {
+        if let Some(clip) = ui_sound(Some(&menu_ui), sounds.as_deref(), sound) {
             let gains = std::sync::Arc::new(crate::audio::live_sound::Gains::new(1.0, 1.0));
-            let handle = clips.add(crate::audio::live_sound::LiveClip::new(clip.clone(), gains, default()));
+            let handle = clips.add(crate::audio::live_sound::LiveClip::new(clip, gains, default()));
             commands.spawn((AudioPlayer(handle), PlaybackSettings::DESPAWN));
         }
     };

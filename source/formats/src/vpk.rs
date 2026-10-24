@@ -224,6 +224,10 @@ impl FileSource for Vpk {
         self.entries.get(path).map(|e| self.read_entry(e))
     }
 
+    fn contains(&self, path: &str) -> bool {
+        self.entries.contains_key(path)
+    }
+
     fn files_in(&self, dir: &str) -> Vec<String> {
         self.entries
             .keys()
