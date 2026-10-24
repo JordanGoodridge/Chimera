@@ -689,8 +689,6 @@ The console and overlays are in (chimera/core/src/console.rs, chimera/client/src
   ammo bottom right (1280x720); check where CS:S's sits.
 - `cl_showpos 2`: what CS:S shows with it is unknown here (no public
   description found); look in the game.
-- Mouse selection copies whole lines (drag over the output); selecting
-  part of a line isn't possible.
 
 ## 6. Sound, remaining
 
@@ -853,6 +851,8 @@ Counts are from de_dust2's entity lump and static prop lump.
   copy of a map with test entities added where dust2 has no example: floor
   and ceiling decal orientation, decal reach, overall brightness/tonemapping.
 - **Brush entities**: movers (doors, buttons, func_rotating, trains,
-  func_brush) move through the logic layer, breakables break; render modes other than normal and 10 (translucent func_brush) aren't
-  applied.
+  func_brush) move through the logic layer, breakables break; baked brush
+  entities draw their render mode (colour/texture/alpha blend, glow/additive
+  add, 10 hidden) and rendercolor. Left: mode 1 ("color") draws the texture
+  where Source's is flat colour, and mode 4's alpha test is a blend.
 - **Fire** (specs/source/fire.md) is in: env_fire (heat, growth, burn damage box with line of sight, fuel, Extinguish, outputs, re-created unlit each round, Q4), env_firesource/env_firesensor, entity flames (Ignite inputs, burning props, the gas can), the `env_fire_large_smoke` and `burning_character` looks (docs/tech-debt.md "Fire"). Next: compare a lit de_dust2 fire with CS:S's (Q1, Q10 operator meanings), and the probe-server questions: burn vs armour, the kill icon and score (Q2), player ignition (Q3), the radius damage of a burning can (Q6), burning-prop light (Q7), buried fires (Q9), floors on de_dust/de_train (Q5).

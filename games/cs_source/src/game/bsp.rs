@@ -20,7 +20,8 @@
 //! (`dress_guest`, `map::MapSources::guests`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Non-mover brush entities (other than breakables) are static where they spawn
-//! and ignore render modes other than 10. Overlays and infodecals on movers go
+//! (render modes and rendercolor are drawn from load, `BrushEntity::render`, `color`; mode 1 keeps the
+//! texture and mode 4 blends rather than alpha-tests). Overlays and infodecals on movers go
 //! with them (infodecals whose probe hits the mover's bounding box, overlays
 //! listing its faces); props parented to movers ride them but aren't solid and
 //! keep their spawn-time light probe. Why it's OK for now: Matches dust2; brush
@@ -780,7 +781,7 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
     let mut entity_face_slots: HashMap<usize, usize> = HashMap::new();
     let faces = world
         .faces()
-        .map(|f| (f, None, None, None, None))
+        .map(|f| (f, None, None, None, None, [255; 3]))
         .chain(entities.iter().filter(|e| e.drawn).flat_map(|e| {
             bsp.models()
                 .nth(e.model)
@@ -791,13 +792,13 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
                 })
                 .map(|(f, index)| {
                     if e.mover {
-                        (f, Some((Quat::IDENTITY, Vec3::ZERO)), Some(e.entity), Some(index), None)
+                        (f, Some((Quat::IDENTITY, Vec3::ZERO)), Some(e.entity), Some(index), None, [255; 3])
                     } else {
-                        (f, Some(e.transform), None, Some(index), e.render)
+                        (f, Some(e.transform), None, Some(index), e.render, e.color)
                     }
                 })
         }));
-    for (face, transform, mover, face_index, render) in faces {
+    for (face, transform, mover, face_index, render, render_color) in faces {
         let in_world = transform.is_none();
         // Source-space position of a face vertex (brush entity models are
         // stored around their origin).
@@ -903,8 +904,8 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
             None => material.clone(),
         };
         // Brush entities in a translucent render mode: meshes of their own.
-        if let Some((blend, a)) = render {
-            key = format!("{key}\u{3}{blend:?}{a}");
+        if render.is_some() || render_color != [255; 3] {
+            key = format!("{key}\u{3}{render:?}{render_color:?}");
         }
         let mesh = by_material.entry(key.clone()).or_insert_with(|| MapMesh {
             material: material.clone(),
@@ -912,6 +913,7 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
             color: tex.debug_color(),
             entity: mover,
             render,
+            render_color: (render_color != [255; 3]).then_some(render_color),
             ..default()
         });
         let lm = pending_lm.entry(key).or_default();
@@ -1028,6 +1030,9 @@ pub struct BrushEntity {
     /// renderamt): its faces blend or add by this opacity. Movers get
     /// theirs from the logic (`map::tint`).
     pub render: Option<(MapAlpha, f32)>,
+    /// Its rendercolor (sRGB 0-255), in any render mode; movers get
+    /// theirs from the logic like the rest of their look.
+    pub color: [u8; 3],
 }
 
 /// Brush entity classes the logic layer moves or toggles.
@@ -1186,8 +1191,13 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
             && !(class == "func_brush" && (num("Solidity") == Some(1.0) || (start_disabled && num("Solidity") != Some(2.0))))
             // func_rotating spawnflag 64: not solid.
             && !(class == "func_rotating" && (num("spawnflags").unwrap_or(0.0) as i32) & 64 != 0);
+        let color = ent.prop("rendercolor").map_or([255; 3], |v| {
+            let c: Vec<i32> = v.split_whitespace().map(|n| n.parse().unwrap_or(255)).collect();
+            let at = |i: usize| c.get(i).copied().unwrap_or(255).clamp(0, 255) as u8;
+            [at(0), at(1), at(2)]
+        });
         let look = crate::map::RenderLook {
-            color: [255; 3],
+            color,
             alpha: num("renderamt").unwrap_or(255.0).clamp(0.0, 255.0) as u8,
             mode: render_mode.clamp(0, 255) as u8,
         };
@@ -1199,6 +1209,7 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
             entity: index,
             mover,
             render: look.blend().filter(|_| !mover),
+            color: if mover { [255; 3] } else { color },
         });
     }
     out
