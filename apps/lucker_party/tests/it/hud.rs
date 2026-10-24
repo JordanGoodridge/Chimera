@@ -59,7 +59,7 @@ fn cs_look() -> ActiveHud {
 /// The party with both HUDs (Combat Arms' state and a stand-in root for
 /// its drawn panels, CS:S's panels and the minigame's panel on it), a
 /// local soldier and another, the gun game playing.
-fn party_with_huds() -> (Sim, Entity, Entity) {
+pub(crate) fn party_with_huds() -> (Sim, Entity, Entity) {
     let mut sim = Sim::with(CaSim, |app| {
         app.add_plugins((GreyboxMapPlugin, PartyPartsPlugin))
             .init_resource::<UiFonts>()
@@ -80,12 +80,12 @@ fn party_with_huds() -> (Sim, Entity, Entity) {
     (sim, me, other)
 }
 
-fn hud(sim: &Sim) -> &'static str {
+pub(crate) fn hud(sim: &Sim) -> &'static str {
     sim.app.world().resource::<Gameplay>().hud
 }
 
 /// Whether a root of `game`'s HUD shows.
-fn shown(sim: &mut Sim, game: &str) -> bool {
+pub(crate) fn shown(sim: &mut Sim, game: &str) -> bool {
     let w = sim.app.world_mut();
     let roots: Vec<Visibility> = w
         .query::<(&HudRoot, &Visibility)>()
@@ -103,12 +103,12 @@ fn cs_panels(sim: &mut Sim) -> usize {
 }
 
 /// The CS:S minigame panel's lines, as text.
-fn cs_minigame_lines(sim: &mut Sim) -> Vec<(PanelLine, String)> {
+pub(crate) fn cs_minigame_lines(sim: &mut Sim) -> Vec<(PanelLine, String)> {
     let w = sim.app.world_mut();
     w.query::<(&PanelLine, &Text)>().iter(w).map(|(k, t)| (*k, t.0.clone())).collect()
 }
 
-fn swap_to(sim: &mut Sim, me: Entity, rung: usize) {
+pub(crate) fn swap_to(sim: &mut Sim, me: Entity, rung: usize) {
     let w = sim.app.world_mut();
     let l = w.resource::<Ladder>().clone();
     ladder::set_rung(w, me, rung, &l);

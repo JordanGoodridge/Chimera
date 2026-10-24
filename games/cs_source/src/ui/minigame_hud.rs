@@ -6,7 +6,9 @@
 //! centre messages. A line's `{player}` is the name the scoreboard shows,
 //! its `{weapon}` the gun's name in CS:S's own strings (the install's
 //! `resource/cstrike_english.txt`, `weapons::display_names`), else the
-//! id's last part in capitals. Its root is a `client::hud::HudRoot`: down
+//! id's last part in capitals. A finished match's results (`MinigameHud::
+//! results`: the winner, then a line a player) take the notices' place
+//! under the status lines. Its root is a `client::hud::HudRoot`: down
 //! while another game's HUD is the gameplay's.
 //!
 //! Known shortcuts: the panel's place, sizes and colours are ours (CS:S
@@ -49,6 +51,8 @@ pub enum PanelLine {
     Title,
     Status,
     Notice,
+    /// The finished match's results: the winner, then a line a player.
+    Result,
 }
 
 fn read_names(games: Option<Res<Games>>, mut names: ResMut<WeaponNames>) {
@@ -70,6 +74,17 @@ pub fn panel_lines(
     player: impl Fn(Entity) -> String,
     weapon: impl Fn(&str) -> String,
 ) -> Vec<(PanelLine, String)> {
+    panel_lines_with(m, player, weapon, |r| r.name.clone())
+}
+
+/// `panel_lines` with `row_name` wording a result's player who isn't
+/// a character on this side (a network client's results).
+pub fn panel_lines_with(
+    m: &MinigameHud,
+    player: impl Fn(Entity) -> String,
+    weapon: impl Fn(&str) -> String,
+    row_name: impl Fn(&chimera_sim::minigame::results::ResultRow) -> String,
+) -> Vec<(PanelLine, String)> {
     if !m.playing() {
         return Vec::new();
     }
@@ -85,7 +100,12 @@ pub fn panel_lines(
     };
     let mut out = vec![(PanelLine::Title, m.title.clone())];
     out.extend(m.lines.iter().map(|l| (PanelLine::Status, word(l))));
-    out.extend(m.notices.iter().map(|(l, _)| (PanelLine::Notice, word(l))));
+    match &m.results {
+        Some(r) => out.extend(
+            r.lines(|row| row.player.map_or_else(|| row_name(row), &player)).into_iter().map(|t| (PanelLine::Result, t)),
+        ),
+        None => out.extend(m.notices.iter().map(|(l, _)| (PanelLine::Notice, word(l)))),
+    }
     out
 }
 
@@ -101,13 +121,14 @@ fn draw(
     mut commands: Commands,
 ) {
     let lines = minigame.as_deref().map_or_else(Vec::new, |m| {
-        panel_lines(
+        panel_lines_with(
             m,
             |e| match who.get(e) {
                 Ok((name, local, net)) => crate::client::shown_name(e, local, net, name, settings.as_deref()),
                 Err(_) => e.to_string(),
             },
             |w| names.0.get(w).cloned().unwrap_or_else(|| plain_name(w)),
+            |r| r.name.clone(),
         )
     });
     let h = windows.iter().next().map_or(480.0, |w| w.height());
@@ -148,11 +169,17 @@ fn draw(
             GlobalZIndex(42),
         ))
         .id();
+    let mut first_result = true;
     for (kind, text) in lines {
         let (f, c) = match kind {
             PanelLine::Title => (font("CenterPrintText", 18.0), colour),
             PanelLine::Status => (font("ChatFont", 14.0), Color::WHITE),
             PanelLine::Notice => (font("CenterPrintText", 18.0), Color::srgba_u8(255, 230, 120, 255)),
+            PanelLine::Result if first_result => {
+                first_result = false;
+                (font("CenterPrintText", 18.0), Color::srgba_u8(255, 230, 120, 255))
+            }
+            PanelLine::Result => (font("ChatFont", 14.0), Color::WHITE),
         };
         commands.spawn((kind, Text::new(text), f, TextColor(c), TextShadow::default(), ChildOf(root)));
     }

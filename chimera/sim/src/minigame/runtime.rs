@@ -52,6 +52,9 @@ use chimera_core::slots::{FollowsWeapon, MovementSlot};
 pub const ROUND_OVER: f32 = 5.0;
 /// From the round's end to the match over.
 pub const INTERMISSION: f32 = 3.0;
+/// How long (s) the match stays over, its results up, before a server
+/// rotates to the next map (`MinigameDef::rotate`).
+pub const RESULTS_HOLD: f64 = 8.0;
 /// How close (m) another living character may be to a spawn point for it
 /// to be free (about a player's width).
 pub const SPAWN_CLEARANCE: f32 = 0.8;
@@ -431,6 +434,7 @@ pub(super) fn plugin(app: &mut App) {
                     respawn_dead,
                     crate::spawning::hold_the_dead,
                     end_protection,
+                    super::results::record,
                 )
                     .chain()
                     .in_set(SimSet::Rules),

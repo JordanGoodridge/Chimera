@@ -52,7 +52,7 @@ use crate::{
         maps::sha256,
         ordered::OrderedAppExt,
     },
-    minigame::{self, ActiveMinigame, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame},
+    minigame::{self, ActiveMinigame, MatchResults, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame},
     mode::{Match, Phase},
 };
 use chimera_core::game_registry::Games;
@@ -78,6 +78,9 @@ pub struct NetMinigame {
     pub phase: u8,
     /// Live: when the round's timer reaches 0.
     pub ends: Option<f64>,
+    /// The finished match's results (`minigame::MatchResults`), names as
+    /// the players are known on the network; none while the match plays.
+    pub results: Option<MatchResults>,
 }
 
 /// Server -> clients: something happened in the match
@@ -136,7 +139,7 @@ fn register(app: &mut App) {
     );
     let server = || resource_equals(NetRole::Server);
     let client = || resource_equals(NetRole::Client);
-    app.add_systems(FixedLast, write_minigame.run_if(server()))
+    app.add_systems(FixedLast, serve_minigame.run_if(not(client())))
         .add_systems(
             PostUpdate,
             (send_news, send_offer).chain().before(ServerSystems::Send).run_if(server()),
@@ -178,6 +181,14 @@ fn write_minigame(world: &mut World) {
             Phase::Waiting | Phase::Starting | Phase::Setup { .. } => phase::WAITING,
         },
         ends: m.round_ends.filter(|_| m.phase == Phase::Live).map(|s| tick_of(&clock, s)),
+        results: world.get_resource::<MatchResults>().cloned().map(|mut r| {
+            for row in &mut r.rows {
+                if let Some(c) = row.player.and_then(|p| world.get::<crate::net::NetCharacter>(p)) {
+                    row.name = c.name.clone();
+                }
+            }
+            r
+        }),
     };
     let changed = have.as_ref().is_none_or(|(_, n)| n.id != now.id);
     match have {
@@ -522,6 +533,59 @@ fn apply_minigame(world: &mut World, mut refused: Local<Option<String>>) {
     }
     if m.round_ends != ends {
         m.round_ends = ends;
+    }
+    if world.get_resource::<MatchResults>() != n.results.as_ref() {
+        match n.results {
+            Some(r) => world.insert_resource(r),
+            None => {
+                world.remove_resource::<MatchResults>();
+            }
+        }
+    }
+}
+
+/// The minigame's end of the tick on a server or a standalone game: the
+/// next map once the match has been over a while (`rotate`), and (a
+/// server) the match into `NetMinigame`.
+fn serve_minigame(world: &mut World, mut over_since: Local<Option<f64>>) {
+    rotate(world, &mut over_since);
+    if world.get_resource::<NetRole>() == Some(&NetRole::Server) {
+        write_minigame(world);
+    }
+}
+
+/// A server (or a standalone game): the match has been over for
+/// `RESULTS_HOLD` s with its results up: on to the next map of the pool
+/// that every player can play (`MinigameDef::rotate`; else the same map
+/// anew), by `change_match`.
+fn rotate(world: &mut World, over_since: &mut Option<f64>) {
+    let over = world.get_resource::<Match>().is_some_and(|m| m.phase == Phase::MatchOver);
+    let Some(active) = world.get_resource::<ActiveMinigame>().copied().filter(|_| over) else {
+        *over_since = None;
+        return;
+    };
+    let now = world.resource::<SimClock>().now;
+    let since = *over_since.get_or_insert(now);
+    if now < since + minigame::runtime::RESULTS_HOLD {
+        return;
+    }
+    *over_since = None;
+    let def = active.def;
+    let here = crate::net::current_map(world);
+    let pool: Vec<String> = def.maps.iter().map(|m| crate::net::normalize_map(m)).collect();
+    // The next map in turn that every player can play, this one last.
+    let mut target = here.clone();
+    if def.rotate {
+        let start = pool.iter().position(|m| *m == here).map_or(0, |i| i + 1);
+        let candidates = (0..pool.len()).map(|i| pool[(start + i) % pool.len()].clone());
+        let chosen = candidates.into_iter().find(|m| playable_on(world, def, Some(m)).ok());
+        if let Some(m) = chosen {
+            target = m;
+        }
+    }
+    info!("{} is over: next, {} on {target}", def.id, def.name);
+    if let Err(e) = change_match(world, &def.id, Some(&target)) {
+        warn!("rotating {}: {e}", def.id);
     }
 }
 

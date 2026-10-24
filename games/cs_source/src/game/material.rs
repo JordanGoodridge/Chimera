@@ -126,7 +126,9 @@ pub struct Resolved {
 }
 
 pub struct MaterialLoader<'a> {
-    bsp: &'a Bsp,
+    /// The map's BSP (its packed files); none for a guest's kit
+    /// (`guest`).
+    bsp: Option<&'a Bsp>,
     mount: &'a Mount,
     pub textures: Vec<MapTexture>,
     pub cubemaps: Vec<crate::map::MapCubemap>,
@@ -161,6 +163,10 @@ impl<'a> MaterialLoader<'a> {
         let pak = super::pak::Pak::new(pak);
         let names: Vec<String> = pak.names().map(str::to_string).collect();
         pak.prefetch(names.iter().map(String::as_str));
+        Self::empty(Some(bsp), mount, pak)
+    }
+
+    fn empty(bsp: Option<&'a Bsp>, mount: &'a Mount, pak: super::pak::Pak<'a>) -> Self {
         Self {
             bsp,
             mount,
@@ -176,6 +182,34 @@ impl<'a> MaterialLoader<'a> {
             lean: false,
             pending: Vec::new(),
         }
+    }
+
+    /// A loader for a kit read without a map (another game's map takes
+    /// it: `bsp::dress_guest`): no packed files, and the texture and
+    /// cubemap lists begin at the map's `textures` and `cubemaps` counts,
+    /// so the indices the kit's meshes hold are already the map's; the
+    /// caller appends what the loader read past them.
+    pub fn guest(mount: &'a Mount, textures: usize, cubemaps: usize) -> Self {
+        let blank = || crate::map::MapTexture {
+            name: String::new(),
+            srgb: true,
+            mips: Vec::new(),
+            width: 1,
+            height: 1,
+            rgba8: vec![255; 4],
+            bc: None,
+        };
+        let mut loader = Self::empty(None, mount, super::pak::Pak::new(&[]));
+        loader.textures = (0..textures).map(|_| blank()).collect();
+        loader.cubemaps = (0..cubemaps)
+            .map(|_| crate::map::MapCubemap {
+                name: String::new(),
+                size: 0,
+                mips: 0,
+                faces: Default::default(),
+            })
+            .collect();
+        loader
     }
 
     /// Placeholders instead of decoded textures (`lean`).
@@ -213,16 +247,17 @@ impl<'a> MaterialLoader<'a> {
         let path = normalize(path);
         match self.pak.read(&path)? {
             Ok(data) => Some(data),
-            Err(()) => self.bsp.pack.get(&path).ok().flatten().or_else(|| {
+            Err(()) => self.bsp?.pack.get(&path).ok().flatten().or_else(|| {
+                let bsp = self.bsp?;
                 let lower = path.to_lowercase();
-                let zip = self.bsp.pack.clone().into_zip();
+                let zip = bsp.pack.clone().into_zip();
                 let zip = zip.lock().unwrap_or_else(|e| e.into_inner());
                 let name = zip
                     .file_names()
                     .find(|n| n.replace('\\', "/").to_lowercase() == lower)
                     .map(str::to_string)?;
                 drop(zip);
-                self.bsp.pack.get(&name).ok().flatten()
+                bsp.pack.get(&name).ok().flatten()
             }),
         }
     }

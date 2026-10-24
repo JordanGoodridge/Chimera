@@ -9,4 +9,6 @@ mod hud;
 mod identity;
 mod net_gun_game;
 mod net_party;
+mod results_hud;
+mod rotation;
 mod startup;

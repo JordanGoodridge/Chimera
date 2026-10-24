@@ -12,7 +12,7 @@ use chimera_core::{
     gameplay::Gameplay,
 };
 use chimera_sim::{
-    minigame::{self, InMinigame, MINIGAME, MinigameAppExt, MinigamePlugin, Protected, ladder::Rung},
+    minigame::{self, InMinigame, MatchResults, MINIGAME, MinigameAppExt, MinigamePlugin, Protected, ladder::Rung},
     mode::{FFA_FIRST, Match, Phase},
     movement::placeholder,
     testkit::{self, PISTOL, RIFLE, SHOTGUN},
@@ -176,8 +176,25 @@ fn kills_climb_the_ladder_melee_deaths_demote_and_the_last_rung_wins() {
     let status = minigame::runtime::status(sim.app.world_mut()).unwrap();
     assert!(status.contains("MatchOver") && status.contains("rung 3/3"), "{status}");
 
-    // `minigame_restart`: everyone again from the first rung.
+    // The results: the winner first, each player's final rung, kills and
+    // deaths, and the HUD's data carries them.
+    let results = sim.app.world().resource::<MatchResults>().clone();
+    assert_eq!(results.title, "Kit gun game");
+    assert_eq!(results.rungs, 3);
+    let rows: Vec<(Option<u32>, i32, u32, bool)> =
+        results.rows.iter().map(|r| (r.rung, r.kills, r.deaths, r.winner)).collect();
+    assert_eq!(rows, [(Some(3), 3, 1, true), (Some(1), 1, 3, false)], "{results:?}");
+    assert_eq!(results.rows[0].player, Some(a));
+    assert_eq!(results.winner().map(|w| w.player), Some(Some(a)));
+    let lines = results.lines(|r| r.name.clone());
+    assert!(lines[0].ends_with("wins the match"), "{lines:?}");
+    assert!(lines[1].starts_with("1. ") && lines[1].contains("rung 3/3") && lines[1].contains("3 kills"), "{lines:?}");
+    assert!(lines[2].starts_with("2. ") && lines[2].contains("rung 1/3"), "{lines:?}");
+    assert_eq!(sim.app.world().resource::<chimera_sim::minigame::hud::MinigameHud>().results.as_ref(), Some(&results));
+
+    // `minigame_restart`: everyone again from the first rung, no results.
     minigame::restart(sim.app.world_mut());
+    assert!(sim.app.world().get_resource::<MatchResults>().is_none());
     settle(&mut sim);
     assert_eq!(phase(&sim), Phase::Live);
     assert_eq!((rung(&sim, a), rung(&sim, b)), (0, 0));

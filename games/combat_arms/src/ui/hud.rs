@@ -293,6 +293,8 @@ pub struct MinigameView {
     pub title: String,
     pub lines: Vec<String>,
     pub notices: Vec<String>,
+    /// The finished match's results (the winner, then a line a player).
+    pub results: Vec<String>,
 }
 
 /// What Combat Arms' HUD shows this frame.
@@ -508,6 +510,9 @@ fn minigame_view(
         title: m.title.clone(),
         lines: m.lines.iter().map(word).collect(),
         notices: m.notices.iter().map(|(l, _)| word(l)).collect(),
+        results: m.results.as_ref().map_or_else(Vec::new, |r| {
+            r.lines(|row| row.player.map_or_else(|| row.name.clone(), |p| name_of(&names, settings.as_deref(), p)))
+        }),
     });
 }
 
@@ -2114,8 +2119,18 @@ fn draw_minigame(
         for (i, line) in m.lines.iter().enumerate() {
             centred(p, 30.0 + 18.0 * i as f32, 18.0, line, looks::MINIGAME, [255, 255, 255, 255]);
         }
-        for (i, notice) in m.notices.iter().enumerate() {
-            centred(p, 250.0 + 30.0 * i as f32, 28.0, notice, looks::NOTICE, [255, 230, 120, 255]);
+        // The results take the notices' place (they say who won).
+        if m.results.is_empty() {
+            for (i, notice) in m.notices.iter().enumerate() {
+                centred(p, 250.0 + 30.0 * i as f32, 28.0, notice, looks::NOTICE, [255, 230, 120, 255]);
+            }
+        }
+        for (i, line) in m.results.iter().enumerate() {
+            if i == 0 {
+                centred(p, 110.0, 28.0, line, looks::NOTICE, [255, 230, 120, 255]);
+            } else {
+                centred(p, 142.0 + 18.0 * (i - 1) as f32, 18.0, line, looks::MINIGAME, [255, 255, 255, 255]);
+            }
         }
     });
 }
