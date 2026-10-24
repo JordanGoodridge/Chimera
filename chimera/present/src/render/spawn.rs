@@ -1982,6 +1982,7 @@ fn spawn_prop(
                 joints,
                 seen: None,
                 default: None,
+                done: false,
             });
         }
     }

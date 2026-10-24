@@ -24,7 +24,10 @@
 //! force/damage-to-enable-motion and OnMotionEnabled,
 //! Wake/Sleep/EnableMotion/DisableMotion (`Effect::PropMotion`), OnAwakened,
 //! break on pressure, Break/health/visibility/collision inputs, Skin,
-//! SetBodyGroup, SetAnimation/SetDefaultAnimation (`PropState`).
+//! SetBodyGroup, SetAnimation/SetDefaultAnimation (`PropState`),
+//! OnAnimationBegun (a SetAnimation, and a default animation starting again)
+//! and OnAnimationDone (`prop_animation_done`, reported by the client's
+//! animation: `map::PropAnimationDone`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Prop damage
 //! (specs/source/prop_damage.md, source/logic/src/logic/prop_damage.rs) left out or
@@ -912,6 +915,7 @@ pub(super) fn prop_input(w: &mut LogicWorld, id: EntId, input: &str, value: &Val
             let p = prop(w, id).unwrap();
             p.sequence = Some(name.trim().to_string());
             p.sequence_serial += 1;
+            w.fire_output(id, "OnAnimationBegun", None, Value::Void);
         }
         "ignite" | "ignitelifetime" | "ignitenumhitboxfires" | "ignitehitboxfirescale" => {
             return super::fire::ignite_input(w, Who::Ent(id), input, value);
@@ -942,6 +946,22 @@ impl LogicWorld {
     /// when `id` is not a prop (see `damage` for breakables too).
     pub fn prop_hit(&mut self, id: EntId, hit: Hit) -> bool {
         prop_damage(self, id, hit)
+    }
+
+    /// The prop's non-looping sequence `serial` (`PropState::sequence`'s;
+    /// 0: the spawn-time default) reached its end on the client: OnAnimationDone,
+    /// then, with a default animation, OnAnimationBegun as it starts again
+    /// (the client restarts it). A report for an older sequence is ignored.
+    pub fn prop_animation_done(&mut self, id: EntId, serial: u32) {
+        let Some(p) = prop(self, id) else { return };
+        if p.broken || p.sequence_serial != serial || (p.sequence.is_none() && p.default_sequence.is_empty()) {
+            return;
+        }
+        let restarts = !p.default_sequence.is_empty();
+        self.fire_output(id, "OnAnimationDone", None, Value::Void);
+        if restarts {
+            self.fire_output(id, "OnAnimationBegun", None, Value::Void);
+        }
     }
 
     /// A prop that started asleep woke up: OnAwakened, once.

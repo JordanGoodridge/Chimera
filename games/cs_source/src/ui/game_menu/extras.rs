@@ -18,6 +18,15 @@ impl GameMenu {
         rows
     }
 
+    /// Chimera Debug Options' rows: the overlay cvars (check boxes), OK,
+    /// Cancel.
+    pub(super) fn debug_rows(&self) -> Vec<Row> {
+        let mut rows = self.place_rows(Place::Debug);
+        rows.push(self.ok_row());
+        rows.push(self.cancel_row());
+        rows
+    }
+
     /// The Bots dialog's rows (ours).
     pub(super) fn bots_rows(&self) -> Vec<Row> {
         vec![

@@ -479,7 +479,7 @@ impl GameMenu {
     /// Show a page, its first control focused (the options remember what
     /// they were, for Cancel).
     pub(super) fn go_to(&mut self, page: Page) {
-        if matches!(page, Page::Settings | Page::Extras) && self.page != page && !self.page.over_options() {
+        if matches!(page, Page::Settings | Page::Extras | Page::Debug) && self.page != page && !self.page.over_options() {
             self.options_before = self.snapshot(|_| true);
         }
         self.page = page;
@@ -687,6 +687,7 @@ impl GameMenu {
             Page::KeyboardAdvanced | Page::VideoAdvanced | Page::Gamma => self.advanced_rows(),
             Page::MultiplayerAdvanced => self.multiplayer_advanced_rows(),
             Page::Extras => self.extras_rows(),
+            Page::Debug => self.debug_rows(),
             Page::PlayerList => self.player_list_rows(),
             Page::Vote => self.vote_rows(),
         }
@@ -752,7 +753,8 @@ impl GameMenu {
             | Page::VideoAdvanced
             | Page::Gamma
             | Page::MultiplayerAdvanced
-            | Page::Extras => Some(Action::Ok),
+            | Page::Extras
+            | Page::Debug => Some(Action::Ok),
             _ => None,
         }
     }
@@ -1325,7 +1327,7 @@ impl GameMenu {
                 }
                 self.back();
             }
-            Action::Ok if !self.typed.is_empty() && matches!(self.page, Page::Settings | Page::Extras) => {
+            Action::Ok if !self.typed.is_empty() && matches!(self.page, Page::Settings | Page::Extras | Page::Debug) => {
                 self.apply_typed(out);
                 self.options_before.clear();
                 self.back();
@@ -1346,7 +1348,7 @@ impl GameMenu {
                     self.restore(before, out);
                     self.back();
                 }
-                Page::Settings | Page::Extras => {
+                Page::Settings | Page::Extras | Page::Debug => {
                     self.typed.clear();
                     let before = std::mem::take(&mut self.options_before);
                     self.restore(before, out);

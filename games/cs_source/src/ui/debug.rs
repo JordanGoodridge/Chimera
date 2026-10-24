@@ -77,7 +77,9 @@ fn bot_skills() -> Vec<(String, String)> {
 /// A bot's role and activity (None: not one of CS:S's bots).
 fn bot_state(world: &World, e: Entity) -> Option<(String, String)> {
     let b = world.get::<Bot>(e)?;
-    Some((format!("{:?}", b.role()), format!("{:?}", b.activity())))
+    let activity = format!("{:?}", b.activity());
+    // The debug UI's row offers "unfreeze" for an activity starting "frozen".
+    Some((format!("{:?}", b.role()), if b.frozen { format!("frozen ({activity})") } else { activity }))
 }
 
 /// The round's state for the Rounds tab.

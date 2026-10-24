@@ -386,7 +386,7 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   specs/source/prop_damage.md (source/logic/src/logic/prop_damage.rs: prop data,
   pieces, impact damage, explosive props, client props, Wake/Sleep/motion
   inputs, OnAwakened/OnMotionEnabled, pressure). Left: breakable follow-ups
-  (section 7), prop `OnAnimationBegun`/`OnAnimationDone`, train
+  (section 7), train
   facing/banking and player train control. (Round restarts re-create
   entities: rounds plan.) Target: two
   real minigame maps from the user's downloads.
@@ -491,13 +491,13 @@ Plan: [plans/active/custom-maps.md](plans/active/custom-maps.md).
   holds none), whether keyboard moves in the menu make the rollover
   sound, a loading dialog for maps changed from inside a game (the old
   map plays on until the new one is in),
-  the server browser (needs networking), a Chimera debug-options page
-  (the overlay cvars as check boxes).
+  the server browser (needs networking). The Chimera debug-options page is in
+  (`menu debug`, the overlay cvars as check boxes; 2026-10-24).
 - Debug overlays: `chimera_drawhitboxes`, `chimera_healthbars`,
   `chimera_drawnav`, `chimera_drawbots` exist; add more as features need
   them (sound radii, triggers).
-- Debug UI (F8, `client/debug_ui.rs`) is in. Left: kicking or freezing
-  one bot (the bot commands act on all), turning fog off (no such cvar yet;
+- Debug UI (F8, `client/debug_ui.rs`) is in. Each bot's row has kick and freeze
+  buttons (`bot_kick <name>`, `bot_freeze`/`bot_unfreeze`, 2026-10-24). Left: turning fog off (no such cvar yet;
   a "Clear decals" button runs `r_cleardecals`, 2026-10-24), starting a trace from the running game (needs
   the profile build), a fixed tick-rate control, a history graph per
   render pass.
@@ -541,8 +541,8 @@ playtest with friends on Windows and Linux (real microphones and
 speakers: only fakes are tested). Per-player mute is in (the game
 menu's player list, `voice_mute`; client-side, for the session), and
 the open microphone (`voice_vox`, `voice_threshold`), and the Voice
-tab's microphone test, meter and boost. Left: the tab's transmit
-volume, icons over talking players' heads, a capture of
+tab's microphone test, meter, boost and transmit volume
+(`voice_transmit`, 2026-10-24). Left: icons over talking players' heads, a capture of
 CS:S's voice HUD and client `voice_*` defaults (Windows), and checking
 the dead-hear-the-dead rule with two clients on the probe server.
 

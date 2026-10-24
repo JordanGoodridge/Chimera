@@ -128,12 +128,13 @@ docs), to confirm with two clients on the probe server.
    bar pictures) lights `barCount` bars for `client::voice::VoiceLevel`
    (a frame's loudest sample, on a decibel scale from -48 dB, falling
    smoothly; ours). "Boost microphone gain" is `voice_boost` (ours: x4,
-   +12 dB; CS:S's sets the sound card's boost).
+   +12 dB; CS:S's sets the sound card's boost). The transmit volume
+   slider (the layout's `#GameUI_MicrophoneVolume` panel) is
+   `voice_transmit`, 0 to 1 times the samples (ours; CS:S's sets the sound
+   card's microphone level).
 
 ## Left for later
 
-- The Voice tab's transmit volume (`#GameUI_MicrophoneVolume`, a slider
-  CS:S makes in code over the system's microphone level).
 - Talking icons over heads (`voice/icntlk_pl`), Steam avatars in the
   voice panel.
 - `voice_inputfromfile`, `voice_recordtofile`.

@@ -962,3 +962,39 @@ fn prop_visibility_and_collision_inputs() {
     w.frame(&NoCollision);
     assert!(w.get(p).is_none());
 }
+
+#[test]
+fn prop_dynamic_animation_outputs() {
+    // de_nuke's car: DefaultAnim hide; SetAnimation run starts OnAnimationBegun
+    // now; the client reports the end (spec 9): OnAnimationDone, and Begun
+    // again as the default restarts.
+    let mut w = world();
+    let car = spawn(
+        &mut w,
+        &[
+            ("classname", "prop_dynamic"),
+            ("targetname", "car01"),
+            ("DefaultAnim", "hide"),
+        ],
+    );
+    let plain = spawn(&mut w, &[("classname", "prop_dynamic"), ("targetname", "lift")]);
+    w.activate();
+    run_to(&mut w, 1);
+    assert!(fired(&w, car, "OnAnimationBegun").is_empty(), "nothing asked yet");
+    w.queue_input("car01", "SetAnimation", Value::Str("run".into()), 0.0, None);
+    run_to(&mut w, 2);
+    assert_eq!(fired(&w, car, "OnAnimationBegun").len(), 1);
+    let serial = w.prop_states().into_iter().find(|s| s.id == car).unwrap().sequence.unwrap().1;
+    // A report for an older sequence is ignored.
+    w.prop_animation_done(car, serial + 5);
+    assert!(fired(&w, car, "OnAnimationDone").is_empty());
+    w.prop_animation_done(car, serial);
+    assert_eq!(fired(&w, car, "OnAnimationDone").len(), 1);
+    assert_eq!(fired(&w, car, "OnAnimationBegun").len(), 2, "the default starts again");
+    // Without a default animation: Done only.
+    w.queue_input("lift", "SetAnimation", Value::Str("up".into()), 0.0, None);
+    run_to(&mut w, 3);
+    w.prop_animation_done(plain, 1);
+    assert_eq!(fired(&w, plain, "OnAnimationBegun").len(), 1);
+    assert_eq!(fired(&w, plain, "OnAnimationDone").len(), 1);
+}

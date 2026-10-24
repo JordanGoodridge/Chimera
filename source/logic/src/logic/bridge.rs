@@ -2263,7 +2263,20 @@ fn post(
     world: &mut World,
     mut awake: Local<MessageCursor<crate::map::prop_physics::PropAwakened>>,
     mut broken: Local<MessageCursor<crate::map::controllers::JointBroke>>,
+    mut animated: Local<MessageCursor<crate::map::PropAnimationDone>>,
 ) {
+    // Animated props whose sequence ended (map::props::animate_props).
+    let ended: Vec<(Entity, u32)> = match world.get_resource::<Messages<crate::map::PropAnimationDone>>() {
+        Some(m) => animated.read(m).map(|d| (d.node, d.serial)).collect(),
+        None => Vec::new(),
+    };
+    let ended: Vec<(EntId, u32)> = match world.get_resource::<Logic>() {
+        Some(l) => ended
+            .into_iter()
+            .filter_map(|(n, s)| l.props.iter().find(|(_, p)| *p == n).map(|(id, _)| (*id, s)))
+            .collect(),
+        None => Vec::new(),
+    };
     // Props that started asleep and woke (map::prop_physics).
     let woke: Vec<Entity> = match world.get_resource::<Messages<crate::map::prop_physics::PropAwakened>>() {
         Some(m) => awake.read(m).map(|a| a.0).collect(),
@@ -2290,6 +2303,9 @@ fn post(
     run_phase(world, |w, col| {
         for id in woke {
             w.prop_awakened(id);
+        }
+        for (id, serial) in ended {
+            w.prop_animation_done(id, serial);
         }
         for id in broke {
             w.deliver(Who::Ent(id), "Break", super::Value::Void, None, Some(Who::Ent(id)));

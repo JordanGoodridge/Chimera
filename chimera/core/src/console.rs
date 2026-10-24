@@ -730,6 +730,8 @@ pub const SERVER_COMMANDS: &[&str] = &[
     "bot_kick",
     "bot_give",
     "bot_goto",
+    "bot_freeze",
+    "bot_unfreeze",
     "changelevel",
     "mp_restartgame",
     "kick",

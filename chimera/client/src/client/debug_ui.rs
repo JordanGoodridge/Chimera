@@ -12,7 +12,7 @@
 //! Tabs: Player (position, state, health/armour/money, god, noclip,
 //! spawns and bookmarks, weapons), World (map, time scale, gravity, tick),
 //! Movement (the movement and mouse cvars), Bots (add, kick, skill, each
-//! bot's state), Rendering (overlays and culling), Perf (frame-time graph,
+//! bot's state, with watch / go to / kick / freeze buttons per bot), Rendering (overlays and culling), Perf (frame-time graph,
 //! the `chimera_perf` readout), Audio, Logic (map entities, fire inputs,
 //! outputs fired), Rounds, Cvars (every cvar, searchable and editable).
 //!
@@ -968,6 +968,7 @@ fn bots_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         }
         ui.end_row();
         for (name, team, health, role, activity, at) in rows {
+            let frozen = activity.starts_with("frozen");
             ui.label(&name);
             ui.label(if team == 1 { "T" } else { "CT" });
             ui.label(format!("{health:.0}"));
@@ -979,6 +980,13 @@ fn bots_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
                 }
                 let u = units(at);
                 command_button(ui, world, "go to", &format!("setpos {:.1} {:.1} {:.1}", u.x, u.y, u.z));
+                // By name: unique, and the console takes a quoted one.
+                command_button(ui, world, "kick", &format!("bot_kick \"{name}\""));
+                if frozen {
+                    command_button(ui, world, "unfreeze", &format!("bot_unfreeze \"{name}\""));
+                } else {
+                    command_button(ui, world, "freeze", &format!("bot_freeze \"{name}\""));
+                }
             });
             ui.end_row();
         }

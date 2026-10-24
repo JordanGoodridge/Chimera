@@ -343,7 +343,7 @@ impl GameMenu {
             Place::KeyboardAdvanced => "keyboard_advanced",
             Place::VideoAdvanced => "video_advanced",
             Place::Gamma => "video_gamma",
-            Place::Extras => return None,
+            Place::Extras | Place::Debug => return None,
         };
         self.ui.0.as_ref()?.options.get(name)
     }
