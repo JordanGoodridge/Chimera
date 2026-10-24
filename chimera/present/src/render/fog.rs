@@ -81,6 +81,82 @@ pub fn fog_at(f: &FogUniform, eye: Vec3, point: Vec3, depth: f32) -> (Vec3, f32)
 #[derive(Resource)]
 struct FogShaderLoaded;
 
+/// `fog_enable`: whether the map's fog draws (the cvar, in
+/// `client::debug_views`; for the debug UI). Off, the materials' fog
+/// switch (`color.w`) is -1 where it was 1: the shaders read anything
+/// under 0.5 as no fog, and on again -1 goes back to 1; the ranges and
+/// colours are not touched, no material is rebuilt. Water fog (under
+/// water) stays.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct FogSetting {
+    pub enabled: u8,
+}
+
+impl Default for FogSetting {
+    fn default() -> Self {
+        Self { enabled: 1 }
+    }
+}
+
+/// The fog switch `w` of a material's fog colour under the setting:
+/// None when it is right already.
+pub fn gated_fog_switch(w: f32, on: bool) -> Option<f32> {
+    if on {
+        (w == -1.0).then_some(1.0)
+    } else {
+        (w > 0.5).then_some(-1.0)
+    }
+}
+
+fn gate_all<A: Asset>(assets: &mut Assets<A>, on: bool, read: fn(&A) -> f32, write: fn(&mut A) -> &mut Vec4) {
+    let ids: Vec<_> = assets.ids().collect();
+    for id in ids {
+        let Some(to) = assets.get(id).and_then(|m| gated_fog_switch(read(m), on)) else {
+            continue;
+        };
+        if let Some(mut m) = assets.get_mut(id) {
+            write(&mut m).w = to;
+        }
+    }
+}
+
+/// Put `FogSetting` on the world, prop, detail, rope, decal and particle
+/// materials: while it is off (new materials arrive fogged) and once when
+/// it changes.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_fog_setting(
+    setting: Res<FogSetting>,
+    worlds: Option<ResMut<Assets<super::world_material::WorldMaterial>>>,
+    props: Option<ResMut<Assets<super::prop_material::PropMaterial>>>,
+    details: Option<ResMut<Assets<super::detail::DetailMaterial>>>,
+    ropes: Option<ResMut<Assets<super::rope_material::RopeMaterial>>>,
+    decals: Option<ResMut<Assets<super::decal::DecalMaterial>>>,
+    particles: Option<ResMut<Assets<super::particles::ParticleDrawMaterial>>>,
+) {
+    let on = setting.enabled != 0;
+    if on && !setting.is_changed() {
+        return;
+    }
+    if let Some(mut a) = worlds {
+        gate_all(&mut a, on, |m| m.params.fog_color.w, |m| &mut m.params.fog_color);
+    }
+    if let Some(mut a) = props {
+        gate_all(&mut a, on, |m| m.params.fog_color.w, |m| &mut m.params.fog_color);
+    }
+    if let Some(mut a) = details {
+        gate_all(&mut a, on, |m| m.params.fog.color.w, |m| &mut m.params.fog.color);
+    }
+    if let Some(mut a) = ropes {
+        gate_all(&mut a, on, |m| m.params.fog.color.w, |m| &mut m.params.fog.color);
+    }
+    if let Some(mut a) = decals {
+        gate_all(&mut a, on, |m| m.fog.color.w, |m| &mut m.fog.color);
+    }
+    if let Some(mut a) = particles {
+        gate_all(&mut a, on, |m| m.fog.color.w, |m| &mut m.fog.color);
+    }
+}
+
 /// Loads `chimera_present::render::fog` for the map's shaders. Needs rendering.
 pub struct FogShaderPlugin;
 
@@ -90,7 +166,9 @@ impl Plugin for FogShaderPlugin {
         if app.world().contains_resource::<FogShaderLoaded>() {
             return;
         }
-        app.insert_resource(FogShaderLoaded);
+        app.insert_resource(FogShaderLoaded)
+            .init_resource::<FogSetting>()
+            .add_systems(Update, apply_fog_setting);
         bevy::shader::load_shader_library!(app, "fog.wesl");
     }
 
@@ -181,5 +259,35 @@ mod tests {
         let (c, a) = fog_at(&f, Vec3::new(0.0, 0.1, 0.0), Vec3::new(0.0, -0.4, -0.5), 0.5);
         assert_eq!(c, Vec3::new(0.0, 0.1, 0.2));
         assert!((a - 0.4).abs() < 1e-5, "{a}");
+    }
+
+    #[derive(Asset, TypePath)]
+    struct Fogged(Vec4);
+
+    #[test]
+    fn the_setting_switches_fog_off_and_back_on() {
+        let mut a = Assets::<Fogged>::default();
+        let fogged = a.add(Fogged(Vec4::new(0.5, 0.5, 0.5, 1.0)));
+        let clear = a.add(Fogged(Vec4::new(0.5, 0.5, 0.5, 0.0)));
+        let w = |a: &Assets<Fogged>, h: &Handle<Fogged>| a.get(h).unwrap().0;
+        let gate = |a: &mut Assets<Fogged>, on| gate_all(a, on, |m| m.0.w, |m| &mut m.0);
+        gate(&mut a, true);
+        assert_eq!(w(&a, &fogged).w, 1.0);
+        gate(&mut a, false);
+        assert_eq!(w(&a, &fogged), Vec4::new(0.5, 0.5, 0.5, -1.0), "off, colour kept");
+        assert_eq!(w(&a, &clear).w, 0.0, "a fogless material stays so");
+        // Off means no fog in the shaders' test and in `fog_at`.
+        let f = FogUniform {
+            color: w(&a, &fogged),
+            range: Vec4::new(0.0, 10.0, 1.0, 0.0),
+            ..default()
+        };
+        assert_eq!(fog_at(&f, Vec3::ZERO, Vec3::new(0.0, 0.0, -5.0), 5.0).1, 0.0);
+        // One made while off arrives fogged and is switched.
+        let late = a.add(Fogged(Vec4::new(0.1, 0.1, 0.1, 1.0)));
+        gate(&mut a, false);
+        assert_eq!(w(&a, &late).w, -1.0);
+        gate(&mut a, true);
+        assert_eq!((w(&a, &fogged).w, w(&a, &late).w, w(&a, &clear).w), (1.0, 1.0, 0.0), "on again");
     }
 }

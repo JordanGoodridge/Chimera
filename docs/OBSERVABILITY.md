@@ -414,6 +414,16 @@ Only `Reflect`-registered types are visible; register new core components in
   what it follows, a physics body's box, and the class state: door and
   button states, relays, timers, counters, cases), entity space; e.g.
   `ent_dump el_elevator*` over the remote console while a lift runs.
+- `chimera_drawsound 1` draws a sphere for each ambient_generic's audible
+  radius (green while it plays, grey while silent) and each
+  env_soundscape's (cyan) within 80 m of you (2: all);
+  `chimera_drawtriggers 1` outlines the brush triggers' boxes, coloured by
+  kind (hurt red, push blue, teleport magenta, gravity cyan, remove orange,
+  multiple/once yellow, others grey; a disabled one dim; 2: all). Both are
+  check boxes on `menu debug` (`games/cs_source/src/ui/debug_world.rs`).
+  `fog_enable 0` turns the map's fog off in the world, prop, detail, rope,
+  decal and particle materials (water fog stays) without rebuilding them
+  (a debug-UI and `menu debug` check box); `fog_enable 1` brings it back.
 - `chimera_drawnav 1` outlines the nav areas near you (2: all), coloured by
   place, with half-links toward their neighbours, and the mesh's ladders
   (yellow line, green cross where bots get on at the foot, orange where

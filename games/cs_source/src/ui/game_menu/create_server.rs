@@ -196,8 +196,8 @@ impl GameMenu {
     }
 
     /// Start the new game set up in Create Server: from a game, close (the
-    /// old map plays until the new one is in); from the main menu, show it
-    /// loading.
+    /// loading dialog takes over once the load starts: `begin_loading`);
+    /// from the main menu, show it loading.
     pub(super) fn start(&mut self, out: &mut Outcome) {
         let Some((lines, after)) = self.start_lines() else {
             return;

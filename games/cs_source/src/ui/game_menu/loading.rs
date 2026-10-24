@@ -72,6 +72,23 @@ pub fn net_failure_text(menu: &GameMenu, kind: &crate::net::client::JoinFailure,
     text.unwrap_or_else(|| reason.to_string())
 }
 
+impl GameMenu {
+    /// A map load is under way (`map`, a server's map change): the loading
+    /// dialog shows, from the main menu or from inside a game (which
+    /// leaves the game's view until `entered_game`). Once per load.
+    pub(in crate::ui) fn begin_loading(&mut self, map: String) {
+        if self.loading.is_some() {
+            return;
+        }
+        self.in_game = false;
+        self.open = true;
+        self.page = Page::Main;
+        self.capture = None;
+        self.combo = None;
+        self.loading = Some(map);
+    }
+}
+
 /// A `map` load failed: the main menu takes input again.
 pub(in crate::ui) fn map_load_failed(w: &mut World) {
     if let Some(mut menu) = w.get_resource_mut::<GameMenu>() {

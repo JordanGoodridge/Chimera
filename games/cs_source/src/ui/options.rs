@@ -5,7 +5,7 @@
 //! The options dialogs' settings (cvar, or several set together (water detail,
 //! sound quality, captioning, filtering); where it shows: a tab, the keyboard
 //! or video tab's Advanced dialog, the brightness dialog, or ours
-//! (`Place::Extras`, `Place::Debug`: Chimera Debug Options, `menu debug`); the game layout's control showing it (`fieldName`); the
+//! (`Place::Extras`, `Place::Debug`: Chimera Debug Options, `menu debug`: the overlay cvars, `fog_enable`); the game layout's control showing it (`fieldName`); the
 //! game's label token; slider / choice / check box / check box setting a value
 //! / reverse-mouse / window-size kinds, stepping, showing and a combo box's
 //! entries).
@@ -493,6 +493,8 @@ pub const SETTINGS: &[Setting] = &[
     setting(Place::Debug, "chimera_ragdoll_debug", None, None, "Ragdoll joints", SettingKind::Toggle),
     setting(Place::Debug, "chimera_objectives", None, None, "Objective markers", SettingKind::Toggle),
     setting(Place::Debug, "snd_show", None, None, "Sound sources", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_drawsound", None, None, "Sound radii", SettingKind::Toggle),
+    setting(Place::Debug, "chimera_drawtriggers", None, None, "Triggers", SettingKind::Toggle),
 ];
 
 /// Text entries beside a slider that show its value (`fieldName` of the
