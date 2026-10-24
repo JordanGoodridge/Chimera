@@ -73,6 +73,24 @@ fn steam_turns_on_off_and_toggles() {
 }
 
 #[test]
+fn steam_value_inputs_are_kept() {
+    // JetLength, SpreadSpeed and Speed set the jet; Rate is ignored.
+    let entities = vec![map_entity(&[("classname", "env_steam"), ("targetname", "steam")])];
+    let mut w = world();
+    w.load_map(&entities);
+    assert!(w.steam_jets().is_empty());
+    w.queue_input("steam", "JetLength", Value::Float(200.0), 0.0, None);
+    w.queue_input("steam", "Speed", Value::Int(50), 0.0, None);
+    w.queue_input("steam", "Rate", Value::Int(5), 0.0, None);
+    run_to(&mut w, 1);
+    let jets = w.steam_jets();
+    assert_eq!(jets.len(), 1);
+    assert_eq!(jets[0].1.length, Some(200.0));
+    assert_eq!(jets[0].1.speed, Some(50.0));
+    assert_eq!(jets[0].1.spread, None);
+}
+
+#[test]
 fn soundscapes_enable_disable_and_toggle() {
     // env_soundscape(_proxy): StartDisabled; Enable, Disable,
     // ToggleEnabled (specs/cs_source/sounds.md 6).

@@ -704,8 +704,8 @@ docs/plans/active/sound.md.
   read but not played (engine-side effects).
 - Stock ambient_generics the bomb starts (de_nuke's alarm, dust2's
   fires) now play when it explodes (`BombExplode`); check them by ear. (Prop outputs are in: de_nuke's steam, cs_office's
-  projector.) env_steam's JetLength/SpreadSpeed/Speed inputs and heat-wave
-  jets (Type 1) are not done.
+  projector; env_steam's JetLength/SpreadSpeed/Speed inputs are in, for new
+  puffs.) Heat-wave jets (Type 1) are not done.
 - Measure ambient_generic's level for script entries vs raw waves (spec
   open question 11).
 - Measure on the probe server: the distance curves (replace the H1/H2

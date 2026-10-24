@@ -31,6 +31,16 @@ pub struct EntityPart {
     pub exists: bool,
 }
 
+/// An env_steam's value inputs (JetLength, SpreadSpeed, Speed), in
+/// meters and m/s; None keeps the map's value. The logic layer writes it
+/// on the jet's `EntityPart`.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct SteamInputs {
+    pub length: Option<f32>,
+    pub spread: Option<f32>,
+    pub speed: Option<f32>,
+}
+
 /// How a prop entity looks, as the logic says (skin family, and the body
 /// number SetBodyGroup set; `MapModel::skins`, `MapModel::body_choice`).
 /// The logic layer writes it; the map applies it.
