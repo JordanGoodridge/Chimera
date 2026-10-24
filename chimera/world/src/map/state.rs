@@ -167,7 +167,12 @@ pub struct LogicHidden;
 
 /// Source render modes that matter here.
 pub const RENDER_NORMAL: u8 = 0;
+pub const RENDER_TRANS_COLOR: u8 = 1;
+pub const RENDER_TRANS_ALPHA: u8 = 4;
 pub const RENDER_TRANS_ADD: u8 = 5;
+/// Where a brush entity in render mode 4 cuts its texture's alpha out
+/// (Source's `$alphatestreference` default).
+pub const ALPHA_TEST_REFERENCE: f32 = 0.7;
 pub const RENDER_NONE: u8 = 10;
 
 /// How an entity is drawn: colour (sRGB 0-255), alpha (renderamt) and
@@ -214,9 +219,41 @@ impl RenderLook {
     /// space, so the colour is converted as sRGB), with the opacity in w;
     /// an added look takes the opacity into its colour.
     pub fn factor(&self) -> Vec4 {
+        self.factor_of(self.blend())
+    }
+
+    /// Render mode 1 (kRenderTransColor) on a brush entity: its surfaces
+    /// draw the flat `rendercolor`, not their texture.
+    pub fn flat_color(&self) -> bool {
+        self.mode == RENDER_TRANS_COLOR
+    }
+
+    /// What a brush entity's surfaces blend as: like `blend`, except mode 4
+    /// (kRenderTransAlpha) alpha-tests at the texture's alpha
+    /// (`ALPHA_TEST_REFERENCE`), whatever renderamt says, instead of
+    /// blending.
+    pub fn surface_blend(&self) -> Option<(MapAlpha, f32)> {
+        if self.mode == RENDER_TRANS_ALPHA && self.alpha > 0 {
+            Some((MapAlpha::Mask(ALPHA_TEST_REFERENCE), 1.0))
+        } else {
+            self.blend()
+        }
+    }
+
+    /// A brush entity's surfaces look different from their material's.
+    pub fn changes_surface(&self) -> bool {
+        !self.is_plain() || self.flat_color() || self.mode == RENDER_TRANS_ALPHA
+    }
+
+    /// `factor` for a brush entity's surfaces (`surface_blend`).
+    pub fn surface_factor(&self) -> Vec4 {
+        self.factor_of(self.surface_blend())
+    }
+
+    fn factor_of(&self, blend: Option<(MapAlpha, f32)>) -> Vec4 {
         let c = Color::srgb_u8(self.color[0], self.color[1], self.color[2]).to_linear();
         let rgb = Vec3::new(c.red, c.green, c.blue);
-        match self.blend() {
+        match blend {
             Some((MapAlpha::Add, a)) => (rgb * a).extend(1.0),
             Some((_, a)) => rgb.extend(a),
             None => rgb.extend(1.0),
@@ -237,7 +274,7 @@ pub struct BrushTint(pub RenderLook, pub u32);
 
 impl BrushTint {
     pub fn is_white(&self) -> bool {
-        self.0.is_plain() && self.1 == 0
+        !self.0.changes_surface() && self.1 == 0
     }
 }
 
