@@ -45,6 +45,12 @@ fn main() {
         }
     }
     app.add_plugins((
+        // Both installs as `cs_source://` and `combat_arms://` assets
+        // (before `AssetPlugin`).
+        chimera_present::assets::InstallSourcesPlugin(vec![
+            chimera_present::assets::InstallSource::of(&cs_source::game::INFO),
+            chimera_present::assets::InstallSource::shared(combat_arms::game::INFO.id, combat_arms::game::world::mount),
+        ]),
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {

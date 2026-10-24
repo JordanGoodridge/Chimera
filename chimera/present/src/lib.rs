@@ -13,7 +13,11 @@
 //! `render` and `audio` at their old paths and `MapPlugin` as
 //! `mashup::map::MapPlugin`, when built with its `present` feature (the
 //! dedicated server is built without this crate: `map::MapSimPlugin`).
+//!
+//! `assets`: the games' installs as asset sources (`<game>://<path>`,
+//! `InstallSourcesPlugin`, added by each app before `DefaultPlugins`).
 
+pub mod assets;
 pub mod audio;
 mod map_plugin;
 pub mod render;

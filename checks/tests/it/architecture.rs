@@ -52,6 +52,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Builds `map::MapPlugin` from the map and its presentation (`audio`,
     // `render`), its systems in `core`'s sets.
     ("map_plugin", &["core", "map", "audio", "render"]),
+    // The installs as asset sources (`<game>://<path>` through a game's
+    // mount) and what texture loaders ask of the device; used by apps and
+    // games' front ends.
+    ("assets", &["core", "mount", "game_registry", "render"]),
     ("weapon", &["core", "console", "map"]),
     // The rule-module interface (chimera/sim): a game registers its modes
     // by name; `rules::module` at its old path.
