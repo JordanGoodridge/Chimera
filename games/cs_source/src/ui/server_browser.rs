@@ -41,6 +41,7 @@
 //! in History. A model (`ServerBrowser::handle`: clicks and keys in, console
 //! lines and queries out) and its drawing (the game menu's `Look` and helpers).
 
+use crate::client::dialog;
 use crate::client::widgets::Interaction;
 use std::{
     net::SocketAddr,
@@ -312,7 +313,7 @@ pub enum Dialog {
     Password {
         addr: SocketAddr,
         name: String,
-        text: String,
+        entry: dialog::Dialog,
     },
 }
 
@@ -818,7 +819,7 @@ impl ServerBrowser {
             self.dialog = Dialog::Password {
                 addr,
                 name: row.map(|r| r.name).unwrap_or_default(),
-                text: String::new(),
+                entry: dialog::Dialog::password("Server Requires Password", "", 128),
             };
             self.set_typing(Some(Field::Password));
             return;
@@ -1096,7 +1097,7 @@ impl ServerBrowser {
                 _ => None,
             },
             Field::Password => match &mut self.dialog {
-                Dialog::Password { text, .. } => Some(text),
+                Dialog::Password { entry, .. } => Some(&mut entry.input),
                 _ => None,
             },
         }
@@ -1181,7 +1182,11 @@ impl ServerBrowser {
                             }
                         }
                     },
-                    Dialog::Password { addr, text, .. } => self.connect(addr, Some(&text), out),
+                    Dialog::Password { addr, mut entry, .. } => {
+                        if let Some(dialog::Outcome::Submit(password)) = entry.handle(dialog::Press::Enter) {
+                            self.connect(addr, Some(&password), out);
+                        }
+                    }
                     Dialog::None => {}
                 }
             }
@@ -2903,7 +2908,7 @@ fn add_server_dialog(commands: &mut Commands, root: Entity, look: &Look, b: &Ser
 
 /// The server wants a password: its name, the password box, Connect.
 fn password_dialog(commands: &mut Commands, root: Entity, look: &Look, b: &ServerBrowser) {
-    let Dialog::Password { name, text, .. } = &b.dialog else {
+    let Dialog::Password { name, entry, .. } = &b.dialog else {
         return;
     };
     let layout = b.ui.0.as_ref().and_then(|u| u.servers.get("password"));
@@ -2961,7 +2966,7 @@ fn password_dialog(commands: &mut Commands, root: Entity, look: &Look, b: &Serve
         f,
         look,
         rect_of(layout, "PasswordEntry", (86.0, 96.0, 186.0, 24.0)),
-        text,
+        &entry.input,
         Field::Password,
         b,
         true,

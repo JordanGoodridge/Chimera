@@ -46,6 +46,8 @@ pub mod layouts;
 
 use std::sync::Arc;
 
+use chimera_client::client::dialog::{Button, Dialog, Outcome, Press};
+
 use bevy::{
     input::{
         ButtonState,
@@ -170,7 +172,8 @@ pub struct LobbyScreen {
     pub password_room: Option<RoomId>,
     pub focus: Focus,
     pub chat_input: String,
-    pub join_password: String,
+    /// The password box for a locked room (`password_room`).
+    pub password_box: Dialog,
     /// Keys typed since the last frame (the window's, or a test's).
     pub typed: Vec<Typed>,
     pub loadout: Loadout,
@@ -218,7 +221,7 @@ impl LobbyScreen {
             password_room: None,
             focus: Focus::None,
             chat_input: String::new(),
-            join_password: String::new(),
+            password_box: Dialog::password("Password", "", 8),
             typed: Vec::new(),
             loadout: Loadout::new_player(&catalog),
             owned: Owned::all(),
@@ -477,7 +480,7 @@ pub fn sync(world: &mut World, screen: &mut LobbyScreen) {
         sync_create(screen);
     }
     if screen.password_room.is_some() {
-        let stars = "*".repeat(screen.join_password.chars().count());
+        let stars = screen.password_box.shown_input();
         screen.set_label("input_password", &stars);
     }
     if let Some(m) = &c.message {
@@ -759,27 +762,35 @@ fn do_op(world: &mut World, screen: &mut LobbyScreen, name: &str) {
     let t = now(world);
     client(world, |c| c.input(t));
     // Popups first: they are modal.
-    if world.resource::<CaLobbyClient>().0.message.is_some() {
-        if name == "button_msg_ok" {
+    if let Some(m) = world.resource::<CaLobbyClient>().0.message.clone() {
+        if name == "button_msg_ok" && Dialog::message("", &m).handle(Press::Click(Button::Ok)) == Some(Outcome::Ok) {
             client(world, |c| c.message = None);
         }
         return;
     }
     if screen.password_room.is_some() {
-        match name {
-            "button_ok" => {
+        let press = match name {
+            "button_ok" => Some(Press::Click(Button::Ok)),
+            "button_cancel" => Some(Press::Click(Button::Cancel)),
+            "input_password" => {
+                screen.focus = Focus::JoinPassword;
+                None
+            }
+            _ => None,
+        };
+        match press.and_then(|p| screen.password_box.handle(p)) {
+            Some(Outcome::Submit(pw)) => {
                 let room = screen.password_room.take().unwrap();
-                let pw = std::mem::take(&mut screen.join_password);
+                screen.password_box.clear();
                 client(world, |c| c.enter(room, &pw));
                 screen.focus = Focus::None;
             }
-            "button_cancel" => {
+            Some(_) => {
                 screen.password_room = None;
-                screen.join_password.clear();
+                screen.password_box.clear();
                 screen.focus = Focus::None;
             }
-            "input_password" => screen.focus = Focus::JoinPassword,
-            _ => {}
+            None => {}
         }
         return;
     }
@@ -912,7 +923,7 @@ fn join(world: &mut World, screen: &mut LobbyScreen, id: Option<RoomId>) {
         Some(Joining::Send(room)) => client(world, |c| c.enter(room, "")),
         Some(Joining::Password(room)) => {
             screen.password_room = Some(room);
-            screen.join_password.clear();
+            screen.password_box.clear();
             screen.focus = Focus::JoinPassword;
         }
         None => {}
@@ -1215,8 +1226,7 @@ fn typing(world: &mut World, screen: &mut LobbyScreen) {
                         }
                     }
                     Focus::JoinPassword => {
-                        let room = 8usize.saturating_sub(screen.join_password.chars().count());
-                        screen.join_password.extend(s.chars().take(room));
+                        screen.password_box.handle(Press::Type(s));
                     }
                     Focus::Chat => {
                         let room = 120usize.saturating_sub(screen.chat_input.chars().count());
@@ -1237,7 +1247,7 @@ fn typing(world: &mut World, screen: &mut LobbyScreen) {
                     }
                 }
                 Focus::JoinPassword => {
-                    screen.join_password.pop();
+                    screen.password_box.handle(Press::Backspace);
                 }
                 Focus::Chat => {
                     screen.chat_input.pop();

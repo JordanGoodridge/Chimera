@@ -13,7 +13,7 @@ Address the feedback in
 following its phased roadmap ("Now" N1–N7, "Next" X1–X10, "Later"
 L1–L6) in that order; each item names its files (lanes), size and
 guard tests, so items in one phase can go to parallel agents. Mark items
-done in the review as they land. N5 (CI on GitHub Actions) waits for
+done in the review as they land. N5 (CI on GitHub Actions) is deferred (2026-10-24, the user's choice); it waits for
 the user's go-ahead: no Actions runs unless asked.
 
 - After the Bevy 0.20 upgrade (L5): move the menus from Bevy UI's

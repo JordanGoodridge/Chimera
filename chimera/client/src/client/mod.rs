@@ -21,6 +21,7 @@ pub mod console;
 pub mod debug;
 pub mod debug_ui;
 pub mod debug_views;
+pub mod dialog;
 pub mod effects;
 pub mod clip_quad;
 pub mod fonts;

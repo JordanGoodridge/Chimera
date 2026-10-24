@@ -35,6 +35,8 @@
 
 use std::fmt;
 
+use chimera_vfs::bytes::{Le, Truncated};
+
 /// "Constants": the only model file type.
 pub const FILE_TYPE_MODEL: u8 = 1;
 /// "Constants": the container version every non-empty LOD needs.
@@ -445,8 +447,8 @@ pub struct Model {
 impl Model {
     /// Read a whole model file ("Load order").
     pub fn parse(bytes: &[u8]) -> Result<Model> {
-        let mut c = Cursor { b: bytes, pos: 0 };
-        let head = c.take(20).map_err(|e| e.context("file header"))?;
+        let mut c = Le::new(bytes);
+        let head = c.take(20).map_err(|e| LtbError::from(e).context("file header"))?;
         if head[0] != FILE_TYPE_MODEL {
             return Err(LtbError {
                 offset: 0,
@@ -498,7 +500,7 @@ impl Model {
         }
         let mut pieces = Vec::with_capacity(piece_count as usize);
         for i in 0..piece_count {
-            pieces.push(parse_piece(&mut c, container).map_err(|e| e.context(&format!("piece {i}")))?);
+            pieces.push(parse_piece(&mut c, container).map_err(|e| LtbError::from(e).context(&format!("piece {i}")))?);
         }
 
         // "Skeleton (node tree)".
@@ -519,7 +521,7 @@ impl Model {
                     message: format!("weight set {name} has {count} weights for {n} nodes"),
                 });
             }
-            let weights = (0..count).map(|_| c.f32()).collect::<Result<_>>()?;
+            let weights = (0..count).map(|_| Ok(c.f32()?)).collect::<Result<_>>()?;
             weight_sets.push(WeightSet { name, weights });
         }
 
@@ -538,7 +540,7 @@ impl Model {
         let anim_count = c.count(26, "animations")?;
         let mut animations = Vec::with_capacity(anim_count);
         for i in 0..anim_count {
-            animations.push(parse_animation(&mut c, n).map_err(|e| e.context(&format!("animation {i}")))?);
+            animations.push(parse_animation(&mut c, n).map_err(|e| LtbError::from(e).context(&format!("animation {i}")))?);
         }
 
         // "Sockets".
@@ -715,11 +717,11 @@ pub fn to_rh_triangle(t: [u16; 3]) -> [u16; 3] {
 fn parse_piece(c: &mut Cursor, container: u16) -> Result<Piece> {
     let name = c.string()?;
     let lod_count = c.count(4 + 4 + 16 + 4 + 1 + 4 + 4 + 1, "LODs")?;
-    let lod_distances = (0..lod_count).map(|_| c.f32()).collect::<Result<Vec<_>>>()?;
+    let lod_distances = (0..lod_count).map(|_| Ok(c.f32()?)).collect::<Result<Vec<_>>>()?;
     let old_lod_offsets = (c.u32()?, c.u32()?);
     let mut lods = Vec::with_capacity(lod_count);
     for i in 0..lod_count {
-        lods.push(parse_lod(c, container).map_err(|e| e.context(&format!("LOD {i}")))?);
+        lods.push(parse_lod(c, container).map_err(|e| LtbError::from(e).context(&format!("LOD {i}")))?);
     }
     Ok(Piece {
         name,
@@ -751,7 +753,7 @@ fn parse_lod(c: &mut Cursor, container: u16) -> Result<Lod> {
     let body_size = c.u32()?;
     let start = c.pos;
     let body = c.take(body_size as usize)?;
-    let mut b = Cursor { b: body, pos: 0 };
+    let mut b = Le::new(body);
     let mesh = match kind {
         4 => parse_rigid(&mut b),
         5 => parse_skinned(&mut b),
@@ -946,7 +948,7 @@ fn parse_skinned(c: &mut Cursor) -> Result<Mesh> {
         let (min_index, max_index) = (c.u32()?, c.u32()?);
         let remap = if reindexed {
             let r = c.count(4, "palette entries")?;
-            (0..r).map(|_| c.u32()).collect::<Result<_>>()?
+            (0..r).map(|_| Ok(c.u32()?)).collect::<Result<_>>()?
         } else {
             Vec::new()
         };
@@ -1134,57 +1136,34 @@ impl LtbError {
     }
 }
 
-/// A bounds-checked little-endian reader.
-struct Cursor<'a> {
-    b: &'a [u8],
-    pos: usize,
+/// The shared bounds-checked little-endian reader.
+type Cursor<'a> = Le<'a>;
+
+impl From<Truncated> for LtbError {
+    fn from(t: Truncated) -> Self {
+        LtbError {
+            offset: t.at,
+            message: format!("{} bytes wanted, {} left", t.wanted, t.left),
+        }
+    }
 }
 
-impl<'a> Cursor<'a> {
+/// What the format adds to the shared reader.
+trait ReadLtbError {
+    fn err(&self, message: impl Into<String>) -> LtbError;
+    fn vec3(&mut self) -> Result<Vec3>;
+    fn quat(&mut self) -> Result<Quat>;
+    fn string(&mut self) -> Result<String>;
+    fn check(&self, n: usize, what: &str) -> Result<()>;
+    fn count(&mut self, min_size: usize, what: &str) -> Result<usize>;
+}
+
+impl ReadLtbError for Le<'_> {
     fn err(&self, message: impl Into<String>) -> LtbError {
         LtbError {
             offset: self.pos,
             message: message.into(),
         }
-    }
-
-    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
-        let end = self
-            .pos
-            .checked_add(n)
-            .filter(|&e| e <= self.b.len())
-            .ok_or_else(|| self.err(format!("{n} bytes wanted, {} left", self.b.len() - self.pos)))?;
-        let s = &self.b[self.pos..end];
-        self.pos = end;
-        Ok(s)
-    }
-
-    fn array<const N: usize>(&mut self) -> Result<[u8; N]> {
-        Ok(self.take(N)?.try_into().unwrap())
-    }
-
-    fn u8(&mut self) -> Result<u8> {
-        Ok(self.take(1)?[0])
-    }
-
-    fn u16(&mut self) -> Result<u16> {
-        Ok(u16::from_le_bytes(self.array()?))
-    }
-
-    fn i16(&mut self) -> Result<i16> {
-        Ok(i16::from_le_bytes(self.array()?))
-    }
-
-    fn u32(&mut self) -> Result<u32> {
-        Ok(u32::from_le_bytes(self.array()?))
-    }
-
-    fn i32(&mut self) -> Result<i32> {
-        Ok(i32::from_le_bytes(self.array()?))
-    }
-
-    fn f32(&mut self) -> Result<f32> {
-        Ok(f32::from_le_bytes(self.array()?))
     }
 
     fn vec3(&mut self) -> Result<Vec3> {
@@ -1223,5 +1202,4 @@ impl<'a> Cursor<'a> {
             });
         }
         Ok(n)
-    }
-}
+    }}
