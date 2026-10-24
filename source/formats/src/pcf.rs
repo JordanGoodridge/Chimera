@@ -4,6 +4,7 @@
 //! mean (operators, emitters, renderers) is the game's side
 //! (`mashup::games::cs_source::pcf`).
 
+use chimera_vfs::bytes::Le;
 use glam::Vec3;
 
 use crate::keyvalues::{Escapes, tokens};
@@ -122,58 +123,28 @@ impl Element {
     }
 }
 
-struct Reader<'a> {
-    b: &'a [u8],
-    at: usize,
+/// A NUL-terminated string as the format reads it.
+trait DmxRead {
+    fn string(&mut self) -> Result<String, String>;
 }
 
-impl Reader<'_> {
-    fn take(&mut self, n: usize) -> Result<&[u8], String> {
-        let s = self.b.get(self.at..self.at + n).ok_or("truncated")?;
-        self.at += n;
-        Ok(s)
-    }
-    fn u8(&mut self) -> Result<u8, String> {
-        Ok(self.take(1)?[0])
-    }
-    fn i16(&mut self) -> Result<i16, String> {
-        Ok(i16::from_le_bytes(self.take(2)?.try_into().unwrap()))
-    }
-    fn i32(&mut self) -> Result<i32, String> {
-        Ok(i32::from_le_bytes(self.take(4)?.try_into().unwrap()))
-    }
-    fn f32(&mut self) -> Result<f32, String> {
-        Ok(f32::from_le_bytes(self.take(4)?.try_into().unwrap()))
-    }
-    fn cstr(&mut self) -> Result<String, String> {
-        let end = self.b[self.at..]
-            .iter()
-            .position(|c| *c == 0)
-            .ok_or("unterminated string")?;
-        let s = String::from_utf8_lossy(&self.b[self.at..self.at + end]).into_owned();
-        self.at += end + 1;
-        Ok(s)
-    }
-    fn floats<const N: usize>(&mut self) -> Result<[f32; N], String> {
-        let mut out = [0.0; N];
-        for v in &mut out {
-            *v = self.f32()?;
-        }
-        Ok(out)
+impl DmxRead for Le<'_> {
+    fn string(&mut self) -> Result<String, String> {
+        self.cstr().ok_or_else(|| "unterminated string".to_string())
     }
 }
 
 /// Read a binary DMX file (encoding 2): its elements in file order.
 pub fn read_dmx(bytes: &[u8]) -> Result<Vec<Element>, String> {
-    let mut r = Reader { b: bytes, at: 0 };
-    let header = r.cstr()?;
+    let mut r = Le::new(bytes);
+    let header = r.string()?;
     if !header.contains("binary 2") {
         return Err(format!("unsupported DMX encoding: {}", header.trim()));
     }
     let n = r.i16()?.max(0) as usize;
     let mut strings = Vec::with_capacity(n);
     for _ in 0..n {
-        strings.push(r.cstr()?);
+        strings.push(r.string()?);
     }
     let string = |i: i16| {
         strings
@@ -188,7 +159,7 @@ pub fn read_dmx(bytes: &[u8]) -> Result<Vec<Element>, String> {
     let mut elements = Vec::with_capacity(count);
     for _ in 0..count {
         let kind = string(r.i16()?)?;
-        let name = r.cstr()?;
+        let name = r.string()?;
         r.take(16)?;
         elements.push(Element {
             kind,
@@ -196,7 +167,7 @@ pub fn read_dmx(bytes: &[u8]) -> Result<Vec<Element>, String> {
             attributes: Vec::new(),
         });
     }
-    fn value(r: &mut Reader, t: u8) -> Result<Value, String> {
+    fn value(r: &mut Le, t: u8) -> Result<Value, String> {
         Ok(match t {
             1 => {
                 let i = r.i32()?;
@@ -205,7 +176,7 @@ pub fn read_dmx(bytes: &[u8]) -> Result<Vec<Element>, String> {
             2 => Value::Int(r.i32()?),
             3 => Value::Float(r.f32()?),
             4 => Value::Bool(r.u8()? != 0),
-            5 => Value::Str(r.cstr()?),
+            5 => Value::Str(r.string()?),
             6 => {
                 let n = r.i32()?.max(0) as usize;
                 Value::Binary(r.take(n)?.to_vec())
@@ -215,11 +186,11 @@ pub fn read_dmx(bytes: &[u8]) -> Result<Vec<Element>, String> {
                 let c = r.take(4)?;
                 Value::Color([c[0], c[1], c[2], c[3]])
             }
-            9 => Value::Vec2(r.floats::<2>()?),
-            10 | 12 => Value::Vec3(r.floats::<3>()?),
-            11 | 13 => Value::Vec4(r.floats::<4>()?),
+            9 => Value::Vec2(r.f32s::<2>()?),
+            10 | 12 => Value::Vec3(r.f32s::<3>()?),
+            11 | 13 => Value::Vec4(r.f32s::<4>()?),
             14 => {
-                r.floats::<16>()?;
+                r.f32s::<16>()?;
                 Value::Matrix
             }
             15..=28 => {

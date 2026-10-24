@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chimera_vfs::{Entry, FileSource, normalize};
+use chimera_vfs::{Entry, FileSource, bytes::Le, normalize};
 
 const SIGNATURE: u32 = 0x55aa_1234;
 /// Archive index meaning "data follows the tree in the _dir file".
@@ -36,43 +36,19 @@ pub struct Vpk {
     entries: HashMap<String, VpkEntry>,
 }
 
-struct Cursor<'a> {
-    data: &'a [u8],
-    pos: usize,
+/// The shared reader with VPK's error shape.
+trait VpkRead {
+    fn bad(&self, what: &str) -> io::Error;
+    fn cstr_io(&mut self) -> io::Result<String>;
 }
 
-impl Cursor<'_> {
+impl VpkRead for Le<'_> {
     fn bad(&self, what: &str) -> io::Error {
         io::Error::new(io::ErrorKind::InvalidData, format!("VPK: {what} at byte {}", self.pos))
     }
 
-    fn take(&mut self, n: usize) -> io::Result<&[u8]> {
-        let end = self
-            .pos
-            .checked_add(n)
-            .filter(|&e| e <= self.data.len())
-            .ok_or_else(|| self.bad("truncated"))?;
-        let s = &self.data[self.pos..end];
-        self.pos = end;
-        Ok(s)
-    }
-
-    fn u16(&mut self) -> io::Result<u16> {
-        Ok(u16::from_le_bytes(self.take(2)?.try_into().unwrap()))
-    }
-
-    fn u32(&mut self) -> io::Result<u32> {
-        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
-    }
-
-    fn cstr(&mut self) -> io::Result<String> {
-        let len = self.data[self.pos..]
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or_else(|| self.bad("unterminated string"))?;
-        let s = String::from_utf8_lossy(&self.data[self.pos..self.pos + len]).into_owned();
-        self.pos += len + 1;
-        Ok(s)
+    fn cstr_io(&mut self) -> io::Result<String> {
+        self.cstr().ok_or_else(|| self.bad("unterminated string"))
     }
 }
 
@@ -91,7 +67,7 @@ impl Vpk {
         let mut file = File::open(&dir_path)?;
         let mut header = [0u8; 12];
         file.read_exact(&mut header)?;
-        let mut c = Cursor { data: &header, pos: 0 };
+        let mut c = Le::new(&header);
         if c.u32()? != SIGNATURE {
             return Err(c.bad("bad signature"));
         }
@@ -111,22 +87,22 @@ impl Vpk {
         let mut tree = vec![0u8; tree_size];
         file.read_exact(&mut tree)?;
 
-        let mut c = Cursor { data: &tree, pos: 0 };
+        let mut c = Le::new(&tree);
         let mut entries = HashMap::new();
         // Tree: extension { directory { file entry }* }* ; each level ends
         // with an empty string. A single space means "none".
         loop {
-            let ext = c.cstr()?;
+            let ext = c.cstr_io()?;
             if ext.is_empty() {
                 break;
             }
             loop {
-                let dir = c.cstr()?;
+                let dir = c.cstr_io()?;
                 if dir.is_empty() {
                     break;
                 }
                 loop {
-                    let name = c.cstr()?;
+                    let name = c.cstr_io()?;
                     if name.is_empty() {
                         break;
                     }
