@@ -679,6 +679,31 @@ fn sync_visuals(world: &mut World, logic: &Logic) {
             part.exists = want.1;
         }
     }
+    // Steam jets' value inputs (meters; the Rate input does nothing).
+    let mut jets = logic.world.steam_jets();
+    jets.sort_by_key(|j| j.0);
+    let scale = logic.scale;
+    let mut parts = world.query::<(Entity, &EntityPart, Option<&crate::map::SteamInputs>)>();
+    let mut changes = Vec::new();
+    for (e, part, have) in parts.iter(world) {
+        let want = jets
+            .binary_search_by_key(&part.entity, |j| j.0)
+            .ok()
+            .map(|i| crate::map::SteamInputs {
+                length: jets[i].1.length.map(|v| v * scale),
+                spread: jets[i].1.spread.map(|v| v * scale),
+                speed: jets[i].1.speed.map(|v| v * scale),
+            });
+        if want.as_ref() != have {
+            changes.push((e, want));
+        }
+    }
+    for (e, want) in changes {
+        match want {
+            Some(w) => world.entity_mut(e).insert(w),
+            None => world.entity_mut(e).remove::<crate::map::SteamInputs>(),
+        };
+    }
     // Parts whose entity follows a parent go where it is now (a trail
     // behind a spinning prop, a sprite on a lift). Their visibility
     // clusters were where they spawned: dropped once they move.

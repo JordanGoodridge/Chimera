@@ -13,7 +13,8 @@
 //! Known shortcuts (docs/tech-debt.md): Steam jets
 //! (specs/source/visual_entities.md 7, `render/steam.rs`): heat-wave jets (Type
 //! 1, a refracting quad) are not drawn; the JetLength/SpreadSpeed/Speed inputs
-//! aren't handled (TurnOn/TurnOff/Toggle are); roll and RollSpeed are read as
+//! (`SteamInputs`) change new puffs only and not the light ramp, which stays
+//! sampled along the map's jet; roll and RollSpeed are read as
 //! degrees (Q7); "drawn last frame" is approximated by the jet's place being
 //! potentially visible (vis), not its on-screen test; the light samples use the
 //! light field's probe (the mean of its ambient cube plus its direct lights, ×
@@ -26,7 +27,7 @@
 
 use bevy::{mesh::Indices, prelude::*};
 
-use crate::map::{EntityPart, MapPart, MapSpawn, SkyboxCamera, ViewModelCamera, monitor, steam::MapSteam, water};
+use crate::map::{EntityPart, MapPart, MapSpawn, SkyboxCamera, SteamInputs, ViewModelCamera, monitor, steam::MapSteam, water};
 
 struct Puff {
     position: Vec3,
@@ -48,6 +49,8 @@ pub struct SteamEmitter {
     started: bool,
     rng: u64,
     drawn_empty: bool,
+    /// The jet as the map placed it, kept when an input first changes it.
+    base: Option<MapSteam>,
 }
 
 impl SteamEmitter {
@@ -60,7 +63,21 @@ impl SteamEmitter {
             started: false,
             rng: seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1,
             drawn_empty: false,
+            base: None,
         }
+    }
+
+    /// The value inputs over the map's own values (`SteamInputs`); the
+    /// puffs already out keep the velocity they were born with.
+    fn apply_inputs(&mut self, inputs: Option<&SteamInputs>) {
+        if inputs.is_none() && self.base.is_none() {
+            return;
+        }
+        let i = inputs.copied().unwrap_or_default();
+        let base = self.base.get_or_insert_with(|| self.steam.clone()).clone();
+        self.steam.length = i.length.unwrap_or(base.length);
+        self.steam.spread = i.spread.unwrap_or(base.spread);
+        self.steam.speed = i.speed.unwrap_or(base.speed);
     }
 
     /// Uniform in 0..1 (xorshift).
@@ -157,12 +174,18 @@ pub fn update_steam(
             Without<water::WaterReflectionCamera>,
         ),
     >,
-    mut emitters: Query<(&mut SteamEmitter, Option<&EntityPart>, Option<&Visibility>)>,
+    mut emitters: Query<(
+        &mut SteamEmitter,
+        Option<&EntityPart>,
+        Option<&Visibility>,
+        Option<&SteamInputs>,
+    )>,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
 ) {
     let dt = time.delta_secs().min(0.1);
     let eye = cameras.iter().next();
-    for (mut e, part, visibility) in &mut emitters {
+    for (mut e, part, visibility, inputs) in &mut emitters {
+        e.apply_inputs(inputs);
         if part.is_some_and(|p| !p.exists) {
             e.puffs.clear();
         }
@@ -261,6 +284,22 @@ mod tests {
             entity: None,
             start_on: true,
         }
+    }
+
+    #[test]
+    fn value_inputs_replace_the_maps_values_and_clearing_restores_them() {
+        let mut e = SteamEmitter::new(jet(120.0, 80.0, 26.0), Handle::default(), 1);
+        let map = e.steam.clone();
+        e.apply_inputs(Some(&SteamInputs {
+            length: Some(240.0 * UNIT),
+            speed: Some(60.0 * UNIT),
+            ..default()
+        }));
+        assert!((e.steam.life().unwrap() - 4.0).abs() < 1e-5);
+        assert_eq!(e.steam.spread, map.spread);
+        e.apply_inputs(None);
+        assert_eq!(e.steam.length, map.length);
+        assert_eq!(e.steam.speed, map.speed);
     }
 
     #[test]

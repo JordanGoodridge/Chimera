@@ -83,6 +83,18 @@ pub struct Part {
     pub zap: Option<Box<super::beams::Zap>>,
     /// A strike-generator env_beam's settings (`beams`).
     pub strike: Option<Box<super::beams::Strike>>,
+    /// An env_steam's value inputs so far (`JetSet`).
+    pub jet: JetSet,
+}
+
+/// What an env_steam's JetLength, SpreadSpeed and Speed inputs have set
+/// (units, units/s); None while the map's own value stands (the Rate
+/// input changes nothing: specs/source/visual_entities.md 7).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct JetSet {
+    pub length: Option<f32>,
+    pub spread: Option<f32>,
+    pub speed: Option<f32>,
 }
 
 /// A light with a switchable style.
@@ -119,6 +131,7 @@ pub(super) fn spawn_part(w: &LogicWorld, id: EntId, kind: PartKind) -> Part {
         on,
         zap: super::beams::zap(e),
         strike: super::beams::strike(e),
+        jet: JetSet::default(),
     }
 }
 
@@ -139,7 +152,7 @@ pub(super) fn spawn_light(w: &mut LogicWorld, id: EntId) -> Light {
 }
 
 /// Sprite, dust and light inputs; false when not one of them.
-pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str, _value: &Value) -> bool {
+pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str, value: &Value) -> bool {
     match w.get(id).map(|e| e.class.clone()) {
         Some(Class::Part(p))
             if matches!(
@@ -150,6 +163,18 @@ pub(super) fn input(w: &mut LogicWorld, id: EntId, input: &str, _value: &Value) 
             super::beams::input(w, id, input)
         }
         Some(Class::Part(p)) => {
+            if p.kind == PartKind::Steam && matches!(input, "jetlength" | "spreadspeed" | "speed" | "rate") {
+                let v = value.to_float().unwrap_or(0.0);
+                if let Some(Class::Part(p)) = w.get_mut(id).map(|e| &mut e.class) {
+                    match input {
+                        "jetlength" => p.jet.length = Some(v),
+                        "spreadspeed" => p.jet.spread = Some(v),
+                        "speed" => p.jet.speed = Some(v),
+                        _ => {}
+                    }
+                }
+                return true;
+            }
             let on = match (p.kind, input) {
                 (PartKind::Sprite, "showsprite")
                 | (PartKind::Dust | PartKind::Steam | PartKind::SmokeStack, "turnon")
@@ -243,6 +268,18 @@ impl LogicWorld {
                 let e = self.get(id)?;
                 let Class::Part(p) = &e.class else { return None };
                 Some((e.map_index?, p.kind, p.on))
+            })
+            .collect()
+    }
+
+    /// Steam jets the value inputs changed: (map index, what they set).
+    pub fn steam_jets(&self) -> Vec<(usize, JetSet)> {
+        self.ids()
+            .into_iter()
+            .filter_map(|id| {
+                let e = self.get(id)?;
+                let Class::Part(p) = &e.class else { return None };
+                (p.kind == PartKind::Steam && p.jet != JetSet::default()).then_some((e.map_index?, p.jet))
             })
             .collect()
     }
