@@ -16,7 +16,7 @@
 //! history (Up/Down with an empty line, persisted, Ctrl+R), editing keys
 //! (Ctrl+Backspace/W/Delete words, Ctrl+U/K, Ctrl+V paste, Ctrl+L clear,
 //! Ctrl+Home/End), output lines that fit the window's height,
-//! scrollback/filter/timestamps, row selection to the clipboard (clicks never
+//! scrollback/filter/timestamps, drag-selecting text in the output (Ctrl+C copies it; clicks never
 //! grab the mouse while open), binds with `+`/`-` actions (F1 and F2
 //! vote while a vote waits for ours: `VOTE_KEYS`), log mirroring,
 //! overlays (cl_showpos, cl_showfps, snd_show, watch), client commands (noclip,
@@ -77,7 +77,7 @@ impl Plugin for ConsoleUiPlugin {
                     drain_log,
                     record_sounds,
                     draw_console,
-                    select_rows,
+                    select_text,
                     draw_overlays,
                     draw_notify,
                     finish_map_load,
@@ -126,8 +126,10 @@ pub struct ConsoleUi {
     /// The output lines on screen, and a selection of them (first and
     /// last row, in the order dragged) made with the mouse.
     shown: Vec<String>,
-    selection: Option<(usize, usize)>,
+    selection: Option<(TextPos, TextPos)>,
     dragging: bool,
+    /// `draw_console` rebuilt the rows this frame.
+    fresh_rows: bool,
     /// The suggestion picked with Up/Down (an index into all of them).
     highlight: Option<usize>,
     /// The input the suggestions were hidden at with Esc (they come back
@@ -822,6 +824,9 @@ fn edit_key(world: &mut World, e: &KeyboardInput, ctrl: bool, shift: bool) {
             ui.input = c.into_iter().collect();
             ui.cursor = cur + ins.len();
         }
+        (_, KeyCode::KeyC) if ctrl => {
+            copy_selection(&ui);
+        }
         (_, KeyCode::KeyA) if ctrl => ui.cursor = 0,
         (_, KeyCode::KeyE) if ctrl => ui.cursor = chars.len(),
         (_, KeyCode::Backspace) if cur > 0 => {
@@ -1087,9 +1092,14 @@ fn draw_console(
         ui.scroll = ui.scroll.min(max_scroll);
         let end = lines.len() - ui.scroll;
         let start = end.saturating_sub(visible);
-        ui.shown = lines[start..end].iter().map(|l| l.text.clone()).collect();
+        let stamps = ui.timestamps;
+        ui.shown = lines[start..end]
+            .iter()
+            .map(|l| if stamps { format!("[{:7.2}] {}", l.time, l.text) } else { l.text.clone() })
+            .collect();
         ui.selection = None;
         ui.dragging = false;
+        ui.fresh_rows = true;
         commands.entity(*output).despawn_related::<Children>();
         commands.entity(*output).with_children(|c| {
             for (row, l) in lines[start..end].iter().enumerate() {
@@ -1099,14 +1109,9 @@ fn draw_console(
                     Level::Warn => Color::srgb(1.0, 0.8, 0.3),
                     Level::Error => Color::srgb(1.0, 0.4, 0.35),
                 };
-                let stamp = if ui.timestamps {
-                    format!("[{:7.2}] ", l.time)
-                } else {
-                    String::new()
-                };
                 c.spawn((
                     ConsoleRow(row),
-                    Text::new(format!("{stamp}{}", l.text)),
+                    Text::new(ui.shown[row].clone()),
                     console_font(&fonts, OUTPUT_FONT),
                     TextColor(color),
                     Interaction::default(),
@@ -1138,52 +1143,157 @@ fn draw_console(
     };
 }
 
-/// Rows from `a` to `b` in either order.
-fn row_range((a, b): (usize, usize)) -> std::ops::RangeInclusive<usize> {
-    a.min(b)..=a.max(b)
+/// A point in the output: a row on screen and a byte offset in its text.
+type TextPos = (usize, usize);
+
+/// The selection's ends in reading order.
+fn ordered((a, b): (TextPos, TextPos)) -> (TextPos, TextPos) {
+    if a <= b { (a, b) } else { (b, a) }
 }
 
-/// Drag over output rows to select them; on release they go to the
-/// clipboard (as terminals copy on select).
-fn select_rows(
+/// The byte range of row `row` the selection covers (`len`: its text's length).
+fn row_part(sel: (TextPos, TextPos), row: usize, len: usize) -> Option<std::ops::Range<usize>> {
+    let (s, e) = ordered(sel);
+    if row < s.0 || row > e.0 {
+        return None;
+    }
+    let from = if row == s.0 { s.1.min(len) } else { 0 };
+    let to = if row == e.0 { e.1.min(len) } else { len };
+    (from < to).then_some(from..to)
+}
+
+/// The selected text (rows joined by newlines).
+fn selected_text(rows: &[String], sel: (TextPos, TextPos)) -> String {
+    let (s, e) = ordered(sel);
+    (s.0..=e.0)
+        .filter_map(|r| {
+            let t = rows.get(r)?;
+            Some(row_part(sel, r, t.len()).map_or("", |p| &t[p]).to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Select text in the output with the mouse: press and drag from one
+/// character to another (rows between are covered whole), the selected
+/// span drawn highlighted; Ctrl+C copies it (`copy_selection`), as CS:S's
+/// console does.
+fn select_text(
     mut ui: ResMut<ConsoleUi>,
     mouse: Res<ButtonInput<MouseButton>>,
-    mut rows: Query<(&ConsoleRow, &Interaction, &mut BackgroundColor)>,
+    window: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    rows: Query<(Entity, &ConsoleRow, &bevy::text::ComputedTextBlock, &ComputedNode, &UiGlobalTransform, &TextColor)>,
+    mut commands: Commands,
+    mut drawn: Local<Option<(TextPos, TextPos)>>,
+    mut painted: Local<usize>,
+    fonts: Res<UiFonts>,
 ) {
     if !ui.open {
         return;
     }
-    let hovered = rows
-        .iter()
-        .find(|(_, i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
-        .map(|(r, ..)| r.0);
+    if std::mem::take(&mut ui.fresh_rows) {
+        // The console just rebuilt its rows (plain, selection dropped).
+        *drawn = None;
+        *painted = 0;
+        return;
+    }
+    let cursor = window.iter().next().and_then(Window::cursor_position);
+    // The character under the pointer, and whether it is inside a row
+    // (else the nearest row's).
+    let under = |at: Vec2| -> Option<(TextPos, bool)> {
+        let mut nearest: Option<(f32, TextPos, bool)> = None;
+        for (_, row, block, node, t, _) in &rows {
+            let size = node.size();
+            let top_left = t.translation - size / 2.0;
+            let local = at / node.inverse_scale_factor() - top_left;
+            let inside = local.y >= 0.0 && local.y < size.y && local.x >= 0.0 && local.x < size.x;
+            let dist = if local.y >= 0.0 && local.y < size.y { 0.0 } else { (local.y - size.y / 2.0).abs() };
+            if nearest.as_ref().is_none_or(|n| dist < n.0) {
+                nearest = Some((dist, (row.0, {
+                    let (x, y) = (local.x, local.y);
+                    let mut best = None;
+                    for line in block.buffer().lines() {
+                        let hit = y < line.metrics().block_max_coord;
+                        best = Some(line);
+                        if hit {
+                            break;
+                        }
+                    }
+                    match best {
+                        None => 0,
+                        Some(line) => {
+                            let mut pos = line.metrics().offset;
+                            let mut at = line.text_range().end;
+                            'scan: for run in line.runs() {
+                                for cluster in run.visual_clusters() {
+                                    let adv = cluster.advance();
+                                    if x < pos + adv / 2.0 {
+                                        at = cluster.text_range().start;
+                                        break 'scan;
+                                    }
+                                    pos += adv;
+                                }
+                            }
+                            at
+                        }
+                    }
+                }), inside));
+            }
+        }
+        nearest.map(|(_, p, inside)| (p, inside))
+    };
     if mouse.just_pressed(MouseButton::Left) {
-        ui.selection = hovered.map(|r| (r, r));
+        ui.selection = cursor.and_then(under).filter(|(_, inside)| *inside).map(|(p, _)| (p, p));
         ui.dragging = ui.selection.is_some();
     } else if ui.dragging && mouse.pressed(MouseButton::Left) {
-        if let (Some(r), Some(sel)) = (hovered, ui.selection.as_mut()) {
-            sel.1 = r;
+        if let (Some((p, _)), Some(sel)) = (cursor.and_then(under), ui.selection.as_mut()) {
+            sel.1 = p;
         }
-    } else if ui.dragging && mouse.just_released(MouseButton::Left) {
+    } else if ui.dragging {
         ui.dragging = false;
-        if let Some(sel) = ui.selection {
-            let text: Vec<&str> = row_range(sel).filter_map(|r| ui.shown.get(r).map(String::as_str)).collect();
-            if let Err(e) = arboard::Clipboard::new().and_then(|mut c| c.set_text(text.join("\n"))) {
-                warn!("clipboard: {e}");
+    }
+    let shown_now = ui.selection.filter(|(a, b)| a != b);
+    let count = rows.iter().count();
+    if *drawn == shown_now && *painted == count {
+        return;
+    }
+    *drawn = shown_now;
+    *painted = count;
+    for (entity, row, .., color) in &rows {
+        let text = ui.shown.get(row.0).cloned().unwrap_or_default();
+        let part = shown_now.and_then(|s| row_part(s, row.0, text.len()));
+        let font = console_font(&fonts, OUTPUT_FONT);
+        let mut e = commands.entity(entity);
+        e.despawn_related::<Children>();
+        match part {
+            None => {
+                e.insert(Text::new(text));
+            }
+            Some(p) => {
+                e.insert(Text::new(text[..p.start].to_string()));
+                e.with_children(|c| {
+                    c.spawn((
+                        TextSpan::new(text[p.clone()].to_string()),
+                        font.clone(),
+                        *color,
+                        bevy::text::TextBackgroundColor(Color::srgba(0.3, 0.45, 0.8, 0.7)),
+                    ));
+                    c.spawn((TextSpan::new(text[p.end..].to_string()), font, *color));
+                });
             }
         }
     }
-    let selected = ui.selection.map(row_range);
-    for (row, _, mut bg) in &mut rows {
-        let want = if selected.as_ref().is_some_and(|s| s.contains(&row.0)) {
-            Color::srgba(0.3, 0.45, 0.8, 0.45)
-        } else {
-            Color::NONE
-        };
-        if bg.0 != want {
-            bg.0 = want;
-        }
+}
+
+/// Ctrl+C with text selected in the output puts it on the clipboard;
+/// whether there was a selection to copy.
+fn copy_selection(ui: &ConsoleUi) -> bool {
+    let Some(sel) = ui.selection.filter(|(a, b)| a != b) else { return false };
+    let text = selected_text(&ui.shown, sel);
+    if let Err(e) = arboard::Clipboard::new().and_then(|mut c| c.set_text(text)) {
+        warn!("clipboard: {e}");
     }
+    true
 }
 
 /// The suggestion box under the console as you type: the help line for
@@ -2506,9 +2616,80 @@ mod tests {
     }
 
     #[test]
-    fn selections_cover_rows_dragged_either_way() {
-        assert_eq!(row_range((5, 2)), 2..=5);
-        assert_eq!(row_range((3, 3)), 3..=3);
+    fn selections_cover_text_dragged_either_way() {
+        let rows: Vec<String> = ["alpha beta", "gamma", "delta epsilon"].map(String::from).to_vec();
+        let sel = ((0, 6), (2, 5));
+        assert_eq!(selected_text(&rows, sel), "beta\ngamma\ndelta");
+        assert_eq!(selected_text(&rows, (sel.1, sel.0)), "beta\ngamma\ndelta");
+        assert_eq!(selected_text(&rows, ((1, 4), (1, 1))), "amm");
+        assert_eq!(row_part(sel, 1, 5), Some(0..5));
+        assert_eq!(row_part(sel, 3, 5), None);
+    }
+
+    /// The console laid out as the game lays it out (Bevy's UI in a small
+    /// window): dragging over its output selects the text between the
+    /// pointer's two characters, whole rows between, and what is selected
+    /// is what Ctrl+C would copy.
+    #[test]
+    fn dragging_selects_part_of_a_line() {
+        use crate::client::widgets::{PointerScript, pointer_test_app};
+        let mut app = pointer_test_app();
+        app.add_plugins(ConsolePlugin)
+            .init_resource::<crate::client::fonts::UiFonts>()
+            .init_resource::<ConsoleUi>()
+            .add_systems(Startup, spawn_ui)
+            .add_systems(Update, (draw_console, select_text).chain());
+        app.world_mut().resource_mut::<ConsoleUi>().open = true;
+        for line in ["first line of output", "second line of output", "third"] {
+            app.world_mut().resource_mut::<Console>().info(line);
+        }
+        for _ in 0..4 {
+            app.update();
+        }
+        let rows = |app: &mut App| {
+            let mut q = app.world_mut().query::<(&ConsoleRow, &ComputedNode, &UiGlobalTransform)>();
+            let mut v: Vec<_> = q
+                .iter(app.world())
+                .map(|(r, n, t)| (r.0, t.translation - n.size() / 2.0, n.size()))
+                .collect();
+            v.sort_by_key(|r| r.0);
+            v
+        };
+        let r = rows(&mut app);
+        assert!(r.len() >= 3, "rows laid out: {r:?}");
+        let (second, third) = (r[r.len() - 2], r[r.len() - 1]);
+        let y2 = second.1.y + second.2.y / 2.0;
+        let y3 = third.1.y + third.2.y / 2.0;
+        // From just inside the second row's left edge to well right of the
+        // third row's text: the second row whole, the third whole.
+        let drag = |app: &mut App, from: Vec2, to: Vec2| {
+            app.world_mut().resource_mut::<PointerScript>().drag(from, to, 3);
+            for _ in 0..14 {
+                app.update();
+            }
+        };
+        drag(&mut app, Vec2::new(second.1.x + 1.0, y2), Vec2::new(390.0, y3));
+        let ui = app.world().resource::<ConsoleUi>();
+        let sel = ui.selection.expect("a selection");
+        assert_eq!(selected_text(&ui.shown, sel), "second line of output\nthird");
+        // Inside one line: a part of it, neither end of the row.
+        let w = second.2.x.min(300.0);
+        drag(&mut app, Vec2::new(second.1.x + w * 0.1, y2), Vec2::new(second.1.x + w * 0.3, y2));
+        let ui = app.world().resource::<ConsoleUi>();
+        let sel = ui.selection.expect("a selection");
+        let text = selected_text(&ui.shown, sel);
+        assert!(!text.is_empty() && text.len() < "second line of output".len(), "part of the line: {text:?}");
+        assert!("second line of output".contains(&text), "{text:?}");
+        // The selected span is drawn as its own span of the row's text.
+        let mut spans = app.world_mut().query::<&bevy::text::TextBackgroundColor>();
+        assert_eq!(spans.iter(app.world()).count(), 1);
+        // A press elsewhere clears it.
+        app.world_mut().resource_mut::<PointerScript>().click(Vec2::new(5.0, 290.0));
+        for _ in 0..8 {
+            app.update();
+        }
+        assert!(app.world().resource::<ConsoleUi>().selection.is_none());
+        assert_eq!(spans.iter(app.world()).count(), 0);
     }
 
     #[test]

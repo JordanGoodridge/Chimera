@@ -689,8 +689,6 @@ The console and overlays are in (chimera/core/src/console.rs, chimera/client/src
   ammo bottom right (1280x720); check where CS:S's sits.
 - `cl_showpos 2`: what CS:S shows with it is unknown here (no public
   description found); look in the game.
-- Mouse selection copies whole lines (drag over the output); selecting
-  part of a line isn't possible.
 
 ## 6. Sound, remaining
 
