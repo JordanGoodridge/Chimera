@@ -57,6 +57,8 @@ impl Plugin for MapPlugin {
         let mut hooks = app.world_mut().resource_mut::<MapHooks>();
         hooks.unload.push(render::unload_map);
         hooks.copied.push(render::merge::show_copied_pieces);
+        // The images are built on the loading thread (`map::prepare`).
+        hooks.prepare.push(render::prepare_images);
     }
 }
 

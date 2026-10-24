@@ -59,7 +59,7 @@ pub mod view_model;
 pub mod vis;
 pub mod water;
 pub mod world_material;
-pub use spawn::{Drawn, MapAssets};
+pub use spawn::{Drawn, ImageParts, MapAssets, prepare_images};
 
 /// What `map::unload_map` removes of render's besides its map-scoped
 /// resources (`scoped_resources`): the entities it made (a `map::MapHooks::unload` hook, added by

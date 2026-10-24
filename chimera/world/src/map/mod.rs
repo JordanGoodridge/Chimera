@@ -67,6 +67,7 @@ pub mod nav;
 pub mod nav_gen;
 pub mod particles;
 pub mod physics_clip;
+pub mod prepare;
 pub mod placed_ragdoll;
 pub mod prop_physics;
 pub mod psys;
@@ -137,7 +138,7 @@ pub enum MapDebugView {
 }
 
 #[derive(Resource)]
-pub struct PendingMap(Arc<MapData>, MapDebugView);
+pub struct PendingMap(Arc<MapData>, MapDebugView, prepare::Prepared);
 
 /// Characters below this height (meters) have fallen out of the map.
 #[derive(Resource, Clone, Copy, Debug)]
@@ -294,6 +295,10 @@ pub struct MapHooks {
     /// once it is made, in the order they were added (`render`
     /// draws it by its own meshes, never merged).
     pub copied: Vec<fn(&mut World, Entity)>,
+    /// Spawn work a load can do ahead, off the main thread
+    /// (`prepare::preparation`): each makes a job from the world as the
+    /// load starts.
+    pub prepare: Vec<fn(&World) -> prepare::PrepareJob>,
 }
 
 /// A resource that belongs to the loaded map: inserted when it spawns,
@@ -334,10 +339,16 @@ impl MapScopedApp for App {
 
 /// Replace the loaded map with `data` (spawned now, as at startup).
 pub fn change_map(world: &mut World, data: MapData, view: MapDebugView) {
+    change_map_with(world, data, prepare::Prepared::default(), view);
+}
+
+/// `change_map` with the parts of its spawn already done
+/// (`prepare::change_map_prepared`).
+fn change_map_with(world: &mut World, data: MapData, prepared: prepare::Prepared, view: MapDebugView) {
     unload_map(world);
     let data = Arc::new(data);
     world.insert_resource(ActiveMapLook(data.look.clone()));
-    world.insert_resource(PendingMap(data, view));
+    world.insert_resource(PendingMap(data, view, prepared));
     match world.get_resource::<MapHooks>().and_then(|h| h.spawn) {
         Some(spawn) => spawn(world),
         None => error!("spawning the map: no map spawner (MapPlugin or MapSimPlugin missing)"),

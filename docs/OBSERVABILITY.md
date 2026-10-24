@@ -269,7 +269,7 @@ run unordered systems in whatever order the graph sorts to).
 pairs (systems with conflicting access and no order; Bevy exempts its
 own shared render resources): one today, ours (`frame_metrics`'
 `render_start` and `apply_extract_commands`). The simulation's own order on real
-maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`CHIMERA_SPAWN_DUMP`; `CHIMERA_SPAWN_DUMP_ONLY=<map>` dumps one map, and the run prints the process's resident MB after the load, the memory check for map-lifetime changes). What `unload_map` must leave of a map is `chimera/present/tests/it/map_unload.rs`: a resource a spawn phase inserts needs `map_scoped` or it fails there.
+maps is `games/cs_source/tests/it/heavy/map_spawn_dump.rs` (`CHIMERA_SPAWN_DUMP`; `CHIMERA_SPAWN_DUMP_ONLY=<map>` dumps one map; `CHIMERA_SPAWN_DUMP_PREPARED=1` spawns each with its parts prepared ahead, `map::prepare`, as the client's background load does: the dumps must equal the plain ones; and the run prints the process's resident MB after the load, the memory check for map-lifetime changes). What `unload_map` must leave of a map is `chimera/present/tests/it/map_unload.rs`: a resource a spawn phase inserts needs `map_scoped` or it fails there.
 Each game's `tests/it/schedules.rs` ratchets the simulation's order: per
 fixed and `Predict` schedule, its dedicated server's and its game's
 ambiguous pairs, and the conflicting pairs the two run in opposite orders

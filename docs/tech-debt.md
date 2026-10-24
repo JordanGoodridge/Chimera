@@ -26,7 +26,7 @@ fails when this file is stale; never edit the generated lines).
 - weapon: A dropped gun carries its reserve (as CS:S's measured, M20; we have no per-player ammo pools); a refused touch is retried every tick. OK for now: Matches CS:S in every measured case.
 - map, sound: Under water (`audio::hearing::UNDERWATER`): a steady low-pass (600 Hz, 0.8) on everything while the eye is in water; Source switches to its `dsp_water` room preset, engine-side and unmeasured. OK for now: Better than no change at all; capture wanted.
 - sound: A prop surface name the surface scripts don't define (dust2's 19 "stone" rock props) steps as "default"; the sound spec doesn't say what the engine does with unknown names. OK for now: Assumed from "default" being every surface's base; check by ear in CS:S.
-- map: Maps load synchronously before the app starts. OK for now: dust2 converts in well under a second.
+- map: A `--map` given at startup loads synchronously before the app starts (the `map` command and a joined server's map load and prepare their spawn in the background, `map::prepare`). OK for now: dust2 converts in well under a second.
 - deps: `vbsp` pulls `binrw` 0.14, which rustc flags as future-incompatible. OK for now: Upstream; watch on Rust upgrades.
 - deps: `bevy_replicon_renet`, `bevy_renet` and `renetcode` come from their authors' repositories (pinned in Cargo.lock): no crates.io release supports Bevy 0.20 yet. OK for now: Back to crates.io once released.
 - build: Windows build not yet verified. OK for now: Needs the Windows PC set up (see plans).

@@ -1270,6 +1270,61 @@ Next on the loads (not done): the lumps' inflating and the packed files'
 LZMA on sedona-like maps (6-8 s of a 10 s load), the navigation mesh, and
 the heavy tier's own simulation time.
 
+## Map changes behind the loading screen (L4, 2026-10-23)
+
+Architecture review L4, stage 3. A `map` command or a joined server's map
+already parsed and converted on the async pool while the loading screen
+drew; the frame that swapped the map in (`console::finish_map_load`:
+`change_map`, `spawn_map`) still did everything that only needs the map's
+data on the main thread. Timed inside that frame (temporary `Instant`
+marks, dev profile, this box):
+
+| de_dust2 | ms |
+|---|---|
+| world collision (trimeshes, smoothed copy, terrain, hulls) | 82 |
+| texture and cubemap images | 75 |
+| lightmap layers | 93 |
+| rest of the drawn phases (sky, water, meshes, materials) | 130 |
+| props | 67 |
+| resources, commands | 80 |
+
+de_nuke's props took 10.3 s: 46 props whose collision pieces are beveled
+one after another (`MapBrush::from_planes`, the edge bevels with many
+planes; 68 ms to 1.6 s per prop).
+
+Now (`map::prepare`): what the spawn computes from the data alone (the
+world's colliders and terrain, each model's collider and hull, each
+prop's placed brushes, the drawer's images and lightmap layers:
+`MapHooks::prepare`, `render::prepare_images`) is computed on the loading
+task after the load (`MapPrepare::run`), the props' brushes and models'
+colliders on up to 8 threads (`parallel::par_map`), and the spawn takes
+them (`Prepared::take`); a spawn without them (startup `--map`, the
+servers, tests) computes them in place with the same functions.
+
+The swap frame, `+map <name>` from the main menu (`chimera_perf_log 1`,
+the hitch log's frame and its `Update`), one run each:
+
+| | de_dust2 | de_nuke | warehouse (Combat Arms app) |
+|---|---|---|---|
+| before | 495 ms (Update 442) | 10,699 ms (Update 10,568) | 244 ms (Update 237) |
+| after | 166 ms (Update 134) | 510 ms (Update 342) | 118 ms (Update 110) |
+
+During the load the frames stay at the display's 60 fps (p50 16.7 ms)
+before and after; de_nuke's preparation runs about 8.7 s on the loading
+task (the bevels on threads), so its loading screen shows that much
+longer than its `loaded` line (2.1 s), where before the game froze for
+10.7 s. A joining client loads the same way (checked: a listen server on
+de_dust2, a client `+connect`s, loads, `joined the game`, its swap frame
+186 ms). `heavy::map_spawn_dump` is identical before and after on its five
+maps, plain and with `CHIMERA_SPAWN_DUMP_PREPARED=1`.
+
+Left: the bevels themselves (`from_planes` scales with the planes cubed;
+a cache by model, piece and rotation would make de_nuke's a few
+milliseconds but rounds differently: needs the movement tests' check);
+the dedicated servers' level change (`swap_map`) and the startup `--map`
+still compute in place (on threads now for the props); meshes and
+materials are still built in the swap frame.
+
 ## Test cycle
 
 How long `cargo test` takes to build and run, and why the tests are laid
