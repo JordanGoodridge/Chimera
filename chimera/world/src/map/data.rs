@@ -231,6 +231,9 @@ pub struct MapMesh {
     /// A brush entity's translucent render mode (Source rendermode and
     /// renderamt): blended or added, and its opacity (`RenderLook`).
     pub render: Option<(MapAlpha, f32)>,
+    /// Its rendercolor (sRGB 0-255; white: none), multiplied into the
+    /// material's colour in any render mode.
+    pub render_color: Option<[u8; 3]>,
     /// Its base texture's frames (indices into `MapData::textures`), when a
     /// map entity can pick one (env_texturetoggle; `render::tint::TextureFrames`).
     pub frames: Vec<usize>,
@@ -247,10 +250,14 @@ impl MapMesh {
     /// The colour multiplier of its entity's render mode (an added look
     /// scales the colour, a blended one the alpha).
     pub fn render_factor(&self) -> Vec4 {
+        let [r, g, b] = self.render_color.unwrap_or([255; 3]);
+        // The game multiplies in gamma space: the colour is sRGB.
+        let c = Color::srgb_u8(r, g, b).to_linear();
+        let rgb = Vec3::new(c.red, c.green, c.blue);
         match self.render {
-            Some((MapAlpha::Add, a)) => Vec4::new(a, a, a, 1.0),
-            Some((_, a)) => Vec4::new(1.0, 1.0, 1.0, a),
-            None => Vec4::ONE,
+            Some((MapAlpha::Add, a)) => (rgb * a).extend(1.0),
+            Some((_, a)) => rgb.extend(a),
+            None => rgb.extend(1.0),
         }
     }
 }
@@ -1432,3 +1439,29 @@ pub enum SpriteBlend {
     Opaque,
 }
 
+
+#[cfg(test)]
+mod render_tests {
+    use super::*;
+
+    /// A baked brush entity's rendercolor tints it in any render mode;
+    /// the mode picks blend (alpha) or add (colour scaled by the opacity).
+    #[test]
+    fn render_color_tints_in_every_mode() {
+        let mut m = MapMesh::default();
+        assert_eq!(m.render_factor(), Vec4::ONE);
+        m.render_color = Some([255, 0, 0]);
+        let normal = m.render_factor();
+        assert!((normal.x - 1.0).abs() < 1e-6 && normal.y == 0.0 && normal.w == 1.0, "{normal}");
+        m.render = Some((MapAlpha::Blend, 0.5));
+        let blended = m.render_factor();
+        assert!(blended.x > 0.99 && blended.y == 0.0 && (blended.w - 0.5).abs() < 1e-6, "{blended}");
+        m.render = Some((MapAlpha::Add, 0.5));
+        let added = m.render_factor();
+        assert!((added.x - 0.5).abs() < 1e-6 && added.w == 1.0, "{added}");
+        // Grey in sRGB multiplies in gamma space: 128 is about 0.216 linear.
+        m.render = None;
+        m.render_color = Some([128; 3]);
+        assert!((m.render_factor().x - 0.2159).abs() < 1e-3);
+    }
+}

@@ -15,7 +15,8 @@
 //! characters (`RenderLook` on the character, from the logic's player looks)
 //! draw their body and held model faded, added or tinted
 //! (`apply_character_looks`, on their `probe_lit` materials). Baked brush
-//! entities' render modes are drawn from load (`MapMesh::render`).
+//! entities' render modes and rendercolor are drawn from load
+//! (`MapMesh::render`, `render_color`).
 
 use bevy::prelude::*;
 

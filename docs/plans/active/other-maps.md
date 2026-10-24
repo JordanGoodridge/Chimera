@@ -110,5 +110,5 @@ maps with references. Found and fixed: 16. Looked at and left:
   darker. de_nuke: 0.007-0.036 except cam6/cam7/cam13 (~0.05). Next: look
   at office cam0 and nuke cam6/7/13 side by side.
 - Other stock maps' views (de_train, de_inferno, cs_italy, de_dust, ...).
-- Brush entity render modes other than normal and 10 (translucent
-  func_brush via renderamt).
+- Brush entity render mode 1 as a flat colour and mode 4's alpha test
+  (blend, rendercolor and the other modes are in).
