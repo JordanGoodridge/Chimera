@@ -55,11 +55,8 @@ pub fn add_steam(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
         // Missing keys: the server sends 0 (no puffs for speed or rate 0),
         // RollSpeed 8.
         let num = |k: &str, d: f32| key(&e, k).and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(d);
-        if num("Type", 0.0) as i32 == 1 {
-            // Heat-wave jets refract the scene: not drawn
-            // (docs/tech-debt.md).
-            continue;
-        }
+        // Type 1 is a heat wave: quads that refract the scene.
+        let heat_wave = num("Type", 0.0) as i32 == 1;
         let Some(origin) = key(&e, "origin").map(numbers).filter(|o| o.len() == 3) else {
             continue;
         };
@@ -98,11 +95,15 @@ pub fn add_steam(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
             ),
             None => light_ramp(|_| Vec3::ONE, o, end, color, emissive),
         };
-        if texture.is_none() {
+        if texture.is_none() && !heat_wave {
             texture = materials.resolve(STEAM_MATERIAL).texture;
         }
-        // Normal jets' sizes are whole units, 0-255.
-        let size = |k: &str| num(k, 0.0).trunc().clamp(0.0, 255.0) * METERS_PER_UNIT;
+        // Normal jets' sizes are whole units, 0-255; a heat wave's are not
+        // truncated.
+        let size = |k: &str| {
+            let v = num(k, 0.0);
+            (if heat_wave { v.max(0.0) } else { v.trunc().clamp(0.0, 255.0) }) * METERS_PER_UNIT
+        };
         data.source_fx_mut().steam.push(MapSteam {
             origin: o,
             forward: dir(forward),
@@ -118,9 +119,10 @@ pub fn add_steam(bsp: &Bsp, materials: &mut MaterialLoader, data: &mut MapData) 
             roll_speed: num("RollSpeed", 8.0).to_radians(),
             alpha: num("renderamt", 255.0).clamp(0.0, 255.0) / 255.0,
             ramp,
-            texture,
+            texture: if heat_wave { None } else { texture },
             entity: Some(index),
             start_on: num("InitialState", 0.0) as i32 == 1,
+            heat_wave,
         });
     }
 }

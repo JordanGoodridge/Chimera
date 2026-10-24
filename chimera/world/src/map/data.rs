@@ -234,6 +234,9 @@ pub struct MapMesh {
     /// Its rendercolor (sRGB 0-255; white: none), multiplied into the
     /// material's colour in any render mode.
     pub render_color: Option<[u8; 3]>,
+    /// Render mode 1 (kRenderTransColor): drawn as the flat `render_color`
+    /// (the loader drops the texture and sets `color` white).
+    pub flat_color: bool,
     /// Its base texture's frames (indices into `MapData::textures`), when a
     /// map entity can pick one (env_texturetoggle; `render::tint::TextureFrames`).
     pub frames: Vec<usize>,

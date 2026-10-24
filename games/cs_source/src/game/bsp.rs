@@ -20,8 +20,8 @@
 //! (`dress_guest`, `map::MapSources::guests`).
 //!
 //! Known shortcuts (docs/tech-debt.md): Non-mover brush entities (other than breakables) are static where they spawn
-//! (render modes and rendercolor are drawn from load, `BrushEntity::render`, `color`; mode 1 keeps the
-//! texture and mode 4 blends rather than alpha-tests). Overlays and infodecals on movers go
+//! (render modes and rendercolor are drawn from load, `BrushEntity::render`, `color`, `flat`: mode 1 is
+//! the flat colour, mode 4 an alpha test). Overlays and infodecals on movers go
 //! with them (infodecals whose probe hits the mover's bounding box, overlays
 //! listing its faces); props parented to movers ride them but aren't solid and
 //! keep their spawn-time light probe. Why it's OK for now: Matches dust2; brush
@@ -179,6 +179,15 @@ pub fn load_level_bytes_with(
         mesh.surface = r.surfaceprop;
         mesh.surface2 = r.surfaceprop2;
         mesh.envmap = r.envmap;
+        // Render mode 1 draws the flat rendercolor, not the texture.
+        if mesh.flat_color {
+            mesh.texture = None;
+            mesh.normal_map = None;
+            mesh.detail = None;
+            mesh.blend = None;
+            mesh.selfillum = None;
+            mesh.envmap = None;
+        }
     }
     // Brush entities an env_texturetoggle targets: their textures' frames.
     let toggled: std::collections::HashSet<usize> = {
@@ -781,7 +790,7 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
     let mut entity_face_slots: HashMap<usize, usize> = HashMap::new();
     let faces = world
         .faces()
-        .map(|f| (f, None, None, None, None, [255; 3]))
+        .map(|f| (f, None, None, None, None, ([255; 3], false)))
         .chain(entities.iter().filter(|e| e.drawn).flat_map(|e| {
             bsp.models()
                 .nth(e.model)
@@ -792,13 +801,13 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
                 })
                 .map(|(f, index)| {
                     if e.mover {
-                        (f, Some((Quat::IDENTITY, Vec3::ZERO)), Some(e.entity), Some(index), None, [255; 3])
+                        (f, Some((Quat::IDENTITY, Vec3::ZERO)), Some(e.entity), Some(index), None, ([255; 3], false))
                     } else {
-                        (f, Some(e.transform), None, Some(index), e.render, e.color)
+                        (f, Some(e.transform), None, Some(index), e.render, (e.color, e.flat))
                     }
                 })
         }));
-    for (face, transform, mover, face_index, render, render_color) in faces {
+    for (face, transform, mover, face_index, render, (render_color, flat_look)) in faces {
         let in_world = transform.is_none();
         // Source-space position of a face vertex (brush entity models are
         // stored around their origin).
@@ -904,16 +913,17 @@ pub fn convert_level(bsp: &Bsp, bytes: &[u8], name: &str, hdr: bool) -> (MapData
             None => material.clone(),
         };
         // Brush entities in a translucent render mode: meshes of their own.
-        if render.is_some() || render_color != [255; 3] {
-            key = format!("{key}\u{3}{render:?}{render_color:?}");
+        if render.is_some() || render_color != [255; 3] || flat_look {
+            key = format!("{key}\u{3}{render:?}{render_color:?}{flat_look}");
         }
         let mesh = by_material.entry(key.clone()).or_insert_with(|| MapMesh {
             material: material.clone(),
             skybox,
-            color: tex.debug_color(),
+            color: if flat_look { [255; 3] } else { tex.debug_color() },
             entity: mover,
             render,
             render_color: (render_color != [255; 3]).then_some(render_color),
+            flat_color: flat_look,
             ..default()
         });
         let lm = pending_lm.entry(key).or_default();
@@ -1033,6 +1043,8 @@ pub struct BrushEntity {
     /// Its rendercolor (sRGB 0-255), in any render mode; movers get
     /// theirs from the logic like the rest of their look.
     pub color: [u8; 3],
+    /// Render mode 1: drawn as the flat `color`, not its texture.
+    pub flat: bool,
 }
 
 /// Brush entity classes the logic layer moves or toggles.
@@ -1208,8 +1220,9 @@ pub fn brush_entities(bsp: &Bsp) -> Vec<BrushEntity> {
             solid,
             entity: index,
             mover,
-            render: look.blend().filter(|_| !mover),
+            render: look.surface_blend().filter(|_| !mover),
             color: if mover { [255; 3] } else { color },
+            flat: look.flat_color() && !mover,
         });
     }
     out
