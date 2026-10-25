@@ -109,12 +109,14 @@ fn install_attribute_data() {
     eprintln!("merged: {} weapons", set.weapons.len());
 
     // Lucker Party's gun game (playtest 2026-10-24: the Remington 870 in
-    // the secondary class): the install's order lists put the shotgun,
-    // SMG, rifle and machine gun in the primary class (inventory.md 1),
-    // the Beretta in the secondary. Every record of each name and its
-    // class is printed for when they don't.
+    // the secondary class). The merge takes each weapon's class from the
+    // install's order lists (inventory.md), and the install lists the
+    // Remington 870 (record 37) in the secondary class: slot 2 is the
+    // original's, not a bug. The SMG, rifle and machine gun are primaries,
+    // the Beretta a secondary. Every record of each name and its class is
+    // printed; the merged slot must be the install's class.
     for (name, id, slot) in [
-        ("Remington_870", "combat_arms:remington_870", 0),
+        ("Remington_870", "combat_arms:remington_870", 1),
         ("MP5A4", "combat_arms:mp5a4", 0),
         ("M4A1", "combat_arms:m4a1", 0),
         ("M60", "combat_arms:m60", 0),
