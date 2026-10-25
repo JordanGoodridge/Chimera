@@ -25,7 +25,9 @@
 //!   server's definition (its own if the hash matches, else the text, read
 //!   and checked: `minigame::add`) or leaves saying why. A client starts a
 //!   minigame only once a manifest names it. Another minigame on the
-//!   server is announced (`ChangeMatch`).
+//!   server is announced (`ChangeMatch`), as is the same id made again
+//!   with another definition (an automatic gun game's new ladder), which a
+//!   client then plays anew.
 //! - **Changing match** (`change_match`, console `change_match <id>
 //!   [map]`): the server starts another minigame, players kept and
 //!   connected, scores anew, and changes level through the app's
@@ -38,7 +40,8 @@
 //!   `party_offer`): each registered minigame on its pool's first map
 //!   against the players' mount doctor reports (their userinfo); the
 //!   minigames every player can play go to the clients when the set or
-//!   the players change (a lobby's list).
+//!   the players change (a lobby's list). `installed_by_all`: the games
+//!   every player has (an automatic minigame's choice of games).
 //!
 //! Nothing is sent while no minigame plays.
 
@@ -165,6 +168,10 @@ fn stopped_serving(world: &mut World) {
     }
 }
 
+/// The definition `write_minigame` last put in `NetMinigame`.
+#[derive(Resource)]
+struct Announced(&'static MinigameDef);
+
 /// The minigame and the match into `NetMinigame` (gone with the minigame).
 fn write_minigame(world: &mut World) {
     let have = world.query::<(Entity, &NetMinigame)>().iter(world).next().map(|(e, n)| (e, n.clone()));
@@ -193,7 +200,11 @@ fn write_minigame(world: &mut World) {
             r
         }),
     };
-    let changed = have.as_ref().is_none_or(|(_, n)| n.id != now.id);
+    // Another minigame, or its definition made again (same id, new text).
+    let announced = world.get_resource::<Announced>().map(|a| a.0);
+    let changed = have.as_ref().is_none_or(|(_, n)| n.id != now.id)
+        || announced.is_some_and(|d| !std::ptr::eq(d, active.def));
+    world.insert_resource(Announced(active.def));
     match have {
         Some((e, n)) => {
             if n != now {
@@ -204,7 +215,7 @@ fn write_minigame(world: &mut World) {
             world.spawn((Name::new("Minigame"), Replicated, now));
         }
     }
-    // Another minigame: clients hear the match's new manifest.
+    // Clients hear the match's new manifest.
     if changed {
         manifest::announce(world);
     }
@@ -248,6 +259,27 @@ fn reports(world: &mut World) -> Vec<(String, manifest::MountReport)> {
             let r = manifest::from_userinfo(info.0.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
             Some((c.name.clone(), r))
         })
+        .collect()
+}
+
+/// The games of `games` every player has installed: each remote player's
+/// mount doctor report (one without a report has everything) and this
+/// machine's own (`LocalMounts`, a listen host's or a standalone game's;
+/// none: everything); a game not in `Games` (a stand-in) always. What
+/// an automatic minigame is made of
+/// (`chimera_sim::minigame::auto`).
+pub fn installed_by_all(world: &mut World, games: &[&'static str]) -> Vec<&'static str> {
+    let mut all = reports(world).into_iter().map(|(_, r)| r).collect::<Vec<_>>();
+    if let Some(local) = world.get_resource::<manifest::LocalMounts>() {
+        all.push(local.0.clone());
+    }
+    // A report lists the installed games only; a game that isn't a
+    // registered one (no install to examine: a stand-in) counts as there.
+    let registered = world.get_resource::<Games>().cloned();
+    games
+        .iter()
+        .copied()
+        .filter(|g| registered.as_ref().is_some_and(|r| r.get(g).is_none()) || all.iter().all(|r| r.has(g)))
         .collect()
 }
 
@@ -509,7 +541,14 @@ fn apply_minigame(world: &mut World, mut refused: Local<Option<String>>) {
     if !offered {
         return;
     }
-    if world.get_resource::<ActiveMinigame>().is_none_or(|a| a.def.id != n.id) {
+    // A new minigame, or the same id with a new definition (the server
+    // made it again: an automatic gun game's new ladder) that the
+    // manifest put in place of the one playing.
+    let current = world.get_resource::<Minigames>().and_then(|m| m.get(&n.id));
+    if world
+        .get_resource::<ActiveMinigame>()
+        .is_none_or(|a| a.def.id != n.id || current.is_some_and(|c| !std::ptr::eq(c, a.def)))
+    {
         match crate::minigame::join_remote(world, &n.id) {
             Ok(def) => {
                 info!("the server plays {}: {}", def.id, def.name);

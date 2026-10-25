@@ -88,6 +88,7 @@ pub mod missions;
 pub mod mount;
 pub mod movement;
 pub mod net;
+pub mod parts;
 pub mod perks;
 pub mod objects;
 pub mod options;

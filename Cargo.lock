@@ -7844,6 +7844,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "214ca0b2191785cbc06209b9ca1861e048e39b5ba33574b3cedd58363d5bb5f6"
 
 [[package]]
+name = "ultimate_gun_game"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_sim",
+ "chimera_world",
+ "combat_arms",
+ "lucker_party",
+ "workspace-hack",
+]
+
+[[package]]
+name = "ultimate_gun_game_server"
+version = "0.1.0"
+dependencies = [
+ "lucker_party_server",
+ "ultimate_gun_game",
+ "workspace-hack",
+]
+
+[[package]]
 name = "unicode-general-category"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

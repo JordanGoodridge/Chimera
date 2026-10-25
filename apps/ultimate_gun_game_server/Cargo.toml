@@ -1,0 +1,25 @@
+[package]
+name = "ultimate_gun_game_server"
+version = "0.1.0"
+description = "Ultimate Gun Game's dedicated server: the party's server playing the automatic gun game, no window, render or audio"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# The party's server (`lucker_party_server`) with the Ultimate Gun Game's
+# parts (`ultimate_gun_game` without its default `present`), so no
+# presentation links (checks/tests/it/architecture.rs,
+# `server_builds_without_presentation`).
+[dependencies]
+lucker_party_server.workspace = true
+ultimate_gun_game.workspace = true
+workspace-hack.workspace = true
+
+[[bin]]
+name = "ultimate_gun_game_server"
+path = "src/main.rs"
+test = false
+
+[features]
+dev = ["lucker_party_server/dev", "ultimate_gun_game/dev"]

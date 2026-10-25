@@ -117,6 +117,82 @@ fn cs_source_names(games: Res<Games>, mut names: ResMut<ItemNames>) {
     names.0.extend(cs_source::game::weapons::display_names(&mount));
 }
 
+/// The game's app (the binary's, and other party apps' built on it): map
+/// `args.game_map()` loaded (an error ends the process), both installs as
+/// asset sources, the window titled `title`, the party's simulation
+/// (`PartyPlugins`), the presentation, Combat Arms' gameplay until a
+/// minigame takes it, the network and the client shell with both games'
+/// HUDs. `chimera_client::client::app::run` runs it.
+pub fn client_app(args: Args, title: &str) -> App {
+    use chimera_core::gameplay::{Gameplay, GameplayAppExt};
+    use chimera_present::{MapPlugin, PresentationPlugins};
+    use super::PartyPlugins;
+    let mut app = App::new();
+    let id = args.game_map().unwrap_or("cs_source:de_dust2").to_string();
+    match super::load_map(&id, 0) {
+        Ok(data) => {
+            eprintln!(
+                "loaded {id}: {} triangles, {} textures, {} spawns, {} warnings",
+                data.triangle_count(),
+                data.textures.len(),
+                data.spawns.len(),
+                data.warnings.len()
+            );
+            for w in &data.warnings {
+                eprintln!("  warning: {w}");
+            }
+            app.add_plugins(MapPlugin::new(data));
+        }
+        Err(e) => {
+            eprintln!("error: --map {id}: {e}");
+            std::process::exit(1);
+        }
+    }
+    app.add_plugins((
+        // Both installs as `cs_source://` and `combat_arms://` assets
+        // (before `AssetPlugin`).
+        chimera_present::assets::InstallSourcesPlugin(vec![
+            chimera_present::assets::InstallSource::of(&cs_source::game::INFO),
+            chimera_present::assets::InstallSource::shared(combat_arms::game::INFO.id, combat_arms::game::world::mount),
+        ]),
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: title.into(),
+                    resolution: match (args.window, args.scale) {
+                        (Some(s), scale) => bevy::window::WindowResolution::new(s.x, s.y)
+                            .with_scale_factor_override(scale.unwrap_or(1.0)),
+                        (None, Some(scale)) => bevy::window::WindowResolution::default().with_scale_factor_override(scale),
+                        (None, None) => default(),
+                    },
+                    resizable: args.window.is_none(),
+                    ..default()
+                }),
+                ..default()
+            })
+            // Warnings and errors also show in the in-game console.
+            .set(bevy::log::LogPlugin {
+                custom_layer: chimera_client::client::console::log_layer,
+                ..default()
+            }),
+        // Avian as Chimera runs it (rendering eases between ticks).
+        chimera_world::physics_plugins(),
+        PartyPlugins,
+    ))
+    // What the map's drawing needs.
+    .add_plugins(PresentationPlugins)
+    // Combat Arms' gameplay until the minigame (`+minigame`, its console
+    // line) takes the rules slot and names the others.
+    .set_gameplay(Gameplay::of(&combat_arms::game::INFO))
+    .insert_resource(chimera_core::core::BuildVersion(super::VERSION))
+    // Network play: a listen server, or a client (`connect`).
+    .add_plugins(chimera_net::net::NetPlugin)
+    // The client shell with Combat Arms' HUD, then its other looks.
+    .add_plugins(ClientPlugin { args })
+    .add_plugins(combat_arms::ui::CaUiPlugin);
+    app
+}
+
 /// Whether the command line joins a server (`+connect <address>`).
 pub fn joins_server(console: &[String]) -> bool {
     console.iter().any(|c| c.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("connect")))
@@ -129,22 +205,29 @@ pub fn joins_server(console: &[String]) -> bool {
 /// the bots: the server plays its minigame (`minigame_net`) and fills its
 /// own slots; the map is the default's, loaded at once, until the server
 /// says its own.
-pub fn with_defaults(mut args: Args) -> Args {
+pub fn with_defaults(args: Args) -> Args {
+    with_defaults_for(args, super::DEFAULT_MINIGAME, &|id| {
+        super::first_map(id).or_else(|_| super::first_map(super::DEFAULT_MINIGAME))
+    })
+}
+
+/// `with_defaults` for an app whose minigame without `+minigame` is
+/// `minigame`, and whose minigames' first maps `first_map` gives.
+pub fn with_defaults_for(mut args: Args, minigame: &str, first_map: &dyn Fn(&str) -> Result<String, String>) -> Args {
     let joining = joins_server(&args.console);
     if !joining && !args.console.iter().any(|c| c.to_lowercase().starts_with("maxplayer")) {
         args.console.insert(0, format!("MaxPlayer {}", super::DEFAULT_BOTS));
     }
     let minigame = match super::minigame_of(&args.console) {
         Some(id) => id,
-        None if joining => super::DEFAULT_MINIGAME.to_string(),
+        None if joining => minigame.to_string(),
         None => {
-            args.console.push(format!("minigame {}", super::DEFAULT_MINIGAME));
-            super::DEFAULT_MINIGAME.to_string()
+            args.console.push(format!("minigame {minigame}"));
+            minigame.to_string()
         }
     };
     if args.map.is_none() {
-        let map = super::first_map(&minigame).or_else(|_| super::first_map(super::DEFAULT_MINIGAME));
-        args.map = map.ok();
+        args.map = first_map(&minigame).ok();
     }
     args
 }
