@@ -53,6 +53,12 @@ the user's go-ahead: no Actions runs unless asked.
   model looks odd.
 - **Combat Arms third-person guns held backwards** most of the time (the
   weapon's attachment to the hand bone: orientation or wrong bone).
+- **Combat Arms snipers scope with CS:S's scope overlay.** The scope
+  should follow the gun's game (Combat Arms' own scope view).
+- **Glock burst toggle shows nothing.** Right-click switches to burst but
+  there's no indication; CS:S prints "Switched to Burst-Fire mode" /
+  "Switched to semi-automatic" as a center message (needs the HUD hint
+  in our HUD).
 
 ### Decisions 2026-10-13 (user)
 
