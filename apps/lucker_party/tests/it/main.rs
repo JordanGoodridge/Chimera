@@ -12,3 +12,4 @@ mod net_party;
 mod results_hud;
 mod rotation;
 mod startup;
+mod switches;

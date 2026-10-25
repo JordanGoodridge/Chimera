@@ -4,7 +4,9 @@
 //! holding that rung's weapon (with the definition's kit). An enemy kill
 //! moves the killer a rung up, its weapon swapped at once; a kill on the
 //! last rung wins the match. With `demote_on = "melee_death"` a player
-//! killed by an enemy's melee swing goes a rung down (not below the first).
+//! killed by an enemy's melee swing goes a rung down (not below the first):
+//! melee damage, or any damage from a melee weapon (CS:S's knife deals
+//! bullet damage).
 //! At the time limit the highest rung wins, then the most kills; a tie is
 //! a draw.
 //!
@@ -211,7 +213,7 @@ fn on_death(world: &mut World, d: &Death) {
 /// A melee death at an enemy's hands: a rung down.
 fn died(world: &mut World, d: &Died) {
     let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return };
-    if !ladder.demote_on_melee || !world.resource::<Match>().counting() || d.damage.kind != DamageKind::Melee {
+    if !ladder.demote_on_melee || !world.resource::<Match>().counting() || !melee_kill(world, d) {
         return;
     }
     let team = |e: Entity| world.get::<Team>(e).map(|t| t.0);
@@ -232,6 +234,24 @@ fn died(world: &mut World, d: &Died) {
     });
 }
 
+/// Whether `d` was a melee kill: melee damage, or a melee weapon's (the
+/// damage's weapon, else what the attacker holds; CS:S's knife deals
+/// bullet damage).
+fn melee_kill(world: &World, d: &Died) -> bool {
+    if d.damage.kind == DamageKind::Melee {
+        return true;
+    }
+    let id = d.damage.weapon.or_else(|| {
+        let inv = world.get::<Inventory>(d.attacker?)?;
+        world.get::<Weapon>(inv.active?).map(|w| w.id)
+    });
+    let Some(id) = id else { return false };
+    world
+        .get_resource::<crate::weapon::data::WeaponCatalog>()
+        .and_then(|c| c.get(id))
+        .is_some_and(|w| w.melee.is_some())
+}
+
 /// `e` on `rung`, holding its weapon in place of the ladder's others.
 pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     world.entity_mut(e).insert(Rung(rung));
@@ -248,6 +268,8 @@ pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     for w in old {
         runtime::take_weapon(world, e, w);
     }
+    // A kit by game (the gun game's knife) goes with the new gun's game.
+    runtime::refit_kit(world, e, ladder.rungs[rung]);
     give(world, e, ladder.rungs[rung]);
     // No command of the player's did this: its client takes the state
     // as a restart, not a misprediction.

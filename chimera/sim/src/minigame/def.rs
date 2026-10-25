@@ -27,7 +27,9 @@
 //! points = "far_from_enemies"   # or "map" (in turn), "team" (the player's team's),
 //!                               # "random_hidden" (anywhere walkable, out of enemies' sight)
 //! min_distance = 20.32          # m from a living enemy for "random_hidden" (800 u)
-//! kit = ["combat_arms:m9_knife"]   # given every life, before the rules' weapons
+//! kit = ["combat_arms:m9_knife"]   # given every life, before the rules' weapons; or by
+//! # kit = { cs_source = ["cs_source:weapon_knife"], combat_arms = ["combat_arms:m9_knife"] }
+//! #   game: the kit of the rules' weapon's game (`Kit::ByGame`), swapped with it
 //!
 //! [rules]
 //! module = "chimera:ladder"   # a registered rules module; the other keys are its own
@@ -149,7 +151,46 @@ pub struct SpawnDef {
     pub min_distance: f32,
     /// Weapons given every life before the rules' own.
     #[serde(default)]
-    pub kit: Vec<String>,
+    pub kit: Kit,
+}
+
+/// The weapons a life starts with besides the rules' own: the same for
+/// everyone (a list), or by game (a table of game id to list): the kit of
+/// the game of the weapon the rules give (`for_game`; the gun game's
+/// knife is the gun's game's), changed with it (`runtime::refit_kit`).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum Kit {
+    List(Vec<String>),
+    ByGame(std::collections::BTreeMap<String, Vec<String>>),
+}
+
+impl Default for Kit {
+    fn default() -> Self {
+        Self::List(Vec::new())
+    }
+}
+
+impl Kit {
+    /// Every weapon id the kit names, for any game.
+    pub fn all(&self) -> Vec<&str> {
+        match self {
+            Self::List(l) => l.iter().map(String::as_str).collect(),
+            Self::ByGame(m) => m.values().flatten().map(String::as_str).collect(),
+        }
+    }
+
+    /// The kit given with a rules weapon of game `game` (None: the rules
+    /// give none): the list, or that game's (none named: nothing).
+    pub fn for_game(&self, game: Option<&str>) -> Vec<&str> {
+        match self {
+            Self::List(l) => l.iter().map(String::as_str).collect(),
+            Self::ByGame(m) => game
+                .and_then(|g| m.iter().find(|(k, _)| k.eq_ignore_ascii_case(g)))
+                .map(|(_, l)| l.iter().map(String::as_str).collect())
+                .unwrap_or_default(),
+        }
+    }
 }
 
 fn default_min_distance() -> f32 {
@@ -162,7 +203,7 @@ impl Default for SpawnDef {
             respawn: Respawn::default(),
             points: Points::default(),
             min_distance: default_min_distance(),
-            kit: Vec::new(),
+            kit: Kit::default(),
         }
     }
 }
@@ -326,6 +367,16 @@ ladder = ["kit:pistol", "kit:rifle"]
         assert_eq!(def.slots.identity, None, "slots the same for everyone by default");
         let follows = MinigameDef::parse("t", &DEF.replace("[spawn]", "[slots]\nidentity = \"weapon\"\n[spawn]")).unwrap();
         assert_eq!(follows.slots.identity, Some(IdentityDef::Weapon));
+        assert_eq!(def.spawn.kit.for_game(Some("kit")), vec!["kit:shotgun"], "a list: everyone's");
+        let by_game = DEF.replace(
+            "kit = [\"kit:shotgun\"]",
+            "kit = { a = [\"a:knife\"], b = [\"b:knife\", \"b:nade\"] }",
+        );
+        let kit = MinigameDef::parse("t", &by_game).unwrap().spawn.kit;
+        assert_eq!(kit.for_game(Some("b")), vec!["b:knife", "b:nade"]);
+        assert_eq!(kit.for_game(Some("A")), vec!["a:knife"]);
+        assert!(kit.for_game(Some("c")).is_empty() && kit.for_game(None).is_empty());
+        assert_eq!(kit.all(), vec!["a:knife", "b:knife", "b:nade"]);
     }
 
     #[test]
