@@ -44,7 +44,7 @@ fn game_of(sim: &Sim, e: Entity) -> &'static str {
     slot.split_once(':').unwrap().0
 }
 
-fn set_rung(sim: &mut Sim, e: Entity, r: usize) {
+pub(crate) fn set_rung(sim: &mut Sim, e: Entity, r: usize) {
     let w = sim.app.world_mut();
     let l = w.resource::<Ladder>().clone();
     ladder::set_rung(w, e, r, &l);

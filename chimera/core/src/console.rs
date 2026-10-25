@@ -159,6 +159,14 @@ pub struct Console {
     pub aliases: BTreeMap<String, String>,
     /// Key name (lower-case) -> command line.
     pub binds: BTreeMap<String, String>,
+    /// Per-game overlays on `binds` (a game id -> key -> line): the keys
+    /// that mean something else, or nothing (an empty line), while that
+    /// game is the player's identity (`effective_binds`). Saved in the
+    /// config (`bindgame` lines).
+    pub layers: BTreeMap<String, BTreeMap<String, String>>,
+    /// Each overlay as its game ships it (`binddefaults` for a game
+    /// restores it: `bindgamedefaults`).
+    pub layer_defaults: BTreeMap<String, BTreeMap<String, String>>,
     pub output: Vec<Line>,
     /// Lines waiting to run, and frames to wait before the next.
     queue: VecDeque<String>,
@@ -204,6 +212,28 @@ const MAX_OUTPUT: usize = 4000;
 const MAX_ALIAS_DEPTH: usize = 32;
 
 impl Console {
+    /// The binds in force for a player whose identity is `game` (None: no
+    /// identity): the game's overlay first, then the shared binds. A key
+    /// the overlay holds means its line there, even an empty one (nothing).
+    pub fn effective_binds(&self, game: Option<&str>) -> std::borrow::Cow<'_, BTreeMap<String, String>> {
+        match game.and_then(|g| self.layers.get(g)).filter(|l| !l.is_empty()) {
+            None => std::borrow::Cow::Borrowed(&self.binds),
+            Some(layer) => {
+                let mut all = self.binds.clone();
+                all.extend(layer.iter().map(|(k, v)| (k.clone(), v.clone())));
+                std::borrow::Cow::Owned(all)
+            }
+        }
+    }
+
+    /// Set `game`'s own binds as shipped (the defaults `bindgamedefaults`
+    /// restores), in force now.
+    pub fn ship_layer(&mut self, game: &str, binds: &[(&str, &str)]) {
+        let layer: BTreeMap<String, String> = binds.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        self.layers.insert(game.to_string(), layer.clone());
+        self.layer_defaults.insert(game.to_string(), layer);
+    }
+
     pub fn add_cvar(&mut self, cvar: Cvar) {
         if let Some(old) = self.cvars.insert(cvar.name.to_lowercase(), cvar) {
             self.replaced.push(old.name);
@@ -1017,6 +1047,54 @@ fn builtins(app: &mut App) {
                 }
             }
         })
+        .console_command(
+            "bindgame",
+            "bindgame <game> <key> [command]: a key's command while <game> is the player's identity, over the \
+             shared binds (no command: hides the shared bind there; a bare game and key says what it is).",
+            |w, a| {
+                let mut c = console(w);
+                match a {
+                    [] | [_] => Err("bindgame <game> <key> [command]".into()),
+                    [game, key] => Ok(Some(match c.layers.get(game).and_then(|l| l.get(&key.to_lowercase())) {
+                        Some(cmd) => format!("\"{key}\" = \"{cmd}\" in {game}"),
+                        None => format!("\"{key}\" has no bind of its own in {game}"),
+                    })),
+                    [game, key, rest @ ..] => {
+                        let line = c.current_line(&rest.join(" "));
+                        c.layers.entry(game.clone()).or_default().insert(key.to_lowercase(), line);
+                        c.dirty = true;
+                        Ok(None)
+                    }
+                }
+            },
+        )
+        .console_command("unbindgameall", "Remove every game's own binds (bindgamedefaults brings the shipped ones back).", |w, _| {
+            let mut c = console(w);
+            c.layers.clear();
+            c.dirty = true;
+            Ok(None)
+        })
+        .console_command("unbindgame", "unbindgame <game> <key>: the shared bind shows through in <game> again.", |w, a| {
+            let [game, key] = a else { return Err("unbindgame <game> <key>".into()) };
+            let mut c = console(w);
+            if let Some(l) = c.layers.get_mut(game) {
+                l.remove(&key.to_lowercase());
+            }
+            c.dirty = true;
+            Ok(None)
+        })
+        .console_command("bindgamedefaults", "bindgamedefaults [game]: every game's (or <game>'s) own binds as shipped.", |w, a| {
+            let mut c = console(w);
+            let defaults = c.layer_defaults.clone();
+            match a.first() {
+                Some(game) => {
+                    c.layers.insert(game.clone(), defaults.get(game).cloned().unwrap_or_default());
+                }
+                None => c.layers = defaults,
+            }
+            c.dirty = true;
+            Ok(None)
+        })
         .console_command("unbind", "unbind <key>", |w, a| {
             let key = a.first().ok_or("unbind <key>")?.to_lowercase();
             let mut c = console(w);
@@ -1095,10 +1173,11 @@ pub fn config_text(w: &mut World) -> String {
     // written over were the game's current ones (`client::binds::DEFAULTS_MARK`;
     // its text, "cs", from when CS:S's changed, kept for saved configs).
     let mut out = String::from("// Written by Chimera (host_writeconfig).\n// binds: all\n// bind defaults: cs\n");
-    let (binds, aliases, cvars) = {
+    let (binds, layers, aliases, cvars) = {
         let c = w.resource::<Console>();
         (
             c.binds.clone(),
+            c.layers.clone(),
             c.aliases.clone(),
             c.cvars().cloned().collect::<Vec<_>>(),
         )
@@ -1106,6 +1185,13 @@ pub fn config_text(w: &mut World) -> String {
     out += "unbindall\n";
     for (k, v) in binds {
         out += &format!("bind {} {}\n", quote(&k), quote(&v));
+    }
+    // The games' own binds: all of them anew, so one removed stays removed.
+    out += "unbindgameall\n";
+    for (game, keys) in &layers {
+        for (k, v) in keys {
+            out += &format!("bindgame {} {} {}\n", quote(game), quote(k), quote(v));
+        }
     }
     for (k, v) in aliases {
         out += &format!("alias {} {}\n", quote(&k), quote(&v));

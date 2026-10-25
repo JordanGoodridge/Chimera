@@ -1323,6 +1323,49 @@ the slice by itself did not help once the jobserver was in, so they are not
 included. The holder's tokens are lost if the holder dies (the next `source`
 recreates it); a client killed mid-build loses at most the tokens it held.
 
+### Shared compile cache (sccache)
+
+`tools/agent-env.sh` also points cargo at one box-wide sccache, so a fresh
+worktree's first build reuses the registry crates (Bevy and the rest) that
+any other worktree already built. Nothing else to do: `source` it, build as
+usual. It sets `RUSTC_WRAPPER` to sccache 0.19 (`~/.local/sccache-0.19/bin/sccache`;
+`cargo install sccache --locked --no-default-features --root ~/.local/sccache-0.19`),
+`SCCACHE_SERVER_PORT=4227`, `CARGO_INCREMENTAL=0` and unsets `CARGO_TARGET_DIR`.
+The cache (100 GiB, `~/.cache/sccache-0.19`) is set in `~/.config/sccache/config`.
+`AGENT_NO_SCCACHE=1` builds without it.
+
+What the keys need, learned the hard way:
+
+- sccache cannot cache incremental builds (`CARGO_INCREMENTAL=0`; the dev
+  profile otherwise reports "non-cacheable: incremental").
+- The key covers the whole rustc command line and every `CARGO_*` variable
+  of the client, so a `CARGO_TARGET_DIR` that differs per worktree defeats
+  every entry. Leave it unset: cargo builds in `<worktree>/target`.
+- Registry crates hit across worktrees. Workspace crates (`chimera_*`,
+  `cs_source`...) have their path in the key, so they recompile in each
+  worktree (`basedirs` only helps C/C++, not rustc). That is the
+  minutes-long part of a first build, not the Bevy part.
+- The server must not inherit the agents' `MAKEFLAGS` jobserver, and
+  `agent-env.sh` starts it without. sccache uses its own jobserver (one token
+  per CPU thread) and takes a token for every rustc it spawns, including the
+  dep-info pass that computes the key. When a client is killed mid-build (a
+  tool timeout) the server kills its rustc, and the tokens that rustc held
+  are lost. After a few such kills all are gone and every later request
+  waits at 0% CPU forever: the "hung server" of 2026-10. `tools/sccache-heal.sh`
+  (run by `agent-env.sh`) restarts the server when it has no children and
+  fewer tokens than CPU threads on two looks 3 s apart. A killed build also
+  never stores the crates it was compiling, so a long one (bevy_pbr under
+  load 30) can miss again and again until one run finishes.
+
+Check it: `$RUSTC_WRAPPER --show-stats` (hits, misses, "Non-cacheable
+reasons", "Cache location"); a hang shows as requests waiting while
+`pgrep -P $(ss -ltnpH 'sport = :4227' | sed 's/.*pid=\([0-9]*\).*/\1/')`
+lists no rustc: run `tools/sccache-heal.sh`, or `$RUSTC_WRAPPER --stop-server`
+when no build is running. Measured (12 threads, load 30 from other
+agents, `cargo build -p source_formats --tests`, new worktree each): cold
+79 s with 0 of 20 hits, second worktree 25 s with 19 of 20 (the miss is
+`source_formats` itself).
+
 ## 4. Logs
 
 `RUST_LOG=mashup=debug cargo run --features dev`. Log state changes that matter
