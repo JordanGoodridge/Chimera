@@ -801,13 +801,18 @@ fn fire_once(sim: &mut Sim, p: Entity) {
 /// The floor typed `ty` (the greybox has no surface types): a plane at
 /// the greybox floor's height.
 fn type_everything(sim: &mut Sim, ty: u16) {
+    name_everything(sim, &ty.to_string());
+}
+
+/// The floor named `name`, as another game's map names its surfaces.
+fn name_everything(sim: &mut Sim, name: &str) {
     let world = sim.app.world_mut();
     let y = GREYBOX_FLOOR;
     let data = MapData {
         meshes: vec![MapMesh {
             positions: vec![[-500.0, y, -500.0], [-500.0, y, 500.0], [500.0, y, 500.0], [500.0, y, -500.0]],
             indices: vec![0, 1, 2, 0, 2, 3],
-            surface: Some(ty.to_string()),
+            surface: Some(name.to_string()),
             ..Default::default()
         }],
         ..Default::default()
@@ -865,6 +870,22 @@ fn impacts_make_decals_bursts_and_sounds() {
     // Decals fade and go after 6 s.
     sim.seconds(6.5);
     assert!(sim.app.world().resource::<CaMarks>().marks.is_empty());
+}
+
+#[test]
+fn a_surface_of_another_games_map_without_a_type_still_leaves_one_bullet_hole() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    arm(&mut sim, me, "combat_arms:m4a1");
+    // Not one of Combat Arms' types or names: its class gives the type.
+    name_everything(&mut sim, "concrete");
+    sim.intent(me).pitch = -0.6;
+    sim.ticks(2);
+    fire_once(&mut sim, me);
+    let marks = sim.app.world().resource::<CaMarks>();
+    assert_eq!(marks.marks.len(), 1);
+    assert_eq!(marks.marks[0].sprite, "fx/test/imark_ceramic.spr");
 }
 
 #[test]
