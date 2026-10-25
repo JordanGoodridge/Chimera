@@ -25,6 +25,35 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
+### Gun game playtest, 2026-10-25 (user; start after the usage reset)
+
+- **CS:S characters always draw a low LOD.** Seen on bots coming close
+  and on your own body in third person: they never switch to the
+  detailed level. Suspect the level picked at spawn never updates for
+  bodies, or every body starts on a low level (skinned LOD landed
+  2026-10-25 in `render/bodies.rs`/`render/lod.rs`; check `switch_lods`
+  reaches body entities and the bind-pose bounds give the right screen
+  size).
+- **Double reload, still.** Empty the magazine, reload: after the reload
+  finishes, a second reload animation sometimes plays. Intermittent;
+  trigger unknown (seen before on Combat Arms; check both games' guns and
+  the swap/refill path of `refill_ammo`).
+- **Last shot silent before the swap.** The killing bullet sometimes makes
+  no sound because the ladder swaps the gun in the same tick; the shot's
+  sound should outlive the gun (play it detached from the weapon entity).
+- **Map change at match end is unclear.** The new round starts on the old
+  map, then the new map loads and players are moved over with a hitch.
+  Want a loading screen (or at least an indicator), and the round to
+  start only once everyone is on the new map.
+- **Bots drop their gun on death in gun game.** Nobody can pick guns up
+  there; no drops when the mode gives weapons by ladder.
+- **Combat Arms character models look wrong.** Heads look thin (e.g. the
+  female soldier with goggles); her head and backpack vanish when the
+  camera gets close (near clip or per-part culling/bounds?). Most of her
+  model looks odd.
+- **Combat Arms third-person guns held backwards** most of the time (the
+  weapon's attachment to the hand bone: orientation or wrong bone).
+
 ### Decisions 2026-10-13 (user)
 
 - Refactor: go ahead with engine-split.md "Crates and compile time"
