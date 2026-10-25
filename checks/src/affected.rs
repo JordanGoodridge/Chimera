@@ -462,7 +462,16 @@ fn is_docs(path: &str) -> bool {
         ]
         .iter()
         .any(|p| path.starts_with(p))
-        || [".gitignore", "rustfmt.toml", "chimera.local.example.toml"].contains(&path)
+        || [
+            ".gitignore",
+            "rustfmt.toml",
+            "chimera.local.example.toml",
+            // The agents' shell tools: no crate reads them.
+            "tools/agent-env.sh",
+            "tools/sccache-heal.sh",
+            "tools/clean-worktrees.sh",
+        ]
+        .contains(&path)
 }
 
 /// The root's data files outside a crate (tools/'s, the minigames'
