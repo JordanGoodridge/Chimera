@@ -772,6 +772,19 @@ pub fn snap(at: Vec3, below: f32, half: f32, lift: f32) -> Vec3 {
 /// How far down the floor snap looks (u).
 pub const FLOOR_RAY: f32 = 10_000.0;
 
+/// The player object's visibility change, if any: hidden while dead (only
+/// where the body is ours), shown again when alive. Showing doesn't ask
+/// whose identity it is: a bot that died as a Combat Arms soldier and
+/// respawned holding a CS:S gun (the gun game's `identity = "weapon"`)
+/// stayed hidden for good, and its CS:S body with it.
+pub fn object_visibility(ours: bool, alive: bool, hidden: bool) -> Option<Visibility> {
+    match (alive, hidden) {
+        (false, false) if ours => Some(Visibility::Hidden),
+        (true, true) => Some(Visibility::Inherited),
+        _ => None,
+    }
+}
+
 /// Each tick: every living character's driver (a client's own player
 /// only; others follow the server's `CaAnimNet`), then its pose.
 #[allow(clippy::type_complexity)]
@@ -808,13 +821,10 @@ fn drive(
         }
         // The player object itself is invisible while dead: the body object
         // shows the death (Corrections 12).
-        if anim.rig.is_some() && ours {
-            let hidden = visibility == Some(&Visibility::Hidden);
-            if !alive && !hidden {
-                commands.entity(e).insert(Visibility::Hidden);
-            } else if alive && hidden {
-                commands.entity(e).insert(Visibility::Inherited);
-            }
+        if anim.rig.is_some()
+            && let Some(v) = object_visibility(ours, alive, visibility == Some(&Visibility::Hidden))
+        {
+            commands.entity(e).insert(v);
         }
         let weapon = inventory.and_then(|i| i.active).and_then(|w| weapons.get(w).ok());
         let r = movement.map_or(0.0, |m| m.crouch_rate);
@@ -1213,5 +1223,29 @@ fn dress(
         if held.is_none_or(|h| h.0 != id) {
             commands.entity(e).insert(Held(id));
         }
+    }
+}
+
+#[cfg(test)]
+mod visibility_tests {
+    use super::object_visibility;
+    use bevy::prelude::Visibility;
+
+    /// A bot that died as a Combat Arms soldier (its object hidden for
+    /// the death body) and respawned holding a CS:S gun is seen again; one
+    /// that dies holding a CS:S gun is not hidden by Combat Arms.
+    #[test]
+    fn a_living_character_is_never_left_hidden() {
+        // (ours, alive, hidden) -> change
+        assert_eq!(object_visibility(true, false, false), Some(Visibility::Hidden), "ours, dead: hidden");
+        assert_eq!(object_visibility(true, true, true), Some(Visibility::Inherited), "ours, back alive");
+        assert_eq!(
+            object_visibility(false, true, true),
+            Some(Visibility::Inherited),
+            "another game's identity now, alive: shown (it stayed hidden)"
+        );
+        assert_eq!(object_visibility(false, false, false), None, "another game's dead body isn't ours to hide");
+        assert_eq!(object_visibility(true, true, false), None);
+        assert_eq!(object_visibility(true, false, true), None);
     }
 }
