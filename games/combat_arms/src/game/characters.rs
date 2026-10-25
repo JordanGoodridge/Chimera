@@ -51,7 +51,9 @@
 //! `death::choose` from the killing hit, and a body (`CaBody`) is left at
 //! the player's floor-snapped position + 0.1 u; it goes 5 s after its
 //! owner respawned and its animation ended in the modes that remove
-//! bodies (data's `body_removal`), or at a new round.
+//! bodies (data's `body_removal`), or at a new round. With no mode of ours
+//! (`ca_mode none`) but a minigame playing (Lucker Party), as our like
+//! mode: a free-for-all as One Man Army, teams as Team Deathmatch.
 //!
 //! Network (`CaCharactersNetPlugin`, part `combat_arms_characters`): each
 //! client sends its own look (`CaLookRequest`, from `CaOwnLook`: when its
@@ -1050,13 +1052,23 @@ fn bodies(
     restarts: Res<RoundRestarts>,
     mut round: Local<Option<u32>>,
     settings: Option<Res<super::rules::CaRuleSettings>>,
+    minigame: Option<Res<chimera_sim::minigame::ActiveMinigame>>,
     mut commands: Commands,
 ) {
     let new_round = round.is_some_and(|r| r != restarts.0);
     *round = Some(restarts.0);
-    let delay = settings
-        .and_then(|s| super::rules::mode_by_key(&s.mode))
-        .and_then(|m| records::builtin().body_removal(m.id));
+    let delay = match settings.and_then(|s| super::rules::mode_by_key(&s.mode)) {
+        Some(m) => records::builtin().body_removal(m.id),
+        // No mode of ours: a minigame's match (Lucker Party's) removes
+        // bodies as our like mode does, a free-for-all as One Man Army
+        // (FFA), teams as Team Deathmatch: 5 s.
+        None => minigame
+            .map(|m| match m.def.teams {
+                chimera_sim::minigame::def::TeamsDef::FreeForAll => super::rules::ONE_MAN_ARMY,
+                _ => super::rules::TDM,
+            })
+            .and_then(|id| records::builtin().body_removal(id)),
+    };
     for (e, mut b) in &mut bodies {
         if new_round {
             commands.entity(e).despawn();

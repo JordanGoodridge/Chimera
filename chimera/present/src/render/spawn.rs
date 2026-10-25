@@ -118,6 +118,7 @@ pub struct MapAssets<'w> {
     bindposes: Option<ResMut<'w, Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>>,
     beam_materials: Option<ResMut<'w, Assets<super::beams::BeamMaterial>>>,
     detail_materials: Option<ResMut<'w, Assets<super::detail::DetailMaterial>>>,
+    heat_materials: Option<ResMut<'w, Assets<steam::HeatWaveMaterial>>>,
     /// Which compressed texture formats the device takes (`bc_wanted`).
     compressed: Option<Res<'w, bevy::image::CompressedImageFormatSupport>>,
 }
@@ -168,6 +169,7 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
         bindposes,
         beam_materials,
         detail_materials,
+        heat_materials,
         compressed,
     } = a;
     let (Some(meshes), Some(materials), Some(images)) = (meshes.as_mut(), materials.as_mut(), images.as_mut()) else {
@@ -256,7 +258,7 @@ fn spawn_drawn(commands: &mut Commands, s: &MapSpawn, a: &mut MapAssets) -> Draw
         );
     }
     if view == MapDebugView::Normal {
-        spawn_effects(commands, s, meshes, materials, &textures);
+        spawn_effects(commands, s, meshes, materials, heat_materials.as_deref_mut(), &textures);
     }
     if let Some(sprite_materials) = sprite_materials.as_mut()
         && view == MapDebugView::Normal
@@ -1138,6 +1140,7 @@ fn spawn_effects(
     s: &MapSpawn,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    mut heat_materials: Option<&mut Assets<steam::HeatWaveMaterial>>,
     textures: &[Handle<Image>],
 ) {
     let (data, root, visibility) = (s.data, s.root, s.visibility);
@@ -1188,20 +1191,26 @@ fn spawn_effects(
             Name::new(format!("Steam {i}")),
             MapPart,
             Mesh3d(mesh.clone()),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color_texture: jet.texture.map(|t| textures[t].clone()),
-                unlit: true,
-                alpha_mode: AlphaMode::Blend,
-                double_sided: true,
-                cull_mode: None,
-                ..default()
-            })),
             steam::SteamEmitter::new(jet.clone(), mesh, i as u64 + 1),
             bevy::camera::visibility::NoFrustumCulling,
             bevy::light::NotShadowCaster,
             Transform::default(),
             ChildOf(root),
         ));
+        if jet.heat_wave {
+            if let Some(heat_materials) = heat_materials.as_mut() {
+                e.insert(MeshMaterial3d(heat_materials.add(steam::HeatWaveMaterial::default())));
+            }
+        } else {
+            e.insert(MeshMaterial3d(materials.add(StandardMaterial {
+                base_color_texture: jet.texture.map(|t| textures[t].clone()),
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                double_sided: true,
+                cull_mode: None,
+                ..default()
+            })));
+        }
         s.tag(&mut e, clusters);
         if let Some(entity) = jet.entity {
             e.insert(EntityPart {

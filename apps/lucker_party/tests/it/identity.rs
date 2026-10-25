@@ -34,7 +34,7 @@ use chimera_world::{
     map::{BodyModel, BodyName, CharacterModels, MapCharacterModel, MapSimPlugin},
 };
 use combat_arms::{
-    game::{TICK_INTERVAL, inventory::KNIFE, movement as ca_movement},
+    game::{TICK_INTERVAL, movement as ca_movement},
     harness::CaSim,
 };
 use cs_source::game::{movement as cs_movement, weapons as cs_weapons};
@@ -70,6 +70,9 @@ pub(crate) fn two_bodies(app: &mut App) {
     app.insert_resource(CharacterModels(std::sync::Arc::new(vec![body("combat_arms"), body("cs_source")])));
 }
 
+/// A Combat Arms gun given besides the rung's (a pickup, `give`).
+const M4: &str = "combat_arms:m4a1";
+
 const CA_BODY: usize = 0;
 const CS_BODY: usize = 1;
 
@@ -93,8 +96,9 @@ fn assert_is(world: &World, e: Entity, game: &str, what: &str) {
 }
 
 /// A rung-up's swap (CS:S's Glock to Combat Arms' Beretta) makes the
-/// killer Combat Arms'; the next (the Desert Eagle) CS:S's again; the
-/// knife is Combat Arms', and the gun back CS:S's.
+/// killer Combat Arms'; the next (the Desert Eagle) CS:S's again; its
+/// knife is CS:S's too (the gun's game's); a Combat Arms gun given (a
+/// pickup, `give`) Combat Arms', and the Desert Eagle back CS:S's.
 #[test]
 fn movement_follows_the_gun_on_a_rung_up_and_back() {
     let mut sim = party();
@@ -119,16 +123,27 @@ fn movement_follows_the_gun_on_a_rung_up_and_back() {
     sim.ticks(2);
     assert_eq!(held(&sim, a), Some(cs_weapons::DEAGLE));
     assert_is(sim.app.world(), a, "cs_source", "the Desert Eagle");
-    // The knife: Combat Arms'; Q back to the Desert Eagle: CS:S's.
+    // The knife: the Desert Eagle's game's, CS:S's.
     sim.intent(a).select = Some(2);
     sim.ticks(1);
     sim.intent(a).select = None;
-    sim.ticks(2);
-    assert_eq!(held(&sim, a), Some(KNIFE));
-    assert_is(sim.app.world(), a, "combat_arms", "the knife");
+    sim.seconds(0.5);
+    assert_eq!(held(&sim, a), Some(cs_weapons::KNIFE));
+    assert_is(sim.app.world(), a, "cs_source", "the Desert Eagle's knife");
     sim.intent(a).last_weapon = true;
     sim.ticks(1);
     sim.intent(a).last_weapon = false;
+    sim.seconds(0.5);
+    assert_eq!(held(&sim, a), Some(cs_weapons::DEAGLE));
+    // Combat Arms' M4A1 given: Combat Arms'; class key 2 back to the
+    // Desert Eagle: CS:S's.
+    chimera_sim::weapon::give(sim.app.world_mut(), a, M4);
+    sim.ticks(2);
+    assert_eq!(held(&sim, a), Some(M4));
+    assert_is(sim.app.world(), a, "combat_arms", "the M4A1");
+    sim.intent(a).select = Some(1);
+    sim.ticks(1);
+    sim.intent(a).select = None;
     sim.ticks(2);
     assert_eq!(held(&sim, a), Some(cs_weapons::DEAGLE));
     assert_is(sim.app.world(), a, "cs_source", "back to the Desert Eagle");
@@ -161,12 +176,10 @@ fn the_body_follows_the_gun() {
     sim.ticks(3);
     assert_eq!(held(&sim, a), Some(cs_weapons::DEAGLE));
     assert_eq!(body(sim.app.world(), a), Some(CS_BODY), "the Desert Eagle: CS:S's again");
-    sim.intent(a).select = Some(2);
-    sim.ticks(1);
-    sim.intent(a).select = None;
+    chimera_sim::weapon::give(sim.app.world_mut(), a, M4);
     sim.ticks(3);
-    assert_eq!(held(&sim, a), Some(KNIFE));
-    assert_eq!(body(sim.app.world(), a), Some(CA_BODY), "the knife: Combat Arms'");
+    assert_eq!(held(&sim, a), Some(M4));
+    assert_eq!(body(sim.app.world(), a), Some(CA_BODY), "the M4A1: Combat Arms'");
 }
 
 /// A minigame without the option leaves movement to its `movement` slot.
@@ -278,11 +291,12 @@ fn assert_agrees(sim: &mut NetSim, i: usize, what: &str) {
     assert!(compared > 0, "{what}: no predicted tick to compare");
 }
 
-/// Client 0's own knife (Combat Arms') and back (Q, CS:S's Glock), then
-/// the server's rung-ups (the Beretta, Combat Arms'; the Desert Eagle,
-/// CS:S's): its movement switches on its own predicted tick, as the
-/// server's does, with no prediction error while it walks; client 1 sees
-/// its body change with each.
+/// Client 0's own switches between a Combat Arms gun the server gave it
+/// (the M4A1) and its Glock (Q, then class key 1, standing and crouched),
+/// then the server's rung-ups (the Beretta, Combat Arms'; the Desert
+/// Eagle, CS:S's): its movement switches on its own predicted tick, as
+/// the server's does, seated on the same feet, with no prediction error
+/// while it walks; client 1 sees its body change with each.
 #[test]
 fn a_switch_is_predicted_without_error() {
     let mut sim = party_net(80, 7);
@@ -301,13 +315,41 @@ fn a_switch_is_predicted_without_error() {
         client_intent(sim, 0).move_axis = Vec2::ZERO;
     };
     walk(&mut sim, 30);
-    // The knife: class key 3, walking on.
+    // The knife: class key 3, walking on: the Glock's game's, CS:S's.
     client_intent(&mut sim, 0).select = Some(2);
     sim.step();
     client_intent(&mut sim, 0).select = None;
     walk(&mut sim, 60);
-    assert_eq!(client_held(&mut sim, 0), Some(KNIFE));
-    assert_moves_as(&mut sim, 0, "combat_arms", "the knife");
+    assert_eq!(client_held(&mut sim, 0), Some(cs_weapons::KNIFE));
+    assert_moves_as(&mut sim, 0, "cs_source", "the knife");
+    // The server gives it Combat Arms' M4A1 (drawn: Combat Arms').
+    let theirs = sim.character_of(0).unwrap();
+    chimera_sim::weapon::give(sim.server.app.world_mut(), theirs, M4);
+    chimera_core::core::rebase(sim.server.app.world_mut(), theirs);
+    walk(&mut sim, 60);
+    assert_eq!(client_held(&mut sim, 0), Some(M4));
+    assert_moves_as(&mut sim, 0, "combat_arms", "the M4A1");
+    reset_graphs(&mut sim);
+    for crouch in [false, true] {
+        client_intent(&mut sim, 0).crouch = crouch;
+        walk(&mut sim, 40);
+        // Q: back to the Glock, CS:S's; class key 1: the M4A1, Combat Arms'.
+        client_intent(&mut sim, 0).last_weapon = true;
+        sim.step();
+        client_intent(&mut sim, 0).last_weapon = false;
+        walk(&mut sim, 60);
+        assert_eq!(client_held(&mut sim, 0), Some(cs_weapons::GLOCK));
+        assert_moves_as(&mut sim, 0, "cs_source", "the Glock again");
+        client_intent(&mut sim, 0).select = Some(0);
+        sim.step();
+        client_intent(&mut sim, 0).select = None;
+        walk(&mut sim, 60);
+        assert_eq!(client_held(&mut sim, 0), Some(M4));
+        assert_moves_as(&mut sim, 0, "combat_arms", "the M4A1 again");
+    }
+    client_intent(&mut sim, 0).crouch = false;
+    walk(&mut sim, 40);
+    assert_no_errors(&sim, "the client's own switches, standing and crouched");
     // Q: back to the Glock.
     client_intent(&mut sim, 0).last_weapon = true;
     sim.step();

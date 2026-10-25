@@ -64,3 +64,34 @@ fn a_cs_source_gun_on_warehouse_has_a_cs_source_body_and_each_player_a_different
     seen.dedup();
     assert!(seen.len() >= 3, "free for all: a varied model per player, not one: {seen:?}");
 }
+
+/// Every CS:S gun of the gun game's ladder (and CS:S's knife) has its
+/// fire sound in the map's sound bank on both of the pool's maps: on
+/// Warehouse the guest kit brings CS:S's sounds along (before, a CS:S gun
+/// fired there in silence, the AK-47 among them).
+#[test]
+fn cs_source_guns_sound_on_both_maps() {
+    if !installs() {
+        eprintln!("skipping: needs both the CS:S and the Combat Arms installs");
+        return;
+    }
+    // The ladder's CS:S guns (minigames/gun_game_dust2.toml).
+    let ladder = ["glock", "deagle", "p90", "ak47", "awp"].map(|g| format!("cs_source:weapon_{g}"));
+    let entries: Vec<(String, String)> = cs_source::game::weapons::cs_weapons()
+        .weapons
+        .iter()
+        .filter(|w| ladder.contains(&w.id) || w.id == cs_source::game::weapons::KNIFE)
+        .filter_map(|w| w.sounds.as_ref()?.fire.clone().map(|f| (w.id.clone(), f)))
+        .collect();
+    assert!(entries.iter().any(|(id, _)| id == "cs_source:weapon_ak47"), "{entries:?}");
+    for map in ["cs_source:de_dust2", "combat_arms:warehouse"] {
+        let data = lucker_party::load_map_with(map, &chimera_world::map::MapLoadOptions::lean()).expect("loads");
+        for (gun, entry) in &entries {
+            let e = data.sounds.entry(entry).unwrap_or_else(|| panic!("{map}: no {entry} for {gun}"));
+            assert!(!e.waves.is_empty(), "{map}: {entry} ({gun}) has no wave read");
+            for w in &e.waves {
+                assert!(!data.sounds.clips[*w].samples.is_empty(), "{map}: {entry}'s wave is empty");
+            }
+        }
+    }
+}

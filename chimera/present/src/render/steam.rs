@@ -10,9 +10,17 @@
 //! camera-facing mesh per jet rebuilt per frame; the logic switches them
 //! (`EntityPart`); headless they still puff, undrawn.
 //!
+//! Heat-wave jets (Type 1, `MapSteam::heat_wave`) puff the same way but draw
+//! `HeatWaveMaterial` quads in the view plane (not rolled, size not truncated),
+//! each showing the scene behind it shifted by a random direction picked per
+//! puff each frame, fading to nothing at the quad's edge and with the puff's
+//! opacity (heatwave.wesl).
+//!
 //! Known shortcuts (docs/tech-debt.md): Steam jets
-//! (specs/source/visual_entities.md 7, `render/steam.rs`): heat-wave jets (Type
-//! 1, a refracting quad) are not drawn; the JetLength/SpreadSpeed/Speed inputs
+//! (specs/source/visual_entities.md 7, `render/steam.rs`): heat-wave jets shift
+//! the scene by a fixed 2% of the screen at most with a radial falloff, where
+//! the game's `sprites/heatwave` material refracts through its own normal map
+//! (not read); the JetLength/SpreadSpeed/Speed inputs
 //! (`SteamInputs`) change new puffs only and not the light ramp, which stays
 //! sampled along the map's jet; roll and RollSpeed are read as
 //! degrees (Q7); "drawn last frame" is approximated by the jet's place being
@@ -25,9 +33,71 @@
 //! now: de_nuke's jets puff where the steam ambient plays; a screenshot
 //! comparison settles the look (Q4).
 
-use bevy::{mesh::Indices, prelude::*};
+use bevy::{
+    asset::embedded_asset,
+    mesh::Indices,
+    prelude::*,
+    reflect::TypePath,
+    render::render_resource::AsBindGroup,
+    shader::ShaderRef,
+};
 
 use crate::map::{EntityPart, MapPart, MapSpawn, SkyboxCamera, SteamInputs, ViewModelCamera, monitor, steam::MapSteam, water};
+
+/// The scene shift of a heat-wave puff at full opacity, as a fraction of
+/// the screen.
+const HEAT_SHIFT: f32 = 0.02;
+
+/// A heat-wave jet's material: refracts the opaque scene behind its quads
+/// (heatwave.wesl); the transmissive phase.
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct HeatWaveMaterial {
+    /// x: the largest shift (fraction of the screen).
+    #[uniform(0)]
+    pub params: Vec4,
+}
+
+impl Default for HeatWaveMaterial {
+    fn default() -> Self {
+        Self {
+            params: Vec4::new(HEAT_SHIFT, 0.0, 0.0, 0.0),
+        }
+    }
+}
+
+impl Material for HeatWaveMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "embedded://chimera_present/render/heatwave.wesl".into()
+    }
+
+    /// Opaque, in the transmissive phase: it shows the scene behind it.
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Opaque
+    }
+
+    fn reads_view_transmission_texture(&self) -> bool {
+        true
+    }
+
+    fn enable_prepass() -> bool {
+        false
+    }
+
+    fn enable_shadows() -> bool {
+        false
+    }
+}
+
+/// Registers the heat-wave material. Needs rendering.
+pub struct HeatWaveMaterialPlugin;
+
+impl Plugin for HeatWaveMaterialPlugin {
+    fn build(&self, app: &mut App) {
+        embedded_asset!(app, "heatwave.wesl");
+        super::water::views_keep_transmission(app);
+        app.add_plugins(MaterialPlugin::<HeatWaveMaterial>::default());
+    }
+}
 
 struct Puff {
     position: Vec3,
@@ -211,16 +281,29 @@ pub fn update_steam(
             .filter(|(d, _)| *d > 0.0)
             .collect();
         order.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let heat = e.steam.heat_wave;
+        // A heat wave's random shift, new each frame, one per puff.
+        let shifts: Vec<[f32; 2]> = if heat {
+            order.iter().map(|_| [e.random(), e.random()]).collect()
+        } else {
+            Vec::new()
+        };
         let (mut positions, mut uvs, mut colors, mut indices) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        for (_, i) in order {
+        for (n, (_, i)) in order.into_iter().enumerate() {
             let p = &e.puffs[i];
             let half = e.steam.size(p.age);
             let alpha = e.steam.opacity(p.age, life);
             if half <= 0.0 || alpha <= 0.0 {
                 continue;
             }
-            let c = e.steam.color(p.age, life);
-            let (s, cs) = p.roll.sin_cos();
+            let c = if heat {
+                let [x, y] = shifts[n];
+                Vec3::new(x, y, 0.0)
+            } else {
+                e.steam.color(p.age, life)
+            };
+            // A heat wave stays square to the view, unrolled.
+            let (s, cs) = if heat { (0.0, 1.0) } else { p.roll.sin_cos() };
             let (r, u) = (right * cs + up * s, up * cs - right * s);
             let base = positions.len() as u32;
             for (cx, cy, tu, tv) in [
@@ -283,6 +366,7 @@ mod tests {
             texture: None,
             entity: None,
             start_on: true,
+            heat_wave: false,
         }
     }
 
@@ -300,6 +384,59 @@ mod tests {
         e.apply_inputs(None);
         assert_eq!(e.steam.length, map.length);
         assert_eq!(e.steam.speed, map.speed);
+    }
+
+    /// A heat-wave jet built into a mesh by `update_steam`, seen from the
+    /// origin down -Z.
+    fn heat_wave_mesh(heat_wave: bool) -> Mesh {
+        let mut app = App::new();
+        app.insert_resource(Time::<()>::default())
+            .init_resource::<Assets<Mesh>>()
+            .add_systems(Update, update_steam);
+        app.world_mut().spawn((Camera3d::default(), GlobalTransform::default()));
+        let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(Mesh::from(Rectangle::default()));
+        let steam = MapSteam {
+            origin: Vec3::new(0.0, 0.0, -2.0),
+            forward: -Vec3::Z,
+            right: Vec3::X,
+            up: Vec3::Y,
+            heat_wave,
+            ..jet(120.0, 80.0, 26.0)
+        };
+        app.world_mut().spawn(SteamEmitter::new(steam, mesh.clone(), 3));
+        for _ in 0..30 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_secs_f32(1.0 / 60.0));
+            app.update();
+        }
+        app.world().resource::<Assets<Mesh>>().get(&mesh).unwrap().clone()
+    }
+
+    #[test]
+    fn heat_wave_puffs_are_unrolled_view_plane_quads_with_a_random_shift() {
+        let mesh = heat_wave_mesh(true);
+        let positions = mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap().to_vec();
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR) else {
+            panic!("no colours")
+        };
+        assert!(positions.len() >= 8, "{} vertices", positions.len());
+        for (quad, c) in positions.chunks(4).zip(colors.chunks(4)) {
+            // Facing the eye (looking down -Z): one depth, axis-aligned edges.
+            assert!(quad.iter().all(|p| p[2] == quad[0][2]));
+            assert_eq!(quad[0][0], quad[1][0]);
+            assert_eq!(quad[0][1], quad[3][1]);
+            // The shift is two numbers in 0..1; alpha is the opacity.
+            assert!(c.iter().all(|v| (0.0..=1.0).contains(&v[0]) && (0.0..=1.0).contains(&v[1]) && v[2] == 0.0));
+            let alpha = c[0][3];
+            assert!(alpha > 0.0 && c.iter().all(|v| v[3] == alpha));
+        }
+        // Not the same shift for every puff.
+        assert!(colors.iter().any(|c| c[0] != colors[0][0]));
+        // Smoke is rolled (its corners are not axis-aligned) and tinted.
+        let smoke = heat_wave_mesh(false);
+        let p = smoke.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
+        assert!(p.chunks(4).any(|q| q[0][0] != q[1][0]));
     }
 
     #[test]

@@ -208,7 +208,7 @@ pub fn check(world: &World, def: &MinigameDef) -> Result<(), String> {
     let empty = WeaponCatalog::default();
     let catalog = world.get_resource::<WeaponCatalog>().unwrap_or(&empty);
     (rules.check)(def, catalog).map_err(fail)?;
-    for id in &def.spawn.kit {
+    for id in def.spawn.kit.all() {
         weapon(def, catalog, id).map_err(fail)?;
     }
     for (name, value) in &def.modifiers {

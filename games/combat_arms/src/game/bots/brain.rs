@@ -540,6 +540,9 @@ struct Gun {
     clip: u32,
     reserve: u32,
     count: Option<u32>,
+    /// Its data slot (`Weapon::slot`: 0 primary, 1 secondary, 2 melee, 3
+    /// thrown).
+    data_slot: u8,
     /// A grenade's throw key and animation (s).
     throw_delay: f32,
     throw_time: f32,
@@ -934,6 +937,7 @@ fn guns_of(world: &World, e: Entity) -> Vec<Gun> {
             Some(Gun {
                 e: w,
                 id,
+                data_slot: world.get::<Weapon>(w)?.slot,
                 clip: m.map_or(0, |m| m.clip),
                 reserve: m.map_or(0, |m| m.reserve),
                 count: world.get::<Throwable>(w).map(|t| t.count),
@@ -1049,10 +1053,26 @@ fn weapon_view(ctx: &Ctx, me: &Char, t: &Char) -> Option<bool> {
 }
 
 /// The bot's kit weapon in slot `k` (0 mid primary, 1 long, 2 secondary,
-/// 3 melee, 4 grenade, 5 mine), as carried now.
+/// 3 melee, 4 grenade, 5 mine), as carried now; when it doesn't carry
+/// it, a weapon it carries of that class (ours: Lucker Party's ladder
+/// strips the kit and gives its rung's gun and the gun's game's knife,
+/// another game's weapons the bot fights with).
 fn slot<'g>(bot: &CaBot, guns: &'g [Gun], k: usize) -> Option<&'g Gun> {
-    let id = bot.kit[k]?;
-    guns.iter().find(|g| g.id == id)
+    if let Some(g) = bot.kit[k].and_then(|id| guns.iter().find(|g| g.id == id)) {
+        return Some(g);
+    }
+    let class = match k {
+        0 => 0,
+        2 => 1,
+        3 => 2,
+        _ => return None,
+    };
+    guns.iter().find(|g| g.data_slot == class && bot.kit.iter().all(|k| *k != Some(g.id)))
+}
+
+/// Whether `id` is the bot's melee weapon (`slot` 3).
+fn is_knife(bot: &CaBot, guns: &[Gun], id: &str) -> bool {
+    slot(bot, guns, 3).is_some_and(|g| g.id == id)
 }
 
 /// A weapon's AI row (None: no row).
@@ -1711,7 +1731,7 @@ fn attack(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gun], ac
     let d = u(me.pos.distance(target.pos));
     aim_and_fire(ctx, bot, me, target, guns, active, io, out);
     let gun = held_gun(ctx, bot, guns, me);
-    let melee = bot.held.is_some_and(|h| guns.iter().any(|g| g.e == h && Some(g.id) == bot.kit[3]));
+    let melee = bot.held.is_some_and(|h| guns.iter().any(|g| g.e == h && is_knife(bot, guns, g.id)));
 
     if ctx.frame {
         // Inside reach but beyond the held weapon: move in at once.
@@ -1924,7 +1944,7 @@ fn aim_and_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gu
     if bot.burst_left == 0 && now >= bot.pause_until {
         bot.burst_left = bot.dice.int(gun.burst.0.max(1), gun.burst.1.max(1));
     }
-    let knife = Some(held.id) == bot.kit[3];
+    let knife = is_knife(bot, guns, held.id);
     let in_reach = !knife || d <= KNIFE_RANGE;
     let line = fire_line(ctx, me, target.e, me.side_origin(), base);
     if let Some(Some(mate)) = line
@@ -2035,7 +2055,7 @@ fn chase_fire(ctx: &Ctx, bot: &mut CaBot, me: &Char, target: &Char, guns: &[Gun]
     }
     io.yaw = yaw;
     io.pitch = to_pitch.clamp(-TORSO_PITCH, TORSO_PITCH);
-    let knife = Some(held.id) == bot.kit[3];
+    let knife = is_knife(bot, guns, held.id);
     if !knife && held.count.is_none() && held.clip == 0 && held.reserve > 0 {
         out.refill = Some(held.e);
     }

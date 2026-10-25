@@ -27,7 +27,9 @@
 //!   no spectating, free or map camera), its upward smoothing
 //!   (specs/combat_arms/movement.md "Eye (camera) height",
 //!   `movement::CameraRise`, per rendered frame, held off in a jump or a
-//!   free-movement volume: `CaMovement::in_jump`, `eye_free`); then the
+//!   free-movement volume: `CaMovement::in_jump`, `eye_free`; only on
+//!   Combat Arms' movement: a player moving as another game, Lucker
+//!   Party's CS:S identity, keeps its own eye); then the
 //!   effect groups' camera jitter (CamJitter: a random offset in [−a, a] u
 //!   on each world axis every frame, a = `CaFx::jitter_at` the camera).
 //!
@@ -653,9 +655,11 @@ pub fn camera_motion(
         && spec.is_none_or(|s| s.pose.is_none())
         && watch.is_none_or(|w| w.0 == 0)
         && !map_view;
-    if eye {
+    // The rise is Combat Arms' movement's: a player moving as another
+    // game (Lucker Party's CS:S identity) has its own eye, unsmoothed.
+    if eye && let Some(m) = movement {
         let wanted = at.y / UNIT;
-        let in_jump = movement.is_some_and(|m| m.in_jump || m.eye_free);
+        let in_jump = m.in_jump || m.eye_free;
         let h = state.rise.step(wanted, time.delta_secs(), in_jump, movement_data());
         offset.y += (h - wanted) * UNIT;
     } else {
