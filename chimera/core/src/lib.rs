@@ -5,7 +5,8 @@
 //! installs), the environment variables and per-user folders under
 //! their new and old names (`env`), game events and the server log (`game_log`), the games an app plays
 //! (`game_registry`: what a game tells the shell about itself) and the
-//! gameplay (`gameplay`: which game fills each match-wide slot). Code
+//! gameplay (`gameplay`: which game fills each match-wide slot), the parts
+//! each game lends a game made of several (`game_parts`). Code
 //! everything else uses and that changes rarely, in its own crate so an
 //! edit higher up doesn't recompile it.
 //!
@@ -17,6 +18,7 @@ pub mod console;
 pub mod core;
 pub mod env;
 pub mod game_log;
+pub mod game_parts;
 pub mod gameplay;
 pub mod game_registry;
 pub mod metrics;

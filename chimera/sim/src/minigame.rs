@@ -47,6 +47,10 @@
 //!   default) moves on to the next map of its pool (`chimera_net::
 //!   minigame_net`).
 //!
+//! - Automatic gun games (`auto`): a ladder and a map pool made from the
+//!   parts every composed game lends (`chimera_core::game_parts`), checked
+//!   against the app (`auto::report`), as a definition's text.
+//!
 //! Known shortcuts: one round per match; the map pool's first map is the
 //! app's to load (no map vote); `character` is informational
 //! (the character kit isn't a slot yet), `movement` is set on each
@@ -60,6 +64,7 @@
 //! `Minigames::text`; `chimera_net::minigame_net`); a client can't start or
 //! restart one itself.
 
+pub mod auto;
 pub mod def;
 pub mod hud;
 pub mod ladder;

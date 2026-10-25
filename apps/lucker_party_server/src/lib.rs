@@ -3,8 +3,11 @@
 //! `PartyPartsPlugin` on Combat Arms' simulation) and the network playing a
 //! minigame, with no window, render or audio, as `combat_arms_server` is
 //! Combat Arms'. The binary (main.rs) adds the run loop, the log, the
-//! console on stdin and its output on stdout; what it serves is
-//! `ServerPlugin`, which the tests build the same way (tests/it/).
+//! console on stdin and its output on stdout (`run`, shared with the
+//! Ultimate Gun Game's server, apps/ultimate_gun_game_server); what it
+//! serves is `ServerPlugin`, which the tests build the same way (tests/it/).
+//! `parse_for`: the command line of a party app whose default minigame is
+//! another.
 //!
 //!   lucker_party_server [-port <n>] [+minigame <id>] [+map <name>] [+<command> ...]
 //!
@@ -81,6 +84,17 @@ pub enum Parsed {
 
 /// The command line (without the program's name).
 pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Parsed, String> {
+    parse_for(args, DEFAULT_MINIGAME, &lucker_party::first_map)
+}
+
+/// `parse` for a server whose minigame without `+minigame` is `minigame`,
+/// and whose minigames' first maps `first_map` gives (another party app's
+/// server: apps/ultimate_gun_game_server).
+pub fn parse_for(
+    args: impl IntoIterator<Item = String>,
+    default_minigame: &str,
+    first_map: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Parsed, String> {
     let mut map = None;
     let mut minigame = None;
     let mut console = Vec::new();
@@ -113,10 +127,10 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Parsed, String> {
             console.push(words.iter().map(|w| console::quote(w)).collect::<Vec<_>>().join(" "));
         }
     }
-    let minigame = minigame.unwrap_or_else(|| DEFAULT_MINIGAME.to_string());
+    let minigame = minigame.unwrap_or_else(|| default_minigame.to_string());
     let map = match map {
         Some(m) => m,
-        None => lucker_party::first_map(&minigame)?,
+        None => first_map(&minigame)?,
     };
     console.push(format!("minigame {minigame}"));
     Ok(Parsed::Run(Options { minigame, map, console }))
@@ -313,6 +327,103 @@ fn finish_level_change(world: &mut World) {
             world
                 .resource_mut::<Console>()
                 .print(console::Level::Error, format!("changelevel {id}: {e}"));
+        }
+    }
+}
+
+/// Frames a second at most: a packet waits at most a frame (3.3 ms).
+pub const FPS_MAX: f64 = 300.0;
+
+/// The server as the binary runs it: what this machine lacks told (and
+/// fatal stops it, but on the greybox), the start map loaded, `ServerPlugin`
+/// on a headless run loop of at most `FPS_MAX` frames a second, `more`
+/// adding another party app's parts (the Ultimate Gun Game's), the
+/// console on stdin and its output on stdout, schedules on one thread
+/// each (`single_threaded_schedules`; `CHIMERA_EXECUTOR=multi` keeps
+/// Bevy's). Returns when the server quits.
+pub fn run(options: &Options, more: impl FnOnce(&mut App)) {
+    use bevy::app::ScheduleRunnerPlugin;
+    let problems = if map_id(&options.map) == net::GREYBOX {
+        Vec::new()
+    } else {
+        lucker_party::requirements()
+    };
+    if !problems.is_empty() {
+        let (text, fatal) = lucker_party::report(&problems);
+        eprintln!("{text}");
+        if fatal {
+            std::process::exit(1);
+        }
+    }
+    let start = StartMap::load(options).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+    if let StartMap::Loaded { id, data } = &start {
+        eprintln!("loaded {id}: {} spawns, {} warnings", data.spawns.len(), data.warnings.len());
+    }
+    eprintln!("minigame {}", options.minigame);
+    let mut app = App::new();
+    chimera_world::harness::add_headless_with(
+        &mut app,
+        MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / FPS_MAX))),
+    );
+    // Ctrl+C exits as `quit` does (AppExit: `net::udp` hangs up on every
+    // client).
+    app.add_plugins((bevy::log::LogPlugin::default(), bevy::app::TerminalCtrlCHandlerPlugin))
+        .add_plugins(ServerPlugin::new(start, options));
+    more(&mut app);
+    app.add_systems(Update, (read_stdin, start_serving, print_console).chain());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    app.insert_resource(Stdin(std::sync::Mutex::new(rx)));
+    if chimera_core::env::var("CHIMERA_EXECUTOR").as_deref() != Ok("multi") {
+        chimera_world::harness::single_threaded_schedules(&mut app);
+    }
+    app.run();
+}
+
+/// Lines typed on stdin.
+#[derive(Resource)]
+struct Stdin(std::sync::Mutex<std::sync::mpsc::Receiver<String>>);
+
+fn read_stdin(stdin: Res<Stdin>, mut console: ResMut<Console>) {
+    let rx = stdin.0.lock().unwrap();
+    while let Ok(line) = rx.try_recv() {
+        console.print(console::Level::Input, format!("] {line}"));
+        console.submit(line);
+    }
+}
+
+/// Listen once the command line's console lines have run (they set the
+/// port and player count).
+fn start_serving(world: &mut World, mut started: Local<bool>) {
+    if *started {
+        return;
+    }
+    *started = true;
+    if let Err(e) = listen(world) {
+        eprintln!("error: {e}");
+        world.write_message(AppExit::error());
+    }
+}
+
+/// Console output (command results, errors) to stdout.
+fn print_console(console: Res<Console>, mut printed: Local<u64>) {
+    let new = console.printed.saturating_sub(*printed) as usize;
+    *printed = console.printed;
+    let lines = &console.output;
+    for line in &lines[lines.len().saturating_sub(new)..] {
+        if line.level != console::Level::Input {
+            println!("{}", line.text);
         }
     }
 }

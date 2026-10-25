@@ -56,7 +56,8 @@ cargo test -p cs_source --features dev --test it weapons::   # one test
                                    # file (games/cs_source/tests/it/weapons.rs)
 cargo test -p chimera_world --features dev   # one crate's own tests (also
                                    # chimera_core, chimera_present, chimera_sim, chimera_net,
-                                   # chimera_client, source_logic, cs_source, cs_source_app)
+                                   # chimera_client, source_logic, cs_source, cs_source_app,
+                                   # ultimate_gun_game)
 cargo test -p cs_source --features dev,ui   # CS:S with its front end (menus, HUD)
 cargo test -p source_formats   # one workspace crate's tests (seconds)
 cargo test -p repo_checks      # architecture and docs checks (seconds)
@@ -70,6 +71,8 @@ cargo run --features dev --bin combat_arms   # Combat Arms' skeleton (greybox)
 cargo run --features dev --bin mashup_demo   # mashup: de_dust2 played as Combat Arms
 cargo run --features dev --bin lucker_party -- +minigame originals:gun_game_dust2   # Lucker Party
 cargo run --features dev --bin lucker_party_server -- +minigame originals:gun_game_dust2 +MaxPlayer 3   # its server
+cargo run --features dev --bin ultimate_gun_game   # Ultimate Gun Game (every game's guns)
+cargo run --features dev --bin ultimate_gun_game_server -- +map greybox   # its server
 source tools/agent-env.sh && agent_run cargo ...   # several agents on one box:
                                    # shared jobserver + agents.slice (OBSERVABILITY 3e)
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)

@@ -1,0 +1,31 @@
+//! What Combat Arms lends a game made of several
+//! (`chimera_core::game_parts`; docs/plans/active/ultimate-gun-game.md):
+//! its guns by class and its knife (`weapons`, data/weapons/), its
+//! movement (`movement::ID`), its soldiers (`characters`), its HUD
+//! (`ui`, the composing app's) and its maps. The app registers it
+//! (`register_parts(&PARTS)`).
+
+use chimera_core::game_parts::{GameParts, GunClass, GunPart};
+
+const fn gun(id: &'static str, class: GunClass) -> GunPart {
+    GunPart { id, class }
+}
+
+/// Combat Arms' parts.
+pub static PARTS: GameParts = GameParts {
+    game: super::GAME,
+    guns: &[
+        gun("combat_arms:beretta_m92fs", GunClass::Pistol),
+        gun("combat_arms:mp5a4", GunClass::Smg),
+        gun("combat_arms:remington_870", GunClass::Shotgun),
+        gun("combat_arms:m4a1", GunClass::Rifle),
+        gun("combat_arms:m60", GunClass::Heavy),
+        gun("combat_arms:dragunov_svd", GunClass::Sniper),
+        gun("combat_arms:l96a1", GunClass::Sniper),
+    ],
+    knife: Some("combat_arms:m9_knife"),
+    movement: Some(super::movement::ID),
+    characters: Some("combat_arms:soldier"),
+    hud: Some(super::GAME),
+    maps: &["combat_arms:warehouse"],
+};

@@ -19,6 +19,8 @@ cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ i
   |    mashup_demo (apps/mashup_demo/)   the first mashup app: CS:S's maps played as Combat Arms (both games as libraries)
   |    lucker_party (apps/lucker_party/)   Lucker Party: minigames with both games' parts (`present`: the client)
   |    lucker_party_server (apps/lucker_party_server/)   its dedicated server: `lucker_party` without `present`
+  |    ultimate_gun_game (apps/ultimate_gun_game/)   the automatic gun game from every game's parts, on `lucker_party`
+  |    ultimate_gun_game_server (apps/ultimate_gun_game_server/)   its server: `lucker_party_server` with its parts
   |    originals (games/originals/)   the original minigames: definitions (minigames/) and rules hooks, Chimera only
   |    combat_arms_server (apps/combat_arms_server/)   Combat Arms' dedicated server: the game without `ui`
   |    combat_arms (games/combat_arms/)   Combat Arms' skeleton on Chimera, like cs_source; `ui` its HUD
@@ -38,7 +40,7 @@ chimera_present (chimera/present/)   render, audio, MapPlugin, assets (installs 
 chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; music; greybox, harness::Sim
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay
+ (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay, game_parts
                       chimera_vfs (chimera/vfs/)   the neutral VFS (`FileSource`, `Mount`) under both format crates and `mount`
                       lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```
@@ -229,6 +231,15 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   `present`, the network and the minigame the command line names
   (`+minigame <id>`, its first map unless `+map`), so it links no render
   or audio code (checked the same way as the other servers).
+- `ultimate_gun_game` (apps/ultimate_gun_game/) is the Ultimate Gun Game
+  (binary `ultimate_gun_game`; docs/plans/active/ultimate-gun-game.md):
+  Lucker Party's client app and composition (`lucker_party` used as a
+  library, the one app-on-app dependency, checked) plus a gun game made
+  at run time from each game's parts (`chimera_core::game_parts`,
+  `chimera_sim::minigame::auto`). It names no game crate.
+  `ultimate_gun_game_server` (apps/ultimate_gun_game_server/) is its
+  dedicated server: `lucker_party_server`'s run loop with those parts,
+  no presentation (checked).
 - `originals` (games/originals/) is Lucker Party's original minigames:
   their definitions, our own TOML in the repository's `minigames/`
   (compiled in, parsed at run time), and the rules hooks Chimera's

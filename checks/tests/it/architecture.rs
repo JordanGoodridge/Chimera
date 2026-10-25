@@ -31,6 +31,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Which game fills each match-wide slot (rules, HUD, binds, tick) and
     // the sets that gate a game's systems by it.
     ("gameplay", &["core", "game_registry"]),
+    // What each game lends a game made of several (plain data).
+    ("game_parts", &[]),
     ("slots", &["core"]),
     ("character", &["core", "slots"]),
     ("movement", &["core", "slots", "character"]),
@@ -944,6 +946,13 @@ fn workspace_crates() {
         the party's glue (`lucker_party`) without its default `present`, Chimera's simulation crates and the \
         games without their front ends, so no presentation or client shell links \
         (`server_builds_without_presentation`). Move what needs them into the client's side (`present`).";
+    const UGG_APP: &str = "is the Ultimate Gun Game (docs/ARCHITECTURE.md, \"Crates\"; \
+        docs/plans/active/ultimate-gun-game.md): the party's glue (`lucker_party`) with an automatic gun game made \
+        from the games' parts (`chimera_core::game_parts`). It names no game crate: what a game lends reaches it \
+        through the parts registry, and what it shares with the party stays in the party's glue.";
+    const UGG_SERVER: &str = "is the Ultimate Gun Game's dedicated server (docs/ARCHITECTURE.md, \"Crates\"): \
+        the party's server (`lucker_party_server`) and `ultimate_gun_game` without its default `present`, so no \
+        presentation or client shell links (`server_builds_without_presentation`).";
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
         into the client's side or behind `cs_source_app`'s `present`.";
@@ -1085,7 +1094,7 @@ fn workspace_crates() {
         ),
         (
             "apps/lucker_party",
-            &["mashup", "cs_source_app", "combat_arms_app"],
+            &["mashup", "cs_source_app", "combat_arms_app", "ultimate_gun_game"],
             PARTY_APP,
         ),
         (
@@ -1101,6 +1110,25 @@ fn workspace_crates() {
                 "mashup",
             ],
             PARTY_SERVER,
+        ),
+        (
+            "apps/ultimate_gun_game",
+            &["mashup", "cs_source", "source_logic", "cs_source_app", "combat_arms_app", "lucker_party_server"],
+            UGG_APP,
+        ),
+        (
+            "apps/ultimate_gun_game_server",
+            &[
+                "chimera_present",
+                "chimera_client",
+                "bevy_egui",
+                "bevy-inspector-egui",
+                "arboard",
+                "cs_source_app",
+                "combat_arms_app",
+                "mashup",
+            ],
+            UGG_SERVER,
         ),
         (
             "chimera/tools",
@@ -1423,6 +1451,17 @@ fn server_builds_without_presentation() {
          `lucker_party` without its default feature `present` (the workspace's dependency, Cargo.toml) and \
          the games without their front ends: make the new dependency optional in `lucker_party` behind \
          `present`, or move what the simulation needs out of the presentation."
+    );
+    let server = tree("ultimate_gun_game_server");
+    let present: Vec<&str> = server
+        .lines()
+        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "`ultimate_gun_game_server` depends on {present:?}. It uses `lucker_party_server` and \
+         `ultimate_gun_game` without its default feature `present` (the workspace's dependency, Cargo.toml): \
+         make the new dependency optional in `ultimate_gun_game` behind `present`."
     );
 }
 
