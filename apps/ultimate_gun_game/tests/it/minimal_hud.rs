@@ -1,0 +1,81 @@
+//! The shell's minimal HUD (`client::hud_minimal`) is up for a game that
+//! lends no HUD (the test kit's stand-in, with the minimal HUD as the
+//! fallback) with the held gun's ammo and the minigame's lines, and down
+//! while CS:S's or Combat Arms' HUD is the gameplay's.
+
+use bevy::prelude::*;
+use chimera_client::client::{
+    hud::HudRoot,
+    hud_minimal::{MinimalAmmo, MinimalHudPlugin, MinimalPanel},
+};
+use chimera_core::{
+    core::LocalPlayer,
+    game_parts::{MINIMAL_HUD, PartsRegistry},
+    gameplay::Gameplay,
+};
+use chimera_sim::minigame::{self, ladder::Ladder};
+use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim, map::MapSimPlugin};
+use combat_arms::{game::movement, harness::CaSim};
+use lucker_party::PartyPartsPlugin;
+use ultimate_gun_game::{MINIGAME, UltimateGunGamePlugin};
+
+struct StandIn;
+
+impl Plugin for StandIn {
+    fn build(&self, app: &mut App) {
+        chimera_sim::testkit::add_stand_in_game(app);
+    }
+}
+
+fn up(sim: &mut Sim) -> bool {
+    let w = sim.app.world_mut();
+    let v: Vec<Visibility> = w
+        .query::<(&HudRoot, &Visibility)>()
+        .iter(w)
+        .filter(|(r, _)| r.0 == MINIMAL_HUD)
+        .map(|(_, v)| *v)
+        .collect();
+    assert_eq!(v.len(), 1, "one root");
+    v[0] != Visibility::Hidden
+}
+
+fn text<T: Component>(sim: &mut Sim) -> String {
+    let w = sim.app.world_mut();
+    w.query_filtered::<&Text, With<T>>().single(w).unwrap().0.clone()
+}
+
+#[test]
+fn the_minimal_hud_shows_for_a_game_without_one_and_goes_down_for_the_others() {
+    let mut sim = Sim::new(
+        CaSim,
+        (
+            GreyboxMapPlugin,
+            MapSimPlugin::empty(),
+            PartyPartsPlugin,
+            StandIn,
+            UltimateGunGamePlugin { seed: 3, rungs: 64 },
+            MinimalHudPlugin,
+        ),
+    );
+    sim.app.world_mut().resource_mut::<PartsRegistry>().fallback_hud = MINIMAL_HUD;
+    minigame::start(sim.app.world_mut(), MINIGAME).expect("the automatic gun game starts");
+    let a = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), movement::ID);
+    sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
+    sim.seconds(1.5);
+    let l = sim.app.world().resource::<Ladder>().clone();
+    let rung_of = |game: &str| l.rungs.iter().position(|id| id.starts_with(&format!("{game}:"))).unwrap();
+    for game in ["cs_source", "combat_arms"] {
+        minigame::ladder::set_rung(sim.app.world_mut(), a, rung_of(game), &l);
+        sim.seconds(1.2);
+        assert_eq!(sim.app.world().resource::<Gameplay>().hud, game);
+        assert!(!up(&mut sim), "{game}'s HUD is up, the minimal one down");
+    }
+    minigame::ladder::set_rung(sim.app.world_mut(), a, rung_of("kit"), &l);
+    sim.seconds(1.2);
+    assert_eq!(sim.app.world().resource::<Gameplay>().hud, MINIMAL_HUD);
+    assert!(up(&mut sim));
+    let ammo = text::<MinimalAmmo>(&mut sim);
+    assert!(ammo.starts_with("kit:") && ammo.contains(" | "), "{ammo:?}");
+    let panel = text::<MinimalPanel>(&mut sim);
+    assert!(panel.starts_with("Ultimate Gun Game") && panel.contains('\n'), "{panel:?}");
+}

@@ -81,8 +81,13 @@ part too.
    numbers differ per game). Data-driven: a `class` key in the weapon TOML.
 4. (Done after merging the per-game kit, `def::Kit::ByGame`.) The kit is
    only a knife: grenades or a class's sidearm per game aren't parts yet.
-5. HUD fallback is a slot switch only: `MINIMAL_HUD` is "no game's HUD",
-   not a drawn minimal HUD (`chimera:minimal` doesn't exist yet).
+5. (Done in the shell: `client::hud_minimal::MinimalHudPlugin`, added by the
+   `ultimate_gun_game` binary.) A drawn minimal HUD for `MINIMAL_HUD`: health,
+   armour, held weapon id and clip/reserve, a crosshair, the minigame's lines,
+   up only while the gameplay's HUD is the minimal one. The app's fallback
+   stays the base game's (`BASE`); an app that sets `fallback_hud` to
+   `MINIMAL_HUD` gets it for a game without a HUD. Weapon shown by id (no
+   display-name registry in the shell).
 6. Body fallback is the capsule only; "another game's body" needs
    `CharacterModels::for_identity` to take a fallback game.
 7. Install filtering ignores the server's own installs and isn't re-run at
@@ -97,6 +102,6 @@ part too.
 
 - Rebuild the ladder at each rotation for the players then connected
   (gap 7).
-- Weapon class in data (gap 3); a drawn `chimera:minimal` HUD (gap 5).
+- Weapon class in data (gap 3); display names in the minimal HUD.
 - The party kit crate and a per-game bundle (gaps 1-2) when a third game
   arrives.
