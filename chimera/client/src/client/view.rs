@@ -214,6 +214,10 @@ const CEILING_CLEARANCE: f32 = 0.12;
 /// Metres (CS:S's 15 units), for any game's character.
 const CEILING_PROBE_HALF_WIDTH: f32 = 15.0 * SOURCE_UNIT;
 
+/// The probe's half width as a fraction of the hull's radius (CS:S's 15
+/// of 16 units).
+const CEILING_PROBE_HULL_FRACTION: f32 = 15.0 / 16.0;
+
 /// The eye, lowered if a ceiling sits closer above it than
 /// `CEILING_CLEARANCE` anywhere over the player's box
 /// (`CEILING_PROBE_HALF_WIDTH`). The measured CS:S box (62 units, eye at
@@ -228,13 +232,17 @@ fn below_ceiling(
     eye: Vec3,
     spatial: &SpatialQuery,
     characters: impl IntoIterator<Item = Entity>,
+    hull_radius: f32,
 ) -> Vec3 {
     let filter = SpatialQueryFilter::from_excluded_entities(characters).with_mask(crate::core::CHARACTER_FILTER);
     let reach = eye.y + CEILING_CLEARANCE;
     if reach <= 0.0 {
         return eye;
     }
-    let w = 2.0 * CEILING_PROBE_HALF_WIDTH;
+    // Never wider than the player's own hull (a narrower body, Combat
+    // Arms', would otherwise sweep into the wall it stands against and
+    // take its top for a ceiling).
+    let w = 2.0 * CEILING_PROBE_HALF_WIDTH.min(CEILING_PROBE_HULL_FRACTION * hull_radius);
     let config = ShapeCastConfig {
         max_distance: reach,
         ignore_origin_penetration: true,
@@ -262,8 +270,30 @@ pub fn camera_offset(
     spatial: &SpatialQuery,
     characters: impl IntoIterator<Item = Entity>,
 ) -> Vec3 {
+    camera_offset_for_hull(mode, origin, eye, look, spatial, characters, f32::INFINITY)
+}
+
+/// A character's hull radius, metres: half its collider's wider
+/// horizontal extent.
+pub fn hull_radius(collider: &Collider) -> f32 {
+    use avian3d::prelude::SimpleCollider;
+    let half = collider.aabb(Vec3::ZERO, Quat::IDENTITY, 0.0).size() * 0.5;
+    half.x.max(half.z)
+}
+
+/// `camera_offset` for a character whose hull is `hull_radius` metres
+/// wide (each side): the first-person ceiling probe is no wider.
+pub fn camera_offset_for_hull(
+    mode: &CameraMode,
+    origin: Vec3,
+    eye: Vec3,
+    look: Quat,
+    spatial: &SpatialQuery,
+    characters: impl IntoIterator<Item = Entity>,
+    hull_radius: f32,
+) -> Vec3 {
     if !mode.third_person {
-        return below_ceiling(origin, eye, spatial, characters);
+        return below_ceiling(origin, eye, spatial, characters, hull_radius);
     }
     let ideal = mode.ideal_dist.max(0.0) * mode.meters_per_unit;
     let Ok(dir) = Dir3::new(look * Vec3::Z) else {

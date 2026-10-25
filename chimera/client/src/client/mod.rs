@@ -656,6 +656,7 @@ fn follow_eye(
             Option<&crate::weapon::ViewPunch>,
             Option<&crate::map::interp::RenderedView>,
             Option<&crate::core::MapView>,
+            Option<&avian3d::prelude::Collider>,
         ),
         (With<LocalPlayer>, Without<FirstPersonCamera>),
     >,
@@ -690,7 +691,7 @@ fn follow_eye(
             let offset = view::camera_offset(&chase, t.translation, eye.eye_offset, look, &spatial, &characters);
             (t.translation + offset, look)
         });
-    for (at, intent, state, children, punch, view, map_view) in &players {
+    for (at, intent, state, children, punch, view, map_view, hull) in &players {
         let eye = match view {
             Some(v) => v.now,
             None => crate::map::interp::EyeView {
@@ -709,7 +710,10 @@ fn follow_eye(
             -(eye.view_roll + p.z),
         );
         let look = view::camera_look(&mode, look);
-        let offset = view::camera_offset(&mode, at.translation, eye.eye_offset, look, &spatial, &characters);
+        // The ceiling probe is no wider than the player's own hull.
+        let hull_radius = hull.map_or(f32::INFINITY, view::hull_radius);
+        let offset =
+            view::camera_offset_for_hull(&mode, at.translation, eye.eye_offset, look, &spatial, &characters, hull_radius);
         // Detached: starts where the camera is; placed in the world (the
         // camera is the player's child, so undo the player's transform).
         // Spectating while dead comes first; then the debug cameras.
