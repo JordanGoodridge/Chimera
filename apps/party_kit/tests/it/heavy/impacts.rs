@@ -27,7 +27,7 @@ use combat_arms::{
     game::{effects::sounds::CaSound, movement},
     harness::CaSim,
 };
-use lucker_party::PartyPartsPlugin;
+use party_kit::PartyPartsPlugin;
 
 /// What the impact systems wrote, kept for the test.
 #[derive(Resource, Default)]
@@ -61,7 +61,7 @@ fn party_on(id: &str) -> Option<Sim> {
         eprintln!("skipping: needs both the CS:S and the Combat Arms installs");
         return None;
     }
-    let map = lucker_party::load_map(id, 0).unwrap();
+    let map = party_kit::load_map(id, 0).unwrap();
     let mut sim = Sim::new(CaSim, (MapSimPlugin::new(map), PartyPartsPlugin));
     sim.app.init_resource::<Seen>().add_systems(Last, record);
     sim.ticks(2);

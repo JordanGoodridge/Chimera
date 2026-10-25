@@ -34,7 +34,7 @@ console) and builds from what's there.
 
 Discovery is generic: `PartsRegistry` (a `Vec`, registration order,
 `GamePartsAppExt::register_parts`), filled by the app that composes the
-games (`lucker_party::GAME_PARTS` in `PartyPartsPlugin`); no game names
+games (`party_kit::GAME_PARTS` in `PartyPartsPlugin`); no game names
 another, and a game with no `GameInfo` (the test kit's stand-in) takes
 part too.
 
@@ -55,8 +55,8 @@ part too.
   "weapon"`, `chimera:ladder`, the base game's binds/tick/bots, the kit
   by game (each gun's game's knife, the base's for a game without one).
 - The app: `apps/ultimate_gun_game` (`UltimateGunGamePlugin` on
-  `lucker_party::client_app`) and `apps/ultimate_gun_game_server`
-  (`lucker_party_server::run`). Made at `Plugin::finish`, again at
+  `party_kit::client_app`) and `apps/ultimate_gun_game_server`
+  (`party_kit::server::run`). Made at `Plugin::finish`, again at
   `PostStartup` with this machine's installs, and on `ugg_new [seed]
   [rungs] [map]` for the players connected.
 - Network (Chimera, generic): a definition made again under the same id
@@ -66,12 +66,12 @@ part too.
 
 ## Gaps this exposes
 
-1. The party's glue is two app crates (`lucker_party`, `lucker_party_server`)
-   that the Ultimate Gun Game's apps use as libraries: an app on an app,
-   allowed by name in `checks/tests/it/architecture.rs`. The clean form is
-   one party-kit crate (the two-game composition, map sources, client app,
-   server run loop) under both; not done now because the gun-game agents
-   edit `lucker_party` in parallel.
+1. (Done: `apps/party_kit`.) The party's glue was two app crates that the
+   Ultimate Gun Game's apps used as libraries, an app on an app allowed by
+   name. Now one party-kit crate (the two-game composition, map sources,
+   client app, controls, server run loop, requirements) sits under all
+   four apps, which are thin binaries; the exception is gone from
+   `checks/tests/it/architecture.rs`.
 2. The composition still names both games (`PartyPartsPlugin`,
    `MAP_SOURCES`, `with_huds`): "whatever games are linked" means
    these two. A game-agnostic composer needs each game to export a
@@ -92,7 +92,7 @@ part too.
    `CharacterModels::for_identity` to take a fallback game.
 7. Install filtering ignores the server's own installs and isn't re-run at
    rotation or when a player joins (only `ugg_new`); the client still
-   stops without CS:S (`lucker_party::requirements`), the pool's first map
+   stops without CS:S (`party_kit::requirements`), the pool's first map
    being CS:S's.
 8. Whether a claimed map really loads isn't checked (only that its game
    has a loader), and a guns-only game's guns on another game's map need

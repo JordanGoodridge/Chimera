@@ -12,22 +12,22 @@ fn main() {
             "lucker_party: minigames with Counter-Strike: Source's and Combat Arms' parts. Starts {} on\n\
              its first map; +minigame <id> picks another ({}), --map cs_source:<name> (or\n\
              combat_arms:<name>) the map. The options are the shell's (below, named after the CS:S app).\n",
-            lucker_party::DEFAULT_MINIGAME,
-            lucker_party::ids().join(", "),
+            party_kit::DEFAULT_MINIGAME,
+            party_kit::ids().join(", "),
         );
     }
-    let args = lucker_party::with_defaults(Args::parse());
+    let args = party_kit::with_defaults(Args::parse());
     // What this machine lacks, said exactly (a joiner needs both games
     // too: each player loads the maps, models and sounds from their own).
-    let problems = lucker_party::requirements();
+    let problems = party_kit::requirements();
     if !problems.is_empty() {
-        let (text, fatal) = lucker_party::report(&problems);
+        let (text, fatal) = party_kit::report(&problems);
         eprintln!("{text}");
         if fatal {
             std::process::exit(1);
         }
     }
-    let app = lucker_party::client_app(args, "Lucker Party");
+    let app = party_kit::client_app(args, "Lucker Party");
     // The executors, `CHIMERA_SYSTEM_DUMP`, then the game, as every app.
     chimera_client::client::app::run(app);
 }

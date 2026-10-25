@@ -9,13 +9,13 @@ use chimera_core::core::Dead;
 use chimera_sim::testkit;
 use chimera_world::harness::Sim;
 use combat_arms::game::{TICK_INTERVAL, movement};
-use lucker_party_server::{Parsed, ServerPlugin, StartMap};
+use party_kit::server::{Parsed, ServerPlugin, StartMap};
 
 /// The server from its command line (`args`), its console lines run (the
 /// minigame started); None when its map can't load (an install missing).
 pub fn server(args: &[&str]) -> Option<Sim> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let Ok(Parsed::Run(options)) = lucker_party_server::parse(args) else { panic!("options") };
+    let Ok(Parsed::Run(options)) = party_kit::server::parse(args) else { panic!("options") };
     let start = match StartMap::load(&options) {
         Ok(s) => s,
         Err(e) => {

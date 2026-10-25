@@ -7,10 +7,10 @@
 //! Released built alone: `cargo build --release -p lucker_party_server`
 //! (no presentation links).
 
-use lucker_party_server::{Parsed, USAGE};
+use party_kit::server::{Parsed, USAGE};
 
 fn main() {
-    let options = match lucker_party_server::parse(std::env::args().skip(1)) {
+    let options = match party_kit::server::parse(std::env::args().skip(1)) {
         Ok(Parsed::Run(o)) => o,
         Ok(Parsed::Help) => {
             println!("{USAGE}");
@@ -21,5 +21,5 @@ fn main() {
             std::process::exit(2);
         }
     };
-    lucker_party_server::run(&options, |_| {});
+    party_kit::server::run(&options, |_| {});
 }

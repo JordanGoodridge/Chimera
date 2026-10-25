@@ -7,7 +7,7 @@
 //! required, its characters, HUD and maps optional (the fallbacks:
 //! `chimera_sim::minigame::auto`).
 //!
-//! Built on the party's glue (`lucker_party`: both games composed, the
+//! Built on the party's glue (`party_kit`: both games composed, the
 //! minigame runtime and its network part, the client with both HUDs), not
 //! a fork of it: this crate adds only `UltimateGunGamePlugin`, which makes
 //! the definition `MINIGAME` from the registered games' parts once the app
@@ -24,7 +24,7 @@
 //!
 //! Known shortcuts: the ladder is made again only by `ugg_new` (not at
 //! each rotation or when a player without a game joins); with no CS:S install the
-//! client still stops (`lucker_party::requirements`), its pool's first map
+//! client still stops (`party_kit::requirements`), its pool's first map
 //! being CS:S's.
 
 use bevy::prelude::*;
@@ -70,16 +70,16 @@ pub fn options(seed: u64, rungs: usize) -> AutoOptions {
 /// right; the guns aren't checked): for the command line's first map.
 fn claimed() -> Vec<Capabilities> {
     let empty = WeaponCatalog::default();
-    lucker_party::GAME_PARTS.iter().map(|p| Capabilities::of(p, &empty, None)).collect()
+    party_kit::GAME_PARTS.iter().map(|p| Capabilities::of(p, &empty, None)).collect()
 }
 
 /// The first map of minigame `id`'s pool: the automatic gun game's (every
-/// game's maps, in turn), else an original's (`lucker_party::first_map`).
+/// game's maps, in turn), else an original's (`party_kit::first_map`).
 pub fn first_map(id: &str) -> Result<String, String> {
     if id == MINIGAME {
         return Ok(auto::map_pool(&claimed(), &|_| true).remove(0));
     }
-    lucker_party::first_map(id)
+    party_kit::first_map(id)
 }
 
 /// The automatic gun game from the games' parts in `world`, its ladder of
@@ -171,6 +171,6 @@ mod tests {
     #[test]
     fn the_first_map_is_the_pools() {
         assert_eq!(super::first_map(super::MINIGAME).unwrap(), "cs_source:de_dust2");
-        assert_eq!(super::first_map(lucker_party::DEFAULT_MINIGAME).unwrap(), "cs_source:de_dust2");
+        assert_eq!(super::first_map(party_kit::DEFAULT_MINIGAME).unwrap(), "cs_source:de_dust2");
     }
 }

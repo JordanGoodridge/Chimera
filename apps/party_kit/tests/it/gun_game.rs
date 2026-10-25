@@ -21,7 +21,7 @@ use chimera_sim::{
 };
 use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim};
 use combat_arms::{game::movement, harness::CaSim};
-use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
+use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 /// The party's simulation on the greybox, the gun game started.
 pub(crate) fn party() -> Sim {

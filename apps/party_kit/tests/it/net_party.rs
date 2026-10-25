@@ -34,7 +34,7 @@ use chimera_sim::{
 };
 use chimera_world::greybox::GreyboxMapPlugin;
 use combat_arms::{game::TICK_INTERVAL, harness::CaSim};
-use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
+use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 /// A short ladder of two CS:S guns on the greybox, which only the server
 /// has (a test's own: `minigame_load` on a real server).

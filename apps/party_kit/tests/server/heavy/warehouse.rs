@@ -85,7 +85,7 @@ fn cs_source_guns_sound_on_both_maps() {
         .collect();
     assert!(entries.iter().any(|(id, _)| id == "cs_source:weapon_ak47"), "{entries:?}");
     for map in ["cs_source:de_dust2", "combat_arms:warehouse"] {
-        let data = lucker_party::load_map_with(map, &chimera_world::map::MapLoadOptions::lean()).expect("loads");
+        let data = party_kit::load_map_with(map, &chimera_world::map::MapLoadOptions::lean()).expect("loads");
         for (gun, entry) in &entries {
             let e = data.sounds.entry(entry).unwrap_or_else(|| panic!("{map}: no {entry} for {gun}"));
             assert!(!e.waves.is_empty(), "{map}: {entry} ({gun}) has no wave read");

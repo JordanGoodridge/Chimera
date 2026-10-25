@@ -18,7 +18,7 @@ fn the_server_plays_the_gun_game() {
     let mut sim = server(&["+map", "greybox"]).expect("the greybox loads");
     assert_eq!(sim.app.world().resource::<Gameplay>().rules, MINIGAME);
     let id = sim.app.world().resource::<ActiveMinigame>().def.id.clone();
-    assert_eq!(id, lucker_party::DEFAULT_MINIGAME);
+    assert_eq!(id, party_kit::DEFAULT_MINIGAME);
     let a = soldier(&mut sim, Vec3::new(0.0, 1.0, 0.0));
     let b = soldier(&mut sim, Vec3::new(2.0, 1.0, 0.0));
     sim.seconds(1.0);

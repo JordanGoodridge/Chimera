@@ -13,7 +13,7 @@ use chimera_sim::{
 };
 use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim};
 use combat_arms::{game::movement, harness::CaSim};
-use lucker_party::PartyPartsPlugin;
+use party_kit::PartyPartsPlugin;
 use ultimate_gun_game::{MINIGAME, RUNGS, SEED, UltimateGunGamePlugin};
 
 pub(crate) fn ugg() -> Sim {
@@ -52,7 +52,7 @@ fn each_game_reports_what_it_lends() {
 }
 
 fn cs_source_guns() -> usize {
-    lucker_party::GAME_PARTS[0].guns.len()
+    party_kit::GAME_PARTS[0].guns.len()
 }
 
 #[test]

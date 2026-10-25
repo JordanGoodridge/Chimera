@@ -1,5 +1,8 @@
-//! Lucker Party (apps/lucker_party, crate `lucker_party`, binary
-//! `lucker_party`; docs/plans/active/architecture-review.md L2): minigames,
+//! The party kit (apps/party_kit, crate `party_kit`; docs/plans/active/
+//! architecture-review.md L2, ultimate-gun-game.md gap 1): what Lucker Party
+//! (apps/lucker_party, apps/lucker_party_server) and the Ultimate Gun Game
+//! (apps/ultimate_gun_game, apps/ultimate_gun_game_server) share, so the four
+//! apps are thin binaries and none depends on another app. Minigames,
 //! each a data file (`minigames/`, the `originals` crate) played on
 //! Chimera's mode runtime (`chimera_sim::minigame`), with both games' parts:
 //! Combat Arms' soldiers, movement, HUD and guns, CS:S's maps, map logic,
@@ -34,7 +37,7 @@
 //!   (`DEFAULT_MINIGAME` without one) and its pool's first map, which the
 //!   app and the server load unless the command line names a map.
 //! - With `present` (the default; not the dedicated server's,
-//!   apps/lucker_party_server): `ClientPlugin` (the shell with this app's
+//!   `server`): `ClientPlugin` (the shell with this app's
 //!   hooks and both games' HUDs, the local player's game's drawn),
 //!   `client_app` (the whole client app, the binary's and the Ultimate
 //!   Gun Game's, apps/ultimate_gun_game) and `with_defaults` (the command
@@ -413,6 +416,7 @@ pub fn ids() -> Vec<String> {
         .collect()
 }
 
+pub mod server;
 #[cfg(feature = "present")]
 pub mod controls;
 #[cfg(feature = "present")]
@@ -464,7 +468,7 @@ mod tests {
         assert!(wrong[0].text.contains("has no `cstrike` folder") && wrong[0].fatal);
         assert!(wrong[1].text.contains("has no `Game` folder"));
         // Installed, one key missing: only that key is named.
-        let dir = here.join("../../target/lucker_party_missing_test");
+        let dir = here.join("../../target/party_kit_missing_test");
         std::fs::create_dir_all(dir.join("cstrike")).unwrap();
         std::fs::create_dir_all(dir.join("Game")).unwrap();
         let one = super::missing(Some(&dir), Some(&dir), &["V1"]);

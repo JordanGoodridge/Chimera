@@ -11,7 +11,7 @@ use chimera_client::client::input::{MouseSettings, mouse_cvars};
 use chimera_core::console::{Console, ConsolePlugin, config_text};
 use chimera_world::map::{GameViewModelFovs, ViewModelSettings};
 use combat_arms::{game::options::CaOptionsPlugin, ui::options_apply::CaOptionsApplyPlugin};
-use lucker_party::{PartyMousePlugin, controls::cvar_value};
+use party_kit::{PartyMousePlugin, controls::cvar_value};
 
 /// The party's settings, as far as they are saved: a console, the shell's
 /// mouse, Combat Arms' options (and what applies them), the party's mouse
@@ -25,7 +25,7 @@ fn app(config: Option<&str>) -> App {
     mouse_cvars(&mut app);
     app.add_plugins((CaOptionsPlugin, CaOptionsApplyPlugin, PartyMousePlugin));
     combat_arms::game::view_model::register_fov_cvar(&mut app);
-    lucker_party::add_view_model_fovs(&mut app);
+    party_kit::add_view_model_fovs(&mut app);
     if let Some(text) = config {
         let lines: Vec<String> = text.lines().map(String::from).collect();
         app.add_systems(Startup, move |mut console: ResMut<Console>| {

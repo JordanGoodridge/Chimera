@@ -16,7 +16,7 @@ use chimera_client::client::{
 use chimera_core::{console::Console, core::LocalPlayer};
 use chimera_world::harness::Sim;
 use combat_arms::game::movement::CaMovement;
-use lucker_party::controls::{self, Action, ControlsPage, ControlsPlugin};
+use party_kit::controls::{self, Action, ControlsPage, ControlsPlugin};
 
 use crate::gun_game::{party, place, soldier};
 use crate::switches::set_rung;
@@ -190,7 +190,7 @@ fn page_app() -> App {
         grab_mode: CursorGrabMode::Locked,
         ..default()
     });
-    for (k, v) in lucker_party::GAME_BINDS {
+    for (k, v) in party_kit::GAME_BINDS {
         app.world_mut().resource_mut::<Console>().ship_layer(k, v);
     }
     app.world_mut().resource_mut::<Console>().submit("bind space +jump; bind shift +sprint");
