@@ -22,6 +22,9 @@ Performance").
 - A/B: `-- +r_novis 1` (no PVS culling) or `CHIMERA_MERGED_WORLD=1` (the
   world as one mesh per material, nothing culled: the code before
   chunking); `CHIMERA_MERGE_BRUSHES=0` (brush entities not merged).
+- One second of a frame's spans to look at yourself (any app, Windows
+  too): `--features trace` and `trace_capture 1`, or Tracy ("See a frame
+  yourself" below).
 - Per-system CPU time: a `--features profile` build writes a Chrome
   trace (`TRACE_CHROME=<file>`, else `trace-*.json` in the working
   directory); `tracesum <file> --skip 200` prints the main and render
@@ -1324,6 +1327,131 @@ milliseconds but rounds differently: needs the movement tests' check);
 the dedicated servers' level change (`swap_map`) and the startup `--map`
 still compute in place (on threads now for the props); meshes and
 materials are still built in the swap frame.
+
+## Lucker Party (2026-10-24)
+
+The gun game ran at 40-50 fps on the user's Windows PC, which runs CS:S
+(and our `cs_source` app) smoothly. Measured here with `chimera_perf_log
+1` (playtest build, 1280x720, de_dust2, the default 3 bots; `cs_source`
+with `+bot_quota 3`), the last readout of 2400 frames, three interleaved
+rounds (load 4-19 on 12 cores; frames sit at the 60 Hz cap here, so read
+the CPU and instruction columns):
+
+| build (round, load) | main CPU ms p50 | main instr less ticks p50 | tick CPU ms / instr p50 | render CPU ms p50 | render instr p50 |
+|---|---|---|---|---|---|
+| party before (r1, 8) | 14.04 | 109.7M | 2.07 / 8.31M | 5.86 | 17.7M |
+| party after (r1, 5) | 5.44 | 15.1M | 1.77 / 6.73M | 5.29 | 17.8M |
+| cs_source (r1, 4) | 3.91 | 12.8M | 0.93 / 3.17M | 4.24 | 14.7M |
+| party before (r2, 4) | 13.70 | 110.2M | 2.13 / 8.39M | 5.58 | 17.7M |
+| party after (r2, 5) | 5.57 | 15.3M | 1.80 / 6.72M | 5.30 | 17.8M |
+| cs_source (r2, 4) | 4.10 | 12.5M | 0.97 / 3.22M | 4.79 | 14.7M |
+| party before (r3, 19) | 21.41 (frame p50 24.5) | 110.7M | 3.01 / 8.66M | 8.15 | 19.9M |
+| party after (r3, 14) | 7.25 (frame p50 16.7) | 16.4M | 2.38 / 6.74M | 7.34 | 18.8M |
+| cs_source (r3, 13) | 5.47 (frame p50 16.7) | 13.3M | 1.32 / 3.28M | 6.49 | 15.5M |
+
+(These runs had `chimera_perf 3`, whose logging adds 3-5M instructions
+to the main world; the first, without it: party 104.5M, cs_source 7.4M.)
+Warehouse (the party on Combat Arms' map, r3): main CPU 19.4 -> 5.8 ms,
+main instructions 101.7M -> 7.6M, ticks 8.15M -> 5.79M; its render world
+(9.4 ms, 27.5M) is now the larger, Combat Arms' map itself.
+
+What cost it, from traces (`--features profile`, `tracesum`):
+
+- **Combat Arms' front end cloned its UI data every frame.** The options
+  screen's, the lobby's and the chat panel's per-frame systems
+  (`ui::options::update`, `ui::lobby::update`, `ui::talk::update`)
+  each cloned `CaUi`, the install's whole string table with it, even
+  with the screen down: 6.7 + 5.0 + 4.4 ms a frame in a trace, about
+  95M instructions; the main world's other work was a tenth of that.
+  On a slower CPU that alone is the 40-50 fps. They now borrow it, and
+  the options screen and the lobby clone it only while they are up (the
+  lobby's `sync` cloned it for nothing). The Combat Arms app paid the
+  same. `combat_arms` test `ui::frame_cost` compares frames with a
+  200 000-string table against frames with ours.
+- **Bots' senses rebuilt their queries every tick.** `bots::brain::think`
+  made seven `QueryState`s a tick (each walks every archetype; the party
+  has many) and cloned `BotData`: 0.55 ms a tick in a trace, now 0.05
+  (the queries kept in the system's `Local`, the data borrowed).
+- **Combat Arms' animation posed every body twice a tick** (the
+  client's aim and the server's, which differ only in the aim):
+  `CaAnim::posed_both` poses the layers once.
+- Bullet marks rewrote their material and transform every frame (a
+  material borrowed mutably is prepared for the GPU again): now only on
+  a change. Probe-lit models' materials are only borrowed mutably when
+  probe lit (`render::probe_lit::relight`).
+
+Left (the party's main world is still ~35% over `cs_source`'s, its
+ticks 1.8x, its render world ~15%; frame times on the box sat at the
+60 Hz cap for both after the fix). Ideas, each a small measure-once task:
+
+- Combat Arms' animation (`characters::drive`, 0.38 ms a tick traced):
+  `Rig::posed` clones every node's and socket's name per pose and
+  `Posed::node` finds names by a case-blind linear search; share the
+  names (`Arc`) and look the aim and hit nodes up once per rig.
+- Combat Arms' exclusive systems that build `world.query` states every
+  call (perks `supplies` and `perk_tick`, `roster::keep_quota` and
+  `arm`, `objects::gather`, `grenades::server_frames`, the minigame
+  runtime's `respawn_dead`, `end_protection`, `join`,
+  `weapon::give_starting_weapons`: 0.02-0.05 ms each a tick traced):
+  keep them in a `Local` as `bots::brain::SnapQueries` does.
+- The predicted schedules with both games' guns (`run_predicted`, 0.65
+  vs 0.30 ms a tick): Select has 13 systems (CS:S 1), Weapons 17 (8).
+- The render world: 65k triangles drawn vs 31k (Combat Arms' soldiers),
+  5-6 materials still modified a frame (tracers and particles: real
+  changes, but worth a check), `write_binned_instance_buffers` and
+  `prepare_preprocess_bind_groups` higher than CS:S's.
+- A `perfgate` scenario for the party (it lives in a game's tools crate,
+  which can't depend on the app; a party binary of its own).
+
+## See a frame yourself
+
+Three features, on every app with a window (`cs_source` at the root,
+`lucker_party`, `combat_arms_app`, `mashup_demo`):
+
+- `trace`: spans for every system, schedule and render step, and the
+  console command `trace_capture [seconds]` (default 1, at most 30),
+  which records one window of them into `trace-<map>-<unix time>.json`
+  in the working directory (`CHIMERA_TRACE_DIR` names another);
+  `CHIMERA_TRACE_SECONDS=1` records one by itself, `CHIMERA_TRACE_AFTER`
+  seconds after start (default 10). A second of the gun game is
+  40-110 MB of JSON (5-10 MB gzipped). The file has span names, their
+  fields (system names) and thread names only: no source paths or user
+  names (`client::trace_capture`).
+- `profile`: `trace`, plus Bevy's `trace_chrome` writing the whole run
+  (`TRACE_CHROME=<file>`; large: keep runs short), and the hitch log's
+  spans.
+- `tracy`: `trace`, plus Bevy's `trace_tracy`: the Tracy profiler shows
+  the frames live (spans per thread, frame marks, and through Bevy's
+  render diagnostics, which the client turns on, the GPU's passes; not
+  tried on the dev box, which has no Tracy). Bevy 0.20 uses `tracy-client` 0.19 (`tracy-client-sys`
+  0.30.1, Tracy 0.14.1): use the **Tracy 0.14.1** profiler (Windows:
+  `windows-0.14.1.zip` from https://github.com/wolfpld/tracy/releases;
+  another version won't connect). Start the game, then Tracy's Connect
+  (localhost).
+
+Windows, from the repo root (`scripts\profile.ps1` pulls and builds the
+playtest profile with the feature; a first build takes a while):
+
+```
+.\scripts\profile.ps1 lucker_party          # 1 s at 20 s in -> trace-de_dust2-<time>.json
+.\scripts\profile.ps1 lucker_party --map combat_arms:warehouse
+.\scripts\profile.ps1 -tracy lucker_party   # live in Tracy 0.14.1
+.\scripts\profile.ps1                       # the CS:S app (combat_arms, mashup_demo too)
+```
+
+Or by hand: `cargo run --profile playtest -p lucker_party --features
+trace --bin lucker_party`, then `` ` `` (console) `trace_capture 1` at the
+moment to look at. Linux: `scripts/profile.sh`, the same arguments.
+
+Reading it: open https://ui.perfetto.dev, "Open trace file", pick the
+JSON (it stays in the browser). Each thread is a track: `main` runs the
+main world (`main app` per frame, its schedules and systems as nested
+slices), `Render thread` the render world (`sub app: name=RenderApp`),
+`Compute Task Pool (n)` the parallel parts. Click a slice for its
+length; select a range and the table below sums the slices by name
+(sort by wall duration to find what a frame spends). On the dev box,
+`tracesum <file> --skip 0` prints the same summary as text (systems by
+self time per frame).
 
 ## Test cycle
 

@@ -264,6 +264,10 @@ dev = ["cs_source_app/dev"]
 # CPU profile: every system and render step as a span in a Chrome trace
 # (docs/performance.md). Slower; only for measuring.
 profile = ["cs_source_app/profile"]
+# A short window of spans (`trace_capture`), the Tracy profiler live:
+# docs/performance.md, "See a frame yourself".
+trace = ["cs_source_app/trace"]
+tracy = ["cs_source_app/tracy"]
 
 # Our own code: a little optimization so the game is playable in debug.
 [profile.dev]

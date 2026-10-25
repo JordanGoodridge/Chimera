@@ -202,9 +202,23 @@ fn decals(
         let color = Color::srgba(m.grey * 2.0, m.grey * 2.0, m.grey * 2.0, alpha);
         match slots.remove(&i) {
             Some((_, mut t, mat, mut v)) => {
-                *t = pose;
-                *v = Visibility::Inherited;
-                if let Some(mut mat) = materials.get_mut(&mat) {
+                // A mark stays put: rewriting its transform every frame
+                // made Bevy propagate it again.
+                if *t != pose {
+                    *t = pose;
+                }
+                if *v != Visibility::Inherited {
+                    *v = Visibility::Inherited;
+                }
+                // Written only when it changes: a material borrowed
+                // mutably is prepared for the GPU again (a mark that
+                // isn't fading every frame; docs/performance.md, "Lucker
+                // Party").
+                let stale = materials.get(&mat).is_some_and(|m| {
+                    let want = if m.base_color_texture.is_some() { color } else { color.with_alpha(alpha * 0.8) };
+                    m.base_color != want || (tex.is_some() && m.base_color_texture != tex)
+                });
+                if stale && let Some(mut mat) = materials.get_mut(&mat) {
                     mat.base_color = if mat.base_color_texture.is_some() { color } else { color.with_alpha(alpha * 0.8) };
                     if tex.is_some() && mat.base_color_texture != tex {
                         mat.base_color_texture = tex;

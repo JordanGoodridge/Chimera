@@ -282,9 +282,27 @@ impl CaAnim {
 
     /// The posed skeleton now, with aim (`server`: the server's shares).
     pub fn posed(&self, crouch: f32, squash: f32, server: bool) -> Posed {
+        let mut posed = self.unaimed(crouch, squash);
+        posed.aim(&records::builtin().skeleton(self.skeleton).aim, self.pitch, self.twist, server);
+        posed
+    }
+
+    /// `posed` for the client's view and the server's (`posed(.., false)`,
+    /// `posed(.., true)`), the layers posed once: only the aim differs.
+    pub fn posed_both(&self, crouch: f32, squash: f32) -> (Posed, Posed) {
+        let aim = &records::builtin().skeleton(self.skeleton).aim;
+        let mut seen = self.unaimed(crouch, squash);
+        let mut server = seen.clone();
+        seen.aim(aim, self.pitch, self.twist, false);
+        server.aim(aim, self.pitch, self.twist, true);
+        (seen, server)
+    }
+
+    /// The pose before the aim.
+    fn unaimed(&self, crouch: f32, squash: f32) -> Posed {
         let d = &self.driver;
         let skel = records::builtin().skeleton(self.skeleton);
-        let mut posed = match &self.rig {
+        match &self.rig {
             Some(rig) => {
                 let pose = if self.death.is_some() {
                     // A body has only its main tracker (10).
@@ -295,9 +313,7 @@ impl CaAnim {
                 rig.posed(&pose, crouch)
             }
             None => skeleton::fallback(skel, squash),
-        };
-        posed.aim(&skel.aim, self.pitch, self.twist, server);
-        posed
+        }
     }
 }
 
@@ -838,12 +854,16 @@ fn drive(
         } else {
             intent.yaw + anim.twist
         };
-        let posed = anim.posed(r, squash, false);
-        *pose = pose_of(&anim, &posed, body_yaw, squash);
-        if !client {
-            let server = anim.posed(r, squash, true);
+        let posed = if client {
+            let posed = anim.posed(r, squash, false);
+            *pose = pose_of(&anim, &posed, body_yaw, squash);
+            posed
+        } else {
+            let (posed, server) = anim.posed_both(r, squash);
+            *pose = pose_of(&anim, &posed, body_yaw, squash);
             pose.server_spheres = pose_of(&anim, &server, body_yaw, squash).spheres;
-        }
+            posed
+        };
         if let (true, Some(mut animator)) = (anim.rig.is_some() && ours, animator) {
             animator.fixed = Some(Arc::new(posed.locals_rh()));
             if animator.main.is_none() {
