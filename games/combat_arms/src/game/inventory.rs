@@ -140,7 +140,7 @@ use crate::{
     },
     map::{PhysicsProp, interp::NetDrawn, loose::LooseItem},
     weapon::{
-        CarriedAppExt, Inventory, Magazine, NetPart, OwnSelection, SelectWeapons, ShellReload, StartingWeapons, Weapon,
+        CarriedAppExt, Inventory, Magazine, NetPart, OwnSelection, SelectWeapons, ShellReload, SlotLastInv, StartingWeapons, Weapon,
         WeaponEvent, WeaponEventKind, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
         grenade::{KeepSpent, Throwable},
@@ -646,11 +646,14 @@ fn order(inv: &Inventory, class: u8, weapons: &Query<WeaponInfo>) -> Vec<Entity>
 /// Class keys, Q and the auto-switch, before Chimera's selection applies
 /// `Inventory::wanted`; a new character draws its lowest class (1).
 fn select(
-    mut owners: Query<(Entity, &Intent, &mut Inventory, Option<&mut CaSelection>, Option<&Health>), Without<NetDrawn>>,
+    mut owners: Query<
+        (Entity, &Intent, &mut Inventory, Option<&mut CaSelection>, Option<&Health>, Has<SlotLastInv>),
+        Without<NetDrawn>,
+    >,
     weapons: Query<WeaponInfo>,
     mut commands: Commands,
 ) {
-    for (owner, intent, mut inv, sel, health) in &mut owners {
+    for (owner, intent, mut inv, sel, health, by_slot) in &mut owners {
         let Some(mut sel) = sel else {
             let lowest = inv
                 .weapons
@@ -711,7 +714,13 @@ fn select(
         sel.prev_last = intent.last_weapon;
         if alive
             && q
-            && let Some(prev) = sel.previous
+            && let Some(prev) = if by_slot {
+                // A character that follows its weapon (the gun game): the
+                // most recently drawn other slot, whatever was swapped.
+                inv.slot_target(|w| weapons.get(w).ok().map(|i| i.0.slot))
+            } else {
+                sel.previous
+            }
             && inv.active != Some(prev)
         {
             let target = weapons.get(prev).ok().filter(|_| inv.weapons.contains(&prev));

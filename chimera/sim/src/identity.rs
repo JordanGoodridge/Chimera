@@ -30,6 +30,12 @@
 //!   keeps only the active one up); a game whose parts lend no HUD
 //!   (`chimera_core::game_parts`) shows the registry's fallback.
 //!
+//! - `lastinv` (Q) by slot (`SlotLastInv`, both sides): the character goes
+//!   back to the most recently drawn other slot that holds a weapon
+//!   (`Inventory::slot_mru`), so a rung's swap of the gun and the knife
+//!   (`minigame::ladder`, even into another slot or game) leaves Q going
+//!   gun <-> knife. Plain apps keep their own `lastinv`.
+//!
 //! `held_game`: the game of what a character holds (the weapon it
 //! switches to this tick, else the one in hand); `follow` and `unfollow`
 //! for the minigame runtime's spawns.
@@ -41,7 +47,7 @@ use crate::{
     map::interp::NetDrawn,
     movement::noclip,
     slots::{FollowsWeapon, GameIdentity, MovementRegistry, MovementSlot, set_movement},
-    weapon::{Inventory, SelectWeapons, Weapon},
+    weapon::{Inventory, SelectWeapons, SlotLastInv, Weapon},
 };
 use chimera_core::{game_parts::PartsRegistry, game_registry::Games, gameplay::Gameplay};
 
@@ -57,7 +63,7 @@ impl Plugin for IdentityPlugin {
                 Predict::Select,
                 follow_weapon.in_set(SelectWeapons).after(crate::weapon::select_weapons),
             )
-            .add_systems(PreUpdate, hud_follows_identity);
+            .add_systems(PreUpdate, (hud_follows_identity, slot_lastinv_follows));
     }
 }
 
@@ -105,12 +111,30 @@ pub fn follow_weapon(
     }
 }
 
+/// A character that follows its weapon goes by slot for `lastinv`
+/// (`SlotLastInv`), on every machine; one that stops, by weapon again.
+fn slot_lastinv_follows(
+    added: Query<Entity, (Added<FollowsWeapon>, Without<SlotLastInv>)>,
+    mut removed: RemovedComponents<FollowsWeapon>,
+    mut commands: Commands,
+) {
+    for e in &added {
+        commands.entity(e).insert(SlotLastInv);
+    }
+    for e in removed.read() {
+        if let Ok(mut c) = commands.get_entity(e) {
+            c.remove::<SlotLastInv>();
+        }
+    }
+}
+
 /// `follow_weapon` for one character at once (a respawn's weapons given:
 /// the life starts as its weapon's game).
 pub fn follow(world: &mut World, e: Entity) {
     if world.get::<FollowsWeapon>(e).is_none() {
         return;
     }
+    world.entity_mut(e).insert(SlotLastInv);
     let Some(inv) = world.get::<Inventory>(e) else { return };
     let Some(game) = held_game(inv, |w| world.get::<Weapon>(w)).map(str::to_string) else { return };
     let id = wanted_movement(world.get_resource::<MovementRegistry>(), world.get::<MovementSlot>(e), &game);
@@ -126,7 +150,7 @@ pub fn follow(world: &mut World, e: Entity) {
 /// (the app's again).
 pub fn unfollow(world: &mut World, e: Entity) {
     if let Ok(mut ent) = world.get_entity_mut(e) {
-        ent.remove::<(FollowsWeapon, GameIdentity)>();
+        ent.remove::<(FollowsWeapon, GameIdentity, SlotLastInv)>();
     }
 }
 

@@ -103,6 +103,13 @@ pub struct WeaponFrame;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SelectWeapons;
 
+/// On a character whose `lastinv` goes by weapon slot, most recently
+/// drawn first (`Inventory::slot_mru`), not by weapon: a swap of the
+/// weapon in a slot (the gun game's rungs) keeps the order. Set on both
+/// sides for a character that follows its weapon (`identity`).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct SlotLastInv;
+
 /// A game that turns slot keys and `lastinv` (`Intent::select`,
 /// `Intent::last_weapon`) into switches by its own rules, with a system
 /// before `SelectWeapons` setting `Inventory::wanted` (Combat Arms' class
@@ -631,6 +638,11 @@ pub struct Inventory {
     pub active: Option<Entity>,
     /// The previously active weapon (Source `lastinv`).
     pub last: Option<Entity>,
+    /// The weapon slots drawn, most recent first (every deploy moves its
+    /// weapon's slot to the front): `lastinv` by slot for a character that
+    /// follows its weapon (`slot_target`), so a swap of the weapon in a
+    /// slot (the gun game's rungs) keeps the order.
+    pub slot_mru: Vec<u8>,
     /// Switch to this weapon at the start of the next tick.
     pub wanted: Option<Entity>,
     /// No weapon logic before this time (Source's player "next attack").
@@ -645,6 +657,42 @@ pub struct Inventory {
 }
 
 impl Inventory {
+    /// `slot` drawn just now: first in the order.
+    pub fn touch_slot(&mut self, slot: u8) {
+        self.slot_mru.retain(|s| *s != slot);
+        self.slot_mru.insert(0, slot);
+    }
+
+    /// A weapon slot's place taken over by another (a rung's gun in
+    /// another class, a knife of the other game): the order stays.
+    pub fn rename_slot(&mut self, old: u8, new: u8) {
+        if old == new {
+            return;
+        }
+        for s in &mut self.slot_mru {
+            if *s == old {
+                *s = new;
+            }
+        }
+        let mut seen = Vec::new();
+        self.slot_mru.retain(|s| {
+            let fresh = !seen.contains(s);
+            seen.push(*s);
+            fresh
+        });
+    }
+
+    /// `lastinv` by slot: a weapon of the most recently drawn slot other
+    /// than the active weapon's that holds one (the one last in hand when
+    /// several share it). `slot_of` gives a weapon's slot.
+    pub fn slot_target(&self, slot_of: impl Fn(Entity) -> Option<u8>) -> Option<Entity> {
+        let here = self.active.and_then(&slot_of);
+        self.slot_mru.iter().filter(|s| Some(**s) != here).find_map(|s| {
+            let held = || self.weapons.iter().copied().filter(|w| slot_of(*w) == Some(*s));
+            self.last.filter(|l| held().any(|w| w == *l)).or_else(|| held().next())
+        })
+    }
+
     /// Attack2 as the weapon frame last saw it (the last tick's, before
     /// this tick's frame): a game's own press edges (Combat Arms' zoom).
     pub fn prev_secondary(&self) -> bool {
@@ -1352,7 +1400,7 @@ pub enum WeaponEventKind {
 // Selection and deploy
 
 pub(crate) fn select_weapons(
-    mut owners: Query<(Entity, &Intent, &mut Inventory, &Transform), Without<NetDrawn>>,
+    mut owners: Query<(Entity, &Intent, &mut Inventory, &Transform, Has<SlotLastInv>), Without<NetDrawn>>,
     mut weapons: Query<(
         &Weapon,
         &mut WeaponState,
@@ -1369,7 +1417,7 @@ pub(crate) fn select_weapons(
 ) {
     let now = clock.now;
     let keys = own.is_none();
-    for (owner, intent, mut inv, at) in &mut owners {
+    for (owner, intent, mut inv, at, by_slot) in &mut owners {
         inv.weapons.retain(|w| weapons.contains(*w));
         // Slot keys on press: the first weapon in that slot, or the next one
         // after the active weapon when several share it; a pick (the HUD's
@@ -1402,7 +1450,11 @@ pub(crate) fn select_weapons(
         }
         inv.prev_select = intent.select;
         if keys && intent.last_weapon && !inv.prev_last {
-            inv.wanted = inv.last.filter(|l| inv.weapons.contains(l));
+            inv.wanted = if by_slot {
+                inv.slot_target(|w| weapons.get(w).ok().map(|(w, ..)| w.slot))
+            } else {
+                inv.last.filter(|l| inv.weapons.contains(l))
+            };
         }
         inv.prev_last = intent.last_weapon;
 
@@ -1437,6 +1489,7 @@ pub(crate) fn select_weapons(
         st.fired_on_empty = false;
         inv.last = inv.active;
         inv.active = Some(want);
+        inv.touch_slot(w.slot);
         match w.max_speed {
             Some(s) => commands.entity(owner).insert(MaxSpeed(s)),
             None => commands.entity(owner).remove::<MaxSpeed>(),

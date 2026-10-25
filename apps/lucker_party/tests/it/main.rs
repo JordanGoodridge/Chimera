@@ -10,6 +10,7 @@ mod gun_game;
 mod hud;
 mod identity;
 mod net_gun_game;
+mod persist;
 mod net_party;
 mod results_hud;
 mod rotation;

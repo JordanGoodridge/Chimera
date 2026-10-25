@@ -21,9 +21,13 @@
 //!   `clear_line`, `first_pressed`), not a copy of either game's options
 //!   (CS:S's keyboard dialog, Combat Arms' profile screen).
 //!
+//! Each tab also has its numbers (`Setting`, a `-` and a `+` over a saved
+//! cvar): the shared tab the mouse sensitivity, each game's tab its gun
+//! view FOV (`viewmodel_fov`, `ca_viewmodel_fov`).
+//!
 //! Known shortcuts: the rows are the movement and combat basics (each
-//! game's full lists are in its own options); mouse look and the other
-//! settings (sensitivity, FOV) aren't on the page; a left click doesn't
+//! game's full lists are in its own options); the other settings aren't
+//! on the page; a left click doesn't
 //! bind while the pointer is on the page's buttons (it picks the row);
 //! the page is drawn plainly, not in a game's style.
 
@@ -62,12 +66,30 @@ pub const SHARED: &[Row] = &[
     row("Last weapon", "lastinv"),
 ];
 
-/// A game's page: its id, the tab's name and the rows only it has.
+/// A number the page sets (a saved cvar): `-` and `+` buttons move it by
+/// `step` within `min..=max`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Setting {
+    pub label: &'static str,
+    pub cvar: &'static str,
+    pub min: f32,
+    pub max: f32,
+    pub step: f32,
+}
+
+/// The shared tab's numbers: the mouse look (every game's; the party keeps
+/// it in the shell's `sensitivity`, not in Combat Arms' profile).
+pub const SHARED_SETTINGS: &[Setting] =
+    &[Setting { label: "Mouse sensitivity", cvar: "sensitivity", min: 0.1, max: 20.0, step: 0.1 }];
+
+/// A game's page: its id, the tab's name, the rows only it has and its
+/// numbers.
 #[derive(Clone, Copy, Debug)]
 pub struct GameRows {
     pub game: &'static str,
     pub label: &'static str,
     pub rows: &'static [Row],
+    pub settings: &'static [Setting],
 }
 
 /// Each game's own rows, in tab order (after "Shared").
@@ -76,11 +98,13 @@ pub const GAMES: &[GameRows] = &[
         game: combat_arms::game::GAME,
         label: "Combat Arms",
         rows: &[row("Sprint", "+sprint"), row("Walk", "+walk"), row("Crouch", "+duck")],
+        settings: &[Setting { label: "Gun view FOV", cvar: "ca_viewmodel_fov", min: 63.74, max: 110.0, step: 1.0 }],
     },
     GameRows {
         game: cs_source::game::GAME,
         label: "Counter-Strike: Source",
         rows: &[row("Walk", "+speed"), row("Duck", "+duck")],
+        settings: &[Setting { label: "Gun view FOV", cvar: "viewmodel_fov", min: 54.0, max: 110.0, step: 1.0 }],
     },
 ];
 
@@ -108,6 +132,16 @@ pub fn tab_named(name: &str) -> Option<usize> {
         let (label, game) = (tab_label(*t), tab_game(*t));
         label.eq_ignore_ascii_case(name) || game.is_some_and(|g| g.eq_ignore_ascii_case(name))
     })
+}
+
+pub fn tab_settings(tab: usize) -> &'static [Setting] {
+    tab.checked_sub(1).and_then(|i| GAMES.get(i)).map_or(SHARED_SETTINGS, |g| g.settings)
+}
+
+/// `value` moved one step of `setting` (dir -1 or 1), within its range.
+pub fn nudged(setting: &Setting, value: f32, dir: i8) -> f32 {
+    let next = (value + setting.step * dir as f32).clamp(setting.min, setting.max);
+    (next * 100.0).round() / 100.0
 }
 
 /// The keys `command` has on a tab: the shared binds', or the game's own.
@@ -193,6 +227,8 @@ pub struct ControlsPage {
     pub tab: usize,
     /// The row waiting for a key: its command.
     pub capture: Option<&'static str>,
+    /// The numbers' values as the cvars hold them (refreshed while open).
+    pub values: BTreeMap<&'static str, String>,
 }
 
 /// What a click on the page does.
@@ -203,6 +239,8 @@ pub enum Action {
     Clear(&'static str),
     Defaults,
     Done,
+    /// A number's `-` (-1) or `+` (1).
+    Nudge(&'static Setting, i8),
 }
 
 #[derive(Component)]
@@ -224,7 +262,7 @@ impl Plugin for ControlsPlugin {
                 page.capture = None;
                 Ok(None)
             })
-            .add_systems(Update, (toggle, capture, click, show).chain());
+            .add_systems(Update, (toggle, refresh_values, capture, click, show).chain());
     }
 }
 
@@ -263,10 +301,33 @@ fn capture(
     }
 }
 
+/// A cvar's value as the console reads it.
+pub fn cvar_value(world: &mut World, name: &str) -> Option<String> {
+    let cvar = world.resource::<Console>().cvar(name).cloned()?;
+    (cvar.get)(world)
+}
+
+/// While the page is open, the values of the numbers it shows.
+fn refresh_values(world: &mut World) {
+    let page = world.resource::<ControlsPage>();
+    if !page.open {
+        return;
+    }
+    let tab = page.tab;
+    for s in tab_settings(tab) {
+        let v = cvar_value(world, s.cvar).unwrap_or_default();
+        let mut page = world.resource_mut::<ControlsPage>();
+        if page.values.get(s.cvar) != Some(&v) {
+            page.values.insert(s.cvar, v);
+        }
+    }
+}
+
 fn click(
     pressed: Query<(&Interaction, &Action), Changed<Interaction>>,
     mut page: ResMut<ControlsPage>,
     mut console: ResMut<Console>,
+    mut commands: Commands,
 ) {
     for (interaction, action) in &pressed {
         if *interaction != Interaction::Pressed {
@@ -286,6 +347,13 @@ fn click(
             Action::Defaults => {
                 console.submit(defaults_line(page.tab));
             }
+            Action::Nudge(setting, dir) => {
+                commands.queue(move |w: &mut World| {
+                    let now = cvar_value(w, setting.cvar).and_then(|v| v.parse::<f32>().ok()).unwrap_or(setting.min);
+                    let next = nudged(setting, now, dir);
+                    w.resource_mut::<Console>().submit(format!("{} {next}", setting.cvar));
+                });
+            }
             Action::Done => {
                 console.submit("host_writeconfig");
                 page.open = false;
@@ -302,6 +370,7 @@ struct Shown {
     capture: Option<&'static str>,
     binds: BTreeMap<String, String>,
     layers: BTreeMap<String, BTreeMap<String, String>>,
+    values: BTreeMap<&'static str, String>,
 }
 
 fn show(
@@ -325,6 +394,7 @@ fn show(
         capture: page.capture,
         binds: console.binds.clone(),
         layers: console.layers.clone(),
+        values: page.values.clone(),
     };
     if shown.as_ref() == Some(&now) {
         return;
@@ -427,6 +497,20 @@ fn spawn(commands: &mut Commands, page: &ControlsPage, console: &Console) {
                             let color = if waiting { ACTIVE } else { BUTTON };
                             line.spawn(button(shown, Action::Rebind(r.command), color, 280.0));
                             line.spawn(button("Clear", Action::Clear(r.command), BUTTON, 60.0));
+                        });
+                }
+                for s in tab_settings(page.tab) {
+                    let value = page.values.get(s.cvar).cloned().unwrap_or_default();
+                    panel
+                        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() })
+                        .with_children(|line| {
+                            line.spawn((Node { width: px(150.0), ..default() }, children![text(s.label, 15.0)]));
+                            line.spawn(button("-", Action::Nudge(s, -1), BUTTON, 40.0));
+                            line.spawn((
+                                Node { width: px(120.0), justify_content: JustifyContent::Center, ..default() },
+                                children![text(value, 15.0)],
+                            ));
+                            line.spawn(button("+", Action::Nudge(s, 1), BUTTON, 40.0));
                         });
                 }
                 panel

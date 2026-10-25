@@ -333,13 +333,14 @@ fn a_switch_is_predicted_without_error() {
     for crouch in [false, true] {
         client_intent(&mut sim, 0).crouch = crouch;
         walk(&mut sim, 40);
-        // Q: back to the Glock, CS:S's; class key 1: the M4A1, Combat Arms'.
+        // Q: the knife, the slot drawn before (by slot, not by weapon),
+        // CS:S's; class key 1: the M4A1, Combat Arms'.
         client_intent(&mut sim, 0).last_weapon = true;
         sim.step();
         client_intent(&mut sim, 0).last_weapon = false;
         walk(&mut sim, 60);
-        assert_eq!(client_held(&mut sim, 0), Some(cs_weapons::GLOCK));
-        assert_moves_as(&mut sim, 0, "cs_source", "the Glock again");
+        assert_eq!(client_held(&mut sim, 0), Some(cs_weapons::KNIFE));
+        assert_moves_as(&mut sim, 0, "cs_source", "the knife again");
         client_intent(&mut sim, 0).select = Some(0);
         sim.step();
         client_intent(&mut sim, 0).select = None;
@@ -350,13 +351,13 @@ fn a_switch_is_predicted_without_error() {
     client_intent(&mut sim, 0).crouch = false;
     walk(&mut sim, 40);
     assert_no_errors(&sim, "the client's own switches, standing and crouched");
-    // Q: back to the Glock.
+    // Q: the knife.
     client_intent(&mut sim, 0).last_weapon = true;
     sim.step();
     client_intent(&mut sim, 0).last_weapon = false;
     walk(&mut sim, 60);
-    assert_eq!(client_held(&mut sim, 0), Some(cs_weapons::GLOCK));
-    assert_moves_as(&mut sim, 0, "cs_source", "the Glock again");
+    assert_eq!(client_held(&mut sim, 0), Some(cs_weapons::KNIFE));
+    assert_moves_as(&mut sim, 0, "cs_source", "the knife again");
     // The server's rung-ups, while it walks.
     // The other client sees CS:S's body on it.
     let copy = copy_of(&mut sim, 1, 0);
@@ -377,6 +378,24 @@ fn a_switch_is_predicted_without_error() {
         assert_eq!(identity(w1, copy).as_deref(), Some(game), "client 1 hears {gun}'s identity");
         assert_eq!(body(w1, copy), Some(model), "client 1 sees {gun}'s body");
         assert_eq!(body(sim.server.app.world(), theirs), Some(model), "the server's body for {gun}");
+    }
+    // Q goes by slot, over the wire: after a rung-up (the knife swapped to
+    // the new gun's game's too) it is the knife, then the gun again.
+    for (rung, gun, knife) in [(3, "combat_arms:mp5a4", "combat_arms:m9_knife"), (4, cs_weapons::P90, cs_weapons::KNIFE)] {
+        let theirs = sim.character_of(0).unwrap();
+        let w = sim.server.app.world_mut();
+        let l = w.resource::<Ladder>().clone();
+        ladder::set_rung(w, theirs, rung, &l);
+        walk(&mut sim, 80);
+        assert_eq!(client_held(&mut sim, 0), Some(gun), "rung {rung}");
+        for want in [knife, gun, knife] {
+            client_intent(&mut sim, 0).last_weapon = true;
+            sim.step();
+            client_intent(&mut sim, 0).last_weapon = false;
+            walk(&mut sim, 60);
+            assert_eq!(client_held(&mut sim, 0), Some(want), "rung {rung}: Q");
+        }
+        // The knife in hand: the next rung's gun is drawn.
     }
     sim.ticks(60);
     assert_no_errors(&sim, "switches");

@@ -247,6 +247,15 @@ impl Console {
         }
     }
 
+    /// Change a cvar's default (what it is when the config says nothing,
+    /// so the config leaves it out while it has that value): an app whose
+    /// starting value is not the shell's.
+    pub fn set_default(&mut self, name: &str, value: &str) {
+        if let Some(c) = self.cvars.get_mut(&current_name(name)) {
+            c.default = value.into();
+        }
+    }
+
     /// Mark a cvar as the player's own setting the simulation reads
     /// (`core::UserInfo`).
     pub fn userinfo(&mut self, name: &str) {

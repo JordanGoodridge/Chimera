@@ -291,6 +291,17 @@ pub fn settings() -> ViewModelSettings {
     }
 }
 
+/// `ca_viewmodel_fov`: raise it for a smaller gun (saved).
+pub fn register_fov_cvar(app: &mut App) {
+    crate::weapon::view_anim::fov_cvar(
+        app,
+        "ca_viewmodel_fov",
+        "Combat Arms' view model field of view (horizontal degrees at 4:3, 63.74 to 110; zooms with the view).",
+        super::GAME,
+        (VIEWMODEL_FOV, 110.0),
+    );
+}
+
 /// Combat Arms' view models: the data hook (before the weapons load), the
 /// machine, sway and effects, on Chimera's view-model types.
 pub struct CaViewModelPlugin;
@@ -316,6 +327,7 @@ impl Plugin for CaViewModelPlugin {
                     .before(crate::weapon::view_anim::drive),
             ),
         );
+        register_fov_cvar(app);
     }
 }
 

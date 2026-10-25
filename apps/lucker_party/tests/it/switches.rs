@@ -380,3 +380,52 @@ fn every_rung_gun_sounds_when_fired() {
         assert!(heard, "{gun} sounds when fired ({want:?})");
     }
 }
+
+/// Q (`lastinv`) in the gun game goes by weapon slot, most recently drawn
+/// first: a rung's swap of the gun (and of the knife, to the gun's game's)
+/// leaves the order alone, so Q is always gun <-> knife, whichever game's
+/// each is and whichever slot the gun is in.
+#[test]
+fn q_goes_between_the_gun_and_the_knife_across_rungs() {
+    let mut sim = party();
+    let a = soldier(&mut sim);
+    let _b = soldier(&mut sim);
+    sim.seconds(1.5);
+    let q = |sim: &mut Sim| {
+        sim.intent(a).last_weapon = true;
+        sim.ticks(1);
+        sim.intent(a).last_weapon = false;
+        sim.seconds(0.5);
+    };
+    // Spawned with the Glock in hand: Q reaches the knife.
+    assert_eq!(held(&sim, a), Some(cs_weapons::GLOCK));
+    sim.intent(a).select = Some(2);
+    sim.ticks(1);
+    sim.intent(a).select = None;
+    sim.seconds(0.5);
+    assert_eq!(held(&sim, a), Some(CS_KNIFE));
+    q(&mut sim);
+    assert_eq!(held(&sim, a), Some(cs_weapons::GLOCK));
+    let rungs = [
+        (1, "combat_arms:beretta_m92fs", CA_KNIFE),
+        (2, cs_weapons::DEAGLE, CS_KNIFE),
+        (3, "combat_arms:mp5a4", CA_KNIFE),
+        (4, cs_weapons::P90, CS_KNIFE),
+        // A shotgun: a secondary in Combat Arms.
+        (5, "combat_arms:remington_870", CA_KNIFE),
+        (6, cs_weapons::AK47, CS_KNIFE),
+    ];
+    for (i, (r, gun, knife)) in rungs.into_iter().enumerate() {
+        if i % 2 == 1 {
+            // The knife in hand when the rung comes.
+            q(&mut sim);
+        }
+        set_rung(&mut sim, a, r);
+        sim.seconds(1.0);
+        assert_eq!(held(&sim, a), Some(gun), "rung {r}: the gun");
+        q(&mut sim);
+        assert_eq!(held(&sim, a), Some(knife), "rung {r}: Q goes to the knife");
+        q(&mut sim);
+        assert_eq!(held(&sim, a), Some(gun), "rung {r}: Q goes back to the gun");
+    }
+}

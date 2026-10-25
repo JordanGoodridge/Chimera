@@ -118,6 +118,42 @@ impl Default for ViewModelSettings {
     }
 }
 
+/// A game's own view-model field of view, for the characters whose game
+/// identity (`slots::GameIdentity`) it is: an app with several games
+/// (Lucker Party) draws each game's guns at that game's `fov` and
+/// `default_fov`, the rest of `ViewModelSettings` shared. A character with
+/// no identity, or a game not listed, uses `ViewModelSettings` itself.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct GameViewModelFovs(pub Vec<GameFov>);
+
+/// One game's view-model field of view (degrees at 4:3, as
+/// `ViewModelSettings`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct GameFov {
+    pub game: &'static str,
+    pub fov: f32,
+    pub default_fov: f32,
+}
+
+impl GameViewModelFovs {
+    /// `base` with the fields of view of `game` (None: unchanged).
+    pub fn settings_for(&self, base: ViewModelSettings, game: Option<&str>) -> ViewModelSettings {
+        match game.and_then(|g| self.0.iter().find(|f| f.game == g)) {
+            Some(f) => ViewModelSettings { fov: f.fov, default_fov: f.default_fov, ..base },
+            None => base,
+        }
+    }
+
+    /// `game`'s entry, added as it is given when it has none.
+    pub fn entry(&mut self, game: &'static str, fov: f32, default_fov: f32) -> &mut GameFov {
+        if let Some(i) = self.0.iter().position(|f| f.game == game) {
+            return &mut self.0[i];
+        }
+        self.0.push(GameFov { game, fov, default_fov });
+        self.0.last_mut().expect("just pushed")
+    }
+}
+
 /// Which weapon effects are shown (Source `muzzleflash_light`,
 /// `cl_ejectbrass`). Games set the values and console variables.
 #[derive(Resource, Clone, Copy, Debug, PartialEq)]

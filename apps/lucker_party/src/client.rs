@@ -89,7 +89,43 @@ impl Plugin for ClientPlugin {
         // The key binds page (F6, `controls`): shared binds and each
         // game's own.
         .add_plugins(crate::controls::ControlsPlugin)
+        .add_plugins(PartyMousePlugin)
         .add_systems(Startup, (cs_source_names, mount_doctor));
+    }
+}
+
+/// The mouse look of the party: the shell's `sensitivity`, `m_yaw` and
+/// `m_pitch` (archived, saved in config.cfg), for every game. Combat
+/// Arms' options screen sets its own mouse look from its profile, which
+/// the party does not keep; left to itself it set the shell's mouse at
+/// start and again on every change, over what the config said (the
+/// sensitivity was back to the default at each start). The starting
+/// values are Combat Arms' defaults, as before, and they are the cvars'
+/// defaults, so a config that says nothing keeps them and one that says
+/// something wins.
+pub struct PartyMousePlugin;
+
+impl Plugin for PartyMousePlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(combat_arms::ui::options_apply::ShellMouse)
+            .add_systems(Startup, start_mouse);
+    }
+}
+
+fn start_mouse(
+    mouse: Option<ResMut<chimera_client::client::input::MouseSettings>>,
+    console: Option<ResMut<chimera_core::console::Console>>,
+) {
+    let d = combat_arms::ui::options_apply::degrees_per_count(&combat_arms::game::options::CaMouseLook::default());
+    if let Some(mut m) = mouse {
+        m.sensitivity = 1.0;
+        m.m_yaw = d;
+        m.m_pitch = d;
+    }
+    if let Some(mut c) = console {
+        c.set_default("sensitivity", "1");
+        c.set_default("m_yaw", &d.to_string());
+        c.set_default("m_pitch", &d.to_string());
     }
 }
 

@@ -42,7 +42,7 @@ use super::{
 use crate::{
     core::Health,
     map::{
-        DriveAnimation, EffectSettings, ViewAnimator, ViewModelEvent, ViewModelEventKind, ViewModelSettings,
+        DriveAnimation, EffectSettings, GameViewModelFovs, ViewAnimator, ViewModelEvent, ViewModelEventKind, ViewModelSettings,
         ViewModels,
         anim::{AnimEvent, Sequence},
     },
@@ -74,6 +74,45 @@ impl Plugin for ViewAnimPlugin {
             .init_resource::<EffectSettings>()
             .add_systems(Update, drive.in_set(DriveAnimation));
     }
+}
+
+/// A console variable for a game's view-model field of view (horizontal
+/// degrees at 4:3), kept within `min..=max` and saved in the config: the
+/// game's entry in `GameViewModelFovs` when the app has one (an app of
+/// several games), else `ViewModelSettings::fov`.
+pub fn fov_cvar(app: &mut App, name: &str, help: &str, game: &'static str, (min, max): (f32, f32)) {
+    use crate::console::ConsoleAppExt;
+    let read = move |w: &mut World| -> f32 {
+        let own = w.get_resource::<GameViewModelFovs>().and_then(|g| g.0.iter().find(|f| f.game == game).map(|f| f.fov));
+        own.or_else(|| w.get_resource::<ViewModelSettings>().map(|s| s.fov)).unwrap_or(min)
+    };
+    let default = app
+        .world()
+        .get_resource::<GameViewModelFovs>()
+        .and_then(|g| g.0.iter().find(|f| f.game == game).map(|f| f.fov))
+        .or_else(|| app.world().get_resource::<ViewModelSettings>().map(|s| s.fov))
+        .unwrap_or(min);
+    app.console_cvar(
+        name,
+        help,
+        &default.to_string(),
+        move |w| Some(read(w).to_string()),
+        move |w, v| {
+            let v: f32 = v.trim().parse().map_err(|_| format!("bad value \"{v}\""))?;
+            let v = v.clamp(min, max);
+            if let Some(mut g) = w.get_resource_mut::<GameViewModelFovs>()
+                && let Some(f) = g.0.iter_mut().find(|f| f.game == game)
+            {
+                f.fov = v;
+            } else if let Some(mut s) = w.get_resource_mut::<ViewModelSettings>() {
+                s.fov = v;
+            }
+            Ok(())
+        },
+    );
+    let mut console = app.world_mut().resource_mut::<crate::console::Console>();
+    console.archive(name);
+    console.set_range(name, min, max);
 }
 
 /// On a character whose view model the game drives itself: the driver

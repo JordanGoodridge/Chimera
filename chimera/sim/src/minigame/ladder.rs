@@ -255,6 +255,7 @@ fn melee_kill(world: &World, d: &Died) -> bool {
 /// `e` on `rung`, holding its weapon in place of the ladder's others.
 pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     world.entity_mut(e).insert(Rung(rung));
+    let before = carried_slots(world, e, ladder);
     let old: Vec<Entity> = world
         .get::<Inventory>(e)
         .map(|i| {
@@ -271,9 +272,46 @@ pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     // A kit by game (the gun game's knife) goes with the new gun's game.
     runtime::refit_kit(world, e, ladder.rungs[rung]);
     give(world, e, ladder.rungs[rung]);
+    keep_slot_order(world, e, &before, ladder);
     // No command of the player's did this: its client takes the state
     // as a restart, not a misprediction.
     crate::core::rebase(world, e);
+}
+
+/// What `e` carries as (weapon, slot, is one of the ladder's guns: else
+/// the kit's, the knife).
+fn carried_slots(world: &World, e: Entity, ladder: &Ladder) -> Vec<(Entity, u8, bool)> {
+    let Some(inv) = world.get::<Inventory>(e) else { return Vec::new() };
+    inv.weapons
+        .iter()
+        .filter_map(|w| {
+            let weapon = world.get::<Weapon>(*w)?;
+            Some((*w, weapon.slot, ladder.rungs.contains(&weapon.id)))
+        })
+        .collect()
+}
+
+/// `e`'s slot order for `lastinv` (`Inventory::slot_mru`) across a swap:
+/// the weapons it no longer holds since `before` (the old gun, a knife of
+/// the other game) hand their slot's place to the ones that came in (the
+/// new gun, the other game's knife), a gun to a gun and a kit weapon to a
+/// kit weapon, so Q still goes gun <-> knife whichever slots they are in.
+fn keep_slot_order(world: &mut World, e: Entity, before: &[(Entity, u8, bool)], ladder: &Ladder) {
+    let now = carried_slots(world, e, ladder);
+    for gun in [true, false] {
+        let gone = before.iter().filter(|(w, _, g)| *g == gun && !now.iter().any(|(n, ..)| n == w));
+        let came = now.iter().filter(|(w, _, g)| *g == gun && !before.iter().any(|(b, ..)| b == w));
+        let pairs: Vec<(u8, u8)> = gone.zip(came).map(|(g, c)| (g.1, c.1)).collect();
+        if let Some(mut inv) = world.get_mut::<Inventory>(e) {
+            // Through a spare number first: two slots may trade places.
+            for (i, (old, _)) in pairs.iter().enumerate() {
+                inv.rename_slot(*old, 200 + i as u8);
+            }
+            for (i, (_, new)) in pairs.iter().enumerate() {
+                inv.rename_slot(200 + i as u8, *new);
+            }
+        }
+    }
 }
 
 /// The time limit: the highest rung, then the most kills; a tie, a draw.

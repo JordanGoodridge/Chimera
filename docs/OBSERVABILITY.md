@@ -613,7 +613,7 @@ Only `Reflect`-registered types are visible; register new core components in
 - `chimera_watch <n>` chases bot n from behind (`cam_idealdist`,
   `cam_idealyaw` apply; 0 returns): `+bot_add 2 +chimera_watch 1
   +cam_idealyaw 150` shows a bot running with its weapon.
-- View model (CS:S cvars): `viewmodel_fov` (80 here; CS:S 54), `cl_righthand` (1;
+- View model (CS:S cvars): `viewmodel_fov` (54 as CS:S, kept within 54-110, saved; `ca_viewmodel_fov` is Combat Arms', 63.74-110; the party has both, each for its game's players), `cl_righthand` (1;
   0 puts weapons in the left hand), `r_drawviewmodel 0` hides it,
   `cl_bobcycle`/`cl_bobup` (bob), `cl_wpn_sway_interp`/`cl_wpn_sway_scale`
   (sway: e.g. 20 to exaggerate it), `muzzleflash_light 0` turns the

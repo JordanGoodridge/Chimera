@@ -171,6 +171,23 @@ pub const BOT_GUN_TYPES: &str = include_str!("../data/bot_gun_types.toml");
 /// four with the player.
 pub const DEFAULT_BOTS: u32 = 3;
 
+/// Each game's guns at the game's own view-model field of view, for a
+/// player of that game (`viewmodel_fov` is CS:S's, `ca_viewmodel_fov`
+/// Combat Arms'; both saved in the config). After Combat Arms' view model
+/// settings are in.
+pub fn add_view_model_fovs(app: &mut App) {
+    let fov = |game, s: chimera_world::map::ViewModelSettings| chimera_world::map::GameFov {
+        game,
+        fov: s.fov,
+        default_fov: s.default_fov,
+    };
+    app.insert_resource(chimera_world::map::GameViewModelFovs(vec![
+        fov(combat_arms::game::GAME, combat_arms::game::view_model::settings()),
+        fov(cs_source::game::GAME, cs_source::game::view_anim::settings()),
+    ]));
+    cs_source::game::view_anim::viewmodel_fov_cvar(app);
+}
+
 /// What the party adds to Combat Arms' simulation (the headless tests run
 /// it on `combat_arms::harness::CaSim`), after Combat Arms' parts: CS:S
 /// registered as a second game (its install and maps), Source's map
@@ -192,6 +209,7 @@ impl Plugin for PartyPartsPlugin {
         // rules plays them (Combat Arms' driver lets go of a character
         // holding another game's gun).
         app.insert_resource(cs_source::game::view_anim::rules());
+        add_view_model_fovs(app);
         // ... and CS:S's bob and sway (`cl_bobcycle`, `cl_wpn_sway_*`) while
         // Combat Arms' driver has let go of the local player (its own sway
         // is the driver's, with its guns).
@@ -400,7 +418,7 @@ pub mod controls;
 #[cfg(feature = "present")]
 mod client;
 #[cfg(feature = "present")]
-pub use client::{ClientPlugin, client_app, client_hooks, joins_server, with_defaults, with_defaults_for, with_huds};
+pub use client::{ClientPlugin, PartyMousePlugin, client_app, client_hooks, joins_server, with_defaults, with_defaults_for, with_huds};
 
 #[cfg(test)]
 mod tests {

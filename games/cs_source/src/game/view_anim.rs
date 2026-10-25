@@ -32,10 +32,12 @@ use crate::{
 
 use super::view_motion::{self, ViewMotion};
 
-/// `viewmodel_fov` default: horizontal degrees at 4:3. CS:S's is 54 (spec
-/// view_models.md, constants); ours starts at 80 by choice (a smaller,
-/// less screen-filling gun), changeable in the options.
-pub const VIEWMODEL_FOV: f32 = 80.0;
+/// `viewmodel_fov` default: horizontal degrees at 4:3, CS:S's 54 (spec
+/// view_models.md, constants). The player may raise it (a smaller gun) up
+/// to `VIEWMODEL_FOV_RANGE`'s end, saved in the config.
+pub const VIEWMODEL_FOV: f32 = 54.0;
+/// What `viewmodel_fov` accepts (min, max).
+pub const VIEWMODEL_FOV_RANGE: (f32, f32) = (54.0, 110.0);
 /// `default_fov`: the player's normal field of view, same convention.
 pub const DEFAULT_FOV: f32 = 90.0;
 
@@ -225,13 +227,20 @@ fn motion_cvars(app: &mut App) {
     resource_cvar::<ViewMotion, f32>(app, "cl_wpn_sway_scale", "View model sway gain.", |m| &mut m.sway_scale);
 }
 
-fn cvars(app: &mut App) {
-    resource_cvar::<ViewModelSettings, f32>(
+/// `viewmodel_fov`: in an app of several games (the party) the game's own
+/// entry in `GameViewModelFovs`.
+pub fn viewmodel_fov_cvar(app: &mut App) {
+    view_anim::fov_cvar(
         app,
         "viewmodel_fov",
-        "View model field of view (horizontal degrees at 4:3, scaled to the screen; zooms with the view).",
-        |s| &mut s.fov,
+        "View model field of view (horizontal degrees at 4:3, 54 to 110, scaled to the screen; zooms with the view).",
+        super::GAME,
+        VIEWMODEL_FOV_RANGE,
     );
+}
+
+fn cvars(app: &mut App) {
+    viewmodel_fov_cvar(app);
     resource_cvar::<ViewModelSettings, u8>(
         app,
         "cl_righthand",
@@ -407,6 +416,6 @@ mod tests {
         assert!(console.cvar("cl_righthand").unwrap().archive);
         assert!(console.cvar("viewmodel_fov").unwrap().archive);
         assert_eq!(console.cvar("cl_righthand").unwrap().default, "1");
-        assert_eq!(console.cvar("viewmodel_fov").unwrap().default, "80");
+        assert_eq!(console.cvar("viewmodel_fov").unwrap().default, "54");
     }
 }

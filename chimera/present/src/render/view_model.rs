@@ -317,6 +317,8 @@ pub fn draw_view_models(
     time: Res<Time>,
     assets: Res<ViewModelAssets>,
     settings: Option<Res<ViewModelSettings>>,
+    game_fovs: Option<Res<crate::map::GameViewModelFovs>>,
+    identities: Query<&chimera_core::slots::GameIdentity>,
     models: Option<Res<ViewModels>>,
     light_field: Option<Res<LightField>>,
     anchors: Query<
@@ -419,7 +421,11 @@ pub fn draw_view_models(
         // game unit, but that cuts into the knife's hands here (open
         // question in docs/plans/active/view-models.md), so 1 cm.
         if let (Some(player), Projection::Perspective(p)) = (camera_fov_43(anchor_projection), &mut *projection) {
-            let fov = vertical_fov(view_model_fov(&settings, player)).to_radians();
+            let own = game_fovs.as_ref().map_or(settings, |g| {
+                let who = identities.get(anchor_owner(parent, source)).ok().map(|i| i.0.as_str());
+                g.settings_for(settings, who)
+            });
+            let fov = vertical_fov(view_model_fov(&own, player)).to_radians();
             let near = 0.01;
             if (p.fov - fov).abs() > 1e-5 || p.near != near {
                 p.fov = fov;

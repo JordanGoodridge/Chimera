@@ -111,7 +111,7 @@ mod spawn;
 pub use spawn::{Draws, DrawnResource, MapDrawer, MapSpawn, PropSpawn};
 pub use spawn::{merged_world, spawn_map};
 pub use view_model::{
-    DynamicLight, EffectSettings, LateViewModelTextures, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor,
+    DynamicLight, EffectSettings, GameFov, GameViewModelFovs, LateViewModelTextures, MapAttachment, MapViewModel, ViewAnimator, ViewModelAnchor,
     ViewModelCamera, ViewModelEvent, ViewModelEventKind, ViewModelOffset, ViewModelScreen, ViewModelSettings,
     ViewModelSource, ViewModels, add_view_model,
 };

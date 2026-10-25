@@ -37,8 +37,16 @@ pub fn degrees_per_count(look: &CaMouseLook) -> f32 {
     look.rad_per_count().to_degrees() as f32
 }
 
+/// An app that keeps the mouse look in the shell's `sensitivity`,
+/// `m_yaw` and `m_pitch` (saved in its config.cfg, shared by the games it
+/// plays: Lucker Party) takes the mouse look out of Combat Arms' profile:
+/// `apply` leaves `MouseSettings` to the shell.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct ShellMouse;
+
 #[allow(clippy::too_many_arguments)]
 fn apply(
+    shell_mouse: Option<Res<ShellMouse>>,
     look: Res<CaMouseLook>,
     levels: Res<CaSoundLevels>,
     gamma: Res<CaGamma>,
@@ -48,6 +56,7 @@ fn apply(
     monitor: Option<ResMut<MonitorGammaSetting>>,
 ) {
     if let Some(mut m) = mouse
+        && shell_mouse.is_none()
         && (look.is_changed() || m.is_added())
     {
         let d = degrees_per_count(&look);
