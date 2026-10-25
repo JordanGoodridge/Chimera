@@ -18,8 +18,8 @@
 //! Known shortcuts (docs/tech-debt.md): Levels of detail (`render::lod`): the
 //! metric that picks a level is our reading of Source's screen-size metric
 //! (view height at the model over its bounding-sphere diameter, against the
-//! `.vtx` switch points), unmeasured; no hysteresis; skinned (animated) props,
-//! characters, view models and the 3D skybox's props keep LOD 0; a lower
+//! `.vtx` switch points), unmeasured; no hysteresis; skinned props and
+//! characters share their skeleton across levels (the `.vvd`'s bone ids are the model's own); view models, Combat Arms' models and the 3D skybox's props keep LOD 0; a lower
 //! level's mesh with a material LOD 0 lacks is dropped; baked per-vertex light
 //! for vertices only lower levels draw is the nearest LOD 0 vertex's (the
 //! `.vhv` has LOD 0's only); `r_rootlod` applies at once (CS:S's on a map

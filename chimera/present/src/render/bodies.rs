@@ -76,6 +76,10 @@ pub struct BodyAssets {
     pub bindposes: Handle<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
     pub bones: Vec<MapBone>,
     pub root: Transform,
+    /// Each part's meshes at every level of detail (LOD 0 first; the
+    /// same joints), and the body's `LodGroup`, when the model has levels.
+    pub levels: Vec<Vec<Handle<Mesh>>>,
+    pub lod_group: Option<super::lod::LodGroup>,
     /// Choices per body part and each part's (part, choice), when the
     /// model has body parts (`MapModel::body_parts`, `MapMesh::body`).
     pub body_parts: Vec<u16>,
@@ -215,7 +219,7 @@ pub fn attach_bodies(
                 None => material.clone(),
             };
             own.push(material.clone());
-            commands.spawn((
+            let mut part = commands.spawn((
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material),
                 bevy::mesh::skinning::SkinnedMesh {
@@ -224,6 +228,12 @@ pub fn attach_bodies(
                 },
                 ChildOf(body),
             ));
+            if let (Some(_), Some(levels)) = (&assets.lod_group, assets.levels.get(k)) {
+                part.insert(super::lod::LodMeshes(levels.clone()));
+            }
+        }
+        if let Some(group) = &assets.lod_group {
+            commands.entity(body).insert(group.clone());
         }
         commands
             .entity(body)
@@ -580,21 +590,48 @@ pub fn body_assets(
     bindposes: &mut Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>,
     material: &dyn Fn(&MapMesh) -> PropMaterial,
 ) -> BodyAssets {
-    let parts = model
+    let mut skinned_mesh = |m: &MapMesh| {
+        let mut mesh = build_mesh(m, false);
+        if m.joints.len() == m.positions.len() && !bones.is_empty() {
+            mesh.insert_attribute(
+                Mesh::ATTRIBUTE_JOINT_INDEX,
+                bevy::mesh::VertexAttributeValues::Uint16x4(m.joints.clone()),
+            );
+            mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, m.joint_weights.clone());
+        }
+        meshes.add(mesh)
+    };
+    let parts: Vec<(Handle<Mesh>, Handle<PropMaterial>)> = model
         .meshes
         .iter()
-        .map(|m| {
-            let mut mesh = build_mesh(m, false);
-            if m.joints.len() == m.positions.len() && !bones.is_empty() {
-                mesh.insert_attribute(
-                    Mesh::ATTRIBUTE_JOINT_INDEX,
-                    bevy::mesh::VertexAttributeValues::Uint16x4(m.joints.clone()),
-                );
-                mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, m.joint_weights.clone());
+        .map(|m| (skinned_mesh(m), materials.add(material(m))))
+        .collect();
+    // Lower levels (a level without a part keeps the finer one's).
+    let levels: Vec<Vec<Handle<Mesh>>> = parts
+        .iter()
+        .enumerate()
+        .map(|(k, (root, _))| {
+            let mut levels = vec![root.clone()];
+            for l in &model.lods {
+                let h = match l.meshes.get(k).and_then(Option::as_ref) {
+                    Some(lm) => skinned_mesh(lm),
+                    None => levels.last().cloned().unwrap_or_default(),
+                };
+                levels.push(h);
             }
-            (meshes.add(mesh), materials.add(material(m)))
+            levels
         })
         .collect();
+    // The body's bounds in its own space (the bind pose: the meshes'
+    // vertices are in it).
+    let lod_group = (!model.lods.is_empty()).then(|| {
+        let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        for p in model.meshes.iter().flat_map(|m| &m.positions) {
+            lo = lo.min(Vec3::from(*p));
+            hi = hi.max(Vec3::from(*p));
+        }
+        super::lod::LodGroup::new((lo, hi), &model.lods)
+    });
     let skins = model
         .skins
         .iter()
@@ -620,6 +657,8 @@ pub fn body_assets(
     let inverse: Vec<Mat4> = global.iter().map(|m| m.inverse()).collect();
     BodyAssets {
         parts,
+        levels,
+        lod_group,
         skins,
         bindposes: bindposes.add(bevy::mesh::skinning::SkinnedMeshInverseBindposes::from(inverse)),
         bones: bones.to_vec(),
