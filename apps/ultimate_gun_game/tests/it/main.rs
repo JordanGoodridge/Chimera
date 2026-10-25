@@ -5,5 +5,6 @@
 //! dev --test it`; where tests go: docs/OBSERVABILITY.md, section 1.
 
 mod fallbacks;
+mod minimal_hud;
 mod net;
 mod parts;

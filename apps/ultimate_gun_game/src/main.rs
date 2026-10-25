@@ -26,6 +26,9 @@ fn main() {
         }
     }
     let mut app = lucker_party::client_app(args, "Ultimate Gun Game");
-    app.add_plugins(ultimate_gun_game::UltimateGunGamePlugin::default());
+    app.add_plugins((
+        ultimate_gun_game::UltimateGunGamePlugin::default(),
+        chimera_client::client::hud_minimal::MinimalHudPlugin,
+    ));
     chimera_client::client::app::run(app);
 }
