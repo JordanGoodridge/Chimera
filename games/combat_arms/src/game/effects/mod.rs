@@ -424,16 +424,35 @@ pub const SURFACES: crate::map::impact::GameSurfaces = crate::map::impact::GameS
 pub struct Ground<'w> {
     grid: Option<Res<'w, SurfaceGrid>>,
     names: Option<Res<'w, SurfaceNames>>,
+    classes: Option<Res<'w, crate::map::impact::SurfaceClasses>>,
+    impacts: Option<Res<'w, crate::map::impact::ActiveImpacts>>,
 }
 
 impl Ground<'_> {
+    /// The type of surface `s`: as `surface_type`, and where that finds
+    /// none (another game's surface the app's table doesn't name, which
+    /// would be Unknown, with no bullet hole), the type of its class
+    /// (`map::impact::SurfaceClasses`).
     pub fn ty(&self, s: &str) -> u16 {
-        surface_type(s, self.names.as_deref(), CaFxTables::built_in())
+        let named = s
+            .parse()
+            .ok()
+            .or_else(|| CaFxTables::built_in().surface_id(self.names.as_deref().map_or(s, |n| n.resolve(s))));
+        named
+            .or_else(|| {
+                let map_game = self.impacts.as_deref().and_then(|i| i.0.map_game());
+                self.classes
+                    .as_deref()?
+                    .translate(map_game, s, crate::game::GAME)?
+                    .parse()
+                    .ok()
+            })
+            .unwrap_or(0)
     }
 
     /// `world_surface`'s: the nearest tagged triangle within 4 u.
     pub fn at(&self, at: Vec3) -> u16 {
-        world_surface_named(self.grid.as_deref(), self.names.as_deref(), at)
+        self.grid.as_deref().and_then(|g| g.nearest(at, 4.0 * UNIT)).map_or(0, |s| self.ty(s))
     }
 
     /// The nearest tagged triangle's type within `reach` (metres).
