@@ -81,6 +81,11 @@
 //!   for `JitterDecDelay` after a kick, against the burst cap in burst
 //!   mode. The state is the player's (`CaKick`: Corrections 1), read with
 //!   the weapon in hand's data (the record defaults when it has none).
+//!   With another game's weapon in hand (`weapon::impact::RecoilGame`)
+//!   the kick ends and neither kicks nor returns touch the punch.
+//! - Pushes: a round that meets a physics object gives it
+//!   `IMPULSE_PER_HIT_POINT` N·s a hit point of its damage there
+//!   (`weapon::impact::BulletImpulse`, also the damage's force).
 //! - `combat_arms:handling` (`CaHandling`): the held weapon's
 //!   `MovePenalty`, set on its carrier as the movement's `HeldMovePenalty`
 //!   when it is drawn (in the predicted tick, `core::Predict::Select`).
@@ -287,6 +292,18 @@ pub const SERVER_INTERSECTIONS: u32 = 4;
 /// How far past a character box the server's walk restarts when its line
 /// is within none of the spheres (units; Corrections 5).
 pub const SERVER_SKIP: f32 = 5.0;
+
+/// Hit points in one unit of `Health` (1.0 = 100 HP).
+pub const HIT_POINTS: f32 = 100.0;
+
+/// A round's push on a physics object, N·s per hit point of the damage
+/// it deals there (banded and dampened, before the victim): Combat Arms
+/// has no physics objects, so no spec gives one; ours is CS:S's 9 mm
+/// ratio (2000 kg·in/s for the Glock's 25 HP, 50.8 N·s: about 2 N·s per
+/// HP; its .50 AE and rifle rounds give 1.6-1.7), so a Combat Arms gun
+/// pushes a CS:S prop about as a CS:S gun of its damage does
+/// (`weapon::impact::BulletImpulse`).
+pub const IMPULSE_PER_HIT_POINT: f32 = 2.0;
 /// `DamageRFacter` used when the data's is outside [0, 1].
 pub const DAMAGE_ROLL_INVALID: f32 = 0.2;
 /// Damage types (`InstDamageType`) the armour step knows.
@@ -1632,7 +1649,10 @@ impl Plugin for CaWeaponsPlugin {
                         .chain()
                         .after(super::inventory::hands)
                         .before(WeaponFrame),
-                    (after_shots, zoom::bolt_zoom_out).chain().after(WeaponFrame),
+                    (after_shots, zoom::bolt_zoom_out)
+                        .chain()
+                        .after(WeaponFrame)
+                        .before(crate::weapon::impact::ApplyImpulses),
                 ),
             )
             // Zoom presses before movement (the scoped speed limit from
@@ -1805,6 +1825,8 @@ struct Delivery<'w, 's> {
     grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
     objects: Query<'w, 's, (Entity, &'static super::special::CaTarget)>,
     damage: MessageWriter<'w, Damage>,
+    /// Rounds' pushes on physics objects (`weapon::impact`).
+    impulses: MessageWriter<'w, crate::weapon::impact::BulletImpulse>,
     rules: DamageRules<'w, 's>,
     /// The mode and friendly fire (game_modes.md S8: a teammate's round is
     /// scaled before armour and the zone factor).
@@ -2128,6 +2150,7 @@ fn after_shots(
             Option<&mut ViewPunch>,
             Option<&super::movement::CaMovement>,
             Option<&mut CaKick>,
+            Option<&crate::weapon::impact::RecoilGame>,
         ),
     >,
     mut weapons: Query<(
@@ -2298,7 +2321,7 @@ fn after_shots(
     // The recoil returns, the spread steps for each owner's active
     // weapon, then the kicks.
     let dt = clock.dt();
-    for (owner, inv, intent, state, vel, mut punch, ca_move, kick) in &mut owners {
+    for (owner, inv, intent, state, vel, mut punch, ca_move, kick, recoil_game) in &mut owners {
         let active = inv.active.and_then(|a| weapons.get_mut(a).ok().map(|w| (a, w)));
         let (recoil, mode, burst_mode) = match &active {
             Some((_, (_, _, recoil, _, modes, burst, zoom, ca_zoom))) => {
@@ -2316,8 +2339,19 @@ fn after_shots(
             None => (None, None),
         };
         let mut k = kick.as_deref().cloned().unwrap_or_default();
+        // Holding another game's weapon (the gun game's swap): that game's
+        // recoil owns the view punch (`weapon::impact::RecoilGame`, which
+        // zeroed it at the switch); this game's kick ends, nothing returns.
+        // (A weapon with Combat Arms' recoil data is its own whatever its
+        // id: tests' `test:` guns.)
+        let ours = crate::weapon::impact::RecoilGame::is(recoil_game, crate::game::GAME)
+            || active.as_ref().is_some_and(|(_, w)| w.2.is_some());
+        if !ours {
+            k.pitch = 0.0;
+            k.yaw = 0.0;
+        }
         // The return, with the data of the weapon in hand (Corrections 1).
-        if k.pitch > 0.0 || k.yaw != 0.0 {
+        if ours && (k.pitch > 0.0 || k.yaw != 0.0) {
             let (down, side) = recoil.recover(&mut k, dt, now, burst_mode);
             add_punch(&mut punch, &mut commands, owner, Vec3::new(-down, side, 0.0));
         }
@@ -2339,7 +2373,7 @@ fn after_shots(
             };
             step_spread(&mut s, &scales, &options, &tick);
         }
-        if !exact.contains(owner) {
+        if ours && !exact.contains(owner) {
             for (i, r) in mine.iter().enumerate() {
                 let burst = fire_mode(r.mode, burst_part.as_ref(), zoom_part.as_ref()) == FireMode::Burst;
                 let up = recoil.kick(&mut k, burst, now);
@@ -2741,8 +2775,18 @@ fn server_walk(w: &mut Delivery, dmg: &CaDamage, r: &Round, walk: Walk, bodies: 
         // Something that takes damage (a map's breakable): the round's
         // damage, banded and dampened as a character's, no zone.
         let u = rng.next();
+        let d = base_damage(dmg, u, false, point.distance(r.origin)) * dampen;
+        // Its push (`IMPULSE_PER_HIT_POINT`): on a physics object, and as
+        // the damage's force (what wakes a map's props).
+        let push = dir * d * HIT_POINTS * IMPULSE_PER_HIT_POINT;
+        if walk.lands && w.bodies.get(body).is_ok_and(|(rb, _)| rb.is_dynamic()) {
+            w.impulses.write(crate::weapon::impact::BulletImpulse {
+                body,
+                point,
+                impulse: push,
+            });
+        }
         if walk.lands && (w.ground.2.contains(hit.entity) || w.ground.2.contains(body)) {
-            let d = base_damage(dmg, u, false, point.distance(r.origin)) * dampen;
             w.damage.write(Damage {
                 target: if w.ground.2.contains(body) { body } else { hit.entity },
                 attacker: Some(r.owner),
@@ -2752,7 +2796,7 @@ fn server_walk(w: &mut Delivery, dmg: &CaDamage, r: &Round, walk: Walk, bodies: 
                 hitgroup: Hitgroup::Generic,
                 kind: DamageKind::Bullet,
                 weapon: None,
-                force: Vec3::ZERO,
+                force: push,
             });
         }
         // Through it? A collider's surface, else the world's there.

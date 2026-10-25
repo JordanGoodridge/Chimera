@@ -305,6 +305,7 @@ fn scoped_resources(app: &mut App) {
         .map_scoped::<PlayableArea>()
         .map_scoped::<vis::ActiveVisibility>()
         .map_scoped::<sound::SoundBank>()
+        .map_scoped::<super::impact::ActiveImpacts>()
         .map_scoped::<CharacterModels>()
         .map_scoped::<hud::ActiveHud>()
         .map_scoped::<hud::ActiveOverview>()

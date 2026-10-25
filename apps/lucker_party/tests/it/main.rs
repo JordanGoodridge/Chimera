@@ -5,6 +5,7 @@
 //! where tests go: docs/OBSERVABILITY.md, section 1.
 
 mod controls;
+mod cross_game;
 mod gun_game;
 mod hud;
 mod identity;
@@ -14,3 +15,7 @@ mod results_hud;
 mod rotation;
 mod startup;
 mod switches;
+
+mod heavy {
+    mod impacts;
+}

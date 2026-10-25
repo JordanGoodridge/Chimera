@@ -398,6 +398,7 @@ impl PluginGroup for ClientPlugins {
             .add(hud::HudPlugin)
             .add(game_text::GameTextPlugin)
             .add(effects::ShotEffectsPlugin)
+            .add(effects::GenericImpactsPlugin)
             .add(view::ViewPlugin)
             .add(vgui::VguiPlugin)
             .add(chat::ChatPlugin)

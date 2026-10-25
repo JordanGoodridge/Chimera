@@ -358,7 +358,8 @@ pub(super) fn plugin(app: &mut App) {
             Predict::Weapons,
             (arm, predict_defuse.run_if(resource_equals(NetRole::Client)))
                 .chain()
-                .after(crate::weapon::WeaponFrame),
+                .after(crate::weapon::WeaponFrame)
+                .before(crate::weapon::impact::ApplyImpulses),
         )
         .predicted_net::<Arming>()
         .predicted_net::<Defusing>()

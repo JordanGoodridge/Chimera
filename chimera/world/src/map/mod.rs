@@ -54,6 +54,7 @@ pub use breakables::{
     BreakProp, BrushPanes, FallingPane, GlassImpact, GlassShatter, MapBreak, MapBreakPiece, SpawnGibs,
 };
 pub mod hud;
+pub mod impact;
 pub mod interp;
 pub mod loading;
 pub mod lod;

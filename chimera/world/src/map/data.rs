@@ -987,6 +987,8 @@ pub struct MapData {
     pub overview: Option<hud::MapOverview>,
     /// Materials for particle effects (impacts).
     pub particles: particles::MapParticles,
+    /// The map's game and whose impact looks it carries (`impact`).
+    pub impacts: super::impact::MapImpacts,
     /// Data-driven particle systems and where the map runs them
     /// (info_particle_system): `psys`.
     pub particle_systems: Arc<psys::MapParticleSystems>,

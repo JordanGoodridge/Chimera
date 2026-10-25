@@ -19,6 +19,8 @@
 //! `CsGunsPlugin` is the weapons alone (data, hooks, accuracy, recoil,
 //! penetration materials: what a mashup offers in another game's slots);
 //! `CsWeaponsPlugin` is CS:S's game, with the shop, rules and effects.
+//! The punch decays only while CS:S's recoil owns it
+//! (`weapon::impact::RecoilGame`: a CS:S weapon in hand).
 //! Bullet penetration is the shared `Penetration` part with CS:S's numbers
 //! (data/penetration.toml: `pass_materials`, measured M13; each ammo type's
 //! power and reach in ammo.toml). The shop is data too
@@ -423,6 +425,8 @@ pub struct CsGunsPlugin;
 impl Plugin for CsGunsPlugin {
     fn build(&self, app: &mut App) {
         register_hooks(app);
+        // Its surfaces by class, for impacts across games (`map::impact`).
+        crate::map::impact::SurfaceClassesAppExt::register_surface_classes(app, super::impacts::SURFACES);
         if let Err(e) = app.add_weapon_set(cs_weapons()) {
             panic!("CS:S weapon data: {e}");
         }
@@ -691,15 +695,27 @@ pub fn decay_punch(p: Vec3, dt: f32) -> Vec3 {
 /// active weapon's spread is set from the penalty and the movement term.
 fn before_shots(
     mut owners: Query<
-        (&Inventory, &MovementState, &Velocity, &Intent, Option<&mut ViewPunch>),
+        (
+            &Inventory,
+            &MovementState,
+            &Velocity,
+            &Intent,
+            Option<&mut ViewPunch>,
+            Option<&crate::weapon::impact::RecoilGame>,
+        ),
         Without<crate::map::interp::NetDrawn>,
     >,
     mut weapons: Query<(&Weapon, &mut Inaccuracy, &mut Hitscan, Option<&AltModes>)>,
     clock: Res<crate::core::SimClock>,
 ) {
     let dt = clock.dt();
-    for (inv, state, vel, _intent, punch) in &mut owners {
-        if let Some(mut p) = punch {
+    for (inv, state, vel, _intent, punch, recoil_game) in &mut owners {
+        // CS:S's punch decay only while its recoil owns the punch (another
+        // game's weapon in hand returns it by its own rules:
+        // `weapon::impact::RecoilGame`).
+        let ours = crate::weapon::impact::RecoilGame::is(recoil_game, super::GAME)
+            || inv.active.is_some_and(|a| weapons.contains(a));
+        if let Some(mut p) = punch.filter(|_| ours) {
             let next = decay_punch(p.0, dt);
             if p.0 != next {
                 p.0 = next;

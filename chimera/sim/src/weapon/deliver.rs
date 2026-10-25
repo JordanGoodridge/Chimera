@@ -48,7 +48,6 @@ pub(super) struct World<'w, 's> {
     spatial: SpatialQuery<'w, 's>,
     targets: Query<'w, 's, Target>,
     colliders: Query<'w, 's, &'static ColliderOf>,
-    bodies: Query<'w, 's, (&'static RigidBody, Forces)>,
     damage: MessageWriter<'w, Damage>,
     armor: super::HitArmor<'w, 's>,
     props: Query<'w, 's, &'static PropSurface>,
@@ -63,7 +62,7 @@ pub(super) struct World<'w, 's> {
     first: Res<'w, FirstTimePredicted>,
     role: Option<Res<'w, NetRole>>,
     playback: Option<Res<'w, crate::core::Playback>>,
-    push_scale: Option<Res<'w, super::PushScale>>,
+    impulses: MessageWriter<'w, super::impact::BulletImpulse>,
 }
 
 impl World<'_, '_> {
@@ -582,11 +581,10 @@ impl Shot<'_, '_, '_> {
         if impulse == Vec3::ZERO || !self.w.first.0 || !self.w.authoritative() {
             return;
         }
-        let scale = self.w.push_scale.as_ref().map_or(1.0, |s| s.0);
-        if let Ok((rb, mut forces)) = self.w.bodies.get_mut(body)
-            && rb.is_dynamic()
-        {
-            forces.apply_linear_impulse_at_point(impulse * scale, at);
+        // Applied after the frame, as every game's bullets are
+        // (`impact::apply_bullet_impulses`, with `phys_pushscale`).
+        if self.w.kinds.get(body).is_ok_and(|rb| rb.is_dynamic()) {
+            self.w.impulses.write(super::impact::BulletImpulse { body, point: at, impulse });
         }
     }
 

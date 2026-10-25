@@ -27,6 +27,9 @@ console) and builds from what's there.
 | Characters (bodies) | no | `map::CharacterModels` with `game` set: the map game's own, `MapSources::players`, `MapSources::guests` (`MapDressing`) | none of its game: the shell's capsule (`CharacterModels::for_identity` returns none, the body is removed) |
 | HUD | no | the gameplay's `hud` slot (X1, `hud_is`), switched by `identity::hud_follows_identity`, kept up alone by the shell's `HudSwitchPlugin` | `PartsRegistry::fallback_hud` (the app's base game's; else `MINIMAL_HUD`, the shell's own) |
 | Maps | no | the game's `MapLoader` in the app's `MapSources`, `GameParts::maps` | the other games' maps (the pool is every game's); none at all: the greybox |
+| Bullet impacts (decals, debris, impact sounds) | no | the game's impact systems for what `weapon::impact::ImpactRoute` gives it (`register_impact_provider`), its looks on the map (`MapImpacts::looks`: its loader, a guest dressing), its surfaces by class (`register_surface_classes`, `map::impact::SurfaceClass`) | the map game's impact, else any game's whose looks the map carries, else Chimera's generic mark and puff (`client::effects::GenericImpactsPlugin`) |
+| Pushes on physics objects | no | the game's bullets telling `weapon::impact::BulletImpulse` (N·s; CS:S its damage force, Combat Arms 2 N·s per hit point) | no push |
+| Recoil | no | the game's own, on the shared `ViewPunch`, while `RecoilGame` (the held weapon's game, predicted) is it; a switch of game zeroes the punch | none |
 | Install, binds, tick | the app's | `GameInfo` (`register_game`), `Gameplay` slots | the base game's |
 
 Discovery is generic: `PartsRegistry` (a `Vec`, registration order,

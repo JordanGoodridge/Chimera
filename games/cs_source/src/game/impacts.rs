@@ -3,6 +3,11 @@
 //! speed. Scrapes (looping friction sounds) are `scrapes.rs`. A bullet
 //! hit on a player sounds once, the server's choice (`pain.rs`: a hurt
 //! sound, or the flesh impact), so it is left out here.
+//!
+//! Across games (`weapon::impact`): bullet impacts and decals are drawn
+//! for the shots Chimera's route gives CS:S (`BulletImpactsPlugin`, which
+//! an app with CS:S's guns but not its game adds), with another game's
+//! map's surface names as CS:S's by class (`as_cs`, `SURFACES`).
 
 use std::collections::HashMap;
 
@@ -14,10 +19,11 @@ use crate::{
     map::{
         DecalGroup, MapBrushEntity, MapEntities, PhysicsProp, PlaceDecal, PlaySound, PropSurface,
         breakables::PieceBody,
+        impact::{GameSurfaces, SurfaceClass, SurfaceClasses},
         sound::{MapSounds, MapSurface, SoundBank, SurfaceGrid},
     },
     objectives::hostages::Hostage,
-    weapon::{WeaponEvent, WeaponEventKind},
+    weapon::{WeaponEvent, WeaponEventKind, impact::ImpactRoute},
 };
 
 const UNIT: f32 = 0.0254;
@@ -41,18 +47,76 @@ pub struct ImpactSoundsPlugin;
 
 impl Plugin for ImpactSoundsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(super::scrapes::ScrapePlugin)
-            .init_resource::<LastContact>()
+        app.add_plugins(super::scrapes::ScrapePlugin).init_resource::<LastContact>();
+        if !app.is_plugin_added::<BulletImpactsPlugin>() {
+            app.add_plugins(BulletImpactsPlugin);
+        }
+        app.add_systems(FixedPostUpdate, physics_impacts.after(PhysicsSystems::Writeback));
+    }
+}
+
+/// Bullets' and knives' impact sounds and decals alone (what an app with
+/// CS:S's guns but not its game adds, Lucker Party), for the impacts
+/// Chimera's route gives CS:S (`weapon::impact::ImpactRoute`): its guns'
+/// on any map that carries its looks, other games' guns' on its maps
+/// when theirs can't. Registers CS:S as an impact provider.
+pub struct BulletImpactsPlugin;
+
+impl Plugin for BulletImpactsPlugin {
+    fn build(&self, app: &mut App) {
+        use crate::weapon::impact::ImpactAppExt;
+        app.register_impact_provider(super::GAME)
             .add_message::<PlaySound>()
             .add_message::<WeaponEvent>()
             .add_message::<PlaceDecal>()
             .add_systems(
                 FixedUpdate,
                 (bullet_impacts, impact_decals).after(crate::core::SimSet::Weapons),
-            )
-            .add_systems(FixedPostUpdate, physics_impacts.after(PhysicsSystems::Writeback));
+            );
     }
 }
+
+/// `name`, a surface of the loaded map's game, as CS:S names it: itself
+/// on CS:S's maps (and maps that don't say), else by its class
+/// (`map::impact::SurfaceClasses`: a Combat Arms "Cement" wall is CS:S's
+/// `concrete`).
+pub fn as_cs(name: String, classes: Option<&SurfaceClasses>, map_game: Option<&str>) -> String {
+    match (classes, map_game) {
+        (Some(c), Some(game)) if !game.eq_ignore_ascii_case(super::GAME) => {
+            c.translate(Some(game), &name, super::GAME).unwrap_or(name)
+        }
+        _ => name,
+    }
+}
+
+/// CS:S's surfaces by class (`map::impact`): its surface property names
+/// as `SurfaceClass::guess` reads them, and the property each class
+/// takes on other games' maps (the stock `surfaceproperties*.txt` names).
+pub const SURFACES: GameSurfaces = GameSurfaces {
+    game: super::GAME,
+    classify: |name| {
+        let class = SurfaceClass::guess(name);
+        (class != SurfaceClass::Default).then_some(class)
+    },
+    name: |class| {
+        Some(match class {
+            SurfaceClass::Concrete => "concrete",
+            SurfaceClass::Metal => "metal",
+            SurfaceClass::Wood => "wood",
+            SurfaceClass::Dirt => "dirt",
+            SurfaceClass::Sand => "sand",
+            SurfaceClass::Grass => "grass",
+            SurfaceClass::Snow => "snow",
+            SurfaceClass::Glass => "glass",
+            SurfaceClass::Tile => "tile",
+            SurfaceClass::Plastic => "plastic",
+            SurfaceClass::Cloth => "carpet",
+            SurfaceClass::Flesh => "flesh",
+            SurfaceClass::Water => "water",
+            SurfaceClass::Default => "default",
+        })
+    },
+};
 
 /// Physics impact volume for an impact speed in u/s: (s/320)², at most 1.
 pub fn impact_volume(speed: f32) -> f32 {
@@ -113,6 +177,7 @@ fn bullet_impacts(
     players: Query<(), (With<Intent>, Without<Hostage>)>,
     water: Option<Res<MapWater>>,
     mut play: MessageWriter<PlaySound>,
+    (route, classes): (ImpactRoute, Option<Res<SurfaceClasses>>),
 ) {
     let Some(bank) = bank else {
         events.clear();
@@ -120,7 +185,7 @@ fn bullet_impacts(
     };
     // Played this tick per shooter: (entry, position), for pellet grouping.
     let mut played: Vec<(Entity, String, Vec3)> = Vec::new();
-    for e in events.read().filter(|e| e.shown()) {
+    for e in events.read().filter(|e| e.shown() && route.draws(super::GAME, e)) {
         // Every surface a bullet reaches, also after passing something.
         let (WeaponEventKind::Shot { from, to, hit, .. } | WeaponEventKind::ShotContinued { from, to, hit, .. }) =
             &e.kind
@@ -141,7 +206,11 @@ fn bullet_impacts(
         // movement box's `player` (which has no impact sound of its own).
         let name = match hit {
             Some(e) if characters.contains(*e) => super::pain::FLESH.to_string(),
-            _ => surface_of(*hit, *to, &props, &characters, grid.as_deref()),
+            _ => as_cs(
+                surface_of(*hit, *to, &props, &characters, grid.as_deref()),
+                classes.as_deref(),
+                route.map_game(),
+            ),
         };
         let Some(entry) = surface(&bank.0, &name).and_then(|s| s.bullet_impact.clone()) else {
             continue;
@@ -206,10 +275,11 @@ fn impact_decals(
     map: Option<Res<MapEntities>>,
     water: Option<Res<MapWater>>,
     mut decals: MessageWriter<PlaceDecal>,
+    (route, classes): (ImpactRoute, Option<Res<SurfaceClasses>>),
 ) {
     // Characters take blood, not these (not done yet).
     let marked = |e: Entity| !characters.contains(e);
-    for e in events.read().filter(|e| e.shown()) {
+    for e in events.read().filter(|e| e.shown() && route.draws(super::GAME, e)) {
         match &e.kind {
             // Every surface a bullet enters, also after passing something
             // (M13 logs an impact per surface reached; exits are not
@@ -229,7 +299,11 @@ fn impact_decals(
                 let group = match breakable_decal(*hit, &brushes, &parents, map.as_deref()) {
                     Some(name) => DecalGroup::Named(name.into()),
                     None => {
-                        let name = surface_of(Some(*hit), *to, &props, &characters, grid.as_deref());
+                        let name = as_cs(
+                            surface_of(Some(*hit), *to, &props, &characters, grid.as_deref()),
+                            classes.as_deref(),
+                            route.map_game(),
+                        );
                         let Some(material) = bank
                             .as_ref()
                             .and_then(|b| surface(&b.0, &name))

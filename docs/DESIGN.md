@@ -248,6 +248,29 @@ Prior art: Minecraft's item data components; Unreal's Gameplay Ability System.
   ahead of time as data, reviewed and playtested, never generated during a
   match. A runtime "chaos kit" could exist later as a server-generated mode.
 
+### Impacts across games
+
+Any game's gun works on any game's map; where a game lacks something,
+Chimera has a generic fallback (`chimera_world::map::impact`,
+`chimera_sim::weapon::impact`):
+
+- **Impacts.** Surfaces map onto common classes (`SurfaceClass`:
+  concrete, metal, wood, dirt, sand, grass, snow, glass, tile, plastic,
+  cloth, flesh, water), each game registering how its names go to and
+  from them. A map lists whose impact looks it carries (its loader's game;
+  a guest's dressing adds its own). An impact is drawn by the gun's game
+  when its looks are on the map, else the map's game, else any game whose
+  looks are there, else Chimera's generic mark and puff; each game's
+  impact code asks this route and draws only its own.
+- **Pushes.** Every game's bullets tell a common `BulletImpulse` (N·s at
+  the hit point; each game converts its own numbers: CS:S's measured
+  damage force, Combat Arms' damage × 2 N·s per hit point), which Chimera
+  gives to dynamic bodies times `phys_pushscale`.
+- **Recoil.** The view punch is shared, the rules per game; `RecoilGame`
+  names the game of the held weapon, and a switch to another game's
+  weapon zeroes the punch: the old game's kick doesn't keep returning
+  into the new game's view.
+
 ## Multiplayer
 
 Same principles as the main game: the server owns the loadout, rules and

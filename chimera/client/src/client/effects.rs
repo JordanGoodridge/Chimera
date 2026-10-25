@@ -1,6 +1,10 @@
 //! Shot feedback until the games' own effects load: tracer streaks and
 //! bullet marks on static surfaces. Placeholders, not CS:S's look (its
 //! tracer sprites, impact decals by surface and particle puffs).
+//!
+//! `GenericImpactsPlugin`: Chimera's generic bullet impact, for impacts
+//! no game in the app can draw on the map (`weapon::impact`): a mark in
+//! the hit surface's class colour and a fading dust puff.
 
 use std::collections::VecDeque;
 
@@ -161,5 +165,140 @@ fn move_tracers(mut tracers: Query<(Entity, &mut Tracer, &mut Transform)>, time:
         *tf = Transform::from_translation(mid)
             .looking_to(t.dir, any_up(t.dir))
             .with_scale(Vec3::new(TRACER_WIDTH, TRACER_WIDTH, (head - tail).max(0.001)));
+    }
+}
+
+/// Chimera's generic impact (`weapon::impact::ImpactBy::Generic`: no game
+/// in the app can draw this gun's impacts on this map): a dark mark in
+/// the hit surface's class colour (`map::impact::SurfaceClass`) on what
+/// doesn't move, and a puff of the class's dust that grows and fades.
+/// No sound: Chimera ships no game's files.
+pub struct GenericImpactsPlugin;
+
+impl Plugin for GenericImpactsPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<GenericMarks>()
+            .add_systems(Update, (generic_impacts, fade_puffs));
+    }
+}
+
+/// Most generic marks kept; the oldest goes first.
+const MAX_GENERIC_MARKS: usize = 256;
+/// The puff's life, s, and its size at the end, m.
+const PUFF_LIFE: f32 = 0.45;
+const PUFF_SIZE: f32 = 0.25;
+
+#[derive(Resource, Default)]
+struct GenericMarks {
+    spawned: VecDeque<Entity>,
+    mesh: Option<(Handle<Mesh>, Handle<Mesh>)>,
+    /// Each class's mark material, made on first use.
+    looks: Vec<(crate::map::impact::SurfaceClass, Handle<StandardMaterial>)>,
+}
+
+#[derive(Component)]
+struct Puff {
+    age: f32,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generic_impacts(
+    mut events: MessageReader<WeaponEvent>,
+    route: crate::weapon::impact::ImpactRoute,
+    bodies: Query<&RigidBody>,
+    characters: Query<(), With<crate::core::Intent>>,
+    grid: Option<Res<crate::map::sound::SurfaceGrid>>,
+    classes: Option<Res<crate::map::impact::SurfaceClasses>>,
+    mut marks: ResMut<GenericMarks>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands,
+) {
+    use crate::map::impact::SurfaceClass;
+    for e in events.read().filter(|e| e.shown()) {
+        let (WeaponEventKind::Shot { to, hit: Some(hit), normal: Some(n), .. }
+        | WeaponEventKind::ShotContinued { to, hit: Some(hit), normal: Some(n), .. }) = &e.kind
+        else {
+            continue;
+        };
+        if route.by(e) != crate::weapon::impact::ImpactBy::Generic {
+            continue;
+        }
+        let class = if characters.contains(*hit) {
+            SurfaceClass::Flesh
+        } else {
+            let name = grid.as_deref().and_then(|g| g.nearest(*to, 0.3)).unwrap_or("default");
+            classes.as_deref().map_or_else(|| SurfaceClass::guess(name), |c| c.classify(route.map_game(), name))
+        };
+        let (quad, sphere) = marks
+            .mesh
+            .get_or_insert_with(|| (meshes.add(Circle::new(MARK_SIZE / 2.0)), meshes.add(Sphere::new(0.5))))
+            .clone();
+        let up = any_up(*n);
+        if class != SurfaceClass::Flesh && !bodies.get(*hit).is_ok_and(|b| !b.is_static()) {
+            let material = match marks.looks.iter().find(|(c, _)| *c == class) {
+                Some((_, m)) => m.clone(),
+                None => {
+                    let c = class.mark_color();
+                    let m = materials.add(StandardMaterial {
+                        base_color: Color::linear_rgba(c.x, c.y, c.z, 0.9),
+                        unlit: true,
+                        alpha_mode: AlphaMode::Blend,
+                        depth_bias: 50.0,
+                        ..default()
+                    });
+                    marks.looks.push((class, m.clone()));
+                    m
+                }
+            };
+            let mark = commands
+                .spawn((
+                    Mesh3d(quad),
+                    MeshMaterial3d(material),
+                    Transform::from_translation(*to + *n * 0.003).looking_to(-*n, up),
+                ))
+                .id();
+            marks.spawned.push_back(mark);
+            while marks.spawned.len() > MAX_GENERIC_MARKS {
+                if let Some(old) = marks.spawned.pop_front() {
+                    commands.entity(old).despawn();
+                }
+            }
+        }
+        let d = class.dust_color();
+        let material = materials.add(StandardMaterial {
+            base_color: Color::linear_rgba(d.x, d.y, d.z, 0.6),
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        });
+        commands.spawn((
+            Puff { age: 0.0 },
+            Mesh3d(sphere),
+            MeshMaterial3d(material),
+            Transform::from_translation(*to + *n * 0.05).with_scale(Vec3::splat(0.02)),
+        ));
+    }
+}
+
+/// Grow and fade each puff; despawn it at the end of its life.
+fn fade_puffs(
+    mut puffs: Query<(Entity, &mut Puff, &mut Transform, &MeshMaterial3d<StandardMaterial>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    time: Res<Time>,
+    mut commands: Commands,
+) {
+    for (e, mut p, mut t, m) in &mut puffs {
+        p.age += time.delta_secs();
+        let f = p.age / PUFF_LIFE;
+        if f >= 1.0 {
+            materials.remove(&m.0);
+            commands.entity(e).despawn();
+            continue;
+        }
+        t.scale = Vec3::splat(0.02 + (PUFF_SIZE - 0.02) * f.sqrt());
+        if let Some(mut mat) = materials.get_mut(&m.0) {
+            mat.base_color.set_alpha(0.6 * (1.0 - f));
+        }
     }
 }

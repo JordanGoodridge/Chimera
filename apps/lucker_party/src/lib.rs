@@ -14,7 +14,9 @@
 //! - `PartyPlugins`: the simulation: Combat Arms' (`combat_arms::
 //!   SimPlugins`, `CombatArmsPlugins`: the default game, for bare map
 //!   names), then `PartyPartsPlugin`: CS:S registered as a second game,
-//!   Source's map logic, CS:S's guns, the minigame runtime
+//!   Source's map logic, CS:S's guns and their impacts (sounds, decals,
+//!   debris, blood, tracers; `weapon::impact` routes each impact to one
+//!   game), the minigame runtime
 //!   (`MinigamePlugin`), its part of the network (`chimera_net::
 //!   minigame_net`) and the original minigames (`OriginalsPlugin`).
 //!   The app's gameplay is Combat Arms' until a minigame starts
@@ -202,6 +204,11 @@ impl Plugin for PartyPartsPlugin {
         app.add_plugins((
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,
+            // CS:S's bullet impacts (sounds, decals, debris, sparks, blood,
+            // tracers) for its guns, on any map (`weapon::impact`: Combat
+            // Arms' maps carry CS:S's looks as a guest's).
+            cs_source::game::impacts::BulletImpactsPlugin,
+            cs_source::game::impact_effects::ImpactEffectsPlugin,
             // CS:S's movement, for a player holding a CS:S gun (the gun
             // game's `identity = "weapon"`), and a network server's
             // per-tick animation of CS:S's bodies (their hitboxes).

@@ -11,7 +11,9 @@
 //! `slime_splash_03` (`map::psys::StartParticleSystem`, run by
 //! `render::psys`). Shattered glass throws tumbling shards that settle flat
 //! (`Shape::Tumble`). The particle machinery is `map::particles`; the
-//! numbers and choices are here.
+//! numbers and choices are here. Across games (`weapon::impact`): the
+//! impacts Chimera's route gives CS:S (its guns' on any map carrying its
+//! looks), blood from its guns' hits, tracers of its guns.
 //!
 //! The spec by section (have / ours / missing):
 //! 1 who and when: per bullet, pellet and penetrated surface; sky and
@@ -80,6 +82,7 @@ use crate::{
     core::{Damage, Intent, MapWater, MapWaterVolume},
     map::{
         DecalGroup, ParticleRng, PlaceDecal, PlaySound, PropIndex, PropSurface,
+        impact::SurfaceClasses,
         particles::{
             Bounce, Fade, MapParticles, Motion, Particle, ParticleGroup, ParticleMaterials, Particles,
             Ramp, Shape, WorldTrace, WorldTracer, probe_planes,
@@ -88,7 +91,7 @@ use crate::{
         sound::{SoundBank, SurfaceGrid},
         surface_color::{SurfaceColors, SurfaceLook},
     },
-    weapon::{WeaponEvent, WeaponEventKind},
+    weapon::{WeaponEvent, WeaponEventKind, impact::ImpactRoute},
 };
 
 const UNIT: f32 = 0.0254;
@@ -1365,8 +1368,12 @@ fn tracers(
     mut events: MessageReader<WeaponEvent>,
     mut out: MessageWriter<crate::map::tracer::Tracer>,
     mut count: Local<u64>,
+    route: ImpactRoute,
 ) {
-    for e in events.read().filter(|e| e.shown()) {
+    // CS:S's guns' tracers, and other games' guns' where CS:S draws their
+    // impacts.
+    let ours = |e: &WeaponEvent| route.gun_game(e.weapon) == Some(super::GAME) || route.draws(super::GAME, e);
+    for e in events.read().filter(|e| e.shown() && ours(e)) {
         let WeaponEventKind::Shot { from, to, .. } = e.kind else { continue };
         if draws_tracer(*count) {
             out.write(crate::map::tracer::Tracer {
@@ -1384,6 +1391,8 @@ pub struct ImpactEffectsPlugin;
 
 impl Plugin for ImpactEffectsPlugin {
     fn build(&self, app: &mut App) {
+        use crate::weapon::impact::ImpactAppExt;
+        app.register_impact_provider(super::GAME);
         app.init_resource::<Particles>()
             .init_resource::<ImpactEffectSettings>()
             .init_resource::<EffectRng>()
@@ -1523,14 +1532,14 @@ fn impact_effects(
     world: WorldTracer,
     mut play: MessageWriter<PlaySound>,
     mut systems: MessageWriter<StartParticleSystem>,
-    ragdolls: RagdollsOnLine,
+    (ragdolls, route, classes): (RagdollsOnLine, ImpactRoute, Option<Res<SurfaceClasses>>),
 ) {
     // Without materials (headless) there are no particles; sounds still
     // play.
     let mats = materials.map(|m| EffectMaterials::new(&m.0));
     let mats = mats.as_ref();
     let rng = &mut rng.0;
-    for e in events.read().filter(|e| e.shown()) {
+    for e in events.read().filter(|e| e.shown() && route.draws(super::GAME, e)) {
         let (from, point, normal, hit, bullet) = match &e.kind {
             // Also where a bullet enters the next surface after passing
             // something (penetration).
@@ -1620,7 +1629,11 @@ fn impact_effects(
         if characters.contains(hit) {
             continue;
         }
-        let name = surface_of(Some(hit), point, &surfaces, &characters, grid.as_deref());
+        let name = super::impacts::as_cs(
+            surface_of(Some(hit), point, &surfaces, &characters, grid.as_deref()),
+            classes.as_deref(),
+            route.map_game(),
+        );
         let letter = bank
             .as_ref()
             .and_then(|b| surface(&b.0, &name))
@@ -1629,8 +1642,11 @@ fn impact_effects(
         let prop = props.get(hit).ok().map(|p| p.0);
         let look = match colors.as_deref().map(|c| look_at(c, prop, point, normal)) {
             Some(Ok(look)) => look,
-            // No visible surface at a world hit: sky or nodraw, nothing.
-            Some(Err(())) => continue,
+            // No visible surface at a world hit: sky or nodraw, nothing
+            // (on CS:S's maps; another game's drawn surfaces needn't lie
+            // on its collision: the hit's look is unknown there).
+            Some(Err(())) if route.map_game().is_none_or(|g| g.eq_ignore_ascii_case(super::GAME)) => continue,
+            Some(Err(())) => None,
             None => None,
         };
         // Bullets only: 3 in 10 impacts ricochet (spec section 2 step 6).
@@ -1767,9 +1783,16 @@ fn blood_effects(
     mut rng: ResMut<EffectRng>,
     world: WorldTracer,
     mut decals: MessageWriter<PlaceDecal>,
+    (route, holders): (ImpactRoute, Query<&crate::weapon::Inventory>),
 ) {
     let rng = &mut rng.0;
     for hit in damage.read() {
+        // Blood is the attacker's gun's game's (another game's gun bleeds
+        // its own way), CS:S's when nothing says.
+        let gun = hit.attacker.and_then(|a| holders.get(a).ok()).and_then(|i| i.active);
+        if gun.is_some_and(|g| route.by_weapon(g) != crate::weapon::impact::ImpactBy::Game(super::GAME)) {
+            continue;
+        }
         // Only damage that is taken: not a teammate's with friendly fire
         // off (spec section 10).
         if hit.attacker.is_none()
