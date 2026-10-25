@@ -11,7 +11,11 @@
 //!   a weapon whose game has no movement, or a character in noclip,
 //!   keeps the one it has. A switch the server makes outside the
 //!   player's commands (a rung's swap) counts as `core::rebase`, a
-//!   restart for its client.
+//!   restart for its client. The new movement is seated on the old one's
+//!   feet, crouched as it was (`slots::set_movement` with the movements'
+//!   `Footing`): the games' hulls differ in height and width, and each
+//!   movement frees its hull from solids and grounds it in the same
+//!   predicted tick.
 //! - `GameIdentity` (the server's, replicated): the held weapon's game,
 //!   set in the same system where the world is authoritative. The body
 //!   follows it on every machine: the map's character models are picked

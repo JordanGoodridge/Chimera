@@ -703,7 +703,7 @@ docs/plans/active/sound.md.
 - Stock ambient_generics the bomb starts (de_nuke's alarm, dust2's
   fires) now play when it explodes (`BombExplode`); check them by ear. (Prop outputs are in: de_nuke's steam, cs_office's
   projector; env_steam's JetLength/SpreadSpeed/Speed inputs are in, for new
-  puffs.) Heat-wave jets (Type 1) are not done.
+  puffs; heat-wave jets, Type 1, refract the scene: no stock map has one, so unseen.)
 - Measure ambient_generic's level for script entries vs raw waves (spec
   open question 11).
 - Measure on the probe server: the distance curves (replace the H1/H2
@@ -853,6 +853,6 @@ Counts are from de_dust2's entity lump and static prop lump.
 - **Brush entities**: movers (doors, buttons, func_rotating, trains,
   func_brush) move through the logic layer, breakables break; baked brush
   entities draw their render mode (colour/texture/alpha blend, glow/additive
-  add, 10 hidden) and rendercolor. Left: mode 1 ("color") draws the texture
-  where Source's is flat colour, and mode 4's alpha test is a blend.
+  add, 10 hidden) and rendercolor; mode 1 draws the flat colour and mode 4
+  alpha-tests (cs_italy's and de_piranesi's foliage and fences).
 - **Fire** (specs/source/fire.md) is in: env_fire (heat, growth, burn damage box with line of sight, fuel, Extinguish, outputs, re-created unlit each round, Q4), env_firesource/env_firesensor, entity flames (Ignite inputs, burning props, the gas can), the `env_fire_large_smoke` and `burning_character` looks (docs/tech-debt.md "Fire"). Next: compare a lit de_dust2 fire with CS:S's (Q1, Q10 operator meanings), and the probe-server questions: burn vs armour, the kill icon and score (Q2), player ignition (Q3), the radius damage of a burning can (Q6), burning-prop light (Q7), buried fires (Q9), floors on de_dust/de_train (Q5).

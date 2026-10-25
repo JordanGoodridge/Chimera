@@ -63,7 +63,8 @@ fn the_ladder_spreads_across_both_games_and_keeps_its_seed() {
     assert_eq!((of(&first, "cs_source"), of(&first, "combat_arms")), (RUNGS / 2, RUNGS / 2), "{first:?}");
     let def = sim.app.world().resource::<Minigames>().get(MINIGAME).unwrap();
     assert_eq!(def.maps, ["cs_source:de_dust2", "combat_arms:warehouse", "cs_source:cs_office"], "every game's maps, in turn");
-    assert_eq!(def.spawn.kit, ["combat_arms:m9_knife"]);
+    assert_eq!(def.spawn.kit.for_game(Some("cs_source")), ["cs_source:weapon_knife"], "each gun's game's knife");
+    assert_eq!(def.spawn.kit.for_game(Some("combat_arms")), ["combat_arms:m9_knife"]);
     // The same seed: the same ladder; another, another.
     ultimate_gun_game::generate(sim.app.world_mut(), SEED, RUNGS).unwrap();
     assert_eq!(rungs(sim.app.world()), first);

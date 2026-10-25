@@ -5,7 +5,7 @@
 //! and takes the gameplay's rules; a scripted player shooting another
 //! with each rung's weapon (its own aim and trigger, the weapon frame's
 //! hits) climbs the ladder of CS:S's and Combat Arms' guns to the win; a
-//! death to Combat Arms' knife costs a rung.
+//! knife death costs a rung (the knife is the gun's game's: switches.rs).
 
 use avian3d::prelude::Position;
 use bevy::prelude::*;
@@ -108,7 +108,7 @@ fn the_gun_game_checks_against_both_games_and_takes_the_rules() {
             let w = sim.app.world();
             w.get::<Inventory>(p).unwrap().weapons.iter().filter_map(|x| w.get::<Weapon>(*x)).map(|x| x.id).collect()
         };
-        assert!(ids.contains(&combat_arms::game::inventory::KNIFE), "the kit's Combat Arms knife: {ids:?}");
+        assert!(ids.contains(&cs_source::game::weapons::KNIFE), "the kit's knife, the Glock's game's: {ids:?}");
     }
 }
 
@@ -160,8 +160,8 @@ fn a_full_gun_game_runs_to_a_winner_with_both_games_guns() {
     assert_eq!(sim.app.world().get::<Score>(b).unwrap().deaths, 10);
 }
 
-/// Combat Arms' knife (the kit's) kills a player on the fourth rung: it
-/// goes back to the third, CS:S's Desert Eagle at its respawn.
+/// CS:S's knife (the kit's, with the Glock) kills a player on the fourth
+/// rung: it goes back to the third, CS:S's Desert Eagle at its respawn.
 #[test]
 fn a_knife_death_costs_a_rung() {
     let mut sim = party();
@@ -176,12 +176,12 @@ fn a_knife_death_costs_a_rung() {
         inv.weapons
             .iter()
             .copied()
-            .find(|x| w.get::<Weapon>(*x).is_some_and(|x| x.id == combat_arms::game::inventory::KNIFE))
+            .find(|x| w.get::<Weapon>(*x).is_some_and(|x| x.id == cs_source::game::weapons::KNIFE))
             .unwrap()
     };
     sim.app.world_mut().get_mut::<Inventory>(a).unwrap().wanted = Some(knife);
     line_up(&mut sim, a, b, 1.2);
-    assert_eq!(held(&sim, a), Some(combat_arms::game::inventory::KNIFE));
+    assert_eq!(held(&sim, a), Some(cs_source::game::weapons::KNIFE));
     assert!(shoot_until_dead(&mut sim, a, b, 8.0), "knifed");
     assert_eq!(rung(&sim, b), 2, "a rung down");
     assert_eq!(rung(&sim, a), 1, "the killer still climbs");
@@ -221,7 +221,7 @@ fn combat_arms_bots_play_the_gun_game() {
     assert_eq!(teams.len(), 4, "a team each: {teams:?}");
     let in_hand: Vec<Option<&str>> = bots.iter().map(|b| held(&sim, *b)).collect();
     assert!(
-        in_hand.iter().all(|h| [Some(cs_source::game::weapons::GLOCK), Some(combat_arms::game::inventory::KNIFE)].contains(h)),
+        in_hand.iter().all(|h| [Some(cs_source::game::weapons::GLOCK), Some(cs_source::game::weapons::KNIFE)].contains(h)),
         "the first rung's Glock or the kit's knife: {in_hand:?}"
     );
     let mut kills = 0;

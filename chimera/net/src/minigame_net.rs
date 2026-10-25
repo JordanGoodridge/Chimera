@@ -447,7 +447,7 @@ fn wanted(def: &MinigameDef) -> Vec<String> {
     let mut out: Vec<String> = [&s.hud, &s.binds, &s.tick, &s.bots].into_iter().flatten().cloned().collect();
     out.extend([&s.movement, &s.character].into_iter().flatten().filter_map(|id| prefix(id)));
     out.extend(s.weapons.iter().cloned());
-    out.extend(def.spawn.kit.iter().filter_map(|id| prefix(id)));
+    out.extend(def.spawn.kit.all().into_iter().filter_map(prefix));
     out
 }
 

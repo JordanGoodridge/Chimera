@@ -51,7 +51,9 @@
 //! `death::choose` from the killing hit, and a body (`CaBody`) is left at
 //! the player's floor-snapped position + 0.1 u; it goes 5 s after its
 //! owner respawned and its animation ended in the modes that remove
-//! bodies (data's `body_removal`), or at a new round.
+//! bodies (data's `body_removal`), or at a new round. With no mode of ours
+//! (`ca_mode none`) but a minigame playing (Lucker Party), as our like
+//! mode: a free-for-all as One Man Army, teams as Team Deathmatch.
 //!
 //! Network (`CaCharactersNetPlugin`, part `combat_arms_characters`): each
 //! client sends its own look (`CaLookRequest`, from `CaOwnLook`: when its
@@ -280,9 +282,27 @@ impl CaAnim {
 
     /// The posed skeleton now, with aim (`server`: the server's shares).
     pub fn posed(&self, crouch: f32, squash: f32, server: bool) -> Posed {
+        let mut posed = self.unaimed(crouch, squash);
+        posed.aim(&records::builtin().skeleton(self.skeleton).aim, self.pitch, self.twist, server);
+        posed
+    }
+
+    /// `posed` for the client's view and the server's (`posed(.., false)`,
+    /// `posed(.., true)`), the layers posed once: only the aim differs.
+    pub fn posed_both(&self, crouch: f32, squash: f32) -> (Posed, Posed) {
+        let aim = &records::builtin().skeleton(self.skeleton).aim;
+        let mut seen = self.unaimed(crouch, squash);
+        let mut server = seen.clone();
+        seen.aim(aim, self.pitch, self.twist, false);
+        server.aim(aim, self.pitch, self.twist, true);
+        (seen, server)
+    }
+
+    /// The pose before the aim.
+    fn unaimed(&self, crouch: f32, squash: f32) -> Posed {
         let d = &self.driver;
         let skel = records::builtin().skeleton(self.skeleton);
-        let mut posed = match &self.rig {
+        match &self.rig {
             Some(rig) => {
                 let pose = if self.death.is_some() {
                     // A body has only its main tracker (10).
@@ -293,9 +313,7 @@ impl CaAnim {
                 rig.posed(&pose, crouch)
             }
             None => skeleton::fallback(skel, squash),
-        };
-        posed.aim(&skel.aim, self.pitch, self.twist, server);
-        posed
+        }
     }
 }
 
@@ -836,12 +854,16 @@ fn drive(
         } else {
             intent.yaw + anim.twist
         };
-        let posed = anim.posed(r, squash, false);
-        *pose = pose_of(&anim, &posed, body_yaw, squash);
-        if !client {
-            let server = anim.posed(r, squash, true);
+        let posed = if client {
+            let posed = anim.posed(r, squash, false);
+            *pose = pose_of(&anim, &posed, body_yaw, squash);
+            posed
+        } else {
+            let (posed, server) = anim.posed_both(r, squash);
+            *pose = pose_of(&anim, &posed, body_yaw, squash);
             pose.server_spheres = pose_of(&anim, &server, body_yaw, squash).spheres;
-        }
+            posed
+        };
         if let (true, Some(mut animator)) = (anim.rig.is_some() && ours, animator) {
             animator.fixed = Some(Arc::new(posed.locals_rh()));
             if animator.main.is_none() {
@@ -1030,13 +1052,23 @@ fn bodies(
     restarts: Res<RoundRestarts>,
     mut round: Local<Option<u32>>,
     settings: Option<Res<super::rules::CaRuleSettings>>,
+    minigame: Option<Res<chimera_sim::minigame::ActiveMinigame>>,
     mut commands: Commands,
 ) {
     let new_round = round.is_some_and(|r| r != restarts.0);
     *round = Some(restarts.0);
-    let delay = settings
-        .and_then(|s| super::rules::mode_by_key(&s.mode))
-        .and_then(|m| records::builtin().body_removal(m.id));
+    let delay = match settings.and_then(|s| super::rules::mode_by_key(&s.mode)) {
+        Some(m) => records::builtin().body_removal(m.id),
+        // No mode of ours: a minigame's match (Lucker Party's) removes
+        // bodies as our like mode does, a free-for-all as One Man Army
+        // (FFA), teams as Team Deathmatch: 5 s.
+        None => minigame
+            .map(|m| match m.def.teams {
+                chimera_sim::minigame::def::TeamsDef::FreeForAll => super::rules::ONE_MAN_ARMY,
+                _ => super::rules::TDM,
+            })
+            .and_then(|id| records::builtin().body_removal(id)),
+    };
     for (e, mut b) in &mut bodies {
         if new_round {
             commands.entity(e).despawn();

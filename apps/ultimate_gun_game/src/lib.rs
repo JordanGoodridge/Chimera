@@ -18,12 +18,12 @@
 //! `RUNGS` rungs spread across the games' guns (seeded, `SEED` unless
 //! `ugg_new` names one), filtered to the games every connected player has
 //! (`minigame_net::installed_by_all`, L3's mount reports); its pool every
-//! game's maps; its kit the base game's (`BASE`) knife. `parts` (console)
+//! game's maps; its kit each gun's game's knife (the base game's, `BASE`,
+//! for a game without one). `parts` (console)
 //! prints each game's capability report.
 //!
 //! Known shortcuts: the ladder is made again only by `ugg_new` (not at
-//! each rotation or when a player without a game joins); the kit is the
-//! base game's knife whatever the gun's game; with no CS:S install the
+//! each rotation or when a player without a game joins); with no CS:S install the
 //! client still stops (`lucker_party::requirements`), its pool's first map
 //! being CS:S's.
 
@@ -49,8 +49,9 @@ pub const RUNGS: usize = 12;
 /// The seed without `ugg_new <seed>`.
 pub const SEED: u64 = 1;
 
-/// The base game: binds, tick and bots, the knife, the HUD before a gun's
-/// game takes it (Combat Arms', as Lucker Party's).
+/// The base game: binds, tick and bots, the knife and HUD of a game that
+/// lends none, the HUD before a gun's game takes it (Combat Arms', as
+/// Lucker Party's).
 pub const BASE: &str = "combat_arms";
 
 /// The options of a ladder of `rungs` from `seed`.

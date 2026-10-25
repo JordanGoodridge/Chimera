@@ -23,8 +23,8 @@
 //! - `definition`: the minigame's TOML (`MinigameDef`), filtered by
 //!   `installed` (the games every player has: L3's mount reports, which
 //!   the app reads; `chimera_net::minigame_net::installed_by_all`). Its
-//!   kit is the base game's knife (each gun's own game's knife: the
-//!   identity's, where the runtime gives one).
+//!   kit is by game (`def::Kit::ByGame`): each gun's game's own knife,
+//!   the base game's for a game that lends none.
 
 use chimera_core::{
     game_parts::{GameParts, GunClass, GunPart, PartsRegistry},
@@ -229,8 +229,9 @@ pub struct AutoOptions {
     pub name: String,
     pub rungs: usize,
     pub seed: u64,
-    /// The game whose binds, tick and bots the match uses, whose knife is
-    /// the kit, whose HUD is drawn before a gun's game takes it.
+    /// The game whose binds, tick and bots the match uses, whose knife a
+    /// game without one gets, whose HUD is drawn before a gun's game
+    /// takes it.
     pub base: &'static str,
     /// The match's length, seconds.
     pub time_limit: f32,
@@ -265,13 +266,22 @@ pub fn definition(caps: &[Capabilities], opts: &AutoOptions, installed: &dyn Fn(
             sets.push(game);
         }
     }
-    let knife = base.and_then(|b| b.knife);
-    if knife.is_some() && !sets.iter().any(|s| s == opts.base) {
-        sets.push(opts.base.to_string());
+    // The kit by game: each ladder game's own knife, else the base game's.
+    let fallback = base.and_then(|b| b.knife);
+    let mut kit: Vec<String> = Vec::new();
+    for game in sets.clone() {
+        let own = caps.iter().find(|c| c.game == game).and_then(|c| c.knife);
+        if let Some(knife) = own.or(fallback) {
+            kit.push(format!("{} = {}", q(&game), list(&[knife.to_string()])));
+            let of = knife.split_once(':').map_or(knife, |(g, _)| g);
+            if !sets.iter().any(|s| s == of) {
+                sets.push(of.to_string());
+            }
+        }
     }
+    let kit = format!("{{ {} }}", kit.join(", "));
     let ladder: Vec<String> = ladder.iter().map(|s| s.to_string()).collect();
     let maps = map_pool(caps, installed);
-    let kit: Vec<String> = knife.into_iter().map(str::to_string).collect();
     let movement = base.and_then(|b| b.movement).map(|m| format!("movement = {}\n", q(m))).unwrap_or_default();
     let hud = base.and_then(|b| b.hud).unwrap_or(chimera_core::game_parts::MINIMAL_HUD);
     let hud = if hud == chimera_core::game_parts::MINIMAL_HUD { String::new() } else { format!("hud = {}\n", q(hud)) };
@@ -294,7 +304,6 @@ pub fn definition(caps: &[Capabilities], opts: &AutoOptions, installed: &dyn Fn(
         time = opts.time_limit,
         base = q(opts.base),
         sets = list(&sets),
-        kit = list(&kit),
         ladder = list(&ladder),
     ))
 }

@@ -60,4 +60,8 @@ dev = [
     "chimera_net/dev",
 ]
 # Every system as a span in a Chrome trace (the game's `profile`).
-profile = ["chimera_core/profile"]
+profile = ["chimera_core/profile", "trace"]
+# `trace_capture`: a short window of spans as a Chrome trace; `tracy`: the
+# Tracy profiler live (docs/performance.md, "See a frame yourself").
+trace = ["chimera_core/trace"]
+tracy = ["chimera_core/tracy", "trace"]

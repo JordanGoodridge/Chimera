@@ -27,7 +27,9 @@
 //!   no spectating, free or map camera), its upward smoothing
 //!   (specs/combat_arms/movement.md "Eye (camera) height",
 //!   `movement::CameraRise`, per rendered frame, held off in a jump or a
-//!   free-movement volume: `CaMovement::in_jump`, `eye_free`); then the
+//!   free-movement volume: `CaMovement::in_jump`, `eye_free`; only on
+//!   Combat Arms' movement: a player moving as another game, Lucker
+//!   Party's CS:S identity, keeps its own eye); then the
 //!   effect groups' camera jitter (CamJitter: a random offset in [−a, a] u
 //!   on each world axis every frame, a = `CaFx::jitter_at` the camera).
 //!
@@ -200,9 +202,23 @@ fn decals(
         let color = Color::srgba(m.grey * 2.0, m.grey * 2.0, m.grey * 2.0, alpha);
         match slots.remove(&i) {
             Some((_, mut t, mat, mut v)) => {
-                *t = pose;
-                *v = Visibility::Inherited;
-                if let Some(mut mat) = materials.get_mut(&mat) {
+                // A mark stays put: rewriting its transform every frame
+                // made Bevy propagate it again.
+                if *t != pose {
+                    *t = pose;
+                }
+                if *v != Visibility::Inherited {
+                    *v = Visibility::Inherited;
+                }
+                // Written only when it changes: a material borrowed
+                // mutably is prepared for the GPU again (a mark that
+                // isn't fading every frame; docs/performance.md, "Lucker
+                // Party").
+                let stale = materials.get(&mat).is_some_and(|m| {
+                    let want = if m.base_color_texture.is_some() { color } else { color.with_alpha(alpha * 0.8) };
+                    m.base_color != want || (tex.is_some() && m.base_color_texture != tex)
+                });
+                if stale && let Some(mut mat) = materials.get_mut(&mat) {
                     mat.base_color = if mat.base_color_texture.is_some() { color } else { color.with_alpha(alpha * 0.8) };
                     if tex.is_some() && mat.base_color_texture != tex {
                         mat.base_color_texture = tex;
@@ -639,9 +655,11 @@ pub fn camera_motion(
         && spec.is_none_or(|s| s.pose.is_none())
         && watch.is_none_or(|w| w.0 == 0)
         && !map_view;
-    if eye {
+    // The rise is Combat Arms' movement's: a player moving as another
+    // game (Lucker Party's CS:S identity) has its own eye, unsmoothed.
+    if eye && let Some(m) = movement {
         let wanted = at.y / UNIT;
-        let in_jump = movement.is_some_and(|m| m.in_jump || m.eye_free);
+        let in_jump = m.in_jump || m.eye_free;
         let h = state.rise.step(wanted, time.delta_secs(), in_jump, movement_data());
         offset.y += (h - wanted) * UNIT;
     } else {

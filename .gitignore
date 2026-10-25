@@ -22,3 +22,6 @@
 # Local-only list of private words the pre-push hook refuses (one regex per line).
 /.githooks/private-patterns
 __pycache__/
+
+# Profiles (docs/performance.md, "See a frame yourself").
+trace-*.json

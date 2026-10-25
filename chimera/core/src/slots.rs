@@ -3,6 +3,14 @@
 //! plugin's types.
 //!
 //! `MovementRegistry`, `Loadout`, `set_movement` (swap an entity's movement).
+//! A movement with a hull can say where its character's feet are and how
+//! it stands (`Footing`, `MovementImpl::footing`) and put a character
+//! there with its own hull (`MovementImpl::seat`; `RegisterSlots::
+//! seat_movement`): `set_movement` hands the old movement's footing to the
+//! new one, so a switch between hulls of other heights keeps the feet on
+//! the same floor (each movement then frees the hull from solids and puts
+//! it down on the floor in its next step, on the server and on the
+//! predicting client alike).
 //!
 //! Per-character identity: a character with `FollowsWeapon` takes its game
 //! slots from the game of the weapon it holds (a minigame's `identity =
@@ -22,6 +30,24 @@ pub struct MovementImpl {
     pub id: &'static str,
     pub insert: fn(&mut EntityWorldMut),
     pub remove: fn(&mut EntityWorldMut),
+    /// Where a character on this movement stands (None: no hull, as
+    /// noclip's).
+    pub footing: Option<fn(&World, Entity) -> Option<Footing>>,
+    /// Put a character just switched to this movement where `Footing`
+    /// says, with this movement's hull (None: it stays where it is).
+    pub seat: Option<fn(&mut World, Entity, Footing)>,
+}
+
+/// Where a character's feet are and how it stands, as its movement keeps
+/// it: what a switch of movement keeps (`set_movement`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Footing {
+    /// The bottom centre of its hull, engine space (m).
+    pub feet: Vec3,
+    /// In its crouched hull (or going down into it).
+    pub crouched: bool,
+    /// On the ground (not falling or jumping).
+    pub on_ground: bool,
 }
 
 #[derive(Resource, Default)]
@@ -87,6 +113,13 @@ pub struct Loadout {
 pub trait RegisterSlots {
     /// Register a Movement implementation driven by marker component `M`.
     fn register_movement<M: Component + Default>(&mut self, id: &'static str) -> &mut Self;
+    /// Movement `id`'s `footing` and `seat` (registered before).
+    fn seat_movement(
+        &mut self,
+        id: &'static str,
+        footing: fn(&World, Entity) -> Option<Footing>,
+        seat: fn(&mut World, Entity, Footing),
+    ) -> &mut Self;
 }
 
 impl RegisterSlots for App {
@@ -105,13 +138,30 @@ impl RegisterSlots for App {
                 id,
                 insert: insert::<M>,
                 remove: remove::<M>,
+                footing: None,
+                seat: None,
             });
+        self
+    }
+
+    fn seat_movement(
+        &mut self,
+        id: &'static str,
+        footing: fn(&World, Entity) -> Option<Footing>,
+        seat: fn(&mut World, Entity, Footing),
+    ) -> &mut Self {
+        let mut registry = self.world_mut().resource_mut::<MovementRegistry>();
+        let m = registry.0.iter_mut().find(|m| m.id == id).expect("seat_movement: movement registered first");
+        m.footing = Some(footing);
+        m.seat = Some(seat);
         self
     }
 }
 
-/// Switch `entity` to the Movement implementation `id`. Velocity and
-/// movement state carry over; the new implementation takes it from there.
+/// Switch `entity` to the Movement implementation `id`. Velocity carries
+/// over; where both movements have a hull (`MovementImpl::footing`,
+/// `seat`), the new one is seated on the old one's feet, crouched as it
+/// was; the new implementation takes it from there.
 pub fn set_movement(entity: Entity, id: &'static str) -> impl Command {
     move |world: &mut World| {
         let registry = world.resource::<MovementRegistry>();
@@ -119,8 +169,11 @@ pub fn set_movement(entity: Entity, id: &'static str) -> impl Command {
             warn!("unknown movement implementation {id}");
             return;
         };
-        let insert = new.insert;
+        let (insert, seat) = (new.insert, new.seat);
+        let old = world.get::<MovementSlot>(entity).and_then(|s| registry.get(s.0));
+        let footing = old.filter(|o| o.id != id).and_then(|o| o.footing);
         let removes: Vec<_> = registry.0.iter().map(|m| m.remove).collect();
+        let footing = footing.and_then(|f| f(world, entity));
         let Ok(mut e) = world.get_entity_mut(entity) else {
             return;
         };
@@ -129,6 +182,9 @@ pub fn set_movement(entity: Entity, id: &'static str) -> impl Command {
         }
         insert(&mut e);
         e.insert(MovementSlot(id));
+        if let (Some(seat), Some(footing)) = (seat, footing) {
+            seat(world, entity, footing);
+        }
         info!("{entity}: movement -> {id}");
     }
 }

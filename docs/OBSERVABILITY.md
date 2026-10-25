@@ -1241,9 +1241,12 @@ Details and baseline numbers: [performance.md](performance.md).
   Chimera itself (`--views <refcmp's views.json> --bench`); through
   refcmp the trace came out empty.
   The profile build replaces `target/playtest/cs_source`: copy it aside
-  or rebuild without the feature before benchmarking. Tracy instead:
-  `--features bevy/trace_tracy` and the Tracy profiler (not set up on the
-  dev box). CPU sampling (`perf record -g`, `cargo flamegraph`) works on
+  or rebuild without the feature before benchmarking. A short window
+  instead (any app with a window, Windows too): `--features trace` and
+  `trace_capture 1` in the console, or `CHIMERA_TRACE_SECONDS=1`
+  (`client::trace_capture`; `scripts/profile.sh`, `scripts\profile.ps1`);
+  Tracy: `--features tracy` and the Tracy 0.14.1 profiler (not set up on
+  the dev box). performance.md, "See a frame yourself". CPU sampling (`perf record -g`, `cargo flamegraph`) works on
   any optimized build on Linux; `perf` isn't installed on the dev box:
   sample the dev build under gdb instead (performance.md, "Community
   maps' slow first views"). A main-thread schedule with much self time

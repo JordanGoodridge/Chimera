@@ -80,3 +80,7 @@ dev = [
 # CPU profile: every system and render step as a span in a Chrome trace
 # (docs/performance.md). Slower; only for measuring.
 profile = ["chimera_core/profile", "chimera_client?/profile"]
+# A short window of spans (`trace_capture`), and the Tracy profiler live
+# (docs/performance.md, "See a frame yourself").
+trace = ["chimera_core/trace", "chimera_client?/trace"]
+tracy = ["chimera_core/tracy", "chimera_client?/tracy"]

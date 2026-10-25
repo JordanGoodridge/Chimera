@@ -22,7 +22,7 @@ console) and builds from what's there.
 |---|---|---|---|
 | Guns (weapon set, held/view models, fire/reload sounds, their rendering) | yes | the game's weapon set in `WeaponCatalog` (`CsGunsPlugin`, Combat Arms' data, `CsSourceGuns`/`CombatArmsGuns` for the weapons-only build), models via `MapSources::kept` and `guests` (X7), view models by the game's driver or Chimera's with `ViewAnimRules` | none: no guns, not in a ladder |
 | Gun classes | yes (with the guns) | `GameParts::guns` (`GunClass`, the game's claim) | - |
-| Knife | no | `GameParts::knife` (in the catalogue) | the base game's knife (the definition's `kit`) |
+| Knife | no | `GameParts::knife` (in the catalogue), given by game (`def::Kit::ByGame`, `runtime::refit_kit` on a rung's swap) | the base game's knife |
 | Movement | yes | `slots::MovementRegistry` (`register_movement`; `of_game` for identity) | none: not in a ladder |
 | Characters (bodies) | no | `map::CharacterModels` with `game` set: the map game's own, `MapSources::players`, `MapSources::guests` (`MapDressing`) | none of its game: the shell's capsule (`CharacterModels::for_identity` returns none, the body is removed) |
 | HUD | no | the gameplay's `hud` slot (X1, `hud_is`), switched by `identity::hud_follows_identity`, kept up alone by the shell's `HudSwitchPlugin` | `PartsRegistry::fallback_hud` (the app's base game's; else `MINIMAL_HUD`, the shell's own) |
@@ -49,7 +49,8 @@ part too.
   alternates); none, the greybox.
 - The definition is text (`MinigameDef`), so the network carries it as it
   carries any minigame's (L3's manifest: id, hash, text); `identity =
-  "weapon"`, `chimera:ladder`, the base game's binds/tick/bots, its knife.
+  "weapon"`, `chimera:ladder`, the base game's binds/tick/bots, the kit
+  by game (each gun's game's knife, the base's for a game without one).
 - The app: `apps/ultimate_gun_game` (`UltimateGunGamePlugin` on
   `lucker_party::client_app`) and `apps/ultimate_gun_game_server`
   (`lucker_party_server::run`). Made at `Plugin::finish`, again at
@@ -75,9 +76,8 @@ part too.
    behind one interface; `GameParts` describes, it doesn't build.
 3. Gun classes are a hand list per game; weapon data has no class (`slot`
    numbers differ per game). Data-driven: a `class` key in the weapon TOML.
-4. The knife is the base game's for everyone. The per-identity knife (the
-   gun-game agents' work) should take `GameParts::knife` of the identity's
-   game, the base's as the fallback.
+4. (Done after merging the per-game kit, `def::Kit::ByGame`.) The kit is
+   only a knife: grenades or a class's sidearm per game aren't parts yet.
 5. HUD fallback is a slot switch only: `MINIMAL_HUD` is "no game's HUD",
    not a drawn minimal HUD (`chimera:minimal` doesn't exist yet).
 6. Body fallback is the capsule only; "another game's body" needs
@@ -92,8 +92,8 @@ part too.
 
 ## Next
 
-- The per-identity knife from `GameParts::knife` (gap 4), then rebuild the
-  ladder at each rotation for the players then connected (gap 7).
+- Rebuild the ladder at each rotation for the players then connected
+  (gap 7).
 - Weapon class in data (gap 3); a drawn `chimera:minimal` HUD (gap 5).
 - The party kit crate and a per-game bundle (gaps 1-2) when a third game
   arrives.

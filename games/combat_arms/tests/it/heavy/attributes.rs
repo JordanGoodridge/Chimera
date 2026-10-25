@@ -107,6 +107,32 @@ fn install_attribute_data() {
     let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
     let set = WeaponSet::parse(&refs, &[]).unwrap();
     eprintln!("merged: {} weapons", set.weapons.len());
+
+    // Lucker Party's gun game (playtest 2026-10-24: the Remington 870 in
+    // the secondary class). The merge takes each weapon's class from the
+    // install's order lists (inventory.md), and the install lists the
+    // Remington 870 (record 37) in the secondary class: slot 2 is the
+    // original's, not a bug. The SMG, rifle and machine gun are primaries,
+    // the Beretta a secondary. Every record of each name and its class is
+    // printed; the merged slot must be the install's class.
+    for (name, id, slot) in [
+        ("Remington_870", "combat_arms:remington_870", 1),
+        ("MP5A4", "combat_arms:mp5a4", 0),
+        ("M4A1", "combat_arms:m4a1", 0),
+        ("M60", "combat_arms:m60", 0),
+        ("Beretta_M92FS", "combat_arms:beretta_m92fs", 1),
+    ] {
+        let records: Vec<(usize, &str, u8)> = w
+            .weapons
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| combat_arms::game::data::slug(&r.name) == combat_arms::game::data::slug(name))
+            .map(|(i, r)| (i, r.name.as_str(), w.inventory_class(i)))
+            .collect();
+        eprintln!("{name}: records (index, name, class) {records:?}");
+        let merged = set.weapons.iter().find(|x| x.id == id).unwrap_or_else(|| panic!("{id} merged"));
+        assert_eq!(merged.slot, slot, "{id}: class {} expected (records {records:?})", slot + 1);
+    }
 }
 
 /// Every number under `path` in `a` against the same place in `b`:

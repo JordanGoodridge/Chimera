@@ -581,6 +581,11 @@ pub struct SourceMovement {
     /// (0.5 or 0.65, `games::cs_source::hit_reaction`), the max speed is
     /// multiplied by it, and it climbs back to 1 by 1/3 a second.
     pub velocity_modifier: f32,
+    /// Just switched to from another movement (`seat`): this tick's step
+    /// first frees the hull and, when it stood on the ground (true), puts
+    /// it down on the floor below.
+    #[serde(default)]
+    pub seat: Option<bool>,
 }
 
 impl Default for SourceMovement {
@@ -616,8 +621,62 @@ impl Default for SourceMovement {
             punch_roll: 0.0,
             punch_roll_vel: 0.0,
             velocity_modifier: 1.0,
+            seat: None,
         }
     }
+}
+
+/// Where a CS:S character stands (`slots::Footing`): its feet are the
+/// origin's fixed 36 units down whatever its box.
+fn footing(world: &World, e: Entity) -> Option<crate::slots::Footing> {
+    let me = world.get::<SourceMovement>(e)?;
+    let t = world.get::<Transform>(e)?;
+    Some(crate::slots::Footing {
+        feet: t.translation - Vec3::Y * ORIGIN_ABOVE_FEET * METERS_PER_UNIT,
+        crouched: me.ducked,
+        on_ground: me.on_ground || me.seat == Some(true),
+    })
+}
+
+/// A character switched to CS:S's movement (`slots::set_movement`) put on
+/// the old movement's feet, ducked if it crouched (duck held: let go, it
+/// stands up when there's room); the step frees and grounds it
+/// (`Mover::reseat`).
+fn seat(world: &mut World, e: Entity, f: crate::slots::Footing) {
+    let cfg = world.get_resource::<SourceMovementConfig>().cloned().unwrap_or_default();
+    let at = f.feet + Vec3::Y * ORIGIN_ABOVE_FEET * METERS_PER_UNIT;
+    let Ok(mut ent) = world.get_entity_mut(e) else { return };
+    if let Some(mut me) = ent.get_mut::<SourceMovement>() {
+        me.ducked = f.crouched;
+        me.duck_held = f.crouched;
+        me.ducking = false;
+        me.duck_timer = 0.0;
+        me.eye = if f.crouched { cfg.eye_duck } else { cfg.eye_stand };
+        me.on_ground = f.on_ground;
+        me.seat = Some(f.on_ground);
+    }
+    if let Some(mut t) = ent.get_mut::<Transform>() {
+        t.translation = at;
+    }
+    if let Some(mut p) = ent.get_mut::<Position>() {
+        p.0 = at;
+    }
+}
+
+/// Where `Mover::reseat` looks for room, nearest first (Source units, Z
+/// up): up to a step up and half a box sideways.
+fn seat_offsets() -> Vec<Vec3> {
+    const D: f32 = std::f32::consts::FRAC_1_SQRT_2;
+    let dirs = [(1.0, 0.0), (D, D), (0.0, 1.0), (-D, D), (-1.0, 0.0), (-D, -D), (0.0, -1.0), (D, -D)];
+    let mut out = Vec::new();
+    for z in [0.0f32, 1.0, 2.0, 4.0, 8.0, 12.0, 18.0] {
+        out.push(Vec3::new(0.0, 0.0, z));
+        for r in [2.0f32, 4.0, 6.0, 8.0, 12.0, 16.0] {
+            out.extend(dirs.iter().map(|&(x, y)| Vec3::new(x * r, y * r, z)));
+        }
+    }
+    out.sort_by(|a, b| a.length_squared().total_cmp(&b.length_squared()));
+    out
 }
 
 pub struct SourceMovementPlugin;
@@ -644,6 +703,7 @@ impl Plugin for SourceMovementPlugin {
             );
         }
         app.register_movement::<SourceMovement>(ID)
+            .seat_movement(ID, footing, seat)
             .add_systems(crate::core::Predict::Movement, step)
             .predicted_net::<SourceMovement>()
             .add_plugins((super::pushaway::PushAwayPlugin, super::shadow::ShadowPlugin));
@@ -2008,6 +2068,41 @@ impl Mover<'_, '_, '_, '_> {
         true
     }
 
+    /// After a switch from another movement (`seat`): the box out of any
+    /// solid it overlaps (the nearest free place up to a step up or half a
+    /// box aside, `seat_offsets`; ducked when only that fits), then, if it
+    /// stood on the ground, down onto the floor within a step below.
+    fn reseat(&mut self, on_ground: bool) {
+        if self.trace.solid(self.me.ducked, self.feet) {
+            let offsets = seat_offsets();
+            let free = |ducked: bool| {
+                offsets
+                    .iter()
+                    .map(|d| self.feet + *d)
+                    .find(|p| !self.trace.solid(ducked, *p))
+            };
+            if let Some(p) = free(self.me.ducked) {
+                self.feet = p;
+            } else if !self.me.ducked
+                && let Some(p) = free(true)
+            {
+                self.feet = p;
+                self.me.ducked = true;
+                self.me.duck_held = true;
+                self.me.eye = self.cfg.eye_duck;
+            }
+        }
+        if on_ground {
+            let down = self.cfg.stepsize + GROUND_PROBE;
+            let t = self.trace.sweep(self.me.ducked, self.feet, self.feet - Vec3::Z * down);
+            if t.hit() && !t.start_solid && t.normal.z >= WALKABLE_NORMAL_Z {
+                self.feet = t.end;
+            }
+        }
+        self.me.last_feet = None;
+        self.me.nudge = 0;
+    }
+
     fn tick(&mut self, intent: &Intent) {
         // Move input: full keys send key_speed, rescaled to the max speed.
         // Walking (+speed) lowers the max speed itself (CS:S, measured): the
@@ -2429,6 +2524,9 @@ fn step(
             wish: Vec3::ZERO,
             settle,
         };
+        if let Some(on_ground) = mover.me.seat.take() {
+            mover.reseat(on_ground);
+        }
         let start = mover.feet;
         mover.tick(intent);
         // The velocity modifier recovers after the move, whichever way it
