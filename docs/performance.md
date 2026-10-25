@@ -129,7 +129,7 @@ potentially visible from anywhere inside it (PVS, run-length encoded).
   `r_occlusion 0` turns them off; `chimera_perf 1` shows how many parts
   they hide. de_aztec's occluders were compiled without polygons, so they
   do nothing there (nor in the game, presumably).
-- Not done: LODs for skinned (animated) props, per-leaf frustum culling. See tech-debt.
+- LODs: static and skinned (animated) props and CS:S bodies pick a `.vtx` level by screen size (`render::lod`). Not done: per-leaf frustum culling. See tech-debt.
 
 Prop fade distances: static props' `fademaxdist` (static prop lump) and
 prop entities' `fademaxdist` key hide the prop beyond that distance from

@@ -154,6 +154,19 @@ fn load_model(materials: &mut MaterialLoader, path: &str) -> Result<(vmdl::Model
     load_model_with_layout(materials, path, false).map(|(m, kv, _, _)| (m, kv))
 }
 
+/// A player model's body-space rotation applied to a converted model's
+/// meshes (Source models face +X; characters face -Z at yaw 0).
+fn face_meshes(meshes: &mut [MapMesh], face: Quat) {
+    for mesh in meshes {
+        for p in &mut mesh.positions {
+            *p = (face * Vec3::from(*p)).to_array();
+        }
+        for n in &mut mesh.normals {
+            *n = (face * Vec3::from(*n)).to_array();
+        }
+    }
+}
+
 /// Whether vmdl can turn the model into meshes: a `.vtx` whose strip
 /// indices run past its `.vvd`'s vertices would panic.
 fn meshes_readable(model: &vmdl::Model) -> bool {
@@ -236,20 +249,26 @@ pub fn load_character(
     team: Option<crate::core::Team>,
 ) -> Result<crate::map::MapCharacterModel, String> {
     use crate::core::{Hitbox, Hitgroup};
-    let (model, _) = load_model(materials, path)?;
+    let (model, _, _, lower_levels) = load_model_with_layout(materials, path, true)?;
     let bytes = materials.read(path).ok_or_else(|| format!("{path}: not found"))?;
     let mdl = read_mdl(&bytes).map_err(|e| format!("{path}: {e}"))?;
     // Source models face +X; characters face -Z at yaw 0.
     let face = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
     let mut body = convert_model_in(&model, 0, materials, false, &[]);
-    for mesh in &mut body.meshes {
-        for p in &mut mesh.positions {
-            *p = (face * Vec3::from(*p)).to_array();
-        }
-        for n in &mut mesh.normals {
-            *n = (face * Vec3::from(*n)).to_array();
-        }
-    }
+    face_meshes(&mut body.meshes, face);
+    // Its lower levels of detail, skinned to the same skeleton (the
+    // `.vvd`'s bone ids are the model's own at every level).
+    body.lods = lower_levels
+        .iter()
+        .map(|(switch, lower)| {
+            let mut level = convert_model_in(lower, 0, materials, false, &[]).meshes;
+            face_meshes(&mut level, face);
+            crate::map::lod::MapLod {
+                switch: *switch,
+                meshes: align_lod(&body.meshes, level),
+            }
+        })
+        .collect();
     // Bones' reference pose in model space (Source units, Z up).
     let mut pose: Vec<(Quat, Vec3)> = Vec::with_capacity(mdl.bones.len());
     for b in &mdl.bones {
@@ -1439,7 +1458,7 @@ fn place_props(
         let key = (prop.model.clone(), prop.skin, prop.animated);
         let model = *loaded
             .entry(key)
-            .or_insert_with(|| match load_model_with_layout(materials, &prop.model, !prop.animated) {
+            .or_insert_with(|| match load_model_with_layout(materials, &prop.model, true) {
                 Ok((m, kv, layout, lods)) => {
                     let rig = if prop.animated {
                         load_rig(materials, &prop.model)
@@ -1453,16 +1472,22 @@ fn place_props(
                         convert_model(&m, prop.skin, materials, &layout)
                     };
                     // Its lower levels of detail (`map::lod`); skinned
-                    // models keep LOD 0.
-                    if rig.is_none() {
-                        model.lods = lods
-                            .iter()
-                            .map(|(switch, lower)| crate::map::lod::MapLod {
+                    // ones keep the skeleton (the `.vvd`'s bone ids are
+                    // the model's own at every level).
+                    model.lods = lods
+                        .iter()
+                        .map(|(switch, lower)| {
+                            let level = if rig.is_some() {
+                                convert_model_in(lower, prop.skin, materials, false, &layout)
+                            } else {
+                                convert_model(lower, prop.skin, materials, &layout)
+                            };
+                            crate::map::lod::MapLod {
                                 switch: *switch,
-                                meshes: align_lod(&model.meshes, convert_model(lower, prop.skin, materials, &layout).meshes),
-                            })
-                            .collect();
-                    }
+                                meshes: align_lod(&model.meshes, level.meshes),
+                            }
+                        })
+                        .collect();
                     model.rig = rig;
                     model.collision = load_collision(materials, &prop.model);
                     // What traces against the prop report: its collision

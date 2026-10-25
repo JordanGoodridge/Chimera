@@ -1739,13 +1739,21 @@ fn spawn_baked_prop_meshes(
         let handle = meshes.add(mesh);
         // Its lower levels, lit the same way (a level without
         // this mesh keeps the finer one's).
-        let levels = (p.leveled && !skinned).then(|| {
+        // A skinned one's keep the skeleton (the same joints).
+        let levels = p.leveled.then(|| {
             let mut levels = vec![handle.clone()];
             for l in &model.lods {
                 let h = match l.meshes.get(mesh_index).and_then(Option::as_ref) {
                     Some(lm) => {
                         let mut mesh = build_mesh(lm, false);
                         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors(lm));
+                        if skinned && lm.joints.len() == lm.positions.len() {
+                            mesh.insert_attribute(
+                                Mesh::ATTRIBUTE_JOINT_INDEX,
+                                bevy::mesh::VertexAttributeValues::Uint16x4(lm.joints.clone()),
+                            );
+                            mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, lm.joint_weights.clone());
+                        }
                         meshes.add(mesh)
                     }
                     None => levels.last().cloned().unwrap_or_default(),
@@ -1800,7 +1808,8 @@ fn spawn_shared_prop_meshes(
         return;
     };
     // The model's levels, shared by its props (built once).
-    let levels = match (p.leveled, meshes) {
+    // (An animated model's meshes are skinned, only the baked path's.)
+    let levels = match (p.leveled && model.rig.is_none(), meshes) {
         (true, Some(meshes)) => Some(
             shared
                 .lod_parts
@@ -1907,9 +1916,9 @@ fn spawn_prop(
                 .clone(),
         );
     }
-    // Levels of detail (`lod`): not for skinned models or the 3D
-    // skybox's props.
-    let leveled = !model.lods.is_empty() && model.rig.is_none() && !prop.skybox;
+    // Levels of detail (`lod`): not for the 3D skybox's props. Skinned
+    // models' levels share their skeleton.
+    let leveled = !model.lods.is_empty() && !prop.skybox;
     if leveled {
         commands
             .entity(id)

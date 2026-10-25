@@ -804,10 +804,11 @@ them; views clipped through openings; window brushes fade in and close
 their portal), occluders (func_occluder), prop fade distances with
 dithered fade bands. Left:
 - Done: physics/animated props fade (fademindist/fademaxdist keys,
-  `prop_fade` test) and static-model LODs exist (`render::lod`). Left:
-  LODs for skinned (animated) props (`spawn_prop`'s `leveled` excludes
-  `model.rig`): give each skinned mesh `LodMeshes` with levels sharing
-  the skeleton (bone remap per level), then test as `prop_lods.rs`.
+  `prop_fade` test); LODs for static, skinned (animated) props and
+  CS:S player-model bodies (`render::lod`; levels share the skeleton, as
+  the `.vvd`'s bone ids are the model's own at every level; tests in
+  `prop_lods.rs`). Left: a near/far capture of a skinned model; LODs for
+  Combat Arms' models and view models.
 - cs_assault `refcmp vischeck` fails (57 of 316 views, worst 33.7k
   pixels on the roof): the PVS hides props and buildings seen over the
   walls through sky brushes, consistent with the map's own data
