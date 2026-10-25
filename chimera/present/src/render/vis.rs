@@ -79,8 +79,8 @@
 //! 4x4 dither by distance from the view to the prop's origin (Source blends
 //! alpha; `fadescale` and `r_propsmaxdist` are ignored); a `fademindist` of 0
 //! fades over the whole distance (taken literally), negative pops at
-//! `fademaxdist`; physics, animated and riding props still never fade; no LOD
-//! models. Why it's OK for now: Culls most of each map (docs/performance.md);
+//! `fademaxdist`; physics, animated and riding props fade too (their node's
+//! `FadeDistance` follows them; `prop_fade` test); LODs are `render::lod`. Why it's OK for now: Culls most of each map (docs/performance.md);
 //! dithering keeps props in the opaque passes.
 
 use bevy::prelude::*;

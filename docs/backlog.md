@@ -803,7 +803,11 @@ PVS culling by world chunk, areaportals (closed doors hide what's behind
 them; views clipped through openings; window brushes fade in and close
 their portal), occluders (func_occluder), prop fade distances with
 dithered fade bands. Left:
-- Fading physics/animated props; LOD models.
+- Done: physics/animated props fade (fademindist/fademaxdist keys,
+  `prop_fade` test) and static-model LODs exist (`render::lod`). Left:
+  LODs for skinned (animated) props (`spawn_prop`'s `leveled` excludes
+  `model.rig`): give each skinned mesh `LodMeshes` with levels sharing
+  the skeleton (bone remap per level), then test as `prop_lods.rs`.
 - cs_assault `refcmp vischeck` fails (57 of 316 views, worst 33.7k
   pixels on the roof): the PVS hides props and buildings seen over the
   walls through sky brushes, consistent with the map's own data

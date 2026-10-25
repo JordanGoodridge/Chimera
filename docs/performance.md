@@ -129,7 +129,7 @@ potentially visible from anywhere inside it (PVS, run-length encoded).
   `r_occlusion 0` turns them off; `chimera_perf 1` shows how many parts
   they hide. de_aztec's occluders were compiled without polygons, so they
   do nothing there (nor in the game, presumably).
-- Not done: LOD models, per-leaf frustum culling. See tech-debt.
+- Not done: LODs for skinned (animated) props, per-leaf frustum culling. See tech-debt.
 
 Prop fade distances: static props' `fademaxdist` (static prop lump) and
 prop entities' `fademaxdist` key hide the prop beyond that distance from
@@ -140,7 +140,12 @@ props a dither-only fragment stage added to Bevy's depth-only prepass).
 Dithering keeps props in the opaque passes (no blending, no sorting) at
 the cost of a stipple instead of a smooth alpha. A negative `fademindist`
 (or one not below the far distance) pops at `fademaxdist` as before.
-Fades apply with `r_novis 1` too.
+Fades apply with `r_novis 1` too. Physics, animated and riding props
+fade the same way (their `fademindist`/`fademaxdist` keys; the distance
+is from the moving node, re-read every frame; test
+`chimera/present/tests/it/prop_fade.rs`). Cost: one distance per fading
+prop per frame, nothing else. Props with lower `.vtx` levels draw them by
+screen size (`render::lod`, test `prop_lods.rs`).
 
 ### Checks
 
