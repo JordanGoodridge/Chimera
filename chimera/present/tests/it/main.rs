@@ -10,6 +10,7 @@
 
 mod bc_textures;
 mod map_unload;
+mod prop_fade;
 mod prop_lods;
 mod prop_shadows;
 mod shader_spec;
