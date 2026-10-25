@@ -664,7 +664,8 @@ pub fn sync(world: &mut World, screen: &mut OptionsScreen) {
     // The binding rows (K2).
     {
         let o = world.resource::<CaOptions>();
-        let strings = world.get_resource::<CaUi>().map(|u| u.strings.clone()).unwrap_or_default();
+        let empty = super::layout::Strings::default();
+        let strings = world.get_resource::<CaUi>().map_or(&empty, |u| &u.strings);
         let names = o.key_names.resolved(|id| strings.resolve(id));
         let capturing = o.capture.as_ref().map(|c| c.action);
         let texts: Vec<(usize, String)> = bindings::ACTIONS
@@ -907,7 +908,9 @@ fn capture_events(world: &World) -> Vec<RawEvent> {
 /// The screen's frame: shown and hidden with the options, its controls
 /// set, its input.
 pub fn update(world: &mut World) {
-    let Some(ui) = world.get_resource::<CaUi>().cloned() else { return };
+    if !world.contains_resource::<CaUi>() {
+        return;
+    }
     world.resource_scope(|world, mut screen: Mut<OptionsScreen>| {
         let screen = screen.bypass_change_detection();
         let open = world.resource::<CaOptions>().open;
@@ -938,6 +941,10 @@ pub fn update(world: &mut World) {
         if !open {
             return;
         }
+        // Cloned only while the screen is up: the install's string table
+        // makes it milliseconds a frame (docs/performance.md, "Lucker
+        // Party").
+        let ui = world.resource::<CaUi>().clone();
         pointer(world, screen, &ui);
         act(world, screen);
         // A capture waiting takes the frame's input.

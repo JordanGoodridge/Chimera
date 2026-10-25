@@ -28,7 +28,10 @@
 use std::collections::{HashMap, HashSet};
 
 use avian3d::prelude::*;
-use bevy::{ecs::system::SystemState, prelude::*};
+use bevy::{
+    ecs::{query::QueryState, system::SystemState},
+    prelude::*,
+};
 
 use super::{
     BotSettings, BotState, CaBot, MercMind, Pending, Throw,
@@ -414,7 +417,7 @@ pub fn ensure_nav(world: &mut World) {
             .iter(world)
             .map(|t| t.translation - Vec3::Y * 0.8),
     );
-    let ignore: HashSet<Entity> = moving_bodies(world);
+    let ignore = SnapQueries::new(world).moving_bodies(world);
     // The map's AI volumes where it has them (`map_ai`).
     if let Some(mesh) = MapAi::of(world).and_then(|ai| {
         let mut state = SystemState::<SpatialQuery>::new(world);
@@ -474,19 +477,6 @@ pub fn nav_params() -> crate::map::nav_gen::NavGenParams {
         max_drop: 3.0,
         ..Default::default()
     }
-}
-
-/// Bodies that aren't the world: characters and anything not static.
-fn moving_bodies(world: &mut World) -> HashSet<Entity> {
-    let mut out: HashSet<Entity> = world.query_filtered::<Entity, With<Intent>>().iter(world).collect();
-    out.extend(
-        world
-            .query::<(Entity, &RigidBody)>()
-            .iter(world)
-            .filter(|(_, b)| !matches!(b, RigidBody::Static))
-            .map(|(e, _)| e),
-    );
-    out
 }
 
 // ---------------------------------------------------------------------------
@@ -620,7 +610,7 @@ struct IntentOut {
 
 /// Every bot's update this tick (1, "Per-tick order"): senses and goals on
 /// the server's frames, aim, keys and the trigger every tick.
-pub fn think(world: &mut World) {
+pub fn think(world: &mut World, mut queries: Local<Option<SnapQueries>>, mut spatial: Local<Option<SystemState<SpatialQuery<'static, 'static>>>>) {
     let now = world.resource::<SimClock>().now;
     let frame = {
         let due = ((now + 1e-9) / SERVER_FRAME).floor() as u64;
@@ -629,7 +619,8 @@ pub fn think(world: &mut World) {
         f.0 = f.0.max(due);
         run
     };
-    let bots: Vec<Entity> = world.query_filtered::<Entity, With<CaBot>>().iter(world).collect();
+    let queries = queries.get_or_insert_with(|| SnapQueries::new(world));
+    let bots: Vec<Entity> = queries.bots.iter(world).collect();
     if bots.is_empty() {
         return;
     }
@@ -639,15 +630,17 @@ pub fn think(world: &mut World) {
             matches!(m.phase, Phase::RoundOver { .. } | Phase::Intermission { .. } | Phase::MatchOver)
         });
 
-    let snap = Snap::take(world, now);
-    let Snap { chars, see_through, loose, camping, dangers, data, stimuli, patrol, mesh, graph } = &snap;
+    let snap = Snap::take(world, queries, now);
+    let Snap { chars, see_through, loose, camping, dangers, stimuli, patrol, mesh, graph } = &snap;
 
     // The brains' decisions (the world read only).
     let mut outs: Vec<(Entity, CaBot, Out)> = Vec::new();
     let mut starts = patrol.starts;
     {
-        let mut state = SystemState::<SpatialQuery>::new(world);
+        let state = spatial.get_or_insert_with(|| SystemState::new(world));
         let q = state.get(world).unwrap();
+        // Borrowed: a clone a tick cost more than the brains' decisions.
+        let data = world.resource::<BotData>();
         let ctx = Ctx {
             now,
             frame,
@@ -791,17 +784,55 @@ struct Snap {
     loose: HashSet<Entity>,
     camping: HashMap<Entity, f32>,
     dangers: Vec<Danger>,
-    data: BotData,
     stimuli: Stimuli,
     patrol: PatrolClock,
     mesh: Option<std::sync::Arc<NavMesh>>,
     graph: Option<std::sync::Arc<nav::PatrolGraph>>,
 }
 
+/// The queries the brains read the world through, kept from tick to tick
+/// (`think`'s): made anew each tick, they cost more than the brains'
+/// decisions (docs/performance.md, "Lucker Party").
+#[allow(clippy::type_complexity)]
+pub struct SnapQueries {
+    bots: QueryState<Entity, With<CaBot>>,
+    chars: QueryState<
+        (Entity, &'static Team, &'static Transform, &'static Intent, &'static Health, Has<Dead>, Has<CaHeld>, Option<&'static CaBot>, Option<&'static MovementState>),
+        Without<Spectating>,
+    >,
+    intents: QueryState<Entity, With<Intent>>,
+    bodies: QueryState<(Entity, &'static RigidBody)>,
+    see_through: QueryState<Entity, With<SeeThrough>>,
+    camping: QueryState<(Entity, &'static CaCamping)>,
+    grenades: QueryState<(Entity, &'static CaGrenade)>,
+}
+
+impl SnapQueries {
+    fn new(world: &mut World) -> Self {
+        Self {
+            bots: world.query_filtered(),
+            chars: world.query_filtered(),
+            intents: world.query_filtered(),
+            bodies: world.query(),
+            see_through: world.query_filtered(),
+            camping: world.query(),
+            grenades: world.query(),
+        }
+    }
+
+    /// Characters and bodies that aren't static (sight and the floor
+    /// probes pass them).
+    fn moving_bodies(&mut self, world: &World) -> HashSet<Entity> {
+        let mut out: HashSet<Entity> = self.intents.iter(world).collect();
+        out.extend(self.bodies.iter(world).filter(|(_, b)| !matches!(b, RigidBody::Static)).map(|(e, _)| e));
+        out
+    }
+}
+
 impl Snap {
-    fn take(world: &mut World, now: f64) -> Snap {
-        let chars: Vec<Char> = world
-            .query_filtered::<(Entity, &Team, &Transform, &Intent, &Health, Has<Dead>, Has<CaHeld>, Option<&CaBot>, Option<&MovementState>), Without<Spectating>>()
+    fn take(world: &mut World, queries: &mut SnapQueries, now: f64) -> Snap {
+        let chars: Vec<Char> = queries
+            .chars
             .iter(world)
             .map(|(e, t, tr, i, h, dead, held, b, ms)| Char {
                 e,
@@ -817,19 +848,19 @@ impl Snap {
                 }),
             })
             .collect();
+        let all = queries.moving_bodies(world);
         let loose: HashSet<Entity> = {
-            let all = moving_bodies(world);
             let chars: HashSet<Entity> = chars.iter().map(|c| c.e).collect();
             all.difference(&chars).copied().collect()
         };
         // Sight passes characters, moving bodies and see-through
         // surfaces: the map's glass (5.2 step 6; `world::
         // GLASS_SURFACE_TYPES`).
-        let mut see_through = moving_bodies(world);
-        see_through.extend(world.query_filtered::<Entity, With<SeeThrough>>().iter(world));
-        let camping: HashMap<Entity, f32> = world.query::<(Entity, &CaCamping)>().iter(world).map(|(e, c)| (e, c.time)).collect();
-        let dangers: Vec<Danger> = world
-            .query::<(Entity, &CaGrenade)>()
+        let mut see_through = all;
+        see_through.extend(queries.see_through.iter(world));
+        let camping: HashMap<Entity, f32> = queries.camping.iter(world).map(|(e, c)| (e, c.time)).collect();
+        let dangers: Vec<Danger> = queries
+            .grenades
             .iter(world)
             .map(|(e, g)| {
                 let thrower = g.thrower;
@@ -843,7 +874,6 @@ impl Snap {
                 }
             })
             .collect();
-        let data = world.resource::<BotData>().clone();
         let stimuli = world.resource::<Stimuli>().clone();
         let patrol = world.resource::<PatrolClock>().clone();
         let mesh = world.get_resource::<BotNav>().map(|n| n.mesh.clone());
@@ -854,7 +884,6 @@ impl Snap {
             loose,
             camping,
             dangers,
-            data,
             stimuli,
             patrol,
             mesh,
@@ -870,7 +899,8 @@ pub fn sees(world: &mut World, bot: Entity, target: Entity) -> Option<bool> {
     let now = world.resource::<SimClock>().now;
     let alert = !world.get::<CaBot>(bot)?.state.relaxed();
     let settings = world.resource::<BotSettings>().clone();
-    let snap = Snap::take(world, now);
+    let mut queries = SnapQueries::new(world);
+    let snap = Snap::take(world, &mut queries, now);
     let mut state = SystemState::<SpatialQuery>::new(world);
     let q = state.get(world).unwrap();
     let ctx = Ctx {
@@ -882,7 +912,7 @@ pub fn sees(world: &mut World, bot: Entity, target: Entity) -> Option<bool> {
         loose: &snap.loose,
         mesh: snap.mesh.as_deref(),
         graph: snap.graph.as_deref(),
-        data: &snap.data,
+        data: world.resource::<BotData>(),
         stimuli: &snap.stimuli,
         patrol: &snap.patrol,
         camping: &snap.camping,

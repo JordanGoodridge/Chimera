@@ -1736,11 +1736,13 @@ pub fn log_layer(_: &mut App) -> Option<BoxedLayer> {
     // A profile build also times every span for the hitch log
     // (`frame_metrics::span_times`).
     #[cfg(feature = "profile")]
-    return Some(Box::new(
-        ToConsole(queue).and_then(super::frame_metrics::span_times::SpanTimes),
-    ));
+    let layer = ToConsole(queue).and_then(super::frame_metrics::span_times::SpanTimes);
     #[cfg(not(feature = "profile"))]
-    Some(Box::new(ToConsole(queue)))
+    let layer = ToConsole(queue);
+    // A `trace` build records short windows of spans (`trace_capture`).
+    #[cfg(feature = "trace")]
+    let layer = layer.and_then(super::trace_capture::CaptureLayer);
+    Some(Box::new(layer))
 }
 
 fn drain_log(mut console: ResMut<Console>) {

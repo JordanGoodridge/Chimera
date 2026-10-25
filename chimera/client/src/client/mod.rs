@@ -39,6 +39,8 @@ pub mod net_graph;
 pub mod night_vision;
 pub mod frame_metrics;
 pub mod perf;
+#[cfg(feature = "trace")]
+pub mod trace_capture;
 pub mod game_text;
 pub mod senses;
 pub mod spectate;

@@ -121,7 +121,9 @@ fn update(world: &mut World) {
     let now = now_ms(world);
     let screen = world.get_resource::<HudScreen>().map_or(Screen::default(), |s| s.0);
     let s = scale(screen);
-    let ui = world.resource::<CaUi>().clone();
+    // Borrowed, not cloned: the install's string table makes a clone
+    // milliseconds a frame (docs/performance.md, "Lucker Party").
+    let ui = world.resource::<CaUi>();
     let font = ui.fonts.get(FONT).cloned();
     let (lines, input, radio_open, talking) = {
         let c = world.resource::<CaChat>();
@@ -143,10 +145,11 @@ fn update(world: &mut World) {
                 .collect(),
         })
     });
+    let shown: Vec<String> =
+        lines.iter().map(|l| if l.text.starts_with('$') { ui.strings.resolve(&l.text) } else { l.text.clone() }).collect();
     let mut talk = world.resource_mut::<CaTalk>();
-    for l in lines {
+    for (l, shown) in lines.into_iter().zip(shown) {
         talk.seen = talk.seen.max(l.id);
-        let shown = if l.text.starts_with('$') { ui.strings.resolve(&l.text) } else { l.text.clone() };
         let height = font.as_ref().map_or(14, |f| chat::height(&shown, f, s));
         talk.queue.push(Message {
             text: shown,
