@@ -72,6 +72,8 @@ impl Plugin for PerfPlugin {
             render.insert_resource(render_time);
         }
         app.add_plugins(super::frame_metrics::FrameMetricsPlugin);
+        #[cfg(feature = "trace")]
+        app.add_plugins(super::trace_capture::TraceCapturePlugin);
         resource_cvar::<PerfLog, u8>(
             app,
             "chimera_perf_log",

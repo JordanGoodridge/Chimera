@@ -26,7 +26,7 @@ const BASELINE: &[(&str, usize, usize)] = &[
     ("chimera/net/src", 27, 0),
     ("source/logic/src", 9, 0),
     ("games/cs_source/src", 140, 6),
-    ("games/combat_arms/src", 105, 22),
+    ("games/combat_arms/src", 104, 22),
 ];
 
 /// Type words that make a static mutable or lazily filled.
