@@ -42,6 +42,7 @@ impl bevy::app::PluginGroup for PresentationPlugins {
             .add(render::decal::DecalMaterialPlugin)
             .add(render::spray::SprayMaterialPlugin)
             .add(render::water::WaterMaterialPlugin)
+            .add(render::steam::HeatWaveMaterialPlugin)
             .add(render::particles::ParticleMaterialPlugin)
             .add(render::beams::BeamMaterialPlugin)
             .add(render::sky_occluder::SkyOccluderPlugin)

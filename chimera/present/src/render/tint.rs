@@ -16,12 +16,16 @@
 //! draw their body and held model faded, added or tinted
 //! (`apply_character_looks`, on their `probe_lit` materials). Baked brush
 //! entities' render modes and rendercolor are drawn from load
-//! (`MapMesh::render`, `render_color`).
+//! (`MapMesh::render`, `render_color`, `flat_color`). On brush entities
+//! (`RenderLook::surface_blend`, `surface_factor`) mode 1 draws the flat
+//! rendercolor, not the texture, and mode 4 cuts out at the texture's alpha
+//! (`ALPHA_TEST_REFERENCE`, renderamt ignored) instead of blending; characters
+//! still blend in both.
 
 use bevy::prelude::*;
 
 use super::{prop_material::PropMaterial, world_material::WorldMaterial};
-use crate::map::{BrushTint, MapAlpha, RenderLook};
+use crate::map::{BrushTint, MapAlpha, RenderLook, ALPHA_TEST_REFERENCE};
 
 /// A brush entity mesh's texture frames (its base texture's, when it has
 /// several and something can pick one).
@@ -37,11 +41,18 @@ pub struct UntintedStandard(Handle<StandardMaterial>);
 
 /// A world material with a look applied.
 fn looked_world(mut m: WorldMaterial, look: &RenderLook) -> WorldMaterial {
-    let f = look.factor();
-    m.params.base_color *= f;
-    if let Some((blend, _)) = look.blend() {
+    m.params.base_color *= look.surface_factor();
+    // Render mode 1: the flat rendercolor, not the texture.
+    if look.flat_color() {
+        m.base = None;
+    }
+    if let Some((blend, _)) = look.surface_blend() {
         m.params.translucent = blend.shader_mode();
         m.alpha_mode = blend.shader_alpha_mode();
+        // Render mode 4: cut out at the texture's alpha.
+        if let MapAlpha::Mask(cutoff) = blend {
+            m.params.alpha_cutoff = cutoff;
+        }
     }
     m
 }
@@ -66,7 +77,7 @@ pub fn apply_brush_tints(
     };
     for (tint, children) in &nodes {
         let look = tint.0;
-        let f = look.factor();
+        let f = look.surface_factor();
         for child in children.iter() {
             if let Ok((mut mat, own, frames)) = world_parts.get_mut(child) {
                 let own = match own {
@@ -97,9 +108,13 @@ pub fn apply_brush_tints(
                 } else if let Some(mut m) = sm.get(&own).cloned() {
                     let c = m.base_color.to_linear();
                     m.base_color = Color::linear_rgba(c.red * f.x, c.green * f.y, c.blue * f.z, c.alpha * f.w);
-                    if let Some((blend, _)) = look.blend() {
+                    if look.flat_color() {
+                        m.base_color_texture = None;
+                    }
+                    if let Some((blend, _)) = look.surface_blend() {
                         m.alpha_mode = match blend {
                             MapAlpha::Add => AlphaMode::Add,
+                            MapAlpha::Mask(c) => AlphaMode::Mask(c),
                             _ => AlphaMode::Blend,
                         };
                     }
@@ -199,5 +214,78 @@ mod tests {
         };
         assert!(!red.is_plain());
         assert_eq!(red.factor(), Vec4::new(1.0, 0.0, 0.0, 1.0));
+    }
+
+    #[test]
+    fn brush_surfaces_in_modes_1_and_4() {
+        let look = |mode, alpha| RenderLook {
+            color: [255, 0, 0],
+            alpha,
+            mode,
+        };
+        // Mode 1: flat colour, with the alpha blended, even at full alpha.
+        assert!(look(1, 255).flat_color() && look(1, 255).changes_surface());
+        assert!(!look(0, 255).flat_color());
+        assert_eq!(look(1, 255).surface_blend(), None);
+        assert_eq!(look(1, 51).surface_blend(), Some((MapAlpha::Blend, 0.2)));
+        // Mode 4: alpha test, renderamt ignored, not hidden unless 0.
+        let cut = look(4, 100);
+        assert_eq!(cut.surface_blend(), Some((MapAlpha::Mask(ALPHA_TEST_REFERENCE), 1.0)));
+        assert_eq!(cut.surface_factor().w, 1.0);
+        assert!(cut.changes_surface());
+        assert!(look(4, 0).invisible());
+        // Characters keep blending in mode 4.
+        assert_eq!(cut.blend(), Some((MapAlpha::Blend, 100.0 / 255.0)));
+        assert!(!crate::map::BrushTint(look(1, 255), 0).is_white());
+        assert!(crate::map::BrushTint(RenderLook::default(), 0).is_white());
+    }
+
+    #[test]
+    fn looked_world_flattens_and_cuts_out() {
+        let textured = WorldMaterial {
+            params: crate::render::world_material::WorldParams {
+                base_color: Vec4::ONE,
+                ..default()
+            },
+            base: Some(Handle::default()),
+            normal: None,
+            lightmap: None,
+            lightmap_b0: None,
+            lightmap_b1: None,
+            lightmap_b2: None,
+            base2: None,
+            normal2: None,
+            blend_mask: None,
+            detail: None,
+            envmap: None,
+            envmap_mask: None,
+            flat_envmap: None,
+            alpha_mode: AlphaMode::Opaque,
+            double_sided: false,
+            decal: false,
+            modulate: false,
+        };
+        let flat = looked_world(
+            textured.clone(),
+            &RenderLook {
+                color: [255, 0, 0],
+                alpha: 255,
+                mode: 1,
+            },
+        );
+        assert!(flat.base.is_none());
+        assert_eq!(flat.params.base_color.y, 0.0);
+        let cut = looked_world(
+            textured,
+            &RenderLook {
+                color: [255; 3],
+                alpha: 128,
+                mode: 4,
+            },
+        );
+        assert!(cut.base.is_some());
+        assert_eq!(cut.params.alpha_cutoff, ALPHA_TEST_REFERENCE);
+        assert_eq!(cut.params.translucent, 0.0);
+        assert_eq!(cut.params.base_color.w, 1.0);
     }
 }

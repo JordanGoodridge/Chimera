@@ -44,6 +44,9 @@ pub struct MapSteam {
     pub entity: Option<usize>,
     /// Emitting at map start.
     pub start_on: bool,
+    /// Type 1 (heat wave): the puffs are quads in the view plane that
+    /// refract the scene, not smoke (`texture` and `ramp` are unused).
+    pub heat_wave: bool,
 }
 
 impl MapSteam {
@@ -117,6 +120,7 @@ mod tests {
             texture: None,
             entity: None,
             start_on: true,
+            heat_wave: false,
         }
     }
 
