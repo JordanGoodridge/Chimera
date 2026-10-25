@@ -4,6 +4,7 @@
 # Lucker Party (the gun game on de_dust2): .\scripts\playtest.ps1 lucker_party [options]
 #   e.g. .\scripts\playtest.ps1 lucker_party +connect 192.168.1.20:28930
 #   (playing with friends: scripts\lucker_party_host.ps1 and lucker_party_join.ps1)
+# Ultimate Gun Game (every game's guns): .\scripts\playtest.ps1 ultimate_gun_game [options]
 $ErrorActionPreference = "Stop"
 git pull --ff-only
 if ($args.Count -gt 0 -and $args[0] -eq "combat_arms") {
@@ -12,6 +13,9 @@ if ($args.Count -gt 0 -and $args[0] -eq "combat_arms") {
 } elseif ($args.Count -gt 0 -and $args[0] -eq "lucker_party") {
     $rest = @($args | Select-Object -Skip 1)
     cargo run --profile playtest --bin lucker_party -- @rest
+} elseif ($args.Count -gt 0 -and $args[0] -eq "ultimate_gun_game") {
+    $rest = @($args | Select-Object -Skip 1)
+    cargo run --profile playtest --bin ultimate_gun_game -- @rest
 } else {
     cargo run --profile playtest -- @args
 }
