@@ -11,7 +11,7 @@ license.workspace = true
 [lib]
 doctest = false
 
-# The party's glue (`lucker_party`: both games composed, the minigame
+# The party's glue (`party_kit`: both games composed, the minigame
 # runtime, the client) plus an automatic definition made from the games'
 # parts (`chimera_sim::minigame::auto`); no game crate is named but for
 # the base game's id (checks/tests/it/architecture.rs). The presentation is
@@ -22,7 +22,7 @@ chimera_core.workspace = true
 chimera_sim.workspace = true
 chimera_net.workspace = true
 chimera_client = { workspace = true, optional = true }
-lucker_party.workspace = true
+party_kit.workspace = true
 bevy.workspace = true
 workspace-hack.workspace = true
 
@@ -50,11 +50,11 @@ path = "tests/it/main.rs"
 
 [features]
 default = ["present"]
-present = ["dep:chimera_client", "lucker_party/present"]
+present = ["dep:chimera_client", "party_kit/present"]
 dev = [
     "chimera_core/dev",
     "chimera_sim/dev",
     "chimera_net/dev",
     "chimera_client?/dev",
-    "lucker_party/dev",
+    "party_kit/dev",
 ]

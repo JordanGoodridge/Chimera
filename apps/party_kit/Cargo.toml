@@ -1,0 +1,90 @@
+[package]
+name = "party_kit"
+version = "0.1.0"
+description = "The party kit: what Lucker Party and the Ultimate Gun Game share (both games composed, the minigame runtime, the client shell, the dedicated server's run loop)"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The kit composes the games as libraries (`cs_source` for its maps, map
+# logic and guns, `combat_arms` for its soldiers, movement, HUD and
+# guns) with the original minigames (`originals`) on Chimera; never
+# an app (checks/tests/it/architecture.rs): the four party apps depend on this
+# kit instead of one another. The presentation, the client shell and Combat
+# Arms' front end are behind the default feature `present`: the dedicated
+# servers build without them.
+[dependencies]
+chimera_core.workspace = true
+chimera_world.workspace = true
+chimera_sim.workspace = true
+chimera_net.workspace = true
+chimera_present = { workspace = true, optional = true }
+chimera_client = { workspace = true, optional = true }
+cs_source.workspace = true
+source_logic.workspace = true
+combat_arms.workspace = true
+originals.workspace = true
+avian3d.workspace = true
+bevy.workspace = true
+toml.workspace = true
+workspace-hack.workspace = true
+
+# The tests aim with the test kit's readers (`chimera_sim::testkit`).
+[dev-dependencies]
+# The presentation's Bevy and Avian features, for this crate's own tests only
+# (the dedicated servers build without them): `cargo test -p <crate>` shares
+# the clients' builds of Bevy instead of building its own (hakari.toml).
+bevy = { workspace = true, features = ["default", "wav"] }
+avian3d = { workspace = true, features = ["debug-plugin", "bevy_picking", "bevy_scene"] }
+chimera_sim = { workspace = true, features = ["testkit"] }
+
+# Its integration tests (tests/it/): minigames on the composed
+# simulation, headless (`heavy::`: the user's installs).
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+# The dedicated server's integration tests (tests/server/): the server as the
+# binaries compose it (`server::ServerPlugin`), headless; `heavy::` on the
+# user's installs.
+[[test]]
+name = "server"
+path = "tests/server/main.rs"
+
+[features]
+default = ["present"]
+
+# The presentation (chimera_present), the client shell (chimera_client)
+# and both games' front ends (`combat_arms/ui`; `cs_source/ui` for CS:S's
+# HUD, shown to a player holding a CS:S gun): everything but the
+# dedicated server.
+present = ["dep:chimera_present", "dep:chimera_client", "combat_arms/ui", "cs_source/ui"]
+
+# Faster iteration: link Bevy as a dynamic library, serve the remote
+# protocol. `cargo run --features dev --bin lucker_party`. Never for
+# release builds.
+dev = [
+    "chimera_core/dev",
+    "chimera_world/dev",
+    "chimera_sim/dev",
+    "chimera_net/dev",
+    "chimera_present?/dev",
+    "chimera_client?/dev",
+    "cs_source/dev",
+    "source_logic/dev",
+    "combat_arms/dev",
+    "originals/dev",
+]
+
+# Profiling (docs/performance.md, "See a frame yourself"): `trace` records
+# a short window of spans (`trace_capture`, `CHIMERA_TRACE_SECONDS`),
+# `profile` also the whole run into a Chrome trace, `tracy` streams to
+# the Tracy profiler. Slower; only for measuring.
+trace = ["chimera_core/trace", "chimera_client?/trace"]
+profile = ["chimera_core/profile", "chimera_client?/profile"]
+tracy = ["chimera_core/tracy", "chimera_client?/tracy"]

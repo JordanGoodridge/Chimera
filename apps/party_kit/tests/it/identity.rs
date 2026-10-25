@@ -38,7 +38,7 @@ use combat_arms::{
     harness::CaSim,
 };
 use cs_source::game::{movement as cs_movement, weapons as cs_weapons};
-use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
+use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 use crate::gun_game::{held, line_up, party, rung, shoot_until_dead, soldier};
 

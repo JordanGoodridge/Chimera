@@ -939,19 +939,22 @@ fn workspace_crates() {
         architecture-review.md A5): Chimera only. A game's parts reach a minigame through Chimera's slots and \
         registries (a weapon by id from the catalogue, a movement by id), filled by the app that composes the \
         games, never through a game crate or an app.";
-    const PARTY_APP: &str = "is Lucker Party's glue (docs/ARCHITECTURE.md, \"Crates\"): the games as \
-        libraries, the original minigames and Chimera composed into the party, never another app: what it \
-        shares with one moves into a game or Chimera, not across.";
+    const PARTY_KIT: &str = "is the party kit (docs/ARCHITECTURE.md, \"Crates\"): the games as libraries, \
+        the original minigames and Chimera composed once for the four party apps (Lucker Party, the Ultimate \
+        Gun Game, and their servers), never one of those apps: what they share lives here, not across them.";
+    const PARTY_APP: &str = "is Lucker Party's game binary (docs/ARCHITECTURE.md, \"Crates\"): a thin binary \
+        over the party kit (`party_kit`), never another app and no game crate: what it needs from the games \
+        goes through the kit.";
     const PARTY_SERVER: &str = "is Lucker Party's dedicated server (docs/ARCHITECTURE.md, \"Crates\"): \
-        the party's glue (`lucker_party`) without its default `present`, Chimera's simulation crates and the \
-        games without their front ends, so no presentation or client shell links \
-        (`server_builds_without_presentation`). Move what needs them into the client's side (`present`).";
+        a thin binary over the party kit (`party_kit`) without its default `present`, so no presentation or \
+        client shell links (`server_builds_without_presentation`). Move what needs them into the kit's \
+        client side (`present`).";
     const UGG_APP: &str = "is the Ultimate Gun Game (docs/ARCHITECTURE.md, \"Crates\"; \
-        docs/plans/active/ultimate-gun-game.md): the party's glue (`lucker_party`) with an automatic gun game made \
-        from the games' parts (`chimera_core::game_parts`). It names no game crate: what a game lends reaches it \
-        through the parts registry, and what it shares with the party stays in the party's glue.";
+        docs/plans/active/ultimate-gun-game.md): the party kit (`party_kit`) with an automatic gun game made \
+        from the games' parts (`chimera_core::game_parts`). It names no game crate and no other app: what a \
+        game lends reaches it through the parts registry, and what it shares with the party lives in the kit.";
     const UGG_SERVER: &str = "is the Ultimate Gun Game's dedicated server (docs/ARCHITECTURE.md, \"Crates\"): \
-        the party's server (`lucker_party_server`) and `ultimate_gun_game` without its default `present`, so no \
+        the party kit (`party_kit::server`) and `ultimate_gun_game` without their default `present`, so no \
         presentation or client shell links (`server_builds_without_presentation`).";
     const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
         presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
@@ -982,6 +985,7 @@ fn workspace_crates() {
                 "games",
                 "originals",
                 "lucker_party",
+                "party_kit",
                 "workspace-hack",
             ],
             PURE_DATA,
@@ -1005,24 +1009,25 @@ fn workspace_crates() {
                 "games",
                 "originals",
                 "lucker_party",
+                "party_kit",
                 "workspace-hack",
             ],
             PURE_DATA,
         ),
-        ("chimera/core", &["mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"], ENGINE),
+        ("chimera/core", &["mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party", "party_kit"], ENGINE),
         (
             "chimera/world",
-            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party", "party_kit"],
             WORLD,
         ),
         (
             "chimera/present",
-            &["mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
+            &["mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party", "party_kit"],
             PRESENT,
         ),
         (
             "chimera/sim",
-            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party", "party_kit"],
             SIM,
         ),
         (
@@ -1036,6 +1041,7 @@ fn workspace_crates() {
                 "games",
                 "originals",
                 "lucker_party",
+                "party_kit",
             ],
             NET,
         ),
@@ -1049,6 +1055,7 @@ fn workspace_crates() {
                 "combat_arms",
                 "originals",
                 "lucker_party",
+                "party_kit",
             ],
             GAME,
         ),
@@ -1063,19 +1070,20 @@ fn workspace_crates() {
                 "mashup",
                 "originals",
                 "lucker_party",
+                "party_kit",
             ],
             GAME,
         ),
         (
             "source/logic",
-            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party"],
+            &["chimera_present", "mashup", "cs_source", "combat_arms", "games", "originals", "lucker_party", "party_kit"],
             SOURCE,
         ),
         ("apps/cs_source", &["mashup", "combat_arms"], APP),
         ("apps/combat_arms", &["mashup", "cs_source", "source_logic"], CA_APP),
         (
             "apps/mashup_demo",
-            &["mashup", "cs_source_app", "combat_arms_app", "lucker_party"],
+            &["mashup", "cs_source_app", "combat_arms_app", "lucker_party", "party_kit"],
             MASHUP_APP,
         ),
         (
@@ -1089,12 +1097,26 @@ fn workspace_crates() {
                 "combat_arms",
                 "mashup",
                 "lucker_party",
+                "party_kit",
             ],
             ORIGINALS,
         ),
         (
+            "apps/party_kit",
+            &["mashup", "cs_source_app", "combat_arms_app", "ultimate_gun_game", "lucker_party"],
+            PARTY_KIT,
+        ),
+        (
             "apps/lucker_party",
-            &["mashup", "cs_source_app", "combat_arms_app", "ultimate_gun_game"],
+            &[
+                "mashup",
+                "cs_source",
+                "source_logic",
+                "combat_arms",
+                "originals",
+                "ultimate_gun_game",
+                "lucker_party_server",
+            ],
             PARTY_APP,
         ),
         (
@@ -1105,15 +1127,17 @@ fn workspace_crates() {
                 "bevy_egui",
                 "bevy-inspector-egui",
                 "arboard",
-                "cs_source_app",
-                "combat_arms_app",
+                "cs_source",
+                "combat_arms",
                 "mashup",
+                "ultimate_gun_game",
+                "lucker_party",
             ],
             PARTY_SERVER,
         ),
         (
             "apps/ultimate_gun_game",
-            &["mashup", "cs_source", "source_logic", "cs_source_app", "combat_arms_app", "lucker_party_server"],
+            &["mashup", "cs_source", "source_logic", "cs_source_app", "combat_arms_app", "lucker_party"],
             UGG_APP,
         ),
         (
@@ -1124,9 +1148,10 @@ fn workspace_crates() {
                 "bevy_egui",
                 "bevy-inspector-egui",
                 "arboard",
-                "cs_source_app",
-                "combat_arms_app",
+                "cs_source",
+                "combat_arms",
                 "mashup",
+                "lucker_party",
             ],
             UGG_SERVER,
         ),
@@ -1146,6 +1171,7 @@ fn workspace_crates() {
                 "games",
                 "originals",
                 "lucker_party",
+                "party_kit",
                 "mashup",
             ],
             TOOLS,
@@ -1162,6 +1188,7 @@ fn workspace_crates() {
                 "games",
                 "originals",
                 "lucker_party",
+                "party_kit",
                 "mashup",
                 "workspace-hack",
             ],
@@ -1206,6 +1233,7 @@ fn workspace_crates() {
                 "games",
                 "originals",
                 "lucker_party",
+                "party_kit",
             ],
             CLIENT,
         ),
@@ -1359,8 +1387,8 @@ fn game_ui_only_with_its_feature() {
 /// (docs/ARCHITECTURE.md, "Crates"): `cs_source_server` uses the app's
 /// glue (`cs_source_app`) without its default feature `present`, and
 /// `combat_arms_server` Chimera's simulation crates and Combat Arms
-/// without `ui`, and `lucker_party_server` the party's glue
-/// (`lucker_party`) without its `present`, so none depends on
+/// without `ui`, and `lucker_party_server` the party kit
+/// (`party_kit`) without its `present`, so none depends on
 /// `chimera_present` or links render or audio code. (That they compile that way the pre-push hook checks:
 /// `cargo check -p cs_source_server`, `-p combat_arms_server`.)
 #[test]
@@ -1448,8 +1476,8 @@ fn server_builds_without_presentation() {
     assert!(
         present.is_empty(),
         "`lucker_party_server` (Lucker Party's dedicated server's build) depends on {present:?}. It uses \
-         `lucker_party` without its default feature `present` (the workspace's dependency, Cargo.toml) and \
-         the games without their front ends: make the new dependency optional in `lucker_party` behind \
+         `party_kit` without its default feature `present` (the workspace's dependency, Cargo.toml) and \
+         the games without their front ends: make the new dependency optional in `party_kit` behind \
          `present`, or move what the simulation needs out of the presentation."
     );
     let server = tree("ultimate_gun_game_server");
@@ -1459,8 +1487,8 @@ fn server_builds_without_presentation() {
         .collect();
     assert!(
         present.is_empty(),
-        "`ultimate_gun_game_server` depends on {present:?}. It uses `lucker_party_server` and \
-         `ultimate_gun_game` without its default feature `present` (the workspace's dependency, Cargo.toml): \
+        "`ultimate_gun_game_server` depends on {present:?}. It uses `party_kit` and \
+         `ultimate_gun_game` without their default feature `present` (the workspace's dependency, Cargo.toml): \
          make the new dependency optional in `ultimate_gun_game` behind `present`."
     );
 }

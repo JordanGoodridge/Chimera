@@ -27,7 +27,7 @@ use combat_arms::{
     game::TICK_INTERVAL,
     harness::CaSim,
 };
-use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
+use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 fn setup(app: &mut App) {
     app.add_plugins((GreyboxMapPlugin, PartyPartsPlugin));

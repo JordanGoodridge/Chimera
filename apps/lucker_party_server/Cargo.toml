@@ -7,54 +7,21 @@ rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
 
-# No doc tests (none written): skips a rustdoc pass on every test run.
-[lib]
-doctest = false
-
-# The party's glue (`lucker_party`) without its default `present`, so
-# nothing of chimera_present, the client shell or Combat Arms' front end
-# links (checks/tests/it/architecture.rs, `server_builds_without_presentation`).
-# In a workspace build features unify: the released server is built alone,
-# `cargo build --release -p lucker_party_server`.
+# A thin binary over the party kit (apps/party_kit) without its default
+# `present`, so nothing of chimera_present, the client shell or Combat Arms'
+# front end links (checks/tests/it/architecture.rs,
+# `server_builds_without_presentation`). In a workspace build features unify:
+# the released server is built alone, `cargo build --release -p
+# lucker_party_server`.
 [dependencies]
-chimera_core.workspace = true
-chimera_world.workspace = true
-chimera_sim.workspace = true
-chimera_net.workspace = true
-combat_arms.workspace = true
-lucker_party.workspace = true
-bevy.workspace = true
+party_kit.workspace = true
 workspace-hack.workspace = true
 
-# The tests aim with the test kit's readers.
-[dev-dependencies]
-# The presentation's Bevy and Avian features, for this crate's own tests only
-# (the dedicated servers build without them): `cargo test -p <crate>` shares
-# the clients' builds of Bevy instead of building its own (hakari.toml).
-bevy = { workspace = true, features = ["default", "wav"] }
-avian3d = { workspace = true, features = ["debug-plugin", "bevy_picking", "bevy_scene"] }
-chimera_sim = { workspace = true, features = ["testkit"] }
-cs_source.workspace = true
-
-# The server.
 [[bin]]
 name = "lucker_party_server"
 path = "src/main.rs"
 test = false
 
-# The integration tests (tests/it/): the server as the binary composes it
-# (`ServerPlugin`), headless; `heavy::` on the user's installs.
-[[test]]
-name = "it"
-path = "tests/it/main.rs"
-
 [features]
 # Bevy as a dynamic library, as the other crates' `dev`.
-dev = [
-    "chimera_core/dev",
-    "chimera_world/dev",
-    "chimera_sim/dev",
-    "chimera_net/dev",
-    "combat_arms/dev",
-    "lucker_party/dev",
-]
+dev = ["party_kit/dev"]

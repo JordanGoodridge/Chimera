@@ -5080,19 +5080,8 @@ dependencies = [
 name = "lucker_party"
 version = "0.1.0"
 dependencies = [
- "avian3d",
- "bevy",
  "chimera_client",
- "chimera_core",
- "chimera_net",
- "chimera_present",
- "chimera_sim",
- "chimera_world",
- "combat_arms",
- "cs_source",
- "originals",
- "source_logic",
- "toml",
+ "party_kit",
  "workspace-hack",
 ]
 
@@ -5100,15 +5089,7 @@ dependencies = [
 name = "lucker_party_server"
 version = "0.1.0"
 dependencies = [
- "avian3d",
- "bevy",
- "chimera_core",
- "chimera_net",
- "chimera_sim",
- "chimera_world",
- "combat_arms",
- "cs_source",
- "lucker_party",
+ "party_kit",
  "workspace-hack",
 ]
 
@@ -6190,6 +6171,26 @@ name = "partition"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "947f833aaa585cf12b8ec7c0476c98784c49f33b861376ffc84ed92adebf2aba"
+
+[[package]]
+name = "party_kit"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "chimera_client",
+ "chimera_core",
+ "chimera_net",
+ "chimera_present",
+ "chimera_sim",
+ "chimera_world",
+ "combat_arms",
+ "cs_source",
+ "originals",
+ "source_logic",
+ "toml",
+ "workspace-hack",
+]
 
 [[package]]
 name = "peniko"
@@ -7855,7 +7856,7 @@ dependencies = [
  "chimera_sim",
  "chimera_world",
  "combat_arms",
- "lucker_party",
+ "party_kit",
  "workspace-hack",
 ]
 
@@ -7863,7 +7864,7 @@ dependencies = [
 name = "ultimate_gun_game_server"
 version = "0.1.0"
 dependencies = [
- "lucker_party_server",
+ "party_kit",
  "ultimate_gun_game",
  "workspace-hack",
 ]

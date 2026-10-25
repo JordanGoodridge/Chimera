@@ -32,7 +32,7 @@ use cs_source::ui::{
     game_hud::{GameHudPlugin, Part},
     minigame_hud::{MinigameHudPlugin, PanelLine},
 };
-use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
+use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 use crate::gun_game::held;
 

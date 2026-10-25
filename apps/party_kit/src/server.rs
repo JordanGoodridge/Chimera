@@ -1,15 +1,15 @@
-//! Lucker Party's dedicated server (apps/lucker_party_server, crate
-//! `lucker_party_server`): the party's simulation (`lucker_party`'s
-//! `PartyPartsPlugin` on Combat Arms' simulation) and the network playing a
+//! The party's dedicated server (the `server` module of apps/party_kit;
+//! binaries apps/lucker_party_server and apps/ultimate_gun_game_server): the
+//! party's simulation (`PartyPartsPlugin` on Combat Arms' simulation) and the network playing a
 //! minigame, with no window, render or audio, as `combat_arms_server` is
-//! Combat Arms'. The binary (main.rs) adds the run loop, the log, the
+//! Combat Arms'. The binaries add the run loop, the log, the
 //! console on stdin and its output on stdout (`run`, shared with the
 //! Ultimate Gun Game's server, apps/ultimate_gun_game_server); what it
-//! serves is `ServerPlugin`, which the tests build the same way (tests/it/).
+//! serves is `ServerPlugin`, which the tests build the same way (tests/server/).
 //! `parse_for`: the command line of a party app whose default minigame is
 //! another.
 //!
-//!   lucker_party_server [-port <n>] [+minigame <id>] [+map <name>] [+<command> ...]
+//!   <server> [-port <n>] [+minigame <id>] [+map <name>] [+<command> ...]
 //!
 //! - Minigames: `+minigame <id>` (`originals:gun_game_dust2` without
 //!   one), started once the command line's console lines run; the map is
@@ -30,7 +30,7 @@
 //!   a server takes sixteen unless told otherwise (`maxplayers`).
 //!
 //! Lifted nothing: the pieces are Chimera's (`net`, `map::MapSimPlugin`,
-//! the minigame runtime), the party's (`lucker_party`) and Combat Arms'
+//! the minigame runtime), the party kit's and Combat Arms'
 //! (its simulation); `combat_arms_server` has the same shape.
 //!
 //! Known shortcuts: no `MapFiles` (a client loads the map from its own
@@ -51,10 +51,10 @@ use chimera_world::{
     map::{self, LoadedMapName, MapData, MapLoadOptions, MapSimPlugin},
 };
 use combat_arms::game::{CombatArmsPlugins, INFO, TICK_INTERVAL};
-use lucker_party::{DEFAULT_MINIGAME, PartyPartsPlugin};
+use crate::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 /// This build's version (the banner, `version`): the party's stamp.
-pub const VERSION: &str = lucker_party::VERSION;
+pub const VERSION: &str = crate::VERSION;
 
 pub const USAGE: &str = "\
 usage: lucker_party_server [-port <n>] [+minigame <id>] [+map <name>] [+<command> [args...]]
@@ -84,7 +84,7 @@ pub enum Parsed {
 
 /// The command line (without the program's name).
 pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Parsed, String> {
-    parse_for(args, DEFAULT_MINIGAME, &lucker_party::first_map)
+    parse_for(args, DEFAULT_MINIGAME, &crate::first_map)
 }
 
 /// `parse` for a server whose minigame without `+minigame` is `minigame`,
@@ -149,7 +149,7 @@ pub fn map_id(name: &str) -> String {
 
 /// Map `id` as a server loads it: no textures.
 pub fn load_map(id: &str) -> Result<MapData, String> {
-    lucker_party::load_map_with(id, &MapLoadOptions::lean())
+    crate::load_map_with(id, &MapLoadOptions::lean())
 }
 
 /// The map a server starts on: the greybox, or one loaded from an install.
@@ -346,10 +346,10 @@ pub fn run(options: &Options, more: impl FnOnce(&mut App)) {
     let problems = if map_id(&options.map) == net::GREYBOX {
         Vec::new()
     } else {
-        lucker_party::requirements()
+        crate::requirements()
     };
     if !problems.is_empty() {
-        let (text, fatal) = lucker_party::report(&problems);
+        let (text, fatal) = crate::report(&problems);
         eprintln!("{text}");
         if fatal {
             std::process::exit(1);

@@ -32,6 +32,7 @@ members = [
     "apps/combat_arms",
     "apps/combat_arms_server",
     "apps/mashup_demo",
+    "apps/party_kit",
     "apps/lucker_party",
     "apps/lucker_party_server",
     "apps/ultimate_gun_game",
@@ -63,6 +64,7 @@ default-members = [
     "apps/combat_arms",
     "apps/combat_arms_server",
     "apps/mashup_demo",
+    "apps/party_kit",
     "apps/lucker_party",
     "apps/lucker_party_server",
     "apps/ultimate_gun_game",
@@ -101,10 +103,10 @@ combat_arms = { path = "games/combat_arms" }
 # Lucker Party's original minigames (games/originals): their definitions
 # (minigames/) and rules hooks, on Chimera only.
 originals = { path = "games/originals" }
-# Lucker Party's glue; without its default `present` here so its dedicated
-# server can leave the presentation out.
-lucker_party = { path = "apps/lucker_party", default-features = false }
-lucker_party_server = { path = "apps/lucker_party_server" }
+# The party kit (apps/party_kit): what Lucker Party and the Ultimate Gun Game
+# share; without its default `present` here so the dedicated servers can
+# leave the presentation out.
+party_kit = { path = "apps/party_kit", default-features = false }
 ultimate_gun_game = { path = "apps/ultimate_gun_game", default-features = false }
 # The layers' tools (docs/ARCHITECTURE.md, "Crates"): Chimera's (the
 # perf gate, image comparison) and Source's (RCON) libraries, for the
