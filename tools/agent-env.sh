@@ -12,10 +12,16 @@
 #  * agent_run runs a command inside the user slice agents.slice
 #    (CPUWeight=50, MemoryHigh=24G), so agents yield to the desktop and
 #    anything interactive instead of starving it.
+#  * Points cargo at one box-wide sccache (RUSTC_WRAPPER, port 4227, config in
+#    ~/.config/sccache/config) with CARGO_INCREMENTAL=0, so a fresh worktree's
+#    first build is mostly cache hits (docs/OBSERVABILITY.md). The server is
+#    started WITHOUT MAKEFLAGS, and tools/sccache-heal.sh restarts it if it
+#    has leaked its own jobserver tokens (the "hung at 0% CPU" failure).
 # The FIFO only holds its tokens while some process has it open, so a small
 # holder process (`sleep infinity`) is started once, race-free under flock.
 # Override: AGENT_JOBS (token count), AGENT_JS_DIR (where the FIFO lives),
-# AGENT_NO_SLICE=1 (skip the slice).
+# AGENT_NO_SLICE=1 (skip the slice), AGENT_NO_SCCACHE=1 (build without it),
+# SCCACHE_BIN (the sccache to use).
 
 _agent_env_init() {
   # Non-login shells (agent tool sandboxes) often lack these; the user bus needs them.
@@ -44,6 +50,26 @@ _agent_env_init() {
   export AGENT_ENV=1
 }
 
+# Cache compiles in one sccache server shared by every worktree. sccache keys
+# on the full rustc command line and on every CARGO_* variable of the client
+# (CARGO_TARGET_DIR included), so builds in different worktrees share entries
+# only if those match: the target dir must be the default <worktree>/target
+# (hence the unset) and builds must not be incremental (sccache cannot cache
+# those). Registry crates, the big part of a first build, then hit across
+# worktrees; workspace crates hit only when the path is the same.
+_agent_sccache_init() {
+  [ -n "$AGENT_NO_SCCACHE" ] && return 0
+  local bin="${SCCACHE_BIN:-$HOME/.local/sccache-0.19/bin/sccache}"
+  [ -x "$bin" ] || { echo "agent-env: $bin missing (cargo install sccache --locked --no-default-features --root ~/.local/sccache-0.19); building uncached" >&2; return 0; }
+  [ -n "$CARGO_TARGET_DIR" ] && echo "agent-env: unsetting CARGO_TARGET_DIR ($CARGO_TARGET_DIR): sccache would hash it; cargo uses <worktree>/target" >&2
+  unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
+  export RUSTC_WRAPPER="$bin" CARGO_INCREMENTAL=0 SCCACHE_SERVER_PORT="${SCCACHE_SERVER_PORT:-4227}"
+  local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  "$here/sccache-heal.sh"
+  # The server must not inherit the agents' jobserver: it uses its own.
+  env -u MAKEFLAGS -u CARGO_MAKEFLAGS -u MFLAGS "$bin" --start-server >/dev/null 2>&1
+}
+
 # Run a command in agents.slice (falls back to running it directly).
 agent_run() {
   if [ -n "$AGENT_NO_SLICE" ] || ! command -v systemd-run >/dev/null 2>&1 \
@@ -57,4 +83,5 @@ agent_run() {
   systemd-run --user --scope --quiet --slice=agents.slice -- "$@"
 }
 
+_agent_sccache_init
 _agent_env_init || echo "agent-env: could not set up the jobserver; builds run unthrottled" >&2
