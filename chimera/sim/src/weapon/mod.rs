@@ -60,6 +60,7 @@ pub mod economy;
 pub mod economy_data;
 pub mod equip;
 pub mod grenade;
+pub mod impact;
 pub mod lagcomp;
 mod pass_data;
 pub mod random;
@@ -196,6 +197,7 @@ impl Plugin for WeaponPlugin {
             .predicted::<Hitscan>()
             .predicted_net::<ViewPunch>()
             .predicted_net::<Zoomed>();
+        impact::plugin(app);
         lagcomp::plugin(app);
         remote::plugin(app);
         grenade::plugin(app);

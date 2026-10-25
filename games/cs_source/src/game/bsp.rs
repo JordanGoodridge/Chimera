@@ -349,6 +349,9 @@ pub fn load_level_bytes_with(
     }
     data.overview = super::hud::overview(&mut materials, name);
     data.particles = super::impact_effects::load_materials(&mut materials);
+    // Its impacts' looks (effect materials; decals with a whole kit, else
+    // `dress_guest`'s): CS:S's impacts can be drawn on it.
+    data.impacts.add(super::GAME);
     super::trails::add_trails_and_stacks(&bsp, &mut materials, &mut data);
     super::beams::add_strikes(&bsp, &mut materials, &mut data);
     // Slime splashes (`.pcf` systems) on maps with slime.
@@ -589,6 +592,16 @@ pub fn dress_guest(mount: &Mount, map: &mut MapData, kept: &'static [&'static st
     // gun fired on another game's map plays its own sound.
     let sounds = super::sound::load(&mut materials, "", &surfaces, &[]);
     add_guest_sounds(std::sync::Arc::make_mut(&mut map.sounds), sounds);
+    // CS:S's impacts (a CS:S gun's bullet holes, debris, sparks and
+    // impact sounds, `map::impact`): its impact decals and effect
+    // materials beside the map's own.
+    add_guest_decals(&mut map.kit.decals, super::decals::impact_decals(&mut materials));
+    for m in super::impact_effects::load_materials(&mut materials).materials {
+        if map.particles.find(&m.name).is_none() {
+            map.particles.materials.push(m);
+        }
+    }
+    map.impacts.add(super::GAME);
     materials.finish_textures();
     warnings.extend(materials.missing);
     map.textures.extend(materials.textures.split_off(textures));
@@ -603,10 +616,32 @@ pub fn dress_guest(mount: &Mount, map: &mut MapData, kept: &'static [&'static st
     }
 }
 
+/// A guest's impact decals added to a map's (`dress_guest`): each group
+/// and material letter the map lacks, with its decals appended.
+pub fn add_guest_decals(map: &mut crate::map::decal::MapDecals, guest: crate::map::decal::MapDecals) {
+    let base = map.decals.len();
+    map.decals.extend(guest.decals);
+    let mut groups: Vec<_> = guest.groups.into_iter().filter(|(k, _)| !map.groups.contains_key(k)).collect();
+    groups.sort_by(|a, b| a.0.cmp(&b.0));
+    for (name, variants) in groups {
+        map.groups.insert(name, variants.into_iter().map(|(w, i)| (w, i + base)).collect());
+    }
+    for (letter, group) in guest.by_material {
+        map.by_material.entry(letter).or_insert(group);
+    }
+    for (name, i) in guest.logos {
+        map.logos.entry(name).or_insert(i + base);
+    }
+}
+
 /// A guest's sound entries added to a map's (`dress_guest`): each entry
 /// the map lacks, its clips appended (their indices moved past the map's
-/// own). The map's entries, surfaces and soundscapes stay.
+/// own), and each surface the map lacks. The map's entries, surfaces and
+/// soundscapes stay.
 pub fn add_guest_sounds(map: &mut crate::map::sound::MapSounds, guest: crate::map::sound::MapSounds) {
+    for (name, surface) in guest.surfaces {
+        map.surfaces.entry(name).or_insert(surface);
+    }
     let base = map.clips.len();
     let mut used = std::collections::BTreeMap::new();
     let mut entries: Vec<_> = guest.entries.into_iter().filter(|(k, _)| !map.entries.contains_key(k)).collect();

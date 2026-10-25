@@ -330,6 +330,7 @@ impl MapSources {
             options.kit = if self.players { KitLoad::Players(self.kept) } else { KitLoad::Only(self.kept) };
         }
         let mut map = (loader.load)(name, &options)?;
+        map.impacts.game = Some(loader.game.to_string());
         self.dress(loader.game, &mut map);
         Ok(map)
     }

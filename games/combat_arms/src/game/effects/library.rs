@@ -176,6 +176,8 @@ pub fn add_looks(map: &mut MapData, data: &super::super::data::CaDataInner, file
             return;
         }
     };
+    // Combat Arms' impacts can be drawn on the map (`map::impact`).
+    map.impacts.add(crate::game::GAME);
     let set = data.weapon_set();
     let weapons: Vec<CaWeaponFx> = set.weapons.iter().filter_map(|w| w.hook(EFFECTS)).collect();
     let muzzles: Vec<String> = set

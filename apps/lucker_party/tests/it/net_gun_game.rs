@@ -268,3 +268,43 @@ fn a_ladder_climbed_by_a_client_shows_on_both_clients() {
     };
     assert_eq!(kills, Some(10), "the scoreboard's kills on the winner's own client");
 }
+
+/// A swap from Combat Arms' gun to CS:S's (the server's rung change) ends
+/// Combat Arms' recoil on the server and on the client predicting the
+/// player alike (`weapon::impact::RecoilGame`, predicted): the punch is
+/// zero on both and doesn't drift down on the client.
+#[test]
+fn a_swap_ends_the_old_games_recoil_on_server_and_client_alike() {
+    use chimera_sim::weapon::{ViewPunch, impact::RecoilGame};
+    let mut sim = joined();
+    let a = sim.character_of(0).unwrap();
+    let set = |sim: &mut NetSim, r: usize| {
+        let w = sim.server.app.world_mut();
+        let l = w.resource::<minigame::ladder::Ladder>().clone();
+        minigame::ladder::set_rung(w, a, r, &l);
+    };
+    set(&mut sim, 7);
+    assert!(sim.until(300, |s| held(s, 0) == Some("combat_arms:m4a1")), "the M4A1 on the client");
+    sim.ticks(60);
+    let me = sim.local_player(0).unwrap();
+    let ahead = sim.server.position(a) + Vec3::new(0.0, 1.5, -20.0);
+    for t in 0..40u64 {
+        testkit::aim_at(&mut sim.clients[0], me, ahead);
+        sim.clients[0].intent(me).fire = t % 2 == 0;
+        sim.step();
+    }
+    sim.clients[0].intent(me).fire = false;
+    let punch = |w: &World, e: Entity| w.get::<ViewPunch>(e).map_or(Vec3::ZERO, |p| p.0);
+    assert!(punch(sim.clients[0].app.world(), me).x > 0.01, "kicked on the client");
+    set(&mut sim, 6);
+    assert!(sim.until(300, |s| held(s, 0) == Some("cs_source:weapon_ak47")), "the AK-47 on the client");
+    sim.ticks(10);
+    for _ in 0..60 {
+        sim.step();
+        let (c, s) = (punch(sim.clients[0].app.world(), me), punch(sim.server.app.world(), a));
+        assert!(c.length() < 1e-6 && s.length() < 1e-6, "no punch left or drifting: client {c:?}, server {s:?}");
+    }
+    let game = |w: &World, e: Entity| w.get::<RecoilGame>(e).map(|g| g.0.clone());
+    assert_eq!(game(sim.server.app.world(), a).as_deref(), Some("cs_source"));
+    assert_eq!(game(sim.clients[0].app.world(), me).as_deref(), Some("cs_source"));
+}

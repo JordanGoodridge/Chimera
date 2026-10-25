@@ -748,6 +748,16 @@ tests (manifest, mount doctor refusals, `ChangeMatch`):
 names who lacks what for the rest; a client's `minigame_net::PartyOffer`). `grep 'console:'` the clients' output; the
 server prints on stdout.
 
+Cross-game parts in the party (`chimera_sim::weapon::impact`): which
+game draws a gun's impacts is `ImpactRoute::by_weapon` (the map's
+`map::impact::ActiveImpacts` says whose looks it carries); the scenario
+tests are `apps/lucker_party/tests/it/cross_game.rs` (pushes, recoil at a
+swap) and `heavy/impacts.rs` (each gun on each game's map leaves one
+game's impact); the recoil at a swap over the network is in
+`net_gun_game.rs`. Live: `lucker_party --map combat_arms:warehouse
++minigame originals:gun_game_dust2` holds CS:S's Glock first: shoot a wall
+and `screenshot`.
+
 Votes (`games/cs_source/tests/it/net_votes.rs`): the server's
 `net::vote::Votes` has the running vote (voters, ballots) and the passed
 and failed counts, each side's `VoteView` what it shows (the vote,

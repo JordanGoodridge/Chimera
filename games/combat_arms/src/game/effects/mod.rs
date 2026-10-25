@@ -65,6 +65,12 @@
 //! The front end (`ui::effects`) draws decals, tracers, casings, lights
 //! and the first-person muzzle flash; `sounds` plays `CaSound`s.
 //!
+//! Across games (`weapon::impact`): the impacts are drawn where Chimera's
+//! route gives them to Combat Arms (its guns' where its looks are on the
+//! map; another game's gun's, as `guest_fx`'s full metal jacket round,
+//! where that game's can't be); its surface types go to and from
+//! Chimera's classes by `SURFACES`.
+//!
 //! The follow-up answers (Open questions 1, 4, 6, 8, 17-25): others'
 //! shot sounds start at their weapon (the fire point); dry fire is
 //! silent; several camera jitters add up; the mission bomb's show and
@@ -249,6 +255,9 @@ pub struct CaEffectsPlugin;
 
 impl Plugin for CaEffectsPlugin {
     fn build(&self, app: &mut App) {
+        use crate::{map::impact::SurfaceClassesAppExt, weapon::impact::ImpactAppExt};
+        app.register_impact_provider(crate::game::GAME)
+            .register_surface_classes(SURFACES);
         app.register_weapon_hook::<CaWeaponFx>(EFFECTS, |e, _, p| {
             e.insert(p.clone());
         })
@@ -351,6 +360,62 @@ pub fn surface_type(s: &str, names: Option<&SurfaceNames>, tables: &CaFxTables) 
         .or_else(|| tables.surface_id(names.map_or(s, |n| n.resolve(s))))
         .unwrap_or(0)
 }
+
+/// The effects another game's gun's impacts take when Combat Arms draws
+/// them (`weapon::impact`: that game can't on this map): a full metal
+/// jacket round's (the rifles' and pistols' `BulletFmj`), no tracer or
+/// fly-by.
+pub fn guest_fx() -> CaWeaponFx {
+    CaWeaponFx {
+        ammo_kind: AmmoKind::Bullet,
+        impact: "BulletFmj".into(),
+        ..Default::default()
+    }
+}
+
+/// Combat Arms' surface types by class (`map::impact`): the types of
+/// data/effects.toml by id (the world's `SurfaceGrid` names), else by
+/// name (another map's names through `SurfaceNames`), and the type each
+/// class takes on other games' maps.
+pub const SURFACES: crate::map::impact::GameSurfaces = crate::map::impact::GameSurfaces {
+    game: crate::game::GAME,
+    classify: |name| {
+        use crate::map::impact::SurfaceClass as C;
+        Some(match name.trim().parse::<u16>().ok()? {
+            4..=7 => C::Flesh,
+            10 | 90 => C::Tile,
+            11 => C::Concrete,
+            20 | 101 | 200 => C::Metal,
+            30 | 100 => C::Wood,
+            40 | 41 => C::Glass,
+            60 => C::Sand,
+            70 | 74 => C::Dirt,
+            71 => C::Snow,
+            73 => C::Grass,
+            80 | 81 => C::Cloth,
+            201 | 204 => C::Water,
+            _ => return None,
+        })
+    },
+    name: |class| {
+        use crate::map::impact::SurfaceClass as C;
+        Some(match class {
+            C::Concrete | C::Default => "11",
+            C::Metal => "20",
+            C::Wood => "30",
+            C::Dirt => "70",
+            C::Sand => "60",
+            C::Grass => "73",
+            C::Snow => "71",
+            C::Glass => "40",
+            C::Tile => "10",
+            C::Plastic => "90",
+            C::Cloth => "81",
+            C::Flesh => "6",
+            C::Water => "204",
+        })
+    },
+};
 
 /// The world's surfaces as Combat Arms' types (`surface_type`): the map's
 /// tagged triangles and, on another game's map, its names as Combat
@@ -622,10 +687,11 @@ fn shot_effects(
     mut dings: ResMut<DingQueue>,
     mut sounds: MessageWriter<CaSound>,
     mut fx: MessageWriter<CaFxRequest>,
-    (mut state, volumes, protected): (
+    (mut state, volumes, protected, route): (
         Local<ShotState>,
         Query<&CaVolume>,
         Query<(), With<super::rules::spawns::CaProtected>>,
+        crate::weapon::impact::ImpactRoute,
     ),
     mut commands: Commands,
 ) {
@@ -668,10 +734,26 @@ fn shot_effects(
         })
         .collect();
     let mut rounds: HashMap<Entity, Round> = HashMap::new();
+    let guest_fx = guest_fx();
     for e in events {
         let mine = Some(e.owner) == me;
         let Ok((weapon, wfx, mods, view, zoom)) = weapons.get(e.weapon) else { continue };
-        let Some(wfx) = wfx else { continue };
+        // Combat Arms draws this event's impacts (`weapon::impact`: its
+        // guns' where its looks are on the map; another game's gun's where
+        // that game's can't be drawn).
+        let draws = route.draws(crate::game::GAME, e);
+        let guest = wfx.is_none();
+        let wfx = match wfx {
+            Some(w) => w,
+            // Another game's gun: its impacts alone, as a full metal
+            // jacket round's (`guest_fx`).
+            None if draws
+                && matches!(e.kind, WeaponEventKind::Shot { .. } | WeaponEventKind::ShotContinued { .. }) =>
+            {
+                &guest_fx
+            }
+            None => continue,
+        };
         let fire_record = tables.fire(&wfx.fire);
         match &e.kind {
             WeaponEventKind::Fired { origin, yaw, pitch, .. } => {
@@ -758,7 +840,7 @@ fn shot_effects(
                 let at = *to - dir * UNIT;
                 let wet = hit.is_some() && in_liquid(volumes.iter(), at + n * UNIT);
                 // 4: the tracer, once per ray, drawn on a round's first.
-                if first && wfx.ammo_kind == AmmoKind::Bullet {
+                if first && !guest && wfx.ammo_kind == AmmoKind::Bullet {
                     let f = if mine {
                         own_tracer_frequency(&tables, wfx, mods)
                     } else {
@@ -798,6 +880,7 @@ fn shot_effects(
                 // Corrections 2026-10-22, 2).
                 if first
                     && !mine
+                    && !guest
                     && wfx.ammo_kind == AmmoKind::Bullet
                     && let Some(cam) = cam
                     && let Some(record) = tables.impact(&wfx.impact)
@@ -815,7 +898,7 @@ fn shot_effects(
                         ..CaSound::at(file, at * UNIT, big)
                     });
                 }
-                let Some(hit) = hit else { continue };
+                let Some(hit) = hit.as_ref().filter(|_| draws) else { continue };
                 // A spawn-protected player absorbs the round: no blood, no
                 // impact (game_modes.md S6, Open question 25).
                 if protected.contains(*hit) {
@@ -853,7 +936,7 @@ fn shot_effects(
                     let origin = characters.get(e.owner).ok().and_then(|c| c.3).map_or(Vec3::ZERO, |t| t.translation);
                     sounds.write(if mine { CaSound::local(file) } else { CaSound::at(file, origin, radius) });
                 }
-                let Some((point, n, hit)) = at else { continue };
+                let Some((point, n, hit)) = at.as_ref().filter(|_| draws) else { continue };
                 let (has_health, is_character, ..) = characters.get(*hit).unwrap_or((false, false, None, None));
                 let ty = if has_health && is_character { 6 } else { grid.at(*point) };
                 let Some(record) = tables.impact(&wfx.impact) else { continue };
