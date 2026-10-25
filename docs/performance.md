@@ -1381,14 +1381,27 @@ What cost it, from traces (`--features profile`, `tracesum`):
   probe lit (`render::probe_lit::relight`).
 
 Left (the party's main world is still ~35% over `cs_source`'s, its
-ticks 1.8x, its render world ~15%): both games' simulations run every
-tick: Combat Arms' animation (`characters::drive`, 0.38 ms a tick
-traced: names cloned and looked up per pose), the predicted schedules
-with both games' guns (0.65 vs 0.30 ms), Combat Arms' exclusive systems
-that build their queries each call (perks, roster, objects, grenades,
-the minigame runtime: 0.02-0.05 ms each), and more drawn triangles (65k
-vs 31k: Combat Arms' soldiers). Frame times on the box were at the 60 Hz
-cap for both after the fix.
+ticks 1.8x, its render world ~15%; frame times on the box sat at the
+60 Hz cap for both after the fix). Ideas, each a small measure-once task:
+
+- Combat Arms' animation (`characters::drive`, 0.38 ms a tick traced):
+  `Rig::posed` clones every node's and socket's name per pose and
+  `Posed::node` finds names by a case-blind linear search; share the
+  names (`Arc`) and look the aim and hit nodes up once per rig.
+- Combat Arms' exclusive systems that build `world.query` states every
+  call (perks `supplies` and `perk_tick`, `roster::keep_quota` and
+  `arm`, `objects::gather`, `grenades::server_frames`, the minigame
+  runtime's `respawn_dead`, `end_protection`, `join`,
+  `weapon::give_starting_weapons`: 0.02-0.05 ms each a tick traced):
+  keep them in a `Local` as `bots::brain::SnapQueries` does.
+- The predicted schedules with both games' guns (`run_predicted`, 0.65
+  vs 0.30 ms a tick): Select has 13 systems (CS:S 1), Weapons 17 (8).
+- The render world: 65k triangles drawn vs 31k (Combat Arms' soldiers),
+  5-6 materials still modified a frame (tracers and particles: real
+  changes, but worth a check), `write_binned_instance_buffers` and
+  `prepare_preprocess_bind_groups` higher than CS:S's.
+- A `perfgate` scenario for the party (it lives in a game's tools crate,
+  which can't depend on the app; a party binary of its own).
 
 ## See a frame yourself
 
