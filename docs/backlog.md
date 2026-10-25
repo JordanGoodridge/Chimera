@@ -810,11 +810,22 @@ dithered fade bands. Left:
   (performance.md, "Checks"). Capture C27 says whether CS:S hides them
   too; if it shows them, find the engine's rule for static props seen
   past sky brushes. Until then cs_assault's vischeck failure is expected.
-- `refcmp ordercheck` on cs_assault: 9 views still differ by up to 50
-  pixels (`nav1847_90` by one level in a lamp-lit corner, `nav1567_180` a
-  rail's highlight; performance.md, "Checks"): find what they keep from
-  earlier views (the opaque phases' batch order by pipeline id is a
-  candidate).
+- `refcmp ordercheck` on cs_assault: passes (limit 100 pixels) but 8 of 316
+  views still differ (re-run 2026-10-25, `capture-ours` works here, no
+  reference captures needed): `nav1847_90` 56 pixels, `nav1567_180` 26,
+  six others by 1 pixel. Looked at `nav1847_90`: the differing pixels
+  are a strip along one edge (x 880-890, y 15 and below, in a 1280x720
+  capture) where a dark surface meets lit wood, i.e. a depth tie at a
+  geometry edge between two opaque draws, not a blended item. Most likely
+  cause: opaque batches draw in pipeline-id order (made in the order the
+  camera first saw each material kind), and where two opaque surfaces
+  meet at the same depth the one drawn last wins. Next step: capture
+  `nav1847_90` alone and after `nav1847_0` (performance.md, "Checks"),
+  then query the two entities at that pixel (remote protocol, section 3)
+  and compare their materials and pipeline keys; fix by giving opaque
+  batches a stable order (as `render::blend_order` does for blended items)
+  or by fixing the overlapping geometry. Not worth more than that while
+  under the tolerance.
 - Measure on the Windows PC (`refcmp bench` there) and set a budget.
 - Frame-time follow-ups (performance.md, "Frame time pass"): before/after
   numbers on a quiet machine and on the Windows PC (`refcmp bench`, also
