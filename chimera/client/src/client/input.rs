@@ -269,7 +269,7 @@ pub struct WheelJump {
 /// Notches queued at most, so a long spin doesn't keep jumping after it.
 const MAX_WHEEL_JUMPS: u32 = 4;
 
-fn apply_wheel_jump(mut wheel: ResMut<WheelJump>, mut intent: Single<&mut Intent, With<LocalPlayer>>) {
+pub fn apply_wheel_jump(mut wheel: ResMut<WheelJump>, mut intent: Single<&mut Intent, With<LocalPlayer>>) {
     let pulse = wheel.pending > 0 && !wheel.pressed_last_tick;
     if pulse {
         wheel.pending -= 1;
@@ -318,7 +318,10 @@ pub fn write_local_intent(
     zoomed: Query<&crate::weapon::Zoomed, With<LocalPlayer>>,
     spectator: Option<Res<super::spectate::Spectator>>,
     weapon_menu: Option<Res<super::weapon_menu::WeaponMenu>>,
-    actions: Option<Res<crate::core::ActionRegistry>>,
+    (actions, identity): (
+        Option<Res<crate::core::ActionRegistry>>,
+        Query<&crate::slots::GameIdentity, With<LocalPlayer>>,
+    ),
     mut last_motion: Local<Vec2>,
 ) {
     // The motion mouse look turns by (`m_filter`, `m_customaccel`).
@@ -326,7 +329,10 @@ pub fn write_local_intent(
     // Every game key is a bind (`binds`): what the keys bound to an action
     // hold.
     let empty = std::collections::BTreeMap::new();
-    let binds = console.as_ref().map_or(&empty, |c| &c.binds);
+    // The shared binds under the identity's game's own (`Console::layers`).
+    let identity = identity.iter().next().map(|i| i.0.as_str());
+    let binds = console.as_ref().map_or(std::borrow::Cow::Borrowed(&empty), |c| c.effective_binds(identity));
+    let binds = &*binds;
     let bound = |command: &str| super::binds::pressed(binds, &keys, &mouse, command);
     let freelook = bound("+freelook") || held.as_ref().is_some_and(|h| h.freelook);
     if !freelook {
@@ -649,5 +655,45 @@ mod tests {
         app.world_mut().resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::KeyG);
         app.update();
         assert_eq!(intent(&mut app).actions, 0);
+    }
+
+    /// Shift is `+sprint` in the shared binds (Combat Arms'); a player of
+    /// a game whose own bind says `+speed` walks on it.
+    #[test]
+    fn a_games_own_bind_beats_the_shared_one() {
+        let mut app = App::new();
+        app.add_plugins(crate::console::ConsolePlugin)
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<AccumulatedMouseMotion>()
+            .init_resource::<AccumulatedMouseScroll>()
+            .init_resource::<Time>()
+            .init_resource::<MouseSettings>()
+            .init_resource::<WheelJump>()
+            .init_resource::<FreeLook>()
+            .init_resource::<super::super::view::FreeCam>()
+            .add_systems(Update, write_local_intent);
+        let me = app.world_mut().spawn((Intent::default(), LocalPlayer)).id();
+        app.world_mut().spawn(CursorOptions {
+            grab_mode: CursorGrabMode::Locked,
+            ..default()
+        });
+        let mut console = app.world_mut().resource_mut::<crate::console::Console>();
+        console.submit("bind shift +sprint");
+        console.submit("bindgame alpha shift +speed");
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::ShiftLeft);
+        let walks = |app: &mut App| {
+            app.update();
+            let i = app.world().get::<Intent>(me).unwrap();
+            (i.sprint, i.walk)
+        };
+        assert_eq!(walks(&mut app), (true, false), "no identity: Shift is the shared sprint key");
+        app.world_mut().entity_mut(me).insert(crate::slots::GameIdentity("beta".into()));
+        assert_eq!(walks(&mut app), (true, false), "a game without its own bind: the same");
+        app.world_mut().entity_mut(me).insert(crate::slots::GameIdentity("alpha".into()));
+        assert_eq!(walks(&mut app), (true, true), "alpha's own Shift is +speed, which walks");
+        app.world_mut().resource_mut::<crate::console::Console>().submit("bindgame alpha shift");
+        app.world_mut().resource_mut::<crate::console::Console>().submit("bindgame alpha shift \"\"");
+        assert_eq!(walks(&mut app), (false, false), "an empty own bind hides the shared one");
     }
 }

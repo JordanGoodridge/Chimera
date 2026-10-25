@@ -34,6 +34,8 @@ members = [
     "apps/mashup_demo",
     "apps/lucker_party",
     "apps/lucker_party_server",
+    "apps/ultimate_gun_game",
+    "apps/ultimate_gun_game_server",
     "checks",
 ]
 default-members = [
@@ -63,6 +65,8 @@ default-members = [
     "apps/mashup_demo",
     "apps/lucker_party",
     "apps/lucker_party_server",
+    "apps/ultimate_gun_game",
+    "apps/ultimate_gun_game_server",
     "checks",
 ]
 resolver = "3"
@@ -100,6 +104,8 @@ originals = { path = "games/originals" }
 # Lucker Party's glue; without its default `present` here so its dedicated
 # server can leave the presentation out.
 lucker_party = { path = "apps/lucker_party", default-features = false }
+lucker_party_server = { path = "apps/lucker_party_server" }
+ultimate_gun_game = { path = "apps/ultimate_gun_game", default-features = false }
 # The layers' tools (docs/ARCHITECTURE.md, "Crates"): Chimera's (the
 # perf gate, image comparison) and Source's (RCON) libraries, for the
 # tools above them.
@@ -264,6 +270,10 @@ dev = ["cs_source_app/dev"]
 # CPU profile: every system and render step as a span in a Chrome trace
 # (docs/performance.md). Slower; only for measuring.
 profile = ["cs_source_app/profile"]
+# A short window of spans (`trace_capture`), the Tracy profiler live:
+# docs/performance.md, "See a frame yourself".
+trace = ["cs_source_app/trace"]
+tracy = ["cs_source_app/tracy"]
 
 # Our own code: a little optimization so the game is playable in debug.
 [profile.dev]

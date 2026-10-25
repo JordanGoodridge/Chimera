@@ -1,0 +1,60 @@
+[package]
+name = "ultimate_gun_game"
+version = "0.1.0"
+description = "Ultimate Gun Game: a gun game whose ladder is built from every composed game's guns; each gun makes you its game"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# The party's glue (`lucker_party`: both games composed, the minigame
+# runtime, the client) plus an automatic definition made from the games'
+# parts (`chimera_sim::minigame::auto`); no game crate is named but for
+# the base game's id (checks/tests/it/architecture.rs). The presentation is
+# behind the default feature `present` (the dedicated server,
+# apps/ultimate_gun_game_server, builds without it).
+[dependencies]
+chimera_core.workspace = true
+chimera_sim.workspace = true
+chimera_net.workspace = true
+chimera_client = { workspace = true, optional = true }
+lucker_party.workspace = true
+bevy.workspace = true
+workspace-hack.workspace = true
+
+[dev-dependencies]
+# The presentation's Bevy and Avian features, for this crate's own tests only
+# (hakari.toml).
+bevy = { workspace = true, features = ["default", "wav"] }
+avian3d = { workspace = true, features = ["debug-plugin", "bevy_picking", "bevy_scene"] }
+chimera_sim = { workspace = true, features = ["testkit"] }
+chimera_world.workspace = true
+combat_arms.workspace = true
+
+# The game.
+[[bin]]
+name = "ultimate_gun_game"
+path = "src/main.rs"
+test = false
+required-features = ["present"]
+
+# Its integration tests (tests/it/): the automatic gun game on the
+# composed simulation, headless.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[features]
+default = ["present"]
+present = ["dep:chimera_client", "lucker_party/present"]
+dev = [
+    "chimera_core/dev",
+    "chimera_sim/dev",
+    "chimera_net/dev",
+    "chimera_client?/dev",
+    "lucker_party/dev",
+]

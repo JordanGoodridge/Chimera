@@ -196,20 +196,19 @@ impl Plugin for ViewAnimPlugin {
     }
 }
 
-fn cvars(app: &mut App) {
-    resource_cvar::<ViewModelSettings, f32>(
-        app,
-        "viewmodel_fov",
-        "View model field of view (horizontal degrees at 4:3, scaled to the screen; zooms with the view).",
-        |s| &mut s.fov,
-    );
-    resource_cvar::<ViewModelSettings, u8>(
-        app,
-        "cl_righthand",
-        "1: weapons in the right hand (left-handed models are mirrored); 0: left.",
-        |s| &mut s.right_hand,
-    );
-    resource_cvar::<ViewModelSettings, u8>(app, "r_drawviewmodel", "0: no view model.", |s| &mut s.draw);
+/// The view model's motion cvars (`cl_bobcycle`, `cl_bobup`,
+/// `cl_wpn_sway_interp`, `cl_wpn_sway_scale`) and `ViewMotion`'s system
+/// (`view_motion::update`), for an app that plays CS:S's guns beside
+/// another game's (the party): the local player's bob and sway, after the
+/// other game's view-model driver, only while that driver has let go of
+/// the character (`ours` says whether it has not).
+pub fn add_motion<M>(app: &mut App, ours: impl SystemCondition<M>) {
+    app.init_resource::<ViewMotion>()
+        .add_systems(Update, view_motion::update.after(DriveAnimation).run_if(ours));
+    motion_cvars(app);
+}
+
+fn motion_cvars(app: &mut App) {
     resource_cvar::<ViewMotion, f32>(
         app,
         "cl_bobcycle",
@@ -224,6 +223,23 @@ fn cvars(app: &mut App) {
         |m| &mut m.sway_interp,
     );
     resource_cvar::<ViewMotion, f32>(app, "cl_wpn_sway_scale", "View model sway gain.", |m| &mut m.sway_scale);
+}
+
+fn cvars(app: &mut App) {
+    resource_cvar::<ViewModelSettings, f32>(
+        app,
+        "viewmodel_fov",
+        "View model field of view (horizontal degrees at 4:3, scaled to the screen; zooms with the view).",
+        |s| &mut s.fov,
+    );
+    resource_cvar::<ViewModelSettings, u8>(
+        app,
+        "cl_righthand",
+        "1: weapons in the right hand (left-handed models are mirrored); 0: left.",
+        |s| &mut s.right_hand,
+    );
+    resource_cvar::<ViewModelSettings, u8>(app, "r_drawviewmodel", "0: no view model.", |s| &mut s.draw);
+    motion_cvars(app);
     resource_cvar::<EffectSettings, u8>(
         app,
         "muzzleflash_light",

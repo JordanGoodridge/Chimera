@@ -4,6 +4,7 @@
 //! user's installs. `cargo test -p lucker_party --features dev --test it`;
 //! where tests go: docs/OBSERVABILITY.md, section 1.
 
+mod controls;
 mod cross_game;
 mod gun_game;
 mod hud;

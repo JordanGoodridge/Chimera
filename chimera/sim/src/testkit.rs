@@ -11,10 +11,16 @@
 //! `kit_sim()` is a `harness::Sim` on the base with the kit's weapons
 //! loaded; `with_player` adds a character on the placeholder movement
 //! holding one. A game's own tests use the same pieces on their base
-//! (`add_weapons`). Nothing here names a game.
+//! (`add_weapons`). `STAND_IN` and `add_stand_in_game`: the kit as a
+//! game that lends only guns and movement, for the fallbacks of an app
+//! made of several games. Nothing here names a game.
 
 use bevy::prelude::*;
-use chimera_core::character::CAPSULE_HEIGHT;
+use chimera_core::{
+    character::CAPSULE_HEIGHT,
+    game_parts::{GameParts, GamePartsAppExt, GunClass, GunPart},
+    slots::RegisterSlots,
+};
 use chimera_world::{
     greybox::{self, GreyboxMapPlugin},
     harness::Sim,
@@ -162,6 +168,44 @@ pub fn weapon_docs() -> [(&'static str, &'static str); 5] {
 pub fn add_weapons(app: &mut App) {
     app.add_weapon_data(&weapon_docs())
         .expect("the kit's weapon data loads");
+}
+
+/// The kit as a stand-in game (`game = "kit"`) that lends only guns and
+/// movement (`chimera_core::game_parts`): no knife, characters, HUD or
+/// maps, so an app made of several games falls back for each.
+pub static STAND_IN: GameParts = GameParts {
+    game: "kit",
+    guns: &[
+        GunPart {
+            id: PISTOL,
+            class: GunClass::Pistol,
+        },
+        GunPart {
+            id: SHOTGUN,
+            class: GunClass::Shotgun,
+        },
+        GunPart {
+            id: RIFLE,
+            class: GunClass::Rifle,
+        },
+    ],
+    knife: None,
+    movement: Some(STAND_IN_MOVEMENT),
+    characters: None,
+    hud: None,
+    maps: &[],
+};
+
+/// The stand-in game's movement: the placeholder's, under the kit's name.
+pub const STAND_IN_MOVEMENT: &str = "kit:movement";
+
+/// The kit as a stand-in game in `app` (on a base with the weapon
+/// framework and the placeholder movement): its weapons, its movement and
+/// its parts (`STAND_IN`).
+pub fn add_stand_in_game(app: &mut App) {
+    add_weapons(app);
+    app.register_movement::<placeholder::PlaceholderMovement>(STAND_IN_MOVEMENT)
+        .register_parts(&STAND_IN);
 }
 
 /// A headless `Sim` on the engine's base and the greybox, the kit's

@@ -282,9 +282,27 @@ impl CaAnim {
 
     /// The posed skeleton now, with aim (`server`: the server's shares).
     pub fn posed(&self, crouch: f32, squash: f32, server: bool) -> Posed {
+        let mut posed = self.unaimed(crouch, squash);
+        posed.aim(&records::builtin().skeleton(self.skeleton).aim, self.pitch, self.twist, server);
+        posed
+    }
+
+    /// `posed` for the client's view and the server's (`posed(.., false)`,
+    /// `posed(.., true)`), the layers posed once: only the aim differs.
+    pub fn posed_both(&self, crouch: f32, squash: f32) -> (Posed, Posed) {
+        let aim = &records::builtin().skeleton(self.skeleton).aim;
+        let mut seen = self.unaimed(crouch, squash);
+        let mut server = seen.clone();
+        seen.aim(aim, self.pitch, self.twist, false);
+        server.aim(aim, self.pitch, self.twist, true);
+        (seen, server)
+    }
+
+    /// The pose before the aim.
+    fn unaimed(&self, crouch: f32, squash: f32) -> Posed {
         let d = &self.driver;
         let skel = records::builtin().skeleton(self.skeleton);
-        let mut posed = match &self.rig {
+        match &self.rig {
             Some(rig) => {
                 let pose = if self.death.is_some() {
                     // A body has only its main tracker (10).
@@ -295,9 +313,7 @@ impl CaAnim {
                 rig.posed(&pose, crouch)
             }
             None => skeleton::fallback(skel, squash),
-        };
-        posed.aim(&skel.aim, self.pitch, self.twist, server);
-        posed
+        }
     }
 }
 
@@ -756,6 +772,19 @@ pub fn snap(at: Vec3, below: f32, half: f32, lift: f32) -> Vec3 {
 /// How far down the floor snap looks (u).
 pub const FLOOR_RAY: f32 = 10_000.0;
 
+/// The player object's visibility change, if any: hidden while dead (only
+/// where the body is ours), shown again when alive. Showing doesn't ask
+/// whose identity it is: a bot that died as a Combat Arms soldier and
+/// respawned holding a CS:S gun (the gun game's `identity = "weapon"`)
+/// stayed hidden for good, and its CS:S body with it.
+pub fn object_visibility(ours: bool, alive: bool, hidden: bool) -> Option<Visibility> {
+    match (alive, hidden) {
+        (false, false) if ours => Some(Visibility::Hidden),
+        (true, true) => Some(Visibility::Inherited),
+        _ => None,
+    }
+}
+
 /// Each tick: every living character's driver (a client's own player
 /// only; others follow the server's `CaAnimNet`), then its pose.
 #[allow(clippy::type_complexity)]
@@ -792,13 +821,10 @@ fn drive(
         }
         // The player object itself is invisible while dead: the body object
         // shows the death (Corrections 12).
-        if anim.rig.is_some() && ours {
-            let hidden = visibility == Some(&Visibility::Hidden);
-            if !alive && !hidden {
-                commands.entity(e).insert(Visibility::Hidden);
-            } else if alive && hidden {
-                commands.entity(e).insert(Visibility::Inherited);
-            }
+        if anim.rig.is_some()
+            && let Some(v) = object_visibility(ours, alive, visibility == Some(&Visibility::Hidden))
+        {
+            commands.entity(e).insert(v);
         }
         let weapon = inventory.and_then(|i| i.active).and_then(|w| weapons.get(w).ok());
         let r = movement.map_or(0.0, |m| m.crouch_rate);
@@ -838,12 +864,16 @@ fn drive(
         } else {
             intent.yaw + anim.twist
         };
-        let posed = anim.posed(r, squash, false);
-        *pose = pose_of(&anim, &posed, body_yaw, squash);
-        if !client {
-            let server = anim.posed(r, squash, true);
+        let posed = if client {
+            let posed = anim.posed(r, squash, false);
+            *pose = pose_of(&anim, &posed, body_yaw, squash);
+            posed
+        } else {
+            let (posed, server) = anim.posed_both(r, squash);
+            *pose = pose_of(&anim, &posed, body_yaw, squash);
             pose.server_spheres = pose_of(&anim, &server, body_yaw, squash).spheres;
-        }
+            posed
+        };
         if let (true, Some(mut animator)) = (anim.rig.is_some() && ours, animator) {
             animator.fixed = Some(Arc::new(posed.locals_rh()));
             if animator.main.is_none() {
@@ -1193,5 +1223,29 @@ fn dress(
         if held.is_none_or(|h| h.0 != id) {
             commands.entity(e).insert(Held(id));
         }
+    }
+}
+
+#[cfg(test)]
+mod visibility_tests {
+    use super::object_visibility;
+    use bevy::prelude::Visibility;
+
+    /// A bot that died as a Combat Arms soldier (its object hidden for
+    /// the death body) and respawned holding a CS:S gun is seen again; one
+    /// that dies holding a CS:S gun is not hidden by Combat Arms.
+    #[test]
+    fn a_living_character_is_never_left_hidden() {
+        // (ours, alive, hidden) -> change
+        assert_eq!(object_visibility(true, false, false), Some(Visibility::Hidden), "ours, dead: hidden");
+        assert_eq!(object_visibility(true, true, true), Some(Visibility::Inherited), "ours, back alive");
+        assert_eq!(
+            object_visibility(false, true, true),
+            Some(Visibility::Inherited),
+            "another game's identity now, alive: shown (it stayed hidden)"
+        );
+        assert_eq!(object_visibility(false, false, false), None, "another game's dead body isn't ours to hide");
+        assert_eq!(object_visibility(true, true, false), None);
+        assert_eq!(object_visibility(true, false, true), None);
     }
 }

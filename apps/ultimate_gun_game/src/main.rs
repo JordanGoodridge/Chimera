@@ -1,0 +1,31 @@
+//! The Ultimate Gun Game binary (`ultimate_gun_game`): Lucker Party's
+//! client app (`lucker_party::client_app`) with the Ultimate Gun Game's
+//! parts (`UltimateGunGamePlugin`), playing the automatic gun game on its
+//! pool's first map (`--map` picks another, `+minigame` another
+//! minigame). The options are the shell's (`--help`).
+
+use chimera_client::client::Args;
+
+fn main() {
+    if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
+        println!(
+            "ultimate_gun_game: a gun game whose ladder is every composed game's guns; each gun makes you its\n\
+             game. Starts {} on its first map; `ugg_new [seed] [rungs]` (console) a new ladder, `parts`\n\
+             what each game lends. The options are the shell's (below).\n",
+            ultimate_gun_game::MINIGAME,
+        );
+    }
+    let first = |id: &str| ultimate_gun_game::first_map(id);
+    let args = lucker_party::with_defaults_for(Args::parse(), ultimate_gun_game::MINIGAME, &first);
+    let problems = lucker_party::requirements();
+    if !problems.is_empty() {
+        let (text, fatal) = lucker_party::report(&problems);
+        eprintln!("{text}");
+        if fatal {
+            std::process::exit(1);
+        }
+    }
+    let mut app = lucker_party::client_app(args, "Ultimate Gun Game");
+    app.add_plugins(ultimate_gun_game::UltimateGunGamePlugin::default());
+    chimera_client::client::app::run(app);
+}

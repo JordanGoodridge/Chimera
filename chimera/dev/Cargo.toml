@@ -27,3 +27,8 @@ bevy.workspace = true
 dev = ["bevy/dynamic_linking", "bevy/bevy_remote"]
 # Every system as a span in a Chrome trace (docs/performance.md).
 profile = ["bevy/trace_chrome"]
+# Spans without a whole-run file: the client's `trace_capture` records a
+# short window of them (docs/performance.md, "See a frame yourself").
+trace = ["bevy/trace"]
+# Spans, frame marks and GPU passes live in the Tracy profiler.
+tracy = ["bevy/trace_tracy"]

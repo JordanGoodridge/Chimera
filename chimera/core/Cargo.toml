@@ -48,7 +48,11 @@ libc.workspace = true
 # (left out of the workspace-hack: chimera/dev/Cargo.toml).
 dev = ["dep:chimera_dev", "chimera_dev/dev"]
 # Every system as a span in a Chrome trace (the game's `profile`).
-profile = ["dep:chimera_dev", "chimera_dev/profile"]
+profile = ["dep:chimera_dev", "chimera_dev/profile", "trace"]
+# Spans for a short capture (the game's `trace`), and Tracy (`tracy`):
+# docs/performance.md, "See a frame yourself".
+trace = ["dep:chimera_dev", "chimera_dev/trace"]
+tracy = ["dep:chimera_dev", "chimera_dev/tracy", "trace"]
 
 [dev-dependencies]
 # The presentation's Bevy and Avian features, for this crate's own tests only

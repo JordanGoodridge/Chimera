@@ -27,7 +27,8 @@
 //!   follows its weapon): the local player's identity's game is the
 //!   gameplay's `hud` slot, so each client draws its own player's game's
 //!   HUD (an app that has both games' HUDs; the shell's `client::hud`
-//!   keeps only the active one up).
+//!   keeps only the active one up); a game whose parts lend no HUD
+//!   (`chimera_core::game_parts`) shows the registry's fallback.
 //!
 //! `held_game`: the game of what a character holds (the weapon it
 //! switches to this tick, else the one in hand); `follow` and `unfollow`
@@ -42,7 +43,7 @@ use crate::{
     slots::{FollowsWeapon, GameIdentity, MovementRegistry, MovementSlot, set_movement},
     weapon::{Inventory, SelectWeapons, Weapon},
 };
-use chimera_core::{game_registry::Games, gameplay::Gameplay};
+use chimera_core::{game_parts::PartsRegistry, game_registry::Games, gameplay::Gameplay};
 
 /// Identity following the weapon: predicted with the player, its movement
 /// switched in the predicted tick, its identity set by the server, the
@@ -130,15 +131,21 @@ pub fn unfollow(world: &mut World, e: Entity) {
 }
 
 /// The gameplay's HUD is the local player's identity's game, while it
-/// follows one (a registered game; else the HUD stays).
+/// follows one: the HUD its parts name (`PartsRegistry::hud_of`: its
+/// own, else the registry's fallback, for a game that lends none), else a
+/// registered game's own; else the HUD stays.
 pub fn hud_follows_identity(
     player: Query<&GameIdentity, (With<LocalPlayer>, With<FollowsWeapon>)>,
     games: Option<Res<Games>>,
+    parts: Option<Res<PartsRegistry>>,
     gameplay: Option<ResMut<Gameplay>>,
 ) {
-    let (Ok(identity), Some(games), Some(mut gameplay)) = (player.single(), games, gameplay) else { return };
-    let Some(game) = games.get(&identity.0) else { return };
-    if gameplay.hud != game.id {
-        gameplay.hud = game.id;
+    let (Ok(identity), Some(mut gameplay)) = (player.single(), gameplay) else { return };
+    let hud = parts
+        .and_then(|p| p.hud_of(&identity.0))
+        .or_else(|| games.and_then(|g| g.get(&identity.0)).map(|g| g.id));
+    let Some(hud) = hud else { return };
+    if gameplay.hud != hud {
+        gameplay.hud = hud;
     }
 }

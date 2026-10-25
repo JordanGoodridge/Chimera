@@ -5,7 +5,8 @@
 //! system's layout, text, input and in-game menu (`ui_system`); the kill
 //! feed, score panel, action panel, scoreboard and loading screen bound
 //! by name to layouts written in the test (`bound`); the
-//! first-person camera's rise and jitter (`camera`); in `heavy` the
+//! first-person camera's rise and jitter (`camera`); that screens which
+//! are down cost nothing per string (`frame_cost`); in `heavy` the
 //! install's own layouts and string tables (`install_ui`, V1 key) and
 //! its M4A1 and knife view models drawn on the greybox (`view_model`,
 //! V2 key).
@@ -17,6 +18,7 @@ mod bot_chat;
 mod bound;
 mod camera;
 mod death_screen;
+mod frame_cost;
 mod hud;
 mod lobby;
 mod music;

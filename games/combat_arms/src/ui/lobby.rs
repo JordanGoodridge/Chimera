@@ -438,8 +438,6 @@ fn mode_name(data: &crate::game::lobby::data::LobbyData, id: u16) -> String {
 
 /// Set every control from the client's state.
 pub fn sync(world: &mut World, screen: &mut LobbyScreen) {
-    let ui_strings = world.get_resource::<CaUi>().cloned();
-    let _ = ui_strings;
     let c = world.resource::<CaLobbyClient>().0.clone();
     // The page, from the room.
     if screen.page != Page::Inventory {
@@ -1289,7 +1287,9 @@ fn typing(world: &mut World, screen: &mut LobbyScreen) {
 /// The screen's frame: shown when the lobby wants it, its controls set,
 /// its input.
 pub fn update(world: &mut World) {
-    let Some(ui) = world.get_resource::<CaUi>().cloned() else { return };
+    if !world.contains_resource::<CaUi>() {
+        return;
+    }
     world.resource_scope(|world, mut screen: Mut<LobbyScreen>| {
         let screen = screen.bypass_change_detection();
         let t = now(world);
@@ -1319,6 +1319,10 @@ pub fn update(world: &mut World) {
             client(world, |c| c.go = None);
             return;
         }
+        // Cloned only while the lobby is up: the install's string table
+        // makes it milliseconds a frame (docs/performance.md, "Lucker
+        // Party").
+        let ui = world.resource::<CaUi>().clone();
         if !world.resource::<CaLobbyClient>().0.expired.is_empty() && screen.page == Page::Room {
             let gone = std::mem::take(&mut world.resource_mut::<CaLobbyClient>().0.expired);
             let names: Vec<String> = gone.iter().map(|n| screen.catalog.get(*n).map_or(format!("#{n}"), |i| i.name.clone())).collect();

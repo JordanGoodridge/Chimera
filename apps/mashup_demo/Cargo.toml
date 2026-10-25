@@ -60,3 +60,11 @@ dev = [
     "source_logic/dev",
     "combat_arms/dev",
 ]
+
+# Profiling (docs/performance.md, "See a frame yourself"): `trace` records
+# a short window of spans (`trace_capture`, `CHIMERA_TRACE_SECONDS`),
+# `profile` also the whole run into a Chrome trace, `tracy` streams to
+# the Tracy profiler. Slower; only for measuring.
+trace = ["chimera_core/trace", "chimera_client/trace"]
+profile = ["chimera_core/profile", "chimera_client/profile"]
+tracy = ["chimera_core/tracy", "chimera_client/tracy"]

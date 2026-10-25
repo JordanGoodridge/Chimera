@@ -35,8 +35,12 @@
 //!   app and the server load unless the command line names a map.
 //! - With `present` (the default; not the dedicated server's,
 //!   apps/lucker_party_server): `ClientPlugin` (the shell with this app's
-//!   hooks and both games' HUDs, the local player's game's drawn) and
-//!   `with_defaults` (the command line as the app plays it).
+//!   hooks and both games' HUDs, the local player's game's drawn),
+//!   `client_app` (the whole client app, the binary's and the Ultimate
+//!   Gun Game's, apps/ultimate_gun_game) and `with_defaults` (the command
+//!   line as the app plays it; `with_defaults_for` another app's minigame).
+//! - Both games' parts registered (`chimera_core::game_parts`, each game's
+//!   `parts::PARTS`): what the Ultimate Gun Game builds its ladder from.
 //!
 //! - Bots: Combat Arms' (the gun game's `bots` slot), with CS:S's guns'
 //!   types for their AI rows (data/bot_gun_types.toml); `MaxPlayer` is how
@@ -61,7 +65,7 @@
 //! (`PartyPartsPlugin`), on CS:S's maps only.
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
-use chimera_core::game_registry::GameAppExt;
+use chimera_core::{game_parts::GamePartsAppExt, game_registry::GameAppExt};
 use chimera_sim::minigame::{MinigameDef, MinigamePlugin};
 use chimera_world::map::{MapData, MapDressing, MapLoadOptions, MapSources, SpawnTeams, SurfaceTable};
 
@@ -131,6 +135,11 @@ pub fn load_map_with(id: &str, options: &MapLoadOptions) -> Result<MapData, Stri
     MAP_SOURCES.load_with(id, options)
 }
 
+/// What each composed game lends (its capability claim, `chimera_core::
+/// game_parts`), in the order an automatic ladder takes them.
+pub static GAME_PARTS: [&chimera_core::game_parts::GameParts; 2] =
+    [&cs_source::game::parts::PARTS, &combat_arms::game::parts::PARTS];
+
 /// The simulation: Combat Arms' (the engine's base, then its parts, the
 /// default game), then `PartyPartsPlugin`.
 pub struct PartyPlugins;
@@ -143,6 +152,17 @@ impl PluginGroup for PartyPlugins {
             .add(PartyPartsPlugin)
     }
 }
+
+/// Each game's own binds, over the shared ones (`Console::layers`, applied
+/// by the local input to a player whose identity is that game): where the
+/// games disagree about a key. Combat Arms: Shift sprints, C walks
+/// (Alt is free look in Chimera). CS:S: Shift walks (`+speed`), Ctrl ducks.
+/// The shared binds are the default ones (the gameplay game's); the
+/// Controls page (`controls`) edits both.
+pub const GAME_BINDS: &[(&str, &[(&str, &str)])] = &[
+    (combat_arms::game::GAME, &[("shift", "+sprint"), ("c", "+walk")]),
+    (cs_source::game::GAME, &[("shift", "+speed"), ("ctrl", "+duck")]),
+];
 
 /// Combat Arms' bots' gun types for CS:S's guns (data/bot_gun_types.toml).
 pub const BOT_GUN_TYPES: &str = include_str!("../data/bot_gun_types.toml");
@@ -163,10 +183,24 @@ pub struct PartyPartsPlugin;
 impl Plugin for PartyPartsPlugin {
     fn build(&self, app: &mut App) {
         app.register_game(&cs_source::game::INFO);
+        // What each game lends a game made of several (the capability
+        // reports: `chimera_sim::minigame::auto`).
+        for parts in GAME_PARTS {
+            app.register_parts(parts);
+        }
         // CS:S's guns' view models: Chimera's generic driver with CS:S's
         // rules plays them (Combat Arms' driver lets go of a character
         // holding another game's gun).
         app.insert_resource(cs_source::game::view_anim::rules());
+        // ... and CS:S's bob and sway (`cl_bobcycle`, `cl_wpn_sway_*`) while
+        // Combat Arms' driver has let go of the local player (its own sway
+        // is the driver's, with its guns).
+        cs_source::game::view_anim::add_motion(
+            app,
+            |own: Query<(), (With<chimera_core::core::LocalPlayer>, With<chimera_sim::weapon::view_anim::OwnViewAnim>)>| {
+                own.is_empty()
+            },
+        );
         app.add_plugins((
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,
@@ -188,6 +222,11 @@ impl Plugin for PartyPartsPlugin {
         ));
         if let Some(mut s) = app.world_mut().get_resource_mut::<combat_arms::game::rules::CaRuleSettings>() {
             s.mode = "none".into();
+        }
+        if let Some(mut console) = app.world_mut().get_resource_mut::<chimera_core::console::Console>() {
+            for (game, binds) in GAME_BINDS {
+                console.ship_layer(game, binds);
+            }
         }
         if let Some(mut bots) = app.world_mut().get_resource_mut::<combat_arms::game::bots::BotData>() {
             bots.gun_types.extend(bot_gun_types());
@@ -357,9 +396,11 @@ pub fn ids() -> Vec<String> {
 }
 
 #[cfg(feature = "present")]
+pub mod controls;
+#[cfg(feature = "present")]
 mod client;
 #[cfg(feature = "present")]
-pub use client::{ClientPlugin, client_hooks, joins_server, with_defaults, with_huds};
+pub use client::{ClientPlugin, client_app, client_hooks, joins_server, with_defaults, with_defaults_for, with_huds};
 
 #[cfg(test)]
 mod tests {

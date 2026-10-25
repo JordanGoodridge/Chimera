@@ -69,8 +69,11 @@ pub fn relight(
         }
         let probe = (field.0.0)(p);
         for h in &l.materials {
-            if let Some(mut m) = materials.get_mut(h)
-                && m.params.probe > 0.5
+            // Read first: `get_mut` marks the asset modified, which makes
+            // the render world prepare it again (docs/performance.md,
+            // "Lucker Party": Combat Arms' bodies aren't probe lit).
+            if materials.get(h).is_some_and(|m| m.params.probe > 0.5)
+                && let Some(mut m) = materials.get_mut(h)
             {
                 m.params.set_probe(&probe, scale);
             }

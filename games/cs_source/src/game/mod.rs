@@ -195,6 +195,7 @@ pub mod net;
 pub mod objectives;
 pub mod overlays;
 pub mod pain;
+pub mod parts;
 pub mod pcf;
 pub mod player_anim;
 pub mod propdata;
