@@ -86,6 +86,9 @@ impl Plugin for ClientPlugin {
         // What CS:S's bodies play, for a player holding a CS:S gun (the
         // gun game's `identity = "weapon"`).
         .add_plugins(cs_source::game::player_anim::PlayerAnimPlugin)
+        // The key binds page (F6, `controls`): shared binds and each
+        // game's own.
+        .add_plugins(crate::controls::ControlsPlugin)
         .add_systems(Startup, (cs_source_names, mount_doctor));
     }
 }

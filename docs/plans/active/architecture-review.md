@@ -1900,6 +1900,23 @@ both knives, CS:S movement parity tick for tick, bodies, slots, fire
 sounds), `identity`'s NetSim with client-predicted switches standing and
 crouched, `lucker_party_server`'s heavy `cs_source_guns_sound_on_both_maps`.
 
+L2 identity fixes (10-24): a bot that died as a Combat Arms soldier
+(`characters::drive` hides the player object for its death body) and
+respawned holding a CS:S gun stayed `Visibility::Hidden` for good, its CS:S
+body with it ("bots go invisible"): showing again no longer asks whose
+identity it is (`object_visibility`). CS:S's view-model bob and sway
+(`view_motion`, `cl_bobcycle`, `cl_wpn_sway_*`) run in the party for the
+local player while Combat Arms' driver has let go (`view_anim::add_motion`).
+Layered binds (`Console::layers`, `bindgame`, `unbindgame`, `bindgamedefaults`,
+saved in config.cfg): the shared binds under the identity's game's own, read
+by the local input before the intent is sent (`Console::effective_binds`);
+`lucker_party::GAME_BINDS` ships Combat Arms' (Shift sprint, C walk) and
+CS:S's (Shift `+speed` walk, Ctrl duck); a later game adds a row list in
+`controls::GAMES`. The Controls page (`F6`, `controls [tab]`;
+`lucker_party::controls`): Shared first, a tab a game, the wheel as a bind.
+Tests: lucker_party's `controls`, chimera_client's `a_games_own_bind_beats_
+the_shared_one`, combat_arms' `visibility_tests`.
+
 Left of L3 (stage 4, M5): relevance culling. Not cheap here: replicon's
 per-client visibility removes a hidden entity on the client (its body
 despawns and comes back), so culling needs the client's handling of a
