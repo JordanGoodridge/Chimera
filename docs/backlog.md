@@ -55,6 +55,10 @@ the user's go-ahead: no Actions runs unless asked.
   weapon's attachment to the hand bone: orientation or wrong bone).
 - **Combat Arms snipers scope with CS:S's scope overlay.** The scope
   should follow the gun's game (Combat Arms' own scope view).
+- **Ladders don't work for Combat Arms characters.** Climbable ladders
+  should work with Combat Arms' movement on every map, CS:S maps included
+  (CS:S ladders under `combat_arms:movement`, and Combat Arms' own maps'
+  ladders).
 - **Glock burst toggle shows nothing.** Right-click switches to burst but
   there's no indication; CS:S prints "Switched to Burst-Fire mode" /
   "Switched to semi-automatic" as a center message (needs the HUD hint
