@@ -64,6 +64,13 @@ the user's go-ahead: no Actions runs unless asked.
   break — shards, the hole, sound — is replicated).
 - **CS:S FAMAS burst plays the single-shot animation.** In 3-round burst
   the view model should play the burst fire animation.
+- **Combat Arms full-auto fire clips (painfully loud).** Holding the
+  trigger on a Combat Arms gun peaks the audio (friend's report). Suspect
+  each shot's sound plays as a new voice summed on top of the still-ringing
+  previous ones (no per-weapon channel that a new shot replaces, as CS:S's
+  weapon channel does, or no voice cap / limiter on the mix); check how CA
+  shot sounds are played, compare peak levels against a CS:S gun at the
+  same fire rate, and add channel stealing or a voice limit.
 - **Glock burst toggle shows nothing.** Right-click switches to burst but
   there's no indication; CS:S prints "Switched to Burst-Fire mode" /
   "Switched to semi-automatic" as a center message (needs the HUD hint
