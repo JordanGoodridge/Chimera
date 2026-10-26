@@ -59,6 +59,11 @@ the user's go-ahead: no Actions runs unless asked.
   should work with Combat Arms' movement on every map, CS:S maps included
   (CS:S ladders under `combat_arms:movement`, and Combat Arms' own maps'
   ladders).
+- **Clients don't see glass break properly.** Breakable glass breaking on
+  the server doesn't show correctly on joined clients (check what of the
+  break — shards, the hole, sound — is replicated).
+- **CS:S FAMAS burst plays the single-shot animation.** In 3-round burst
+  the view model should play the burst fire animation.
 - **Glock burst toggle shows nothing.** Right-click switches to burst but
   there's no indication; CS:S prints "Switched to Burst-Fire mode" /
   "Switched to semi-automatic" as a center message (needs the HUD hint
