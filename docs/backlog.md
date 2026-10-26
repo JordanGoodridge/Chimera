@@ -71,6 +71,12 @@ the user's go-ahead: no Actions runs unless asked.
   weapon channel does, or no voice cap / limiter on the mix); check how CA
   shot sounds are played, compare peak levels against a CS:S gun at the
   same fire rate, and add channel stealing or a voice limit.
+- **Ultimate Gun Game scoreboard (Tab).** One scoreboard for the whole
+  app, the same whatever game's gun or HUD you hold: every player (bots
+  too) with kills, deaths, current rung/gun, ping, and **matches won**
+  (counted while the server runs; it survives map rotation and
+  `ugg_new`). Generic, so other minigames can reuse it (a minigame-level
+  scoreboard in Chimera, not either game's).
 - **Glock burst toggle shows nothing.** Right-click switches to burst but
   there's no indication; CS:S prints "Switched to Burst-Fire mode" /
   "Switched to semi-automatic" as a center message (needs the HUD hint
