@@ -260,3 +260,29 @@ fn the_hud_data_shows_the_rung_the_leader_and_the_events() {
     sim.ticks(2);
     assert!(!sim.app.world().resource::<MinigameHud>().playing());
 }
+
+/// Loose weapons lying in the world.
+fn loose(sim: &mut Sim) -> usize {
+    let w = sim.app.world_mut();
+    w.query::<&chimera_sim::weapon::drop::Loose>().iter(w).count()
+}
+
+#[test]
+fn nobody_drops_a_gun_at_death_under_the_ladder() {
+    let mut sim = started(DEF);
+    sim.app.insert_resource(chimera_sim::weapon::drop::DeathDrops(true));
+    let (a, b) = (player(&mut sim), player(&mut sim));
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    assert_eq!(loose(&mut sim), 0, "the ladder gives the guns; none lies around");
+}
+
+#[test]
+fn the_same_death_outside_a_ladder_drops_the_gun() {
+    let mut sim = testkit::kit_sim();
+    sim.app.insert_resource(chimera_sim::weapon::drop::DeathDrops(true));
+    let a = testkit::with_player(&mut sim, None, RIFLE);
+    let b = testkit::with_player(&mut sim, Some(greybox::SPAWNS[1]), RIFLE);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    assert_eq!(loose(&mut sim), 1);
+}

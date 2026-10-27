@@ -45,8 +45,6 @@ the user's go-ahead: no Actions runs unless asked.
   map, then the new map loads and players are moved over with a hitch.
   Want a loading screen (or at least an indicator), and the round to
   start only once everyone is on the new map.
-- **Bots drop their gun on death in gun game.** Nobody can pick guns up
-  there; no drops when the mode gives weapons by ladder.
 - **Combat Arms character models look wrong.** Heads look thin (e.g. the
   female soldier with goggles); her head and backpack vanish when the
   camera gets close (near clip or per-part culling/bounds?). Most of her

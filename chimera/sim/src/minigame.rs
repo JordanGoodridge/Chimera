@@ -305,6 +305,7 @@ fn begin(world: &mut World, id: &str, fresh: bool) -> Result<&'static MinigameDe
     if fresh {
         restart(world);
     }
+    world.remove_resource::<crate::weapon::drop::NoDeathDrops>();
     (rules.start)(world, def);
     let modifiers: Vec<(Modifier, toml::Value)> = def
         .modifiers

@@ -1462,10 +1462,15 @@ pub fn spawn_item(world: &mut World, id: &str, at: Vec3, total: u32, clip: u32) 
 }
 
 /// The dead drop their last chosen primary where they fell (12).
-fn death_drops(mut died: MessageReader<Died>, allow: Res<CaDeathDrops>, mut commands: Commands) {
+fn death_drops(
+    mut died: MessageReader<Died>,
+    allow: Res<CaDeathDrops>,
+    none: Option<Res<chimera_sim::weapon::drop::NoDeathDrops>>,
+    mut commands: Commands,
+) {
     for d in died.read() {
         let owner = d.entity;
-        let allow = allow.0;
+        let allow = allow.0 && none.is_none();
         commands.queue(move |w: &mut World| death_drop(w, owner, allow));
     }
 }
