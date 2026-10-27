@@ -19,6 +19,9 @@
 //!   --format nextest  (default) `cargo nextest run` arguments
 //!   --format cargo    `cargo test` arguments (whole packages)
 //!   --skip-heavy      leave out `heavy::` tests (nextest; the fast tier)
+//!   --direct          only the changed packages' own tests, not their
+//!                     dependents' (a change selecting everything narrows
+//!                     to repo_checks): what the pre-commit hook runs
 //!   --quiet           no summary on stderr
 //! ```
 //!
@@ -127,7 +130,7 @@ fn lock_at(root: &Path, rev: Option<&str>) -> Result<String, String> {
 
 fn usage() -> &'static str {
     "usage: affected [--staged] [--range A..B] [--new SHA] [--base REV] [--files F...] [--remote NAME] \
-     [--format nextest|cargo] [--skip-heavy] [--quiet]"
+     [--format nextest|cargo] [--skip-heavy] [--direct] [--quiet]"
 }
 
 fn main() -> ExitCode {
@@ -153,7 +156,7 @@ enum Source {
 fn run() -> Result<(), String> {
     let root = PathBuf::from(git(Path::new("."), &["rev-parse", "--show-toplevel"])?.trim());
     let mut everything: Option<String> = None;
-    let (mut format, mut skip_heavy, mut quiet) = ("nextest".to_string(), false, false);
+    let (mut format, mut skip_heavy, mut quiet, mut direct) = ("nextest".to_string(), false, false, false);
     let mut remote = "origin".to_string();
     // The changes as given, resolved once `--remote` is known.
     let mut asked: Vec<(String, Vec<String>)> = Vec::new();
@@ -177,6 +180,7 @@ fn run() -> Result<(), String> {
             "--format" => format = value()?,
             "--skip-heavy" => skip_heavy = true,
             "--quiet" => quiet = true,
+            "--direct" => direct = true,
             "-h" | "--help" => {
                 println!("{}", usage());
                 return Ok(());
@@ -268,6 +272,9 @@ fn run() -> Result<(), String> {
     let mut sel = Selection::with_lock(&ws, &root, &changed, lock.as_ref());
     if let Some(why) = everything {
         sel.all = Some(why);
+    }
+    if direct {
+        sel = sel.direct();
     }
     if !quiet {
         eprint!("{}", sel.summary());

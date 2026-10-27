@@ -14,7 +14,11 @@
 #    anything interactive instead of starving it.
 #  * Points cargo at one box-wide sccache (RUSTC_WRAPPER, port 4227, config in
 #    ~/.config/sccache/config) with CARGO_INCREMENTAL=0, so a fresh worktree's
-#    first build is mostly cache hits (docs/OBSERVABILITY.md). The server is
+#    first build is mostly cache hits (docs/OBSERVABILITY.md). In a build slot
+#    (tools/agent-slot.sh: .claude/slots/*, a fixed path whose target/ stays
+#    warm) cargo's incremental builds stay on instead: the registry crates
+#    still come from sccache, the workspace crates rebuild incrementally. The
+#    server is
 #    started WITHOUT MAKEFLAGS, and tools/sccache-heal.sh restarts it if it
 #    has leaked its own jobserver tokens (the "hung at 0% CPU" failure).
 # The FIFO only holds its tokens while some process has it open, so a small
@@ -57,14 +61,25 @@ _agent_env_init() {
 # (hence the unset) and builds must not be incremental (sccache cannot cache
 # those). Registry crates, the big part of a first build, then hit across
 # worktrees; workspace crates hit only when the path is the same.
+# In a slot the path is the same each time and target/ is kept, so
+# incremental compilation (cargo's default, which only applies to workspace
+# crates) beats caching them; registry crates are never incremental, so their
+# entries still hit. AGENT_INCREMENTAL=1 or 0 overrides the choice.
 _agent_sccache_init() {
   [ -n "$AGENT_NO_SCCACHE" ] && return 0
   local bin="${SCCACHE_BIN:-$HOME/.local/sccache-0.19/bin/sccache}"
   [ -x "$bin" ] || { echo "agent-env: $bin missing (cargo install sccache --locked --no-default-features --root ~/.local/sccache-0.19); building uncached" >&2; return 0; }
   [ -n "$CARGO_TARGET_DIR" ] && echo "agent-env: unsetting CARGO_TARGET_DIR ($CARGO_TARGET_DIR): sccache would hash it; cargo uses <worktree>/target" >&2
   unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
-  export RUSTC_WRAPPER="$bin" CARGO_INCREMENTAL=0 SCCACHE_SERVER_PORT="${SCCACHE_SERVER_PORT:-4227}"
   local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  export RUSTC_WRAPPER="$bin" SCCACHE_SERVER_PORT="${SCCACHE_SERVER_PORT:-4227}"
+  local incremental="${AGENT_INCREMENTAL:-}"
+  if [ -z "$incremental" ]; then
+    case "$here" in */.claude/slots/*) incremental=1 ;; *) incremental=0 ;; esac
+  fi
+  # Unset rather than 1: the profile's default (on for dev and test), as a
+  # plain `cargo` in the same checkout gets, so both share one build.
+  if [ "$incremental" = 1 ]; then unset CARGO_INCREMENTAL; else export CARGO_INCREMENTAL=0; fi
   "$here/sccache-heal.sh"
   # The server must not inherit the agents' jobserver: it uses its own.
   env -u MAKEFLAGS -u CARGO_MAKEFLAGS -u MFLAGS "$bin" --start-server >/dev/null 2>&1

@@ -470,6 +470,8 @@ fn is_docs(path: &str) -> bool {
             "tools/agent-env.sh",
             "tools/sccache-heal.sh",
             "tools/clean-worktrees.sh",
+            "tools/agent-slot.sh",
+            "tools/post-push-tests.sh",
         ]
         .contains(&path)
 }
@@ -573,6 +575,10 @@ pub struct Selection {
     pub features: BTreeSet<String>,
     /// Every changed file with what it affects, for the summary.
     pub files: Vec<(String, String)>,
+    /// Packages with a changed file of their own (sources, a feature's
+    /// part or test code; not the ones selected only for depending on
+    /// them): what `direct` keeps.
+    pub changed: BTreeSet<String>,
 }
 
 impl Selection {
@@ -653,6 +659,9 @@ impl Selection {
             };
             sel.files.push((path.clone(), what));
         }
+        sel.changed = changed_packages.keys().cloned().collect();
+        sel.changed.extend(feature_parts.iter().map(|f| f.0.clone()));
+        sel.changed.extend(tests.iter().map(|t| t.0.clone()));
         if !everything.is_empty() {
             sel.all = Some(everything.join("; "));
             return sel;
@@ -738,6 +747,25 @@ impl Selection {
                 }
             }
         }
+        sel
+    }
+
+    /// Only the tests of the packages whose files changed, their test
+    /// code's and features' parts, and this crate's (`--direct`: the
+    /// pre-commit hook runs these and only builds the rest). A change that
+    /// selects everything (the workspace's settings, the hooks, a build
+    /// script) narrows to this crate's checks: the build covers it.
+    pub fn direct(&self) -> Selection {
+        let mut sel = self.clone();
+        if sel.all.take().is_some() {
+            sel.packages = BTreeMap::from([(CHECKS.to_string(), "always (the repository's rules)".to_string())]);
+            sel.partial.clear();
+            sel.features.clear();
+            return sel;
+        }
+        sel.packages.retain(|name, _| name == CHECKS || self.changed.contains(name));
+        let kept: BTreeSet<String> = sel.packages.keys().chain(sel.partial.keys()).cloned().collect();
+        sel.features.retain(|f| kept.contains(f.split('/').next().unwrap_or_default()));
         sel
     }
 
@@ -955,6 +983,26 @@ mod tests {
         // A root where no file exists: test modules count as deleted
         // unless a test says otherwise.
         Selection::new(&ws(), Path::new("/nonexistent"), &files)
+    }
+
+    #[test]
+    fn direct_keeps_only_changed_packages() {
+        let s = select(&["chimera/core/src/lib.rs", "games/cs_source/src/ui/hud.rs"]);
+        assert!(s.packages.contains_key("cs_source_app"), "{s:?}");
+        let d = s.direct();
+        // cs_source (its `ui` part changed) stays, whole: chimera_core's
+        // change selected all of it.
+        assert_eq!(d.packages.keys().collect::<Vec<_>>(), ["chimera_core", "cs_source", CHECKS]);
+        assert!(d.features.iter().all(|f| f.starts_with("cs_source/")), "{:?}", d.features);
+        // Alone, the `ui` part: only its binaries with the feature.
+        let d = select(&["games/cs_source/src/ui/hud.rs"]).direct();
+        assert_eq!(d.packages.keys().collect::<Vec<_>>(), [CHECKS]);
+        assert!(d.partial.contains_key("cs_source"), "{d:?}");
+        assert_eq!(d.features.iter().collect::<Vec<_>>(), ["cs_source/ui"]);
+        // What selects everything narrows to the repository checks.
+        let d = select(&[".githooks/pre-commit"]).direct();
+        assert!(d.all.is_none());
+        assert_eq!(d.cargo_args(), ["-p", CHECKS]);
     }
 
     #[test]

@@ -2,6 +2,9 @@
 # Remove the build folders (target/) of agent worktrees whose branch is
 # merged into main and that no running process is using. Code and branches
 # are kept; only regenerable build output goes. Usage: clean-worktrees.sh [repo]
+# The build slots (.claude/slots/*, tools/agent-slot.sh) keep their target/
+# on purpose (it's what makes them fast): this only trims the free ones
+# past AGENT_SLOT_MAX_GB (40 GB) through `agent-slot.sh trim`.
 set -u
 repo="${1:-$(git rev-parse --show-toplevel)}"
 freed=0
@@ -16,3 +19,6 @@ for w in "$repo"/.claude/worktrees/*/; do
   rm -rf "$w/target" && freed=$((freed + ${kb:-0}))
 done
 echo "freed $((freed / 1024 / 1024)) GB"
+if [ -d "$repo/.claude/slots" ]; then
+  AGENT_SLOTS_DIR="$repo/.claude/slots" "$(dirname "$0")/agent-slot.sh" trim
+fi

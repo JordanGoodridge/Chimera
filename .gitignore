@@ -16,8 +16,11 @@
 # Its old name, still read.
 /mashup.local.toml
 
-# Agent worktrees (Claude Code).
+# Agent worktrees (Claude Code), build slots (tools/agent-slot.sh) and
+# the post-push test results (tools/post-push-tests.sh).
 /.claude/worktrees/
+/.claude/slots/
+/.claude/post-push/
 
 # Local-only list of private words the pre-push hook refuses (one regex per line).
 /.githooks/private-patterns
