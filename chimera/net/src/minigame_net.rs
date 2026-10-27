@@ -14,7 +14,7 @@
 //!   parameters, no restart) and keeps its `Match` in step, times on its
 //!   own clock (`game::ServerTime`).
 //! - **The players**: `InMinigame` and the rules module's own state
-//!   (`ladder::Rung`) replicate on the characters, so the HUD finds who
+//!   (`ladder::Rung`, `wins::MatchesWon`) replicate on the characters, so the HUD finds who
 //!   plays and who leads; kills and deaths are `NetScore`'s.
 //! - **Events** (`MinigameNews`): rung ups, a match won, for the HUD's
 //!   notices, as the index in `minigame::EVENT_NAMES`.
@@ -58,7 +58,7 @@ use crate::{
         maps::sha256,
         ordered::OrderedAppExt,
     },
-    minigame::{self, ActiveMinigame, MatchResults, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame},
+    minigame::{self, ActiveMinigame, MatchResults, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame, wins::MatchesWon},
     mode::{Match, Phase},
 };
 use chimera_core::game_registry::Games;
@@ -117,6 +117,7 @@ fn register(app: &mut App) {
         .ordered::<NetMinigame>()
         .replicate::<InMinigame>()
         .replicate::<Rung>()
+        .replicate::<MatchesWon>()
         .ordered::<Rung>()
         .add_mapped_server_message::<MinigameNews>(Channel::Ordered)
         .add_server_message::<PartyOffer>(Channel::Ordered)

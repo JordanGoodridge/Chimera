@@ -90,6 +90,7 @@ impl Plugin for ClientPlugin {
         // game's own.
         .add_plugins(crate::controls::ControlsPlugin)
         .add_plugins(PartyMousePlugin)
+        .add_plugins(chimera_client::client::minigame_scoreboard::MinigameScoreboardPlugin)
         .add_systems(Startup, (cs_source_names, mount_doctor));
     }
 }

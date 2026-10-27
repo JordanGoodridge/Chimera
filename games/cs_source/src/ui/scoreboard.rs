@@ -274,6 +274,7 @@ fn update(
         Option<Res<Time<Fixed>>>,
     ),
     mut last: Local<Option<Shot>>,
+    minigame: Option<Res<chimera_sim::minigame::hud::MinigameHud>>,
     mut commands: Commands,
 ) {
     let typing = console.is_some_and(|c| c.open);
@@ -283,7 +284,9 @@ fn update(
     };
     // The intermission at the end of a map's game shows it too.
     let over = rounds.as_ref().is_some_and(|r| r.game_over.is_some());
-    let show = shown((tab && !typing) || held.showscores || over, menu.as_deref());
+    // A minigame has its own scoreboard (the shell's, whatever game's HUD).
+    let minigame = minigame.is_some_and(|h| h.playing());
+    let show = shown(((tab && !typing) || held.showscores || over) && !minigame, menu.as_deref());
     if !show && last.is_some() {
         // Hidden: its rows go (the next game draws its own; a map
         // unloading takes the last game's with it).

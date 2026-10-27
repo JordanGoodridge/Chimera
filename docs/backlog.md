@@ -65,12 +65,6 @@ the user's go-ahead: no Actions runs unless asked.
   and Chimera's playback limits voices per source (8) and per sourceless
   entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
   playtest; if it still peaks, a limiter on the mix is next.
-- **Ultimate Gun Game scoreboard (Tab).** One scoreboard for the whole
-  app, the same whatever game's gun or HUD you hold: every player (bots
-  too) with kills, deaths, current rung/gun, ping, and **matches won**
-  (counted while the server runs; it survives map rotation and
-  `ugg_new`). Generic, so other minigames can reuse it (a minigame-level
-  scoreboard in Chimera, not either game's).
 - **Check: is your own killing shot still silent?** Fixed 2026-10-27 for
   other players' shots seen on a client (`remote_shots` keeps the old
   gun's fire sound after the ladder swap); the shooter's own predicted

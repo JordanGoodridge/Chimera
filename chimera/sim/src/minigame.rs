@@ -46,6 +46,10 @@
 //!   RESULTS_HOLD` s of match over a definition with `rotate = true` (the
 //!   default) moves on to the next map of its pool (`chimera_net::
 //!   minigame_net`).
+//! - Matches won: `wins::MatchWins` counts a decided match for its winner
+//!   by name for as long as the process runs (kept over `restart`, a
+//!   rotation and `change_match`), `wins::MatchesWon` carries it on each
+//!   player (replicated) for the minigame scoreboard.
 //!
 //! - Automatic gun games (`auto`): a ladder and a map pool made from the
 //!   parts every composed game lends (`chimera_core::game_parts`), checked
@@ -71,6 +75,7 @@ pub mod ladder;
 pub mod results;
 pub mod runtime;
 pub mod spawns;
+pub mod wins;
 
 use bevy::prelude::*;
 
@@ -401,6 +406,7 @@ impl Plugin for MinigamePlugin {
             .add_message::<MinigameEvent>()
             .add_message::<crate::core::Died>()
             .init_resource::<hud::MinigameHud>()
+            .init_resource::<wins::MatchWins>()
             .add_systems(Update, hud::update)
             .add_minigame_rules(ladder::RULES);
         if !app.is_plugin_added::<crate::identity::IdentityPlugin>() {
