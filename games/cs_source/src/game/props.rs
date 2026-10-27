@@ -275,21 +275,23 @@ pub fn load_character(
                 Vec3::new(b.max.x, b.max.y, b.max.z),
             );
             let centre = p + q * ((lo + hi) / 2.0);
-            Some(Hitbox {
-                center: face * axes * centre * METERS_PER_UNIT,
-                half: (hi - lo) / 2.0 * METERS_PER_UNIT,
-                rotation: face * axes * q,
-                group: match b.group {
-                    1 => Hitgroup::Head,
-                    2 => Hitgroup::Chest,
-                    3 => Hitgroup::Stomach,
-                    4 => Hitgroup::LeftArm,
-                    5 => Hitgroup::RightArm,
-                    6 => Hitgroup::LeftLeg,
-                    7 => Hitgroup::RightLeg,
-                    _ => Hitgroup::Generic,
-                },
-            })
+            let group = match b.group {
+                1 => Hitgroup::Head,
+                2 => Hitgroup::Chest,
+                3 => Hitgroup::Stomach,
+                4 => Hitgroup::LeftArm,
+                5 => Hitgroup::RightArm,
+                6 => Hitgroup::LeftLeg,
+                7 => Hitgroup::RightLeg,
+                _ => Hitgroup::Generic,
+            };
+            let bone = mdl.bones.get(b.bone.max(0) as usize).map_or("", |b| b.name.as_str());
+            Some(Hitbox::cuboid(
+                face * axes * centre * METERS_PER_UNIT,
+                (hi - lo) / 2.0 * METERS_PER_UNIT,
+                face * axes * q,
+                body_region(group, bone),
+            ))
         })
         .collect();
     let boxes = set
@@ -306,7 +308,7 @@ pub fn load_character(
                 bone: b.bone as usize,
                 center: (lo + hi) / 2.0,
                 half: (hi - lo) / 2.0,
-                group: h.group,
+                group: h.group(),
             }
         })
         .collect();
@@ -354,6 +356,36 @@ pub fn load_character(
 
 /// Most solids a ragdoll may have (specs/cs_source/ragdolls.md, Constants).
 const RAGDOLL_MAX_BODIES: usize = 24;
+
+/// A CS:S hitbox's body region (docs/plans/active/generic-hits.md): its
+/// hitgroup, a limb's refined by the box's bone (`*Forearm*`, `*Hand*`
+/// or a finger, `*Calf*`, `*Foot*` or a toe; else the upper arm or
+/// thigh). The head group stays the head (its neck box too) and the
+/// stomach group the stomach, so CS:S's own guns see the same hitgroups.
+pub fn body_region(group: crate::core::Hitgroup, bone: &str) -> crate::core::BodyRegion {
+    use crate::core::{BodyRegion as R, Hitgroup as G};
+    let b = bone.to_ascii_lowercase();
+    let has = |k: &[&str]| k.iter().any(|k| b.contains(k));
+    match group {
+        G::LeftArm | G::RightArm => {
+            let left = group == G::LeftArm;
+            match () {
+                _ if has(&["hand", "finger"]) => if left { R::LeftHand } else { R::RightHand },
+                _ if has(&["forearm"]) => if left { R::LeftForearm } else { R::RightForearm },
+                _ => if left { R::LeftUpperArm } else { R::RightUpperArm },
+            }
+        }
+        G::LeftLeg | G::RightLeg => {
+            let left = group == G::LeftLeg;
+            match () {
+                _ if has(&["foot", "toe"]) => if left { R::LeftFoot } else { R::RightFoot },
+                _ if has(&["calf", "shin"]) => if left { R::LeftShin } else { R::RightShin },
+                _ => if left { R::LeftThigh } else { R::RightThigh },
+            }
+        }
+        g => R::from_hitgroup(g),
+    }
+}
 
 /// A player model's `.phy` as its ragdoll (specs/cs_source/ragdolls.md 1):
 /// a body per solid whose bone the skeleton has (the pieces are already in

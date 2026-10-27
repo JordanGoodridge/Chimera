@@ -4,7 +4,13 @@
 //! through walls and characters (measured M13); a target's `BulletTarget`
 //! may give its own hitgroup multipliers, let a bullet go on inside it
 //! from the box it passed (so it hits another of its boxes) and keep its
-//! damage exact (CS:S's hostages, objectives.md Q8). Each bullet hit on
+//! damage exact (CS:S's hostages, objectives.md Q8). The shape a ray
+//! enters first decides the body region (`core::BodyRegion`: a body's
+//! `Hitboxes`, boxes or spheres, whichever game made them; without any,
+//! height bands on its collider), the gun's table (`DamageEffect::regions`)
+//! or the target's own its multiplier, and armour takes its share through
+//! the shared step (`HitArmor`, `hits::absorb`;
+//! docs/plans/active/generic-hits.md). Each bullet hit on
 //! something with health is also told as a `BulletHit` (the damage before
 //! armour and truncation, whether armour covered it, a helmet).
 
@@ -18,7 +24,10 @@ use super::{
     WeaponEventKind,
 };
 use crate::{
-    core::{Damage, DamageKind, Damageable, FirstTimePredicted, Health, Hitboxes, Hitgroup, Intent, NetRole, SOLID_LAYERS},
+    core::{
+        BodyRegion, Damage, DamageKind, Damageable, FirstTimePredicted, Health, Hitboxes, Hitgroup, Intent, NetRole,
+        SOLID_LAYERS,
+    },
     map::{
         PlaySound, PropSurface,
         sound::{SoundBank, SurfaceGrid},
@@ -116,12 +125,13 @@ pub fn aim_of(yaw: f32, pitch: f32) -> Quat {
     Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0)
 }
 
-/// The box a ray enters first among `boxes` (local space) within `limit`:
-/// where it enters and leaves it, and its group.
-fn nearest_box(boxes: &[crate::core::Hitbox], o: Vec3, d: Vec3, limit: f32) -> Option<(f32, f32, Hitgroup)> {
+/// The shape a ray enters first among `boxes` (local space) within
+/// `limit` (CS:S's rule, `Hitboxes::nearest`): where it enters and leaves
+/// it, and its region.
+fn nearest_box(boxes: &[crate::core::Hitbox], o: Vec3, d: Vec3, limit: f32) -> Option<(f32, f32, BodyRegion)> {
     boxes
         .iter()
-        .filter_map(|b| b.ray_span(o, d).map(|(enter, leave)| (enter, leave, b.group)))
+        .filter_map(|b| b.ray_span(o, d).map(|(enter, leave)| (enter, leave, b.region)))
         .filter(|(t, ..)| *t < limit)
         .min_by(|a, b| a.0.total_cmp(&b.0))
 }
@@ -129,7 +139,7 @@ fn nearest_box(boxes: &[crate::core::Hitbox], o: Vec3, d: Vec3, limit: f32) -> O
 /// What a ray hits of a character's volume: the nearest hitbox entered
 /// (distance, where it leaves that box, and its group) or, without
 /// hitboxes, its box.
-fn volume_entry(r: &Rewound, from: Vec3, dir: Dir3, limit: f32) -> Option<(f32, Option<f32>, Option<Hitgroup>)> {
+fn volume_entry(r: &Rewound, from: Vec3, dir: Dir3, limit: f32) -> Option<(f32, Option<f32>, Option<BodyRegion>)> {
     match &r.hitboxes {
         Some(boxes) => {
             let (feet, turn) = r.frame();
@@ -139,7 +149,7 @@ fn volume_entry(r: &Rewound, from: Vec3, dir: Dir3, limit: f32) -> Option<(f32, 
         None => {
             let b = r.aabb();
             let (enter, _) = aabb_span(&b, from, *dir)?;
-            (enter < limit).then(|| (enter, None, Some(hitgroup_at(&b, from + *dir * enter))))
+            (enter < limit).then(|| (enter, None, Some(BodyRegion::from_hitgroup(hitgroup_at(&b, from + *dir * enter)))))
         }
     }
 }
@@ -149,13 +159,7 @@ fn volume_entry(r: &Rewound, from: Vec3, dir: Dir3, limit: f32) -> Option<(f32, 
 fn aabb_span(b: &ColliderAabb, from: Vec3, dir: Vec3) -> Option<(f32, f32)> {
     let centre = (b.min + b.max) / 2.0;
     let half = (b.max - b.min) / 2.0;
-    crate::core::Hitbox {
-        center: centre,
-        half,
-        rotation: Quat::IDENTITY,
-        group: Hitgroup::Generic,
-    }
-    .ray_span(from, dir)
+    crate::core::Hitbox::cuboid(centre, half, Quat::IDENTITY, crate::core::BodyRegion::Generic).ray_span(from, dir)
 }
 
 /// One hit to apply.
@@ -168,8 +172,8 @@ struct Hit {
     /// From the eye.
     distance: f32,
     normal: Vec3,
-    /// The hitbox's group, when the target has hitboxes.
-    group: Option<Hitgroup>,
+    /// The hitbox's region, when the target has hitboxes.
+    group: Option<BodyRegion>,
     /// Where the ray leaves that hitbox, from the eye.
     box_exit: Option<f32>,
 }
@@ -386,7 +390,7 @@ impl Shot<'_, '_, '_> {
 
     /// Fire every pellet of one shot.
     pub fn fire(&mut self, scan: &Hitscan, effect: &DamageEffect, pen: Option<&Penetration>) {
-        let mut total: Vec<(Entity, f32, Hitgroup, Vec3, Vec3)> = Vec::new();
+        let mut total: Vec<(Entity, f32, BodyRegion, Vec3, Vec3)> = Vec::new();
         for dir in pellet_dirs(self.aim, self.seed, scan.spread, scan.pellets) {
             // The bullet's damage so far (before hitgroups), where the
             // current segment starts and how far it may go, and what it
@@ -429,11 +433,14 @@ impl Shot<'_, '_, '_> {
                     // Plain objects (breakables) have no hitgroups.
                     let group = match (hit.group, t.health) {
                         (Some(g), _) => g,
-                        (None, Some(_)) => t.aabb.map_or(Hitgroup::Generic, |b| hitgroup_at(b, hit.point)),
-                        (None, None) => Hitgroup::Generic,
+                        (None, Some(_)) => t
+                            .aabb
+                            .map_or(BodyRegion::Generic, |b| BodyRegion::from_hitgroup(hitgroup_at(b, hit.point))),
+                        (None, None) => BodyRegion::Generic,
                     };
-                    let scale = t.bullet.and_then(|b| b.hitgroups).unwrap_or(effect.hitgroups);
-                    let amount = carried * scale.get(group);
+                    // The gun's table, or the target's own (hostages).
+                    let own = t.bullet.and_then(|b| b.hitgroups).map(|h| super::RegionScale::from_hitgroups(&h));
+                    let amount = carried * own.as_ref().unwrap_or(&effect.regions).get(group);
                     match total.iter_mut().find(|t| t.0 == hit.entity) {
                         Some(t) => {
                             t.1 += amount;
@@ -512,8 +519,9 @@ impl Shot<'_, '_, '_> {
         }
     }
 
-    /// Deal `raw` damage: armour (if the weapon's ratio applies and it
-    /// covers the hitgroup) takes its share, then both are truncated.
+    /// Deal `raw` damage on `region`: armour (if the weapon's ratio
+    /// applies and it covers the region, `HitArmor`) takes its share, then
+    /// both are truncated.
     #[allow(clippy::too_many_arguments)]
     fn apply(
         &mut self,
@@ -521,7 +529,7 @@ impl Shot<'_, '_, '_> {
         raw: f32,
         armor_ratio: Option<f32>,
         quantum: f32,
-        hitgroup: Hitgroup,
+        region: BodyRegion,
         point: Vec3,
         dir: Vec3,
         kind: DamageKind,
@@ -550,12 +558,13 @@ impl Shot<'_, '_, '_> {
             amount: quantize(raw, quantum),
             point,
             dir,
-            hitgroup,
+            hitgroup: region.hitgroup(),
             kind,
             weapon: None,
         };
+        let hitgroup = damage.hitgroup;
         // Armour takes its share only if the hit lands (`HitArmor`).
-        let super::ArmorHit { covered, helmet } = self.w.armor.apply(&mut damage, raw, armor_ratio, quantum);
+        let super::ArmorHit { covered, helmet } = self.w.armor.apply_region(&mut damage, region, raw, armor_ratio, quantum);
         let amount = damage.amount;
         // A gun's bullet (a knife's hit deals bullet damage in CS:S too,
         // but isn't one).
@@ -669,8 +678,8 @@ impl Shot<'_, '_, '_> {
         }
         if alive || object {
             let group = match aabb.filter(|_| swing.hitgroups && alive) {
-                Some(b) => hitgroup_at(&b, hit.point),
-                None => Hitgroup::Generic,
+                Some(b) => BodyRegion::from_hitgroup(hitgroup_at(&b, hit.point)),
+                None => BodyRegion::Generic,
             };
             self.apply(
                 hit.entity,

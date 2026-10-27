@@ -529,12 +529,9 @@ fn hostage_like(hits_inside: bool, exact: bool) -> crate::stack::weapon::BulletT
 /// front one (nearer the shooter) chest, the back one stomach. The
 /// damage it lost, in hit points (unrounded).
 fn shoot_boxes(bullet: crate::stack::weapon::BulletTarget) -> f32 {
-    use crate::stack::core::{Hitbox, Hitboxes, Hitgroup};
-    let at = |z: f32, group| Hitbox {
-        center: Vec3::new(0.0, 1.3, z),
-        half: Vec3::new(0.15, 0.15, 0.05),
-        rotation: Quat::IDENTITY,
-        group,
+    use crate::stack::core::{BodyRegion, Hitbox, Hitboxes, Hitgroup};
+    let at = |z: f32, group| {
+        Hitbox::cuboid(Vec3::new(0.0, 1.3, z), Vec3::new(0.15, 0.15, 0.05), Quat::IDENTITY, BodyRegion::from_hitgroup(group))
     };
     let mut sim = sim();
     let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
@@ -595,19 +592,14 @@ fn a_bullet_goes_on_inside_a_target_that_allows_it() {
 /// the hull that misses every box goes on to whoever stands behind.
 #[test]
 fn hitboxes_outside_the_hull_count_and_the_hull_alone_stops_nothing() {
-    use crate::stack::core::{Hitbox, Hitboxes, Hitgroup};
+    use crate::stack::core::{BodyRegion, Hitbox, Hitboxes};
     let shoot = |offset: f32| {
         let mut sim = sim();
         let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
         let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
         let behind = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 10.0, placeholder::ID);
         // An arm 0.4-0.6 m to the side (16-24 units): out of the hull.
-        let arm = Hitbox {
-            center: Vec3::new(0.5, 1.3, 0.0),
-            half: Vec3::new(0.1, 0.1, 0.1),
-            rotation: Quat::IDENTITY,
-            group: Hitgroup::RightArm,
-        };
+        let arm = Hitbox::cuboid(Vec3::new(0.5, 1.3, 0.0), Vec3::splat(0.1), Quat::IDENTITY, BodyRegion::RightUpperArm);
         sim.app.world_mut().entity_mut(target).insert(Hitboxes(vec![arm]));
         sim.intent(target).yaw = 0.0;
         sim.seconds(1.1);
@@ -1550,7 +1542,7 @@ fn hits_push_by_ammo_and_the_knife_deals_bullet_damage() {
 #[test]
 fn parity_pin_damage_and_armour_by_hitgroup() {
     use crate::stack::{
-        core::{Hitbox, Hitboxes, Hitgroup},
+        core::{BodyRegion, Hitbox, Hitboxes, Hitgroup},
         games::cs_source::weapons::{AWP, DEAGLE, GLOCK},
         weapon::{Armor, give},
     };
@@ -1571,12 +1563,8 @@ fn parity_pin_damage_and_armour_by_hitgroup() {
         sim.seconds(2.0);
         for group in groups {
             for armour in 0..3 {
-                let hitbox = Hitbox {
-                    center: Vec3::new(0.0, 1.3, 0.0),
-                    half: Vec3::splat(0.5),
-                    rotation: Quat::IDENTITY,
-                    group,
-                };
+                let hitbox =
+                    Hitbox::cuboid(Vec3::new(0.0, 1.3, 0.0), Vec3::splat(0.5), Quat::IDENTITY, BodyRegion::from_hitgroup(group));
                 sim.app.world_mut().entity_mut(target).insert((
                     Hitboxes(vec![hitbox]),
                     Armor {

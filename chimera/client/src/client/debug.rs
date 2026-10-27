@@ -241,7 +241,7 @@ fn draw_hitboxes(
         let feet = at.translation().with_y(aabb.min.y);
         let yaw = intent.map_or(Quat::IDENTITY, |i| i.yaw_rotation());
         for h in &boxes.0 {
-            let color = match h.group {
+            let color = match h.group() {
                 Hitgroup::Head => Color::srgb(1.0, 0.2, 0.2),
                 Hitgroup::Chest => Color::srgb(1.0, 1.0, 0.2),
                 Hitgroup::Stomach => Color::srgb(0.2, 1.0, 0.2),

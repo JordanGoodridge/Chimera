@@ -1667,17 +1667,23 @@ fn character_models_and_hitboxes() {
     for c in &map.kit.characters {
         assert!(!c.model.meshes.is_empty());
         assert_eq!(c.hitboxes.len(), 19);
-        let count = |g: Hitgroup| c.hitboxes.iter().filter(|h| h.group == g).count();
+        let count = |g: Hitgroup| c.hitboxes.iter().filter(|h| h.group() == g).count();
         assert_eq!(count(Hitgroup::Head), 2, "head and neck");
         assert_eq!(count(Hitgroup::Chest), 1);
         assert_eq!(count(Hitgroup::Stomach), 2, "pelvis and spine1");
         assert_eq!(count(Hitgroup::LeftLeg), 4);
         assert_eq!(count(Hitgroup::RightArm), 3);
+        // Limbs' regions by bone (docs/plans/active/generic-hits.md):
+        // upper arm, forearm, hand; thigh, calf and foot.
+        use crate::stack::core::BodyRegion as R;
+        for r in [R::RightUpperArm, R::RightForearm, R::RightHand, R::LeftThigh, R::LeftShin, R::LeftFoot] {
+            assert!(c.hitboxes.iter().any(|h| h.region == r), "{r:?}");
+        }
         // Upright, feet at 0: heads up near 1.6-1.85 m, legs low.
         let top = |g| {
             c.hitboxes
                 .iter()
-                .filter(|h| h.group == g)
+                .filter(|h| h.group() == g)
                 .map(|h| h.center.y)
                 .fold(f32::MIN, f32::max)
         };
@@ -1757,11 +1763,11 @@ fn shots_use_model_hitboxes() {
     // The target faces -Z (yaw 0): box centres are in its frame as-is.
     let head = boxes
         .iter()
-        .filter(|b| b.group == Hitgroup::Head)
+        .filter(|b| b.group() == Hitgroup::Head)
         .max_by(|a, b| a.center.y.total_cmp(&b.center.y))
         .unwrap();
     assert_eq!(shoot(&mut sim, feet + head.center), [(target, Hitgroup::Head)]);
-    let chest = boxes.iter().find(|b| b.group == Hitgroup::Chest).unwrap();
+    let chest = boxes.iter().find(|b| b.group() == Hitgroup::Chest).unwrap();
     assert_eq!(shoot(&mut sim, feet + chest.center), [(target, Hitgroup::Chest)]);
     // Just inside the hull's edge at knee height, outside every box.
     let gap = feet + Vec3::new(0.0, 0.45, 0.36);
@@ -1903,7 +1909,7 @@ fn bodies_animate_with_movement() {
         let boxes = &sim.app.world().get::<crate::stack::core::Hitboxes>(c).unwrap().0;
         boxes
             .iter()
-            .filter(|h| h.group == crate::stack::core::Hitgroup::Head)
+            .filter(|h| h.group() == crate::stack::core::Hitgroup::Head)
             .map(|h| h.center.y)
             .fold(f32::MIN, f32::max)
     };
