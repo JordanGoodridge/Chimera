@@ -269,7 +269,6 @@ fn send_weapon_events(
     players: Query<(Entity, &Player)>,
     eyes: Query<(&Transform, Option<&MovementState>, Option<&Health>)>,
     vis: Option<Res<ActiveVisibility>>,
-    weapons: Query<&Weapon>,
     replicated: Query<(), (With<Replicated>, With<NetCharacter>)>,
     registry: Res<WeaponRegistry>,
     mut fire: MessageWriter<ToClients<FireBullets>>,
@@ -305,6 +304,7 @@ fn send_weapon_events(
             .map(|(c, _)| SendTargets::Single(ClientId::Client(c)));
         let kind = match &e.kind {
             WeaponEventKind::Fired {
+                id,
                 origin,
                 yaw,
                 pitch,
@@ -312,7 +312,7 @@ fn send_weapon_events(
                 spread,
                 mode,
             } => {
-                let Some(index) = weapons.get(e.weapon).ok().and_then(|w| registry.index(w.id)) else {
+                let Some(index) = registry.index(id) else {
                     continue;
                 };
                 let (disc, inaccuracy, spread) = match *spread {

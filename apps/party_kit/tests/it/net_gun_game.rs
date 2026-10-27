@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::{ecs::message::MessageCursor, prelude::*};
 use chimera_core::{
     console::Console,
     core::{Dead, God, Score},
@@ -20,9 +20,9 @@ use chimera_sim::{
     minigame::{self, MINIGAME, hud::MinigameHud, ladder::Rung, runtime::InMinigame},
     mode::{Match, Phase},
     testkit,
-    weapon::Magazine,
+    weapon::{Magazine, WeaponEvent, WeaponEventKind, WeaponSounds},
 };
-use chimera_world::greybox::GreyboxMapPlugin;
+use chimera_world::{greybox::GreyboxMapPlugin, map::PlaySound};
 use combat_arms::{
     game::TICK_INTERVAL,
     harness::CaSim,
@@ -420,4 +420,97 @@ fn an_emptied_gun_reloads_once_on_a_client() {
             empty_and_reload_on_a_client(&mut sim, rung, hold);
         }
     }
+}
+
+/// Rounds fired by `who` this far (first runs only, not a correction's
+/// replays) and the fire sounds `entry` heard, counted tick by tick.
+#[derive(Default)]
+struct Shots {
+    rounds: usize,
+    heard: usize,
+}
+
+fn count_shots(
+    sim: &mut NetSim,
+    app: usize,
+    who: Entity,
+    entry: &str,
+    cursors: &mut (MessageCursor<WeaponEvent>, MessageCursor<PlaySound>),
+    into: &mut Shots,
+) {
+    let w = if app == usize::MAX { sim.server.app.world() } else { sim.clients[app].app.world() };
+    into.rounds += cursors
+        .0
+        .read(w.resource::<Messages<WeaponEvent>>())
+        .filter(|e| e.owner == who && !e.replay && matches!(e.kind, WeaponEventKind::Fired { .. }))
+        .count();
+    into.heard += cursors.1.read(w.resource::<Messages<PlaySound>>()).filter(|s| s.entry == entry).count();
+}
+
+/// Client 0's own killing round, predicted, sounds once on it (the server's
+/// echo doesn't sound it again, nor does the swap that follows silence it)
+/// and once on the other client, which sees it as someone else's.
+#[test]
+fn a_clients_own_killing_shot_sounds_once() {
+    let mut sim = joined();
+    let (a, b) = (sim.character_of(0).unwrap(), sim.character_of(1).unwrap());
+    let me = sim.local_player(0).unwrap();
+    let ladder = sim.server.app.world().resource::<minigame::ladder::Ladder>().rungs.clone();
+    let entry = {
+        let w = sim.clients[0].app.world();
+        let sounds = w.get::<WeaponSounds>(testkit::active(w, me).unwrap());
+        sounds.and_then(|s| s.fire.clone()).expect("the first rung's gun has a fire sound")
+    };
+    assert_eq!(held(&mut sim, 0), Some(ladder[0]));
+    assert!(
+        sim.until(600, |s| server_alive(s, b) && s.server.app.world().get::<God>(b).is_none()),
+        "the victim is in play"
+    );
+    sim.ticks(30);
+    let at = sim.server.position(a) + Vec3::new(0.0, 0.0, -4.0);
+    {
+        let w = sim.server.app.world_mut();
+        w.get_mut::<Transform>(b).unwrap().translation = at;
+        w.get_mut::<avian3d::prelude::Position>(b).unwrap().0 = at;
+    }
+    sim.ticks(90);
+    let cursors = |w: &World| (
+        w.resource::<Messages<WeaponEvent>>().get_cursor_current(),
+        w.resource::<Messages<PlaySound>>().get_cursor_current(),
+    );
+    let id0 = sim.client_id(0);
+    let a_seen = NetSim::owned_by(&mut sim.clients[1], Some(id0)).expect("client 1 sees player a");
+    let mut own = cursors(sim.clients[0].app.world());
+    let mut other = cursors(sim.clients[1].app.world());
+    let mut server = cursors(sim.server.app.world());
+    let (mut mine, mut theirs, mut served) = (Shots::default(), Shots::default(), Shots::default());
+    let mut dead_for = 0;
+    for t in 0..(10.0 / TICK_INTERVAL) as u64 {
+        let target = sim.server.position(b);
+        testkit::aim_at(&mut sim.clients[0], me, target);
+        sim.clients[0].intent(me).fire = dead_for == 0 && t % 2 == 0;
+        sim.step();
+        count_shots(&mut sim, 0, me, &entry, &mut own, &mut mine);
+        count_shots(&mut sim, 1, a_seen, &entry, &mut other, &mut theirs);
+        count_shots(&mut sim, usize::MAX, a, &entry, &mut server, &mut served);
+        if !server_alive(&sim, b) {
+            dead_for += 1;
+            if dead_for > 6 {
+                break;
+            }
+        }
+    }
+    sim.clients[0].intent(me).fire = false;
+    assert!(dead_for > 0, "the victim died");
+    // Let the swap, the echoes and any corrections arrive.
+    for _ in 0..60 {
+        sim.step();
+        count_shots(&mut sim, 0, me, &entry, &mut own, &mut mine);
+        count_shots(&mut sim, 1, a_seen, &entry, &mut other, &mut theirs);
+        count_shots(&mut sim, usize::MAX, a, &entry, &mut server, &mut served);
+    }
+    assert_ne!(held(&mut sim, 0), Some(ladder[0]), "the kill swapped the gun");
+    assert!(mine.rounds > 1, "rounds fired: {}", mine.rounds);
+    assert_eq!(mine.heard, mine.rounds, "the shooter hears each of its own rounds once, the killing one too");
+    assert_eq!(theirs.heard, served.rounds, "the other client hears each round the server fired once");
 }

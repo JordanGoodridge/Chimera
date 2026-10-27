@@ -726,6 +726,7 @@ fn shot_effects(
                 owner: r.shooter,
                 weapon: holders.get(r.shooter).ok()?.active?,
                 kind: WeaponEventKind::Fired {
+                    id: r.weapon,
                     origin: r.origin,
                     yaw: r.yaw,
                     pitch: r.pitch,

@@ -319,3 +319,48 @@ fn a_won_match_counts_for_its_winner_and_the_count_survives_a_restart() {
     sim.seconds(minigame::runtime::ROUND_OVER as f64 + minigame::runtime::INTERMISSION as f64 + 0.2);
     assert_eq!((won(&sim, a), won(&sim, b)), (Some(1), Some(1)));
 }
+
+/// The shooter's own killing round sounds once, though the kill swaps the
+/// gun for the next rung's in the same tick or the next: one fire sound
+/// (the old gun's) per round fired, on the one that hosts the match.
+#[test]
+fn the_shooters_own_killing_shot_sounds_once() {
+    use chimera_sim::weapon::{WeaponEvent, WeaponEventKind};
+    use chimera_world::map::PlaySound;
+    let def = DEF.replace(r#"["kit:pistol", "kit:rifle", "kit:shotgun"]"#, r#"["kit:rifle", "kit:pistol", "kit:shotgun"]"#);
+    let mut sim = started(&def);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    settle(&mut sim);
+    assert_eq!(testkit::active_id(sim.app.world(), a), Some(RIFLE));
+    let at = sim.position(a) + Vec3::new(0.0, 0.0, -4.0);
+    sim.app.world_mut().get_mut::<Transform>(b).unwrap().translation = at;
+    sim.app.world_mut().get_mut::<avian3d::prelude::Position>(b).unwrap().0 = at;
+    sim.seconds(0.5);
+    let mut sounds = sim.app.world().resource::<Messages<PlaySound>>().get_cursor_current();
+    let mut events = sim.app.world().resource::<Messages<WeaponEvent>>().get_cursor_current();
+    let (mut rounds, mut heard, mut after) = (0, 0, 0);
+    for _ in 0..600 {
+        let target = sim.position(b);
+        testkit::aim_at(&mut sim, a, target);
+        sim.intent(a).fire = after == 0;
+        sim.ticks(1);
+        let w = sim.app.world();
+        rounds += events
+            .read(w.resource::<Messages<WeaponEvent>>())
+            .filter(|e| e.owner == a && matches!(e.kind, WeaponEventKind::Fired { .. }))
+            .count();
+        heard += sounds.read(w.resource::<Messages<PlaySound>>()).filter(|s| s.entry == "kit.rifle_fire").count();
+        if w.get::<Dead>(b).is_some() {
+            after += 1;
+            if after > 10 {
+                break;
+            }
+        }
+    }
+    sim.intent(a).fire = false;
+    assert_eq!(rung(&sim, a), 1, "the kill climbed a rung");
+    assert_ne!(testkit::active_id(sim.app.world(), a), Some(RIFLE), "the gun was swapped");
+    assert!(rounds >= 10, "the rifle fired its rounds: {rounds}");
+    assert_eq!(heard, rounds, "one fire sound per round, the killing one too");
+}
