@@ -154,3 +154,30 @@ fn climbing_into_a_ladder_remap() {
     }
     assert!(below >= 1 && inside >= 1, "steps {below}/{inside}: {heard:?}");
 }
+
+/// `sv_footsteps 0` silences steps (sounds.md 3); the cvar reads back.
+#[test]
+fn sv_footsteps_zero_silences_steps() {
+    let run = |value: Option<&str>| {
+        let (mut sim, p) = sim_at(Vec3::new(-400.0, 0.0, 0.5));
+        if let Some(v) = value {
+            sim.app
+                .world_mut()
+                .resource_mut::<SourceMovementConfig>()
+                .set_cvar("sv_footsteps", v)
+                .unwrap();
+        }
+        sim.ticks(4);
+        sim.intent(p).yaw = -std::f32::consts::FRAC_PI_2;
+        sim.intent(p).move_axis = Vec2::Y;
+        sim.seconds(1.5);
+        sim.app.world().resource::<Heard>().0.len()
+    };
+    assert!(run(None) >= 2, "steps by default");
+    assert_eq!(run(Some("0")), 0, "none with sv_footsteps 0");
+    assert!(run(Some("1")) >= 2);
+    let mut c = SourceMovementConfig::default();
+    assert_eq!(c.get_cvar("sv_footsteps").as_deref(), Some("1"));
+    c.set_cvar("sv_footsteps", "0").unwrap();
+    assert_eq!(c.get_cvar("sv_footsteps").as_deref(), Some("0"));
+}

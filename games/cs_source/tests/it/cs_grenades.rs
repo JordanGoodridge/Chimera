@@ -741,3 +741,24 @@ fn use_draws_a_carried_weapon_by_name() {
     run(&mut sim, "use weapon_smokegrenade");
     assert_eq!(active_id(&sim, p), Some(SMOKEGRENADE));
 }
+
+/// Step 8: a grenade entering water plays `BaseEntity.EnterWater`, one
+/// leaving it `BaseEntity.ExitWater` (the greybox's tank).
+#[test]
+fn grenades_play_water_sounds_crossing_the_surface() {
+    use crate::stack::map::PlaySound;
+    let mut sim = sim();
+    sim.ticks(2);
+    let centre = (greybox::TANK_MIN + greybox::TANK_MAX) / 2.0;
+    let entries = |sounds: Vec<PlaySound>| sounds.into_iter().map(|s| s.entry).collect::<Vec<_>>();
+    // From above, falling in.
+    let (_, g) = place(&mut sim, SMOKEGRENADE, Vec3::new(centre.x, 6.0, centre.y), Vec3::ZERO);
+    let heard = entries(collect::<PlaySound>(&mut sim, 1.5));
+    assert_eq!(heard.iter().filter(|e| *e == "BaseEntity.EnterWater").count(), 1, "{heard:?}");
+    assert!(!heard.iter().any(|e| e == "BaseEntity.ExitWater"), "{heard:?}");
+    sim.app.world_mut().despawn(g);
+    // From below, thrown up through the surface.
+    let (_, _) = place(&mut sim, SMOKEGRENADE, Vec3::new(centre.x, 1.0, centre.y), Vec3::Y * 40.0);
+    let heard = entries(collect::<PlaySound>(&mut sim, 1.0));
+    assert!(heard.iter().any(|e| e == "BaseEntity.ExitWater"), "{heard:?}");
+}

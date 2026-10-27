@@ -562,6 +562,7 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
             effect,
             pin_sounds: Vec::new(),
             bounce_sound: None,
+            water_sounds: None,
             pin: false,
             throw_at: None,
             redraw_at: None,

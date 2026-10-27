@@ -91,12 +91,40 @@ impl Plugin for ClientPlugin {
                 hooks: client_hooks(),
             }
             .build(),
-        ));
+        ))
+        .insert_resource(chimera_client::client::video::PlayerFov(combat_arms::game::view_model::DEFAULT_FOV));
     }
 }
 
 #[cfg(test)]
 mod tests {
+    /// The world is 75 degrees vertical (view_models.md 5.2), the view
+    /// model 50 (5.1): the app's unzoomed field of view is the spec's
+    /// 91.31 at 4:3, and the view model's follows it unshrunk.
+    #[test]
+    fn the_world_is_75_degrees_vertical() {
+        use chimera_client::client::{FirstPersonCamera, spectate::SpecView, video::PlayerFov, zoom_camera};
+        use chimera_world::map::view_model::{vertical_fov, view_model_fov};
+        use combat_arms::game::view_model::DEFAULT_FOV;
+        let mut app = bevy::prelude::App::new();
+        app.init_resource::<SpecView>()
+            .insert_resource(PlayerFov(DEFAULT_FOV))
+            .add_systems(bevy::prelude::Update, zoom_camera);
+        let camera = app
+            .world_mut()
+            .spawn((FirstPersonCamera, Projection::Perspective(PerspectiveProjection::default())))
+            .id();
+        app.update();
+        let Some(Projection::Perspective(p)) = app.world().get::<Projection>(camera) else {
+            panic!("no projection");
+        };
+        assert!((p.fov.to_degrees() - 75.0).abs() < 0.01, "{}", p.fov.to_degrees());
+        let vm = combat_arms::game::view_model::settings();
+        assert!((vertical_fov(view_model_fov(&vm, DEFAULT_FOV)) - 50.0).abs() < 0.01);
+    }
+
+    use bevy::prelude::*;
+
     #[test]
     fn the_build_is_stamped() {
         // build.rs ran: a commit and a version (or "unknown" without git),

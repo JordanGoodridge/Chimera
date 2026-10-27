@@ -1,5 +1,5 @@
-//! CS:S's own parts in the party apps follow the gun in hand (audit
-//! 2026-10-27, docs/plans/active/parity-audit-2026-10.md): the hit
+//! CS:S's own parts in the party apps follow the gun in hand (parity
+//! audit 2026-10-27): the hit
 //! reaction (slowdown, view flinch) of a CS:S-identity player, the target
 //! ID and radar while CS:S's HUD is up (hidden with a Combat Arms gun),
 //! prop collision sounds, and the kill feed's icons by the full weapon id.

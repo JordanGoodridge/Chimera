@@ -77,15 +77,12 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gaps vs the originals (audit 2026-10-27)
 
-specs/ compared with the code, spec by spec. Plain CS:S and Combat Arms
-match their specs wherever the docs don't already say otherwise; the
-unlisted gaps are where the party apps (Lucker Party's gun game, the
-Ultimate Gun Game: `apps/party_kit`) put the two games together. Most
-noticeable first (impact H/M/L, size S/M/L). The rest, the method and
-two misdescribed docs:
-[plans/active/parity-audit-2026-10.md](plans/active/parity-audit-2026-10.md).
-All nine items fixed 2026-10-27 (hits and armour: DESIGN.md "Hits across
-games"); confirm in a playtest.
+specs/ compared with the code, spec by spec: plain CS:S and Combat Arms
+matched their specs wherever the docs don't already say otherwise; the
+gaps found were where the party apps put the two games together (sounds
+and HUD parts by identity, hits and armour across games: DESIGN.md "Hits
+across games", water and ladders across movements) plus a few low items.
+All fixed 2026-10-27; confirm in a playtest.
 
 ### Decisions 2026-10-13 (user)
 

@@ -119,8 +119,10 @@
 //!   plane (`VIEW_SCALE` makes that the spec's 0.1 u) and no far plane
 //!   (the spec's 7 u); `ViewModelSettings` would zoom the view model with
 //!   the world's zoom, but the model is hidden whenever zoomed. The world
-//!   camera's FOV is the shell's (5.2: 75 degrees vertical), recomputed
-//!   every frame rather than at a world start only.
+//!   camera's FOV is the shell's `PlayerFov`, which the Combat Arms app
+//!   sets to `DEFAULT_FOV` (5.2: 75 degrees vertical, 91.31 at 4:3), kept
+//!   vertical on every screen shape and recomputed every frame rather than
+//!   at a world start only (the party apps keep the shell's 90).
 //! - No left-handed mirroring (none in the game); the character's model
 //!   id, face, uniform and colour are `hands::HandProfile`'s defaults
 //!   (no character data yet); the hands' render styles aren't read
