@@ -378,6 +378,7 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
         effect,
         pin_sounds: vec![(PIN_SOUND_AT, "Default.PullPin_Grenade".into())],
         bounce_sound: Some(p.bounce_sound.clone()),
+        water_sounds: Some(("BaseEntity.EnterWater".into(), "BaseEntity.ExitWater".into())),
         pin: false,
         throw_at: None,
         redraw_at: None,

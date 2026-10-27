@@ -498,6 +498,9 @@ pub struct Throwable {
     /// (seconds after the pin pull, entry): the view model's sounds.
     pub pin_sounds: Vec<(f32, String)>,
     pub bounce_sound: Option<String>,
+    /// (entering, leaving): the entries played where it crosses the water's
+    /// surface (spec 4 step 8).
+    pub water_sounds: Option<(String, String)>,
     /// The pin is out, waiting for the release.
     pub pin: bool,
     /// When the released grenade leaves the hand.
@@ -588,6 +591,8 @@ pub struct Projectile {
     pub fuse: f32,
     pub effect: GrenadeEffect,
     pub bounce_sound: Option<String>,
+    /// As `Throwable::water_sounds`.
+    pub water_sounds: Option<(String, String)>,
     /// Ticks simulated so far (the spawn tick is 0).
     pub ticks: u32,
     /// At rest on a floor.
@@ -717,6 +722,7 @@ fn launch(
                 fuse: t.fuse,
                 effect: t.effect.clone(),
                 bounce_sound: t.bounce_sound.clone(),
+                water_sounds: t.water_sounds.clone(),
                 ticks: 0,
                 resting: false,
                 spin,
@@ -1265,6 +1271,14 @@ fn fly(
         let wet = world.in_water(transform.translation);
         if wet && !p.in_water {
             p.velocity.y *= f.water_entry;
+        }
+        if wet != p.in_water
+            && let Some((enter, leave)) = &p.water_sounds
+        {
+            world.play.write(PlaySound::at(
+                if wet { enter.clone() } else { leave.clone() },
+                transform.translation,
+            ));
         }
         p.in_water = wet;
     }

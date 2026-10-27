@@ -222,6 +222,9 @@ pub struct SourceMovementConfig {
     /// `fall_damage_per_speed` health points, truncated to whole points.
     pub fall_safe: f32,
     pub fall_damage_per_speed: f32,
+    /// sv_footsteps: false silences steps, jump and landing sounds
+    /// (sounds.md 3; the timers still run).
+    pub footsteps: bool,
 }
 
 /// Console variables players and server configs know, mapped onto the
@@ -238,6 +241,7 @@ pub const CVARS: &[(&str, &str)] = &[
     ("sv_bounce", "wall bounce (0 in CS:S)"),
     ("sv_enablebunnyhopping", "1 removes the jump speed cap"),
     ("sv_autobunnyhopping", "1: holding jump keeps jumping"),
+    ("sv_footsteps", "0 silences footsteps, jump and landing sounds"),
     ("cl_forwardspeed", "what a held move key sends"),
     (
         "sv_ladder_dampen",
@@ -271,6 +275,7 @@ impl SourceMovementConfig {
             "sv_bounce" => self.bounce = num()?,
             "sv_enablebunnyhopping" => self.enable_bunnyhopping = num()? != 0.0,
             "sv_autobunnyhopping" => self.auto_bunnyhopping = num()? != 0.0,
+            "sv_footsteps" => self.footsteps = num()? != 0.0,
             "cl_forwardspeed" | "cl_sidespeed" => self.key_speed = num()?,
             "sv_ladder_dampen" => self.ladder_dampen = num()?,
             "sv_ladder_angle" => self.ladder_angle = num()?,
@@ -302,6 +307,7 @@ impl SourceMovementConfig {
             "sv_bounce" => f(self.bounce),
             "sv_enablebunnyhopping" => b(self.enable_bunnyhopping),
             "sv_autobunnyhopping" => b(self.auto_bunnyhopping),
+            "sv_footsteps" => b(self.footsteps),
             "cl_forwardspeed" | "cl_sidespeed" => f(self.key_speed),
             "sv_ladder_dampen" => f(self.ladder_dampen),
             "sv_ladder_angle" => f(self.ladder_angle),
@@ -373,6 +379,7 @@ impl SourceMovementConfig {
             clip_push_out: 0.0,
             fall_safe: 580.0,
             fall_damage_per_speed: 100.0 / (1024.0 - 580.0),
+            footsteps: true,
         }
     }
 }
@@ -1568,6 +1575,9 @@ impl Mover<'_, '_, '_, '_> {
     /// in a footstep volume that replaces `surface` (func_footstep_control,
     /// `MapSounds::step_surface`), its destination surface's step plays.
     fn play_step(&mut self, surface: &str, volume: f32) {
+        if !self.cfg.footsteps {
+            return;
+        }
         let Some(bank) = self.trace.sounds else { return };
         let surface = bank.step_surface(surface, to_engine(self.feet));
         // A name the surface scripts don't define (dust2's "stone" props)

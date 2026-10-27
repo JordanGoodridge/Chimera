@@ -92,6 +92,8 @@ pub enum Class {
     Occluder(super::visuals::Occluder),
     /// env_tonemap_controller: the HDR camera's exposure and bloom.
     Tonemap,
+    /// env_entity_igniter (`fire::igniter_input`).
+    Igniter,
     /// game_player_equip (what it gives, by Use) and player_weaponstrip
     /// (gives nothing, strips).
     Equip(Equip),
@@ -591,6 +593,7 @@ impl Class {
             "func_occluder" => super::visuals::spawn_occluder(w, id).map_or(Class::None, Class::Occluder),
             "light" | "light_spot" => Class::Light(super::visuals::spawn_light(w, id)),
             "env_tonemap_controller" => Class::Tonemap,
+            "env_entity_igniter" => Class::Igniter,
             "env_global" => Class::Global(global_spawn(w, id)),
             "env_fire" => Class::Fire(Box::new(super::fire::spawn_fire(w, id))),
             "env_firesource" => Class::FireSource(super::fire::spawn_source(w, id)),
@@ -1196,6 +1199,7 @@ pub(super) fn class_input(
         Class::AreaPortal(_) => return super::visuals::area_portal_input(w, id, input),
         Class::Occluder(_) => return super::visuals::occluder_input(w, id, input),
         Class::Tonemap => return super::visuals::tonemap_input(w, input, value),
+        Class::Igniter => return super::fire::igniter_input(w, id, input, activator),
         Class::Equip(equip) => match input {
             // player_weaponstrip: Strip (the activator), StripWeaponsAndSuit.
             "strip" | "stripweaponsandsuit" => equip_player(w, &equip, activator),

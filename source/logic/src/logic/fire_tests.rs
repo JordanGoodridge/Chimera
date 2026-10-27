@@ -540,3 +540,44 @@ fn round_restart_puts_fires_out() {
     assert!(close(fire_state(&w, f).absorb, 1.6));
     let _ = DamageKind::Burn;
 }
+
+/// env_entity_igniter (fire.md 4.2): every match of `target` gets a flame
+/// of `lifetime` directly (no flammable check, flames stack); a player
+/// refuses.
+#[test]
+fn entity_igniter_flames_its_targets() {
+    let mut w = world();
+    let c = spawn(
+        &mut w,
+        &[("classname", "prop_physics"), ("targetname", "crate"), (PROP_HEALTH_KEY, "30"), (PROP_PIECES_KEY, "1")],
+    );
+    let p = player_at(&mut w, 0, Vec3::new(500.0, 0.0, 0.0));
+    spawn(
+        &mut w,
+        &[("classname", "env_entity_igniter"), ("targetname", "lighter"), ("target", "crate"), ("lifetime", "5")],
+    );
+    spawn(
+        &mut w,
+        &[("classname", "env_entity_igniter"), ("targetname", "lighter_p"), ("target", "!player"), ("lifetime", "5")],
+    );
+    w.activate();
+    assert!(flames(&w).is_empty());
+    // Not flammable, yet it burns; twice, two flames.
+    w.queue_input("lighter", "Ignite", Value::Void, 0.0, None);
+    step(&mut w);
+    assert_eq!(flames(&w).len(), 1);
+    assert_eq!(flames_on(&w, Who::Ent(c)).len(), 1);
+    assert!(!is_burning(&w, Who::Ent(c)), "not marked burning");
+    w.queue_input("lighter", "Ignite", Value::Void, 0.0, None);
+    step(&mut w);
+    assert_eq!(flames_on(&w, Who::Ent(c)).len(), 2, "flames stack");
+    // The lifetime is the keyvalue's: gone after about 5 s.
+    for _ in 0..(6.0 / 0.015) as usize {
+        step(&mut w);
+    }
+    assert!(flames(&w).is_empty(), "{:?}", flames(&w));
+    // A player refuses.
+    w.queue_input("lighter_p", "Ignite", Value::Void, 0.0, None);
+    step(&mut w);
+    assert!(flames_on(&w, Who::Player(p)).is_empty());
+}

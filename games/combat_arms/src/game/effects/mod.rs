@@ -96,9 +96,9 @@
 //! - The world's surface types come by texture (`library::tag_surfaces`);
 //!   props and doors are the world's; movable objects take no decals
 //!   (none move yet), and no server-side decals on movers.
-//! - Others' footstep animation rate is 1 (no third-person animations
-//!   yet: characters.md); a network client takes others' gait from their
-//!   movement state as replicated.
+//! - Others' footstep animation rate is 1 by the spec (characters.md 7),
+//!   not for lack of animations (the stock bodies' load); a network client
+//!   takes others' gait from their movement state as replicated.
 //! - Kill call-outs are rules only (`rules::callouts`): the voice sets'
 //!   files aren't named; map `SoundFX` objects are `music::ambient`'s
 //!   (`rules::SoundFxState` keeps the rules' view of them); a playing

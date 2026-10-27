@@ -81,8 +81,8 @@ specs/ compared with the code, spec by spec. Plain CS:S and Combat Arms
 match their specs wherever the docs don't already say otherwise; the
 unlisted gaps are where the party apps (Lucker Party's gun game, the
 Ultimate Gun Game: `apps/party_kit`) put the two games together. Most
-noticeable first (impact H/M/L, size S/M/L). The rest, the method and
-two misdescribed docs:
+noticeable first (impact H/M/L, size S/M/L). The method and what
+matched (the low items are done):
 [plans/active/parity-audit-2026-10.md](plans/active/parity-audit-2026-10.md).
 
 - **No CS:S hit slowdown or flinch in the party apps (H, S).** CS:S

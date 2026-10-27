@@ -14,8 +14,8 @@
 //! (none from inside a static prop, `Collision::inside_prop`; measured Q5),
 //! burn damage in its box with a line-of-sight check, fuel,
 //! Extinguish/ExtinguishTemporary/Enable/Disable, OnIgnited/OnExtinguished;
-//! env_firesource and env_firesensor; entity flames from the Ignite inputs and
-//! burning props: 1 burn a think to the target, radius burn, heat to fires;
+//! env_firesource, env_firesensor and env_entity_igniter; entity flames from
+//! the Ignite inputs and burning props: 1 burn a think to the target, radius burn, heat to fires;
 //! traces through `LogicWorld::collision`, the static world the bridge hands
 //! over.
 //!
@@ -110,6 +110,25 @@ pub const FLAME_DEFAULT_LIFE: f32 = 2.0;
 pub const IGNITE_LIFE: f32 = 30.0;
 /// After "stop burning" until the flame is removed.
 pub const FLAME_REMOVE_DELAY: f32 = 0.5;
+/// env_entity_igniter's Ignite (spec 4.2): every entity matching `target`
+/// (name or class, `!activator` too) gets a new flame of `lifetime`
+/// seconds directly, with no flammable check and no burning mark, so
+/// flames stack; a player refuses (the NPC-only rule).
+pub(super) fn igniter_input(w: &mut LogicWorld, id: EntId, input: &str, activator: Option<Who>) -> bool {
+    if input != "ignite" {
+        return false;
+    }
+    let Some(e) = w.get(id) else { return true };
+    let target = e.kv("target").unwrap_or_default().to_string();
+    let lifetime = e.kv("lifetime").and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(IGNITE_LIFE);
+    for t in w.resolve(&target, activator, Some(Who::Ent(id))) {
+        if matches!(t, Who::Ent(_)) {
+            create_flame(w, t, lifetime);
+        }
+    }
+    true
+}
+
 /// A prop set on fire by damage burns U(10, 15) s.
 pub const PROP_BURN_TIME: (f32, f32) = (10.0, 15.0);
 
