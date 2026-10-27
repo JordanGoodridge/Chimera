@@ -1449,3 +1449,33 @@ fn knock_back_on_an_infected_victim() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Parity pin (docs/plans/active/generic-hits.md, step a)
+
+/// What the M4A1 (roll 1.0, 1000 units) deals on every zone of the male
+/// skeleton through the default body and head gear, each shot on 100
+/// fresh armour points: hit points lost and armour left. The code's
+/// values before the generic hit path (2026-10-27; cases 4, 6, 7, 48):
+/// they must not change.
+#[test]
+fn parity_pin_zones_through_armour() {
+    let mut sim = sim();
+    let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 1000.0);
+    for (name, lost, left) in [
+        ("Face_Eyelid1", 157.5, 91.25),
+        ("Neck", 29.75, 94.75),
+        ("Torso", 29.75, 94.75),
+        ("Nuts", 35.0, 100.0),
+        ("Right_pelvis", 26.775, 94.75),
+        ("Right_armu", 26.775, 94.75),
+        ("Right_hand", 26.775, 94.75),
+        ("Right_Legu", 26.775, 94.75),
+        ("Right_legl", 22.3125, 94.75),
+        ("Right_foot", 14.875, 94.75),
+    ] {
+        set_armour(&mut sim, target, 100.0, vec![DEFAULT_BODY_GEAR, DEFAULT_HEAD_GEAR]);
+        close(shoot_at(&mut sim, shooter, target, name), lost, 1e-3, name);
+        close(armour(&sim, target), left, 1e-3, &format!("{name} armour"));
+    }
+}
