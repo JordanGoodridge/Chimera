@@ -237,3 +237,70 @@ fn skinned_props_draw_lower_levels_on_the_same_skeleton() {
     assert_eq!(level(&mut sim), 1, "30 m away: the lower level, still skinned");
     assert_eq!(skin(&mut sim), 2);
 }
+
+/// A character's body with lower levels draws LOD 0 up close and a
+/// lower one far off (the levels share the skeleton).
+#[test]
+fn character_bodies_draw_the_finest_level_up_close() {
+    use chimera_world::map::{BodyName, MapBone, MapCharacterModel};
+    let mut data = MapData { name: "test:body_lods".into(), entity_scale: 0.0254, ..default() };
+    let source = map(true);
+    let mut model = source.models[0].clone();
+    // A body about 1.8 m tall; its lower level switches at 20.
+    model.meshes = vec![{
+        let mut m = quad("test/body", 0.45);
+        m.positions.iter_mut().for_each(|p| p[1] *= 1.0);
+        m.joints = vec![[0, 0, 0, 0]; 4];
+        m.joint_weights = vec![[1.0, 0.0, 0.0, 0.0]; 4];
+        m
+    }];
+    model.lods = vec![MapLod { switch: 20.0, meshes: vec![Some(model.meshes[0].clone())] }];
+    data.kit.characters.push(MapCharacterModel {
+        game: None,
+        team: None,
+        name: Some("tester".into()),
+        class: None,
+        model,
+        hitboxes: Vec::new(),
+        bones: vec![MapBone { name: "root".into(), parent: None, position: Vec3::ZERO, rotation: Quat::IDENTITY }],
+        root: Transform::IDENTITY,
+        animations: None,
+        boxes: Vec::new(),
+        ragdoll: None,
+    });
+    let mut sim = Sim::with(base(), |app| {
+        app.init_asset::<Image>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<WorldMaterial>()
+            .init_asset::<PropMaterial>()
+            .init_asset::<SpriteMaterial>()
+            .init_asset::<RopeMaterial>()
+            .init_asset::<ShadowMaterial>()
+            .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>()
+            .add_plugins(MapPlugin::new(data));
+    });
+    let fov = 2.0 * 0.75f32.atan();
+    let eye = sim
+        .app
+        .world_mut()
+        .spawn((
+            ViewModelAnchor,
+            Projection::Perspective(PerspectiveProjection { fov, ..default() }),
+            Transform::from_xyz(0.0, 1.0, 3.0),
+        ))
+        .id();
+    sim.app.world_mut().spawn((
+        chimera_core::core::Intent::default(),
+        BodyName("tester".into()),
+        avian3d::prelude::ColliderAabb::new(Vec3::new(0.0, 0.9, 0.0), Vec3::new(0.3, 0.9, 0.3)),
+        Transform::default(),
+    ));
+    let at = |sim: &mut Sim, z: f32| {
+        sim.app.world_mut().entity_mut(eye).insert(Transform::from_xyz(0.0, 1.0, z));
+        sim.ticks(3);
+        level(sim)
+    };
+    assert_eq!(at(&mut sim, 3.0), 0, "3 m away: the detailed level");
+    assert_eq!(at(&mut sim, 60.0), 1, "60 m away: the lower level");
+    assert_eq!(at(&mut sim, 3.0), 0, "back close: the detailed level again");
+}
