@@ -27,13 +27,6 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
-- **CS:S characters: LOD disabled, find why levels drew low.** Bodies
-  drew a low level even up close (2026-10-25 playtest). The present
-  side is fine (`prop_lods::character_bodies_draw_the_finest_level_up_close`
-  passes: LOD 0 close, lower far), so the data is suspect: the player
-  models' `.vtx` switch points or `lod_models`/`align_lod` for them.
-  `load_character` (games/cs_source/src/game/props.rs) loads no lower
-  levels for now; measure the switch points and bounds, then restore.
 - **Combat Arms character models look wrong.** Heads look thin (e.g. the
   female soldier with goggles); her head and backpack vanish when the
   camera gets close (near clip or per-part culling/bounds?). Most of her
@@ -848,7 +841,9 @@ dithered fade bands. Left:
   `prop_fade` test); LODs for static, skinned (animated) props and
   CS:S player-model bodies (`render::lod`; levels share the skeleton, as
   the `.vvd`'s bone ids are the model's own at every level; tests in
-  `prop_lods.rs`). Left: a near/far capture of a skinned model; LODs for
+  `prop_lods.rs`; a level with a negative switch point, as the player
+  models' last, -1, is never drawn: `player_lods.rs`). Left: a near/far
+  capture of a skinned model; LODs for
   Combat Arms' models and view models.
 - cs_assault `refcmp vischeck` fails (57 of 316 views, worst 33.7k
   pixels on the roof): the PVS hides props and buildings seen over the

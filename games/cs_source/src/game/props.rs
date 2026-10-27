@@ -154,6 +154,19 @@ fn load_model(materials: &mut MaterialLoader, path: &str) -> Result<(vmdl::Model
     load_model_with_layout(materials, path, false).map(|(m, kv, _, _)| (m, kv))
 }
 
+/// A player model's body-space rotation applied to a converted model's
+/// meshes (Source models face +X; characters face -Z at yaw 0).
+fn face_meshes(meshes: &mut [MapMesh], face: Quat) {
+    for mesh in meshes {
+        for p in &mut mesh.positions {
+            *p = (face * Vec3::from(*p)).to_array();
+        }
+        for n in &mut mesh.normals {
+            *n = (face * Vec3::from(*n)).to_array();
+        }
+    }
+}
+
 /// Whether vmdl can turn the model into meshes: a `.vtx` whose strip
 /// indices run past its `.vvd`'s vertices would panic.
 fn meshes_readable(model: &vmdl::Model) -> bool {
@@ -163,16 +176,32 @@ fn meshes_readable(model: &vmdl::Model) -> bool {
     .is_ok()
 }
 
-/// The model's lower levels of detail (`.vtx` LODs 1, 2, ...) as models
-/// of their own, each with its switch point: each body part model's level
-/// `k` (its coarsest when it has fewer), the switch point the first one
-/// with that level gives. Levels vmdl can't read are left out.
-fn lod_models(mdl: &vmdl::mdl::Mdl, vtx: &vmdl::vtx::Vtx, vvd: &vmdl::vvd::Vvd) -> Vec<(f32, vmdl::Model)> {
+/// The switch points of the model's lower levels of detail drawn by
+/// distance (`.vtx` LODs 1, 2, ...): level `k`'s is the first body part
+/// model with that level's. They stop at the first negative one: a level
+/// with a negative switch point is never picked by distance (CS:S's
+/// player models end in one, switch point -1, a copy of the level before
+/// it: as the last level the metric's search took it at any distance, so
+/// bodies drew their coarsest level up close).
+pub fn lod_switches(vtx: &vmdl::vtx::Vtx) -> Vec<f32> {
     let models = || vtx.body_parts.iter().flat_map(|p| p.models.iter());
     let levels = models().map(|m| m.lods.len()).max().unwrap_or(0);
     (1..levels)
-        .map_while(|k| {
-            let switch = models().find_map(|m| m.lods.get(k)).map(|l| l.switch_point)?;
+        .map_while(|k| models().find_map(|m| m.lods.get(k)).map(|l| l.switch_point))
+        .take_while(|s| *s >= 0.0)
+        .collect()
+}
+
+/// The model's lower levels of detail (`.vtx` LODs 1, 2, ...) as models
+/// of their own, each with its switch point (`lod_switches`): each body
+/// part model's level `k` (its coarsest when it has fewer). Levels vmdl
+/// can't read are left out.
+fn lod_models(mdl: &vmdl::mdl::Mdl, vtx: &vmdl::vtx::Vtx, vvd: &vmdl::vvd::Vvd) -> Vec<(f32, vmdl::Model)> {
+    lod_switches(vtx)
+        .into_iter()
+        .enumerate()
+        .map_while(|(i, switch)| {
+            let k = i + 1;
             let mut lower = vtx.clone();
             for part in &mut lower.body_parts {
                 for m in &mut part.models {
@@ -236,22 +265,26 @@ pub fn load_character(
     team: Option<crate::core::Team>,
 ) -> Result<crate::map::MapCharacterModel, String> {
     use crate::core::{Hitbox, Hitgroup};
-    let (model, _, _, _) = load_model_with_layout(materials, path, false)?;
+    let (model, _, _, lower_levels) = load_model_with_layout(materials, path, true)?;
     let bytes = materials.read(path).ok_or_else(|| format!("{path}: not found"))?;
     let mdl = read_mdl(&bytes).map_err(|e| format!("{path}: {e}"))?;
     // Source models face +X; characters face -Z at yaw 0.
     let face = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
     let mut body = convert_model_in(&model, 0, materials, false, &[]);
-    for mesh in &mut body.meshes {
-        for p in &mut mesh.positions {
-            *p = (face * Vec3::from(*p)).to_array();
-        }
-        for n in &mut mesh.normals {
-            *n = (face * Vec3::from(*n)).to_array();
-        }
-    }
-    // No lower levels: bodies draw LOD 0 (their levels drew low ones
-    // even close up; docs/backlog.md).
+    face_meshes(&mut body.meshes, face);
+    // Its lower levels of detail, skinned to the same skeleton (the
+    // `.vvd`'s bone ids are the model's own at every level).
+    body.lods = lower_levels
+        .iter()
+        .map(|(switch, lower)| {
+            let mut level = convert_model_in(lower, 0, materials, false, &[]).meshes;
+            face_meshes(&mut level, face);
+            crate::map::lod::MapLod {
+                switch: *switch,
+                meshes: align_lod(&body.meshes, level),
+            }
+        })
+        .collect();
     // Bones' reference pose in model space (Source units, Z up).
     let mut pose: Vec<(Quat, Vec3)> = Vec::with_capacity(mdl.bones.len());
     for b in &mdl.bones {

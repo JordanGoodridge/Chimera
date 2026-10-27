@@ -242,6 +242,28 @@ fn skinned_props_draw_lower_levels_on_the_same_skeleton() {
 /// lower one far off (the levels share the skeleton).
 #[test]
 fn character_bodies_draw_the_finest_level_up_close() {
+    let mut at = body_at(&[20.0]);
+    assert_eq!(at(3.0), 0, "3 m away: the detailed level");
+    assert_eq!(at(60.0), 1, "60 m away: the lower level");
+    assert_eq!(at(3.0), 0, "back close: the detailed level again");
+}
+
+/// A body with a player model's levels (CS:S's ct_urban: switch points
+/// 10, 20, 35, 50, 70, then -1 for a level only shadows use) draws LOD 0
+/// up close and never the -1 level, however far.
+#[test]
+fn a_player_models_shadow_level_is_never_drawn() {
+    let mut at = body_at(&[10.0, 20.0, 35.0, 50.0, 70.0, -1.0]);
+    // Its mesh's bounding radius 0.64 m at fov 90: metric 1.18 d.
+    assert_eq!(at(3.0), 0, "3 m away: LOD 0");
+    assert_eq!(at(25.0), 2, "25 m away: LOD 2 (metric 29.5)");
+    assert_eq!(at(500.0), 5, "far off: the last level drawn by distance");
+    assert_eq!(at(3.0), 0, "back close: LOD 0 again");
+}
+
+/// A body whose model has lower levels at `switches`, and a function
+/// placing the camera `z` m in front of it and giving the level drawn.
+fn body_at(switches: &[f32]) -> impl FnMut(f32) -> usize {
     use chimera_world::map::{BodyName, MapBone, MapCharacterModel};
     let mut data = MapData { name: "test:body_lods".into(), entity_scale: 0.0254, ..default() };
     let source = map(true);
@@ -254,7 +276,10 @@ fn character_bodies_draw_the_finest_level_up_close() {
         m.joint_weights = vec![[1.0, 0.0, 0.0, 0.0]; 4];
         m
     }];
-    model.lods = vec![MapLod { switch: 20.0, meshes: vec![Some(model.meshes[0].clone())] }];
+    model.lods = switches
+        .iter()
+        .map(|s| MapLod { switch: *s, meshes: vec![Some(model.meshes[0].clone())] })
+        .collect();
     data.kit.characters.push(MapCharacterModel {
         game: None,
         team: None,
@@ -295,12 +320,9 @@ fn character_bodies_draw_the_finest_level_up_close() {
         avian3d::prelude::ColliderAabb::new(Vec3::new(0.0, 0.9, 0.0), Vec3::new(0.3, 0.9, 0.3)),
         Transform::default(),
     ));
-    let at = |sim: &mut Sim, z: f32| {
+    move |z: f32| {
         sim.app.world_mut().entity_mut(eye).insert(Transform::from_xyz(0.0, 1.0, z));
         sim.ticks(3);
-        level(sim)
-    };
-    assert_eq!(at(&mut sim, 3.0), 0, "3 m away: the detailed level");
-    assert_eq!(at(&mut sim, 60.0), 1, "60 m away: the lower level");
-    assert_eq!(at(&mut sim, 3.0), 0, "back close: the detailed level again");
+        level(&mut sim)
+    }
 }
