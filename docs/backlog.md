@@ -40,10 +40,6 @@ the user's go-ahead: no Actions runs unless asked.
   model looks odd.
 - **Combat Arms third-person guns held backwards** most of the time (the
   weapon's attachment to the hand bone: orientation or wrong bone).
-- **Ladders don't work for Combat Arms characters.** Climbable ladders
-  should work with Combat Arms' movement on every map, CS:S maps included
-  (CS:S ladders under `combat_arms:movement`, and Combat Arms' own maps'
-  ladders).
 - **Clients don't see glass break properly: fixed, confirm online.** A
   broken window's panes (func_breakable_surf) stayed whole on clients and
   no shards, gibs or falling panes reached them (only a func_breakable's
