@@ -71,6 +71,7 @@ pub mod menu;
 pub mod music;
 pub mod options;
 pub mod options_apply;
+pub mod scope;
 pub mod scoreboard;
 pub mod talk;
 pub mod textures;
@@ -111,6 +112,7 @@ impl Plugin for CaUiPlugin {
             talk::CaTalkPlugin,
             music::CaMusicPlayPlugin,
             textures::CaTexturesPlugin,
+            scope::CaScopePlugin,
         ))
         // Key 6, the objective class (inventory.md 2, 3: the mission
         // bomb), through the shell's selection as slot 6.

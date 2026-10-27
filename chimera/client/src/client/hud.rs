@@ -33,6 +33,7 @@ impl Plugin for HudPlugin {
             .init_resource::<Killfeed>()
             .init_resource::<GameDraws>()
             .init_resource::<CrosshairColor>()
+            .init_resource::<ScopeOverlayImage>()
             .add_systems(Startup, spawn_hud)
             .add_systems(
                 Update,
@@ -40,7 +41,9 @@ impl Plugin for HudPlugin {
                     character_bodies,
                     show_bodies,
                     (hit_marker, killfeed, draw_hud, draw_crosshair, draw_scope).chain(),
-                    game_scope.run_if(resource_changed_or_removed::<crate::map::hud::ActiveHud>),
+                    (scope_aspect, game_scope)
+                        .chain()
+                        .run_if(scope_inputs_changed),
                     screen_tints,
                 ),
             )
@@ -338,6 +341,13 @@ struct ScopeSquare;
 /// map's HUD look (CS:S's scope textures) is put away.
 #[derive(Component)]
 struct GenericScope(Handle<Image>);
+/// A game's own scope picture for the weapon looked through now (Combat
+/// Arms' `ZoomSpriteName`), set by the game while it is zoomed and loaded,
+/// cleared otherwise. Drawn centred at its own aspect with black borders,
+/// ahead of the map's HUD look (CS:S's scope textures) and the generic
+/// stand-in.
+#[derive(Resource, Default, Clone, Debug)]
+pub struct ScopeOverlayImage(pub Option<Handle<Image>>);
 /// One of the four crosshair lines: its direction from the centre (zero:
 /// the centre dot).
 #[derive(Component)]
@@ -824,9 +834,17 @@ fn draw_crosshair(
 /// scope textures.
 fn game_scope(
     hud: Option<Res<crate::map::hud::ActiveHud>>,
+    own: Option<Res<ScopeOverlayImage>>,
     square: Single<(Entity, &GenericScope), With<ScopeSquare>>,
     mut commands: Commands,
 ) {
+    if let Some(image) = own.and_then(|o| o.0.clone()) {
+        commands
+            .entity(square.0)
+            .despawn_related::<Children>()
+            .insert(ImageNode::new(image));
+        return;
+    }
     let sprite = |name: &str| {
         let hud = hud.as_ref()?;
         let s = hud.0.sprites.get(name)?;
@@ -870,6 +888,34 @@ fn game_scope(
         c.spawn((abs(0.0, 50.0, 100.0, 0.0), Outline::new(px(0.5), px(0.0), Color::BLACK)));
         c.spawn((abs(50.0, 0.0, 0.0, 100.0), Outline::new(px(0.5), px(0.0), Color::BLACK)));
     });
+}
+
+/// The HUD look or the game's scope picture changed or went away.
+fn scope_inputs_changed(
+    hud: Option<Res<crate::map::hud::ActiveHud>>,
+    own: Option<Res<ScopeOverlayImage>>,
+    mut had: bevy::ecs::system::Local<bool>,
+) -> bool {
+    let removed = *had && hud.is_none();
+    *had = hud.is_some();
+    removed || hud.is_some_and(|h| h.is_changed()) || own.is_some_and(|o| o.is_changed())
+}
+
+/// The scope's middle takes the game's picture's aspect (square for the
+/// others), so the black bars on its sides fill what the picture leaves.
+fn scope_aspect(
+    own: Option<Res<ScopeOverlayImage>>,
+    images: Res<Assets<Image>>,
+    mut square: Single<&mut Node, With<ScopeSquare>>,
+) {
+    let ratio = own
+        .and_then(|o| o.0.as_ref().and_then(|h| images.get(h)))
+        .map(|i| i.size_f32())
+        .filter(|s| s.x > 0.0 && s.y > 0.0)
+        .map_or(1.0, |s| s.x / s.y);
+    if square.aspect_ratio != Some(ratio) {
+        square.aspect_ratio = Some(ratio);
+    }
 }
 
 /// Shown while the local player looks through a scope, or while watching
@@ -1083,7 +1129,8 @@ mod tests {
         use std::{collections::HashMap, sync::Arc};
         let mut app = App::new();
         app.init_resource::<Assets<Image>>();
-        app.add_systems(Update, game_scope.run_if(resource_changed_or_removed::<ActiveHud>));
+        app.init_resource::<ScopeOverlayImage>();
+        app.add_systems(Update, game_scope.run_if(scope_inputs_changed));
         app.world_mut().resource_scope(|w: &mut World, mut images: Mut<Assets<Image>>| {
             let mut commands = w.commands();
             spawn_scope(&mut commands, &mut images);
@@ -1113,6 +1160,17 @@ mod tests {
         app.insert_resource(look());
         app.update();
         assert!(state(&mut app).0 >= 4, "CS:S's again");
+        // A game's own picture comes first, then gives way again.
+        let own = app.world_mut().resource_mut::<Assets<Image>>().add(Image::default());
+        app.insert_resource(ScopeOverlayImage(Some(own.clone())));
+        app.update();
+        let w = app.world_mut();
+        let (e, _) = w.query::<(Entity, &GenericScope)>().single(w).unwrap();
+        assert!(w.get::<ImageNode>(e).is_some_and(|i| i.image == own), "the game's picture over CS:S's look");
+        assert!(w.get::<Children>(e).is_none_or(|c| c.is_empty()));
+        app.insert_resource(ScopeOverlayImage(None));
+        app.update();
+        assert!(state(&mut app).0 >= 4, "CS:S's again once the picture goes");
     }
 
     #[test]
