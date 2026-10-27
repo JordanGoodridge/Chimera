@@ -50,7 +50,7 @@
 //!   many the server keeps (none for a joiner: `+connect` skips the app's
 //!   default of `DEFAULT_BOTS` and its local minigame, the server's comes
 //!   over the network: `chimera_net::minigame_net`).
-//! - `requirements`, `missing`, `report`: what this machine lacks to play
+//! - `requirements`, `missing`, `report`, `exit_fatal` (waits for Enter on Windows): what this machine lacks to play
 //!   (CS:S's install, Combat Arms' install and its V1 and V2 keys), told
 //!   exactly at start by both binaries; CS:S's missing stops them.
 //!   `mount_report`: the same as the network's mount doctor report
@@ -395,6 +395,18 @@ pub fn report(problems: &[Missing]) -> (String, bool) {
         .collect::<Vec<_>>()
         .join("\n");
     (text, problems.iter().any(|m| m.fatal))
+}
+
+/// Ends a client app that can't start: `report`'s `text` on stderr, and on
+/// Windows a wait for Enter first, so a double-clicked window stays open
+/// long enough to read it.
+pub fn exit_fatal(text: &str) -> ! {
+    eprintln!("{text}");
+    if cfg!(windows) {
+        eprintln!("\nPress Enter to close.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
+    std::process::exit(1)
 }
 
 /// The first map of built-in minigame `id`'s pool.
