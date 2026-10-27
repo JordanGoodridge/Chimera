@@ -805,6 +805,7 @@ fn case_29_sprint_blocked() {
         Some(combat_arms::game::weapons::Scope {
             name: "test".into(),
             fov: vec![40.0],
+            sprite: String::new(),
         });
     t.keys().secondary = true;
     t.tick();

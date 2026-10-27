@@ -263,6 +263,9 @@ pub struct ModRecord {
     /// `ZoomLevel` and `ZoomFov0..9` (degrees).
     pub zoom_level: i32,
     pub zoom_fov: Vec<f32>,
+    /// `ZoomSpriteName`: the overlay picture while zoomed (an install path;
+    /// empty: none).
+    pub zoom_sprite: String,
     /// `SightSystemStyle` (0 normal, 1 range readout, 2 gauge) and
     /// `TargetRange` (units).
     pub sight_style: i32,
@@ -352,6 +355,7 @@ impl ModRecord {
         Some(Scope {
             name: self.name.clone(),
             fov,
+            sprite: self.zoom_sprite.clone(),
         })
     }
 }
