@@ -72,6 +72,10 @@ the user's go-ahead: no Actions runs unless asked.
   (counted while the server runs; it survives map rotation and
   `ugg_new`). Generic, so other minigames can reuse it (a minigame-level
   scoreboard in Chimera, not either game's).
+- **Check: is your own killing shot still silent?** Fixed 2026-10-27 for
+  other players' shots seen on a client (`remote_shots` keeps the old
+  gun's fire sound after the ladder swap); the shooter's own predicted
+  last shot before the swap was not checked.
 - **Glock burst toggle shows nothing.** Right-click switches to burst but
   there's no indication; CS:S prints "Switched to Burst-Fire mode" /
   "Switched to semi-automatic" as a center message (needs the HUD hint
