@@ -529,12 +529,9 @@ fn hostage_like(hits_inside: bool, exact: bool) -> crate::stack::weapon::BulletT
 /// front one (nearer the shooter) chest, the back one stomach. The
 /// damage it lost, in hit points (unrounded).
 fn shoot_boxes(bullet: crate::stack::weapon::BulletTarget) -> f32 {
-    use crate::stack::core::{Hitbox, Hitboxes, Hitgroup};
-    let at = |z: f32, group| Hitbox {
-        center: Vec3::new(0.0, 1.3, z),
-        half: Vec3::new(0.15, 0.15, 0.05),
-        rotation: Quat::IDENTITY,
-        group,
+    use crate::stack::core::{BodyRegion, Hitbox, Hitboxes, Hitgroup};
+    let at = |z: f32, group| {
+        Hitbox::cuboid(Vec3::new(0.0, 1.3, z), Vec3::new(0.15, 0.15, 0.05), Quat::IDENTITY, BodyRegion::from_hitgroup(group))
     };
     let mut sim = sim();
     let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
@@ -595,19 +592,14 @@ fn a_bullet_goes_on_inside_a_target_that_allows_it() {
 /// the hull that misses every box goes on to whoever stands behind.
 #[test]
 fn hitboxes_outside_the_hull_count_and_the_hull_alone_stops_nothing() {
-    use crate::stack::core::{Hitbox, Hitboxes, Hitgroup};
+    use crate::stack::core::{BodyRegion, Hitbox, Hitboxes};
     let shoot = |offset: f32| {
         let mut sim = sim();
         let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
         let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 8.0, placeholder::ID);
         let behind = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 10.0, placeholder::ID);
         // An arm 0.4-0.6 m to the side (16-24 units): out of the hull.
-        let arm = Hitbox {
-            center: Vec3::new(0.5, 1.3, 0.0),
-            half: Vec3::new(0.1, 0.1, 0.1),
-            rotation: Quat::IDENTITY,
-            group: Hitgroup::RightArm,
-        };
+        let arm = Hitbox::cuboid(Vec3::new(0.5, 1.3, 0.0), Vec3::splat(0.1), Quat::IDENTITY, BodyRegion::RightUpperArm);
         sim.app.world_mut().entity_mut(target).insert(Hitboxes(vec![arm]));
         sim.intent(target).yaw = 0.0;
         sim.seconds(1.1);
@@ -1536,3 +1528,131 @@ fn hits_push_by_ammo_and_the_knife_deals_bullet_damage() {
         assert!((swing.force / UNIT - 300.0).abs() < 0.01, "{}", swing.force / UNIT);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Parity pin (docs/plans/active/generic-hits.md, step a)
+
+/// What CS:S's guns deal by hitgroup and armour, through the hitboxes
+/// path: four guns, one box of each hitgroup in turn 4 m ahead, no
+/// armour, kevlar, kevlar and a helmet (each shot on 100 fresh armour
+/// points). Each row: gun, hitgroup, armour (0 none, 1 kevlar, 2 kevlar
+/// and helmet), hit points lost, armour points left. The values are the
+/// code's before the generic hit path (2026-10-27, which matches
+/// weapons.md M6/M7): they must not change.
+#[test]
+fn parity_pin_damage_and_armour_by_hitgroup() {
+    use crate::stack::{
+        core::{BodyRegion, Hitbox, Hitboxes, Hitgroup},
+        games::cs_source::weapons::{AWP, DEAGLE, GLOCK},
+        weapon::{Armor, give},
+    };
+    let groups = [
+        Hitgroup::Head,
+        Hitgroup::Chest,
+        Hitgroup::Stomach,
+        Hitgroup::LeftArm,
+        Hitgroup::LeftLeg,
+    ];
+    let mut got = Vec::new();
+    for id in [AK47, GLOCK, DEAGLE, AWP] {
+        let mut sim = sim();
+        let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+        let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 4.0, placeholder::ID);
+        sim.ticks(1);
+        give(sim.app.world_mut(), shooter, id).unwrap();
+        sim.seconds(2.0);
+        for group in groups {
+            for armour in 0..3 {
+                let hitbox =
+                    Hitbox::cuboid(Vec3::new(0.0, 1.3, 0.0), Vec3::splat(0.5), Quat::IDENTITY, BodyRegion::from_hitgroup(group));
+                sim.app.world_mut().entity_mut(target).insert((
+                    Hitboxes(vec![hitbox]),
+                    Armor {
+                        amount: if armour > 0 { 1.0 } else { 0.0 },
+                        helmet: armour == 2,
+                    },
+                    Health { current: 10.0, max: 10.0 },
+                ));
+                sim.intent(target).yaw = 0.0;
+                let at = sim.position(target) + Vec3::Y * (1.3 - 0.9);
+                aim_at(&mut sim, shooter, at);
+                sim.intent(shooter).fire = true;
+                sim.ticks(1);
+                sim.intent(shooter).fire = false;
+                sim.ticks(1);
+                let lost = ((10.0 - health(&sim, target)) * 100.0).round() as i32;
+                let left = (sim.app.world().get::<Armor>(target).unwrap().amount * 100.0).round() as i32;
+                got.push(format!("{id} {group:?} {armour}: {lost} {left}"));
+                sim.seconds(2.0);
+            }
+        }
+    }
+    let want: Vec<&str> = PARITY_PIN.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    assert_eq!(got, want, "\n{}", got.join("\n"));
+}
+
+/// Two rows are misses, as the spread fell (the Deagle on the stomach
+/// with kevlar, the unscoped AWP on the arm with armour): deterministic
+/// all the same.
+const PARITY_PIN: &str = "
+    cs_source:weapon_ak47 Head 0: 143 0
+    cs_source:weapon_ak47 Head 1: 143 100
+    cs_source:weapon_ak47 Head 2: 110 83
+    cs_source:weapon_ak47 Chest 0: 35 0
+    cs_source:weapon_ak47 Chest 1: 27 95
+    cs_source:weapon_ak47 Chest 2: 27 95
+    cs_source:weapon_ak47 Stomach 0: 44 0
+    cs_source:weapon_ak47 Stomach 1: 34 94
+    cs_source:weapon_ak47 Stomach 2: 34 94
+    cs_source:weapon_ak47 LeftArm 0: 35 0
+    cs_source:weapon_ak47 LeftArm 1: 27 95
+    cs_source:weapon_ak47 LeftArm 2: 27 95
+    cs_source:weapon_ak47 LeftLeg 0: 26 0
+    cs_source:weapon_ak47 LeftLeg 1: 26 100
+    cs_source:weapon_ak47 LeftLeg 2: 26 100
+    cs_source:weapon_glock Head 0: 92 0
+    cs_source:weapon_glock Head 1: 92 100
+    cs_source:weapon_glock Head 2: 48 78
+    cs_source:weapon_glock Chest 0: 23 0
+    cs_source:weapon_glock Chest 1: 12 94
+    cs_source:weapon_glock Chest 2: 12 94
+    cs_source:weapon_glock Stomach 0: 28 0
+    cs_source:weapon_glock Stomach 1: 15 93
+    cs_source:weapon_glock Stomach 2: 15 93
+    cs_source:weapon_glock LeftArm 0: 23 0
+    cs_source:weapon_glock LeftArm 1: 12 94
+    cs_source:weapon_glock LeftArm 2: 12 94
+    cs_source:weapon_glock LeftLeg 0: 17 0
+    cs_source:weapon_glock LeftLeg 1: 17 100
+    cs_source:weapon_glock LeftLeg 2: 17 100
+    cs_source:weapon_deagle Head 0: 203 0
+    cs_source:weapon_deagle Head 1: 203 100
+    cs_source:weapon_deagle Head 2: 152 74
+    cs_source:weapon_deagle Chest 0: 50 0
+    cs_source:weapon_deagle Chest 1: 38 93
+    cs_source:weapon_deagle Chest 2: 38 93
+    cs_source:weapon_deagle Stomach 0: 63 0
+    cs_source:weapon_deagle Stomach 1: 0 100
+    cs_source:weapon_deagle Stomach 2: 47 92
+    cs_source:weapon_deagle LeftArm 0: 50 0
+    cs_source:weapon_deagle LeftArm 1: 38 93
+    cs_source:weapon_deagle LeftArm 2: 38 93
+    cs_source:weapon_deagle LeftLeg 0: 38 0
+    cs_source:weapon_deagle LeftLeg 1: 38 100
+    cs_source:weapon_deagle LeftLeg 2: 38 100
+    cs_source:weapon_awp Head 0: 458 0
+    cs_source:weapon_awp Head 1: 458 100
+    cs_source:weapon_awp Head 2: 447 94
+    cs_source:weapon_awp Chest 0: 114 0
+    cs_source:weapon_awp Chest 1: 111 98
+    cs_source:weapon_awp Chest 2: 111 98
+    cs_source:weapon_awp Stomach 0: 143 0
+    cs_source:weapon_awp Stomach 1: 139 98
+    cs_source:weapon_awp Stomach 2: 139 98
+    cs_source:weapon_awp LeftArm 0: 114 0
+    cs_source:weapon_awp LeftArm 1: 0 100
+    cs_source:weapon_awp LeftArm 2: 0 100
+    cs_source:weapon_awp LeftLeg 0: 86 0
+    cs_source:weapon_awp LeftLeg 1: 86 100
+    cs_source:weapon_awp LeftLeg 2: 86 100
+";

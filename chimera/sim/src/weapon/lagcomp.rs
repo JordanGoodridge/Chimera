@@ -311,12 +311,7 @@ fn lerp(entity: Entity, a: &HitFrame, b: &HitFrame, f: f32) -> Rewound {
         (Some(x), Some(y)) if f > 0.0 && x.len() == y.len() && !Arc::ptr_eq(x, y) => Some(Arc::new(
             x.iter()
                 .zip(y.iter())
-                .map(|(p, q)| Hitbox {
-                    center: p.center.lerp(q.center, f),
-                    half: p.half.lerp(q.half, f),
-                    rotation: p.rotation.slerp(q.rotation, f),
-                    group: p.group,
-                })
+                .map(|(p, q)| p.lerp(q, f))
                 .collect(),
         )),
         (x, _) => x.clone(),

@@ -127,7 +127,15 @@
 //! each sphere on its node or socket of the posed skeleton: a body
 //! model's own pose (`characters::CaPose`, `posed_geometry`), else the
 //! spec's measured skeleton crouched by the box's height and pitched by
-//! the look (`geometry_at`).
+//! the look (`geometry_at`). Those spheres are Chimera's hit shapes
+//! (`sphere_shapes`: `core::Hitbox` spheres with region, priority and zone
+//! factor) and the tests above are the shapes' own (`Hitboxes::by_power`,
+//! `by_priority`), so the same rules hit another game's body through its
+//! `core::Hitboxes` (a character of another identity that has them,
+//! rewound with lag compensation: `body_shapes`; a CS:S body's boxes), its
+//! zone factor by region then (`zone_factor`, the male skeleton's) and its
+//! armour location by part (`location_of`;
+//! docs/plans/active/generic-hits.md).
 //!
 //! Units: the data's (world units, hit points; `units` in each document).
 //!
@@ -1128,6 +1136,32 @@ pub struct HitSphere {
 
 use Location::{Arm, Groin, Head, Leg, Torso};
 
+impl HitSphere {
+    /// Its body region (`core::BodyRegion`, docs/plans/active/generic-hits.md):
+    /// by location, the side by where it sits (`at.x`, as hits report it),
+    /// the limb's part by its node's name (`*hand*`; `*arml*` the forearm;
+    /// `*foot*`, `*toe*`; `*legl*` the shin; the rest of a limb, the
+    /// pelvis spheres too, upper arm or thigh); the torso spheres chest
+    /// but the neck (its hitgroup is the chest either way).
+    pub fn region(&self) -> crate::core::BodyRegion {
+        use crate::core::BodyRegion as R;
+        let n = self.name.to_ascii_lowercase();
+        let side = |l, r| if self.at.x < 0.0 { l } else { r };
+        match self.location {
+            Head => R::Head,
+            Groin => R::Groin,
+            Torso if n.contains("neck") => R::Neck,
+            Torso => R::Chest,
+            Arm if n.contains("hand") => side(R::LeftHand, R::RightHand),
+            Arm if n.contains("arml") => side(R::LeftForearm, R::RightForearm),
+            Arm => side(R::LeftUpperArm, R::RightUpperArm),
+            Leg if n.contains("foot") || n.contains("toe") => side(R::LeftFoot, R::RightFoot),
+            Leg if n.contains("legl") => side(R::LeftShin, R::RightShin),
+            Leg => side(R::LeftThigh, R::RightThigh),
+        }
+    }
+}
+
 /// Skeleton `index`'s hit table from data/characters.toml.
 fn hit_table(index: usize) -> &'static [HitSphere] {
     let skel = characters::records::builtin().skeleton(index);
@@ -1774,9 +1808,8 @@ struct Body {
     /// Its body's forward and right (the legs': Corrections 6).
     forward: Vec3,
     right: Vec3,
-    /// World spheres (centre, radius) and their data.
-    spheres: Vec<(Vec3, f32)>,
-    data: &'static [HitSphere],
+    /// Its hit shapes in the world (`body_shapes`).
+    shapes: crate::core::Hitboxes,
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
@@ -1793,7 +1826,11 @@ struct Delivery<'w, 's> {
             &'static Health,
             Option<&'static ColliderAabb>,
             Option<&'static HitSpheres>,
-            Option<&'static characters::CaPose>,
+            (
+                Option<&'static characters::CaPose>,
+                Option<&'static crate::core::Hitboxes>,
+                Option<&'static crate::slots::GameIdentity>,
+            ),
         ),
     >,
     armor: Query<'w, 's, &'static mut CaArmor>,
@@ -1892,13 +1929,30 @@ impl Delivery<'_, '_> {
         self.characters
             .iter()
             .filter(|(e, .., h, _, _, _)| *e != owner && h.current > 0.0)
-            .filter_map(|(entity, t, intent, state, _, aabb, spheres, pose)| {
+            .filter_map(|(entity, t, intent, state, _, aabb, spheres, (pose, boxes, identity))| {
                 let data = spheres.map_or(*MALE, |s| s.0);
+                let rewound = rewound.iter().find(|r| r.entity == entity);
+                // Another game's body with its own hitboxes (then, when
+                // rewound): those, as its game made them.
+                let theirs = if crate::slots::GameIdentity::allows(identity, super::GAME) {
+                    None
+                } else {
+                    match rewound {
+                        Some(r) => r.hitboxes.as_ref().map(|h| {
+                            let (feet, _) = r.frame();
+                            body_shapes(&h[..], feet, Quat::from_rotation_y(r.yaw))
+                        }),
+                        None => boxes.map(|h| {
+                            let feet = aabb.map_or(t.translation, |b| t.translation.with_y(b.min.y));
+                            body_shapes(&h.0, feet, intent.yaw_rotation())
+                        }),
+                    }
+                };
                 // The body's twist from its view (the legs lag the mouse).
                 let twist = yaws.get(&entity).map_or(0.0, |b| wrap_angle(b - intent.yaw));
                 // A body model's own pose; else the spec's skeleton.
                 let modelled = pose.filter(|p| p.modelled && p.skeleton == data.first().map_or(0, |s| s.skeleton));
-                let (origin, min, max, spheres, body) = match rewound.iter().find(|r| r.entity == entity) {
+                let (origin, min, max, spheres, body) = match rewound {
                     Some(r) => {
                         let b = r.aabb();
                         let turn = Quat::from_rotation_y(r.yaw);
@@ -1924,8 +1978,7 @@ impl Delivery<'_, '_> {
                     max,
                     forward: turn * Vec3::NEG_Z,
                     right: turn * Vec3::X,
-                    spheres,
-                    data,
+                    shapes: theirs.unwrap_or_else(|| sphere_shapes(data, &spheres)),
                 })
             })
             .collect()
@@ -1978,6 +2031,60 @@ impl Delivery<'_, '_> {
 /// its weapon's spread keeps it (`CaSpread::body_yaw`; none: the view's).
 pub fn body_yaw(view: f32, kept: Option<f32>) -> f32 {
     kept.unwrap_or(view)
+}
+
+/// A Combat Arms body's hit spheres (`data`, at `spheres`: world centres
+/// and radii) as Chimera's hit shapes (`core::Hitbox`): each sphere's
+/// region (`HitSphere::region`), `Node#Priority` and zone factor (the
+/// body's own scale).
+pub fn sphere_shapes(data: &[HitSphere], spheres: &[(Vec3, f32)]) -> crate::core::Hitboxes {
+    crate::core::Hitboxes(
+        data.iter()
+            .zip(spheres)
+            .map(|(s, (c, r))| crate::core::Hitbox {
+                priority: s.priority,
+                scale: Some(s.factor),
+                ..crate::core::Hitbox::sphere(*c, *r, s.region())
+            })
+            .collect(),
+    )
+}
+
+/// Another game's body's hitboxes (character space: `local`) in the
+/// world, its feet at `feet` and turned by `turn`.
+pub fn body_shapes(local: &[crate::core::Hitbox], feet: Vec3, turn: Quat) -> crate::core::Hitboxes {
+    crate::core::Hitboxes(
+        local
+            .iter()
+            .map(|h| crate::core::Hitbox {
+                center: feet + turn * h.center,
+                rotation: turn * h.rotation,
+                ..*h
+            })
+            .collect(),
+    )
+}
+
+/// Combat Arms' zone factor for a region of a body that gives none of its
+/// own (another game's: its hitboxes have no scale): the male skeleton's
+/// first sphere of that region (data/characters.toml), else of its
+/// hitgroup's region, else 1.
+pub fn zone_factor(region: crate::core::BodyRegion) -> f32 {
+    let of = |r: crate::core::BodyRegion| MALE.iter().find(|s| s.radius > 0.0 && s.region() == r).map(|s| s.factor);
+    of(region)
+        .or_else(|| of(crate::core::BodyRegion::from_hitgroup(region.hitgroup())))
+        .unwrap_or(1.0)
+}
+
+/// A region's armour location (`BodyPart`'s, Combat Arms' five).
+pub fn location_of(region: crate::core::BodyRegion) -> Location {
+    match region.part() {
+        crate::core::BodyPart::Head => Head,
+        crate::core::BodyPart::Torso => Torso,
+        crate::core::BodyPart::Arm => Arm,
+        crate::core::BodyPart::Leg => Leg,
+        crate::core::BodyPart::Groin => Groin,
+    }
 }
 
 /// A character's box (world min, max: its movement's hull, else its
@@ -2563,7 +2670,7 @@ fn client_test(w: &mut Delivery, r: &Round, dir: Vec3, range: f32, bodies: &[Bod
         if best.is_some_and(|(bt, ..)| bt <= t) {
             continue;
         }
-        let Some(si) = pick_sphere(&b.spheres, from, end) else {
+        let Some(si) = b.shapes.by_power(from, end) else {
             continue;
         };
         best = Some((t, bi, si));
@@ -2594,7 +2701,7 @@ fn client_test(w: &mut Delivery, r: &Round, dir: Vec3, range: f32, bodies: &[Bod
     };
     let b = &bodies[bi];
     // The plain test: what it meets first.
-    let plain = |o: &Body| box_entry(o.min, o.max, from, dir, wall).filter(|_| pick_sphere(&o.spheres, from, end).is_some());
+    let plain = |o: &Body| box_entry(o.min, o.max, from, dir, wall).filter(|_| o.shapes.by_power(from, end).is_some());
     let own = plain(b);
     let other = bodies
         .iter()
@@ -2735,7 +2842,7 @@ fn server_walk(w: &mut Delivery, dmg: &CaDamage, r: &Round, walk: Walk, bodies: 
                 from = at;
                 continue;
             }
-            let Some(si) = priority_sphere(&b.spheres, b.data, at, dir) else {
+            let Some(si) = b.shapes.by_priority(at, dir) else {
                 // The line passes it: on, 5 units past its entry.
                 skip.push(b.entity);
                 let step = SERVER_SKIP * unit;
@@ -2852,17 +2959,14 @@ fn hurt(
     dir: Vec3,
     out: &mut Vec<WeaponEvent>,
 ) {
-    let sphere = b.data[si];
+    // The shape hit: its region (its hitgroup, armour location) and zone
+    // factor (the body's own, Combat Arms' spheres'; else by region).
+    let shape = b.shapes.0[si];
+    let location = location_of(shape.region);
+    let factor = shape.scale.unwrap_or_else(|| zone_factor(shape.region));
     // Hit points from here on (armour points are).
     let hp = 0.01;
-    let side = |l, r| if sphere.at.x < 0.0 { l } else { r };
-    let hitgroup = match sphere.location {
-        Head => Hitgroup::Head,
-        Torso => Hitgroup::Chest,
-        Groin => Hitgroup::Stomach,
-        Arm => side(Hitgroup::LeftArm, Hitgroup::RightArm),
-        Leg => side(Hitgroup::LeftLeg, Hitgroup::RightLeg),
-    };
+    let hitgroup = shape.region.hitgroup();
     let mut damage = Damage {
         target: b.entity,
         attacker: Some(r.owner),
@@ -2912,8 +3016,8 @@ fn hurt(
     let armor = w.armor.get_mut(b.entity).ok();
     let hit = ArmourHit {
         damage_type: dmg.damage_type,
-        location: sphere.location,
-        zone: if w.mercs.contains(r.owner) { 1.0 } else { sphere.factor },
+        location,
+        zone: if w.mercs.contains(r.owner) { 1.0 } else { factor },
         infected,
     };
     let after = armour_and_zone(d * ff / hp, hit, armor.map(|a| a.into_inner()), lands);
