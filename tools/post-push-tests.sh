@@ -47,9 +47,8 @@ fi
 git -C "$dir" reset --quiet --hard && git -C "$dir" clean -fdq && git -C "$dir" checkout --quiet --detach "$sha" || exit 2
 cd "$dir" || exit 2
 # shellcheck source=/dev/null
-set +u  # agent-env.sh reads unset variables
+set +u  # agent-env.sh and its agent_run read unset variables
 . tools/agent-env.sh
-set -u
 ln -sf "$sha.log" "$out/last.log"
 : >"$log"
 
