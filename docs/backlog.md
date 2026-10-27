@@ -27,13 +27,13 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
-- **CS:S characters always draw a low LOD.** Seen on bots coming close
-  and on your own body in third person: they never switch to the
-  detailed level. Suspect the level picked at spawn never updates for
-  bodies, or every body starts on a low level (skinned LOD landed
-  2026-10-25 in `render/bodies.rs`/`render/lod.rs`; check `switch_lods`
-  reaches body entities and the bind-pose bounds give the right screen
-  size).
+- **CS:S characters: LOD disabled, find why levels drew low.** Bodies
+  drew a low level even up close (2026-10-25 playtest). The present
+  side is fine (`prop_lods::character_bodies_draw_the_finest_level_up_close`
+  passes: LOD 0 close, lower far), so the data is suspect: the player
+  models' `.vtx` switch points or `lod_models`/`align_lod` for them.
+  `load_character` (games/cs_source/src/game/props.rs) loads no lower
+  levels for now; measure the switch points and bounds, then restore.
 - **Double reload, still.** Empty the magazine, reload: after the reload
   finishes, a second reload animation sometimes plays. Intermittent;
   trigger unknown (seen before on Combat Arms; check both games' guns and
