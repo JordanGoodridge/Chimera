@@ -42,7 +42,7 @@
 //! After the pose (`hitboxes`) a Combat Arms character's spheres are also
 //! Chimera's hitboxes (`core::Hitboxes`, marked `CaHitboxes`: spheres with
 //! their region, `Node#Priority` and zone factor as the body's own scale;
-//! docs/plans/active/generic-hits.md), so other games' guns hit the
+//! docs/DESIGN.md "Hits across games"), so other games' guns hit the
 //! drawn body by region.
 //!
 //! A character whose identity is another game's (`slots::GameIdentity`:
@@ -1257,7 +1257,7 @@ mod visibility_tests {
     }
 }
 
-/// Combat Arms' bodies as Chimera's hitboxes (docs/plans/active/generic-hits.md),
+/// Combat Arms' bodies as Chimera's hitboxes (docs/DESIGN.md "Hits across games"),
 /// so other games' guns hit the drawn body by region: after the pose,
 /// every hit sphere of a Combat Arms character's table where its own
 /// guns test it (`weapons::body_geometry`, a body model's pose by

@@ -16,7 +16,7 @@ use combat_arms::game::{
         escort::{self, CaEscort, VipEntry, choose_vip, rounds_to_swap, swap_period},
         objects::{EscapeZone, NamedPoint},
     },
-    weapons::{CaArmor, RIFLE},
+    weapons::{RIFLE},
 };
 
 use crate::mode_kit::*;
@@ -152,7 +152,7 @@ fn case_22_vip_loadout() {
     sim.ticks(3);
     assert_eq!(weapons(&sim, v), vec!["combat_arms:beretta_m92fs"]);
     assert_eq!(health(&sim, v), 1.0);
-    assert_eq!(sim.app.world().get::<CaArmor>(v).unwrap().points, 100.0);
+    assert_eq!(sim.app.world().get::<chimera_sim::weapon::Armor>(v).map(combat_arms::game::weapons::points).unwrap(), 100.0);
     assert_eq!(sim.app.world().get::<VipMovement>(v).unwrap().penalty, 0.44);
     assert!(sim.app.world().get::<NoPickups>(v).is_some());
     sim.intent(v).move_axis = Vec2::Y;

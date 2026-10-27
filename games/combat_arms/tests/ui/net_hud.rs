@@ -14,7 +14,7 @@ use chimera_net::{harness::NetSim, net::memory::LinkConditions};
 use chimera_sim::weapon::{Inventory, Magazine};
 use chimera_world::greybox::GreyboxMapPlugin;
 use combat_arms::{
-    game::{TICK_INTERVAL, weapons::CaArmor},
+    game::TICK_INTERVAL,
     harness::CaSim,
     ui::hud::{CaHud, CaHudStatePlugin, HudMemory},
 };
@@ -76,7 +76,7 @@ fn hits_damage_and_armour_come_from_the_server() {
     let (indicated, hurt) = (indicated.expect("client 0's hit indicator lit"), hurt.expect("the server hurt client 1"));
     assert!(indicated < hurt, "lit by the client's own shot test ({indicated}) before the server's hit ({hurt})");
     assert!(felt, "client 1's damage feedback from the server's report");
-    let points = w1.get::<CaArmor>(me1).unwrap().points;
+    let points = w1.get::<chimera_sim::weapon::Armor>(me1).map(combat_arms::game::weapons::points).unwrap();
     assert!(points < 100.0);
     let shown = w1.resource::<CaHud>().status.clone().expect("client 1's status block");
     assert_eq!(shown.ap, (points.max(0.0) as u32).to_string(), "the server's armour shown");

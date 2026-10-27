@@ -148,7 +148,7 @@ fn both_games_bullets_push_a_physics_object() {
 }
 
 // ---------------------------------------------------------------------------
-// Hits across games (docs/plans/active/generic-hits.md)
+// Hits across games (docs/DESIGN.md "Hits across games")
 
 /// Every hit a weapon dealt: (target, hitgroup).
 #[derive(Resource, Default)]
@@ -286,4 +286,107 @@ fn a_combat_arms_gun_hits_a_cs_source_body_where_it_is_drawn() {
     assert_eq!(shot_at(&mut sim, a, b, chest), vec![G::Chest]);
     let shin = shape_at(&sim, b, R::RightShin);
     assert_eq!(shot_at(&mut sim, a, b, shin), vec![G::RightLeg]);
+}
+
+// ---------------------------------------------------------------------------
+// Armour across games: one `weapon::Armor` per character, covering by its
+// identity's game (CS:S's kevlar; Combat Arms' gear as `ArmorPieces`),
+// every gun through the shared step (`weapon::hits::absorb`).
+
+/// Health (hit points) and armour (points) `b` has.
+fn health_and_armour(sim: &Sim, b: Entity) -> (f32, f32) {
+    let w = sim.app.world();
+    let h = w.get::<chimera_core::core::Health>(b).unwrap().current * 100.0;
+    (h, w.get::<chimera_sim::weapon::Armor>(b).map_or(0.0, |a| a.amount * 100.0))
+}
+
+/// What one round at `b`'s first shape of `region` took: (health lost,
+/// armour lost), in points.
+fn round_on(sim: &mut Sim, a: Entity, b: Entity, region: chimera_core::core::BodyRegion) -> (f32, f32) {
+    let (h0, a0) = health_and_armour(sim, b);
+    let at = shape_at(sim, b, region);
+    assert!(!shot_at(sim, a, b, at).is_empty(), "the round hit");
+    let (h1, a1) = health_and_armour(sim, b);
+    (h0 - h1, a0 - a1)
+}
+
+#[test]
+fn cs_source_kevlar_takes_a_combat_arms_round_by_the_shared_rule() {
+    use chimera_core::core::BodyRegion as R;
+    // Combat Arms' M4A1 at a CS:S player wearing kevlar (bought: CS:S's
+    // armour, no Combat Arms gear on it).
+    let (mut sim, a, b) = duel(7, 6, Some(short_cs_body));
+    assert!(sim.app.world().get::<chimera_sim::weapon::ArmorPieces>(b).is_none(), "no Combat Arms gear on a CS:S player");
+    sim.app.world_mut().entity_mut(b).insert(chimera_sim::weapon::Armor { amount: 1.0, helmet: false });
+    // Kevlar covers half (ratio 1): health takes half the round, armour
+    // half the rest.
+    let (health, armour) = round_on(&mut sim, a, b, R::Chest);
+    assert!(health > 5.0, "{health}");
+    assert!((armour / health - 0.5).abs() < 0.01, "kevlar's split: health -{health}, armour -{armour}");
+    // A leg: kevlar doesn't cover it.
+    let (health, armour) = round_on(&mut sim, a, b, R::RightShin);
+    assert!(health > 5.0 && armour == 0.0, "health -{health}, armour -{armour}");
+}
+
+#[test]
+fn combat_arms_gear_takes_a_cs_source_round_by_the_shared_rule() {
+    use chimera_core::core::BodyRegion as R;
+    // CS:S's AK-47 (armour ratio 1.55) at a Combat Arms soldier: its
+    // default body gear (torso 0.15) and 100 points.
+    let (mut sim, a, b) = duel(6, 7, None);
+    let pieces = sim.app.world().get::<chimera_sim::weapon::ArmorPieces>(b).cloned().expect("Combat Arms' gear");
+    assert_eq!(pieces, combat_arms::game::weapons::pieces_of(&[combat_arms::game::weapons::DEFAULT_BODY_GEAR]));
+    // It blocks 0.15 x (2 - 1.55) of the round, all of it from the
+    // armour: health takes 0.9325, armour 0.0675 (health in whole points).
+    let (health, armour) = round_on(&mut sim, a, b, R::Chest);
+    assert!(health > 20.0, "{health}");
+    // (Health in whole points, what armour has left truncated: CS:S's
+    // quantum.)
+    let raw = (health / 0.9325, (health + 1.0) / 0.9325);
+    assert!(
+        armour >= raw.0 * 0.0675 - 1e-3 && armour <= raw.1 * 0.0675 + 1.0,
+        "the gear's split: health -{health}, armour -{armour}"
+    );
+    // The groin: not covered.
+    let (health, armour) = round_on(&mut sim, a, b, R::Groin);
+    assert!(health > 20.0 && armour == 0.0, "health -{health}, armour -{armour}");
+}
+
+#[test]
+fn armour_follows_the_identity_and_each_hud_shows_it() {
+    use combat_arms::ui::hud::CaHud;
+    use cs_source::ui::game_hud::{Part, PanelKind};
+    use crate::hud::{party_with_huds, swap_to};
+    let (mut sim, me, other) = party_with_huds();
+    // CS:S's HUD: its armour panel up, drawing the viewed player's `Armor`
+    // in points (headless there are no glyphs to read its digits back).
+    let cs_armour = |sim: &mut Sim| {
+        let w = sim.app.world_mut();
+        let up = w
+            .query::<(&Part, &Visibility)>()
+            .iter(w)
+            .any(|(p, v)| *p == Part::Panel(PanelKind::Armor) && *v != Visibility::Hidden);
+        let me = w.query_filtered::<Entity, With<chimera_core::core::LocalPlayer>>().single(w).unwrap();
+        up.then(|| w.get::<chimera_sim::weapon::Armor>(me).map_or(0.0, |a| a.amount * 100.0).round().to_string())
+    };
+    let ca_armour = |sim: &Sim| sim.app.world().resource::<CaHud>().status.as_ref().map(|s| s.ap.clone());
+    // CS:S players get no Combat Arms armour.
+    for e in [me, other] {
+        assert!(sim.app.world().get::<chimera_sim::weapon::Armor>(e).is_none(), "no armour given to a CS:S player");
+    }
+    // Kevlar bought: CS:S's HUD shows it.
+    sim.app.world_mut().entity_mut(me).insert(chimera_sim::weapon::Armor { amount: 0.5, helmet: false });
+    sim.ticks(2);
+    assert_eq!(cs_armour(&mut sim).as_deref(), Some("50"));
+    // Combat Arms' gun: the same armour, now covering as Combat Arms'
+    // gear, on Combat Arms' HUD.
+    swap_to(&mut sim, me, 1);
+    let w = sim.app.world();
+    assert_eq!(w.get::<chimera_sim::weapon::Armor>(me).map(|a| a.amount), Some(0.5), "the amount kept");
+    assert!(w.get::<chimera_sim::weapon::ArmorPieces>(me).is_some(), "Combat Arms' gear on");
+    assert_eq!(ca_armour(&sim).as_deref(), Some("50"));
+    // Back to CS:S: the gear off, kevlar again, CS:S's HUD.
+    swap_to(&mut sim, me, 2);
+    assert!(sim.app.world().get::<chimera_sim::weapon::ArmorPieces>(me).is_none(), "the gear off");
+    assert_eq!(cs_armour(&mut sim).as_deref(), Some("50"));
 }

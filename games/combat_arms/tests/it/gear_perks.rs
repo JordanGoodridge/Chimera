@@ -30,7 +30,7 @@ use combat_arms::{
         perks::{self, CaPerkBox, CaPerkEffects, CaPerkRng, CaPerkState, CaPerks, CaSupplyBox},
         rules::escort::CaVip,
         weapons::{
-            self as ca, ArmourHit, BULLET, BURN, CaArmor, CaSpread, FLASH, FireMode, Location, MELEE, POISON,
+            self as ca, ArmourHit, BULLET, BURN, CaSpread, FLASH, FireMode, Location, MELEE, POISON,
             armour_and_zone, gear_torso,
         },
     },
@@ -63,8 +63,25 @@ fn look(model: i32) -> Selection {
     Selection { model, ..default() }
 }
 
-fn armour_of(sim: &Sim, p: Entity) -> CaArmor {
-    sim.app.world().get::<CaArmor>(p).expect("armour").clone()
+/// A character's Combat Arms armour: Chimera's `Armor` and the gear's
+/// pieces, with its points and the pieces at hand.
+struct Worn {
+    armor: chimera_sim::weapon::Armor,
+    pieces: chimera_sim::weapon::ArmorPieces,
+    points: f32,
+    gear: Vec<chimera_sim::weapon::hits::ArmorPiece>,
+}
+
+fn armour_of(sim: &Sim, p: Entity) -> Worn {
+    let w = sim.app.world();
+    let armor = *w.get::<chimera_sim::weapon::Armor>(p).expect("armour");
+    let pieces = w.get::<chimera_sim::weapon::ArmorPieces>(p).cloned().unwrap_or_default();
+    Worn {
+        armor,
+        points: combat_arms::game::weapons::points(&armor),
+        gear: pieces.pieces.clone(),
+        pieces,
+    }
 }
 
 /// A hit of `d` hit points of damage type `ty` on `loc` (zone factor
@@ -78,14 +95,12 @@ fn hit(sim: &Sim, p: Entity, d: f32, ty: i32, loc: Location, zone: f32) -> (f32,
         zone,
         infected: false,
     };
-    let lost = armour_and_zone(d, h, Some(&mut armour), true);
-    (lost, armour.points)
+    let lost = armour_and_zone(d, h, Some(&mut armour.armor), Some(&armour.pieces), true);
+    (lost, combat_arms::game::weapons::points(&armour.armor))
 }
 
 fn set_armour(sim: &mut Sim, p: Entity, points: f32) {
-    let mut a = armour_of(sim, p);
-    a.points = points;
-    sim.app.world_mut().entity_mut(p).insert(a);
+    sim.app.world_mut().get_mut::<chimera_sim::weapon::Armor>(p).expect("armour").amount = points / 100.0;
 }
 
 #[track_caller]
@@ -1290,9 +1305,9 @@ fn net_loadout_reaches_the_server() {
     assert_eq!((l.fast_left, l.fast_max), (3, 3));
     assert!(server.get::<CaLoadout>(b).is_none_or(|l| *l == CaLoadout::default()));
     // The server's player wears the gear.
-    let armour = server.get::<CaArmor>(a).unwrap();
-    let plain = server.get::<CaArmor>(b).unwrap();
-    assert_ne!(armour.gear, plain.gear, "Heavy, helmet and goggles against the Normal vest");
+    let armour = server.get::<chimera_sim::weapon::ArmorPieces>(a).unwrap();
+    let plain = server.get::<chimera_sim::weapon::ArmorPieces>(b).unwrap();
+    assert_ne!(armour, plain, "Heavy, helmet and goggles against the Normal vest");
     assert_eq!(server.get::<CaPerks>(a).unwrap().list.len(), 2);
     // The speed limit the server and the predicting client compute.
     let server_char = server.get::<CaCharacter>(a).unwrap().clone();
@@ -1317,8 +1332,8 @@ fn net_loadout_reaches_the_server() {
     let me = sim.local_player(0).unwrap();
     assert!(sim.clients[0].app.world().get::<CaPerkEffects>(me).unwrap().free_stamina, "the client's");
     // And armour: the Heavy vest's piece reached the client.
-    let seen = sim.clients[0].app.world().get::<CaArmor>(me).unwrap();
-    assert_eq!(seen.gear, sim.server.app.world().get::<CaArmor>(a).unwrap().gear);
+    let seen = sim.clients[0].app.world().get::<chimera_sim::weapon::ArmorPieces>(me).unwrap();
+    assert_eq!(seen, sim.server.app.world().get::<chimera_sim::weapon::ArmorPieces>(a).unwrap());
 }
 
 // ---------------------------------------------------------------------------
@@ -1521,10 +1536,7 @@ fn a_respawn_refills_the_pool_and_the_pieces() {
     );
     let worn = armour_of(&sim, p).gear;
     assert_eq!(worn.len(), 4, "vest, helmet, goggle, mod");
-    sim.app.world_mut().entity_mut(p).insert(CaArmor {
-        points: 12.0,
-        gear: Vec::new(),
-    });
+    sim.app.world_mut().entity_mut(p).insert(combat_arms::game::weapons::gear_armour(12.0, &Vec::new()));
     combat_arms::game::rules::spawns::respawn(sim.app.world_mut(), p);
     sim.ticks(2);
     let a = armour_of(&sim, p);
@@ -1879,7 +1891,7 @@ fn c2_medikit_heals_and_repairs_to_full() {
     let (mut sim, b) = resourceful_kill(30.0, 60);
     assert_eq!(b[0].kind, perks::BoxKind::Medikit);
     let p = perk_player(&mut sim);
-    sim.app.world_mut().get_mut::<CaArmor>(p).unwrap().points = 20.0;
+    sim.app.world_mut().get_mut::<chimera_sim::weapon::Armor>(p).unwrap().amount = 20.0 / 100.0;
     place(&mut sim, p, Vec3::new(0.0, 1.0, 0.0));
     sim.ticks(3);
     near(sim.app.world().get::<Health>(p).unwrap().current, 1.0, "health");

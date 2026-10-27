@@ -29,7 +29,7 @@ use combat_arms::{
         TICK_INTERVAL,
         movement::{self, CaMovement},
         weapons::{
-            self as ca, CaArmor, CaKick, CaRecoil, CaSpin,
+            self as ca, CaKick, CaRecoil, CaSpin,
  CaSpread, CaZoom, FireMode, MALE, PelletCarryOver, SpinState,
             SpreadScales, reported_hits, zoom,
         },
@@ -328,10 +328,7 @@ fn player(sim: &mut Sim, at: Vec3, yaw: f32, health: f32) -> Entity {
             current: health,
             max: health,
         },
-        CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        },
+        combat_arms::game::weapons::gear_armour(0.0, &Vec::new()),
     ));
     p
 }

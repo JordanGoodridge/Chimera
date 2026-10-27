@@ -214,7 +214,7 @@ pub fn refill(world: &mut World, e: Entity) {
             m.reserve = m.reserve_max;
         }
     }
-    world.entity_mut(e).insert(super::super::weapons::CaArmor::default());
+    world.entity_mut(e).insert(super::super::weapons::default_armour());
 }
 
 /// The hunters win a time-out (and a round a leaver ended), clearing the

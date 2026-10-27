@@ -45,7 +45,10 @@
 //!   reported victim only) x the stepped range band at the reported point
 //!   (`band_scale`; beyond the last band: 1) x penetration dampening, an
 //!   AI's x `AIDamageFactor` (`CaAiDamage`, `AiHits`), then armour
-//!   (`CaArmor`: gear protection by damage type and location, the groin
+//!   (Chimera's `weapon::Armor`, its points, with the gear as
+//!   `weapon::ArmorPieces`: protection by damage type and location as
+//!   coverage, `Gear::coverage`, through the shared armour step
+//!   `weapon::hits::absorb`; the groin
 //!   unprotected but on an infected victim, armour points) and the
 //!   sphere's zone factor, an AI's hit on a player capped (50; 990 at
 //!   1000 or more; not melee: Corrections 7); the victim dies at 1 HP or
@@ -119,9 +122,10 @@
 //! state, the data's 3, 2 on a primary shotgun: Corrections 10); after
 //! it, each round is delivered with that cone, the recoil returns, the
 //! spread sub-steps run (the first one a firing one when a round left),
-//! then each round kicks the view. Every character gets the default armour
-//! (`CaArmor::default`: 100 points, the default body gear) when it first
-//! has health, and is hit through `HitSpheres`: its skeleton's hit table
+//! then each round kicks the view. Every Combat Arms character gets the
+//! default armour (`default_armour`: 100 points, the default body gear)
+//! when it first has health, its gear follows its game identity
+//! (`armour_follows_identity`: on Combat Arms' characters only), and is hit through `HitSpheres`: its skeleton's hit table
 //! (characters.md 11: `MALE`, `FEMALE` from data/characters.toml, set by
 //! `characters` from the body's skeleton; the male one when it has none),
 //! each sphere on its node or socket of the posed skeleton: a body
@@ -135,7 +139,7 @@
 //! rewound with lag compensation: `body_shapes`; a CS:S body's boxes), its
 //! zone factor by region then (`zone_factor`, the male skeleton's) and its
 //! armour location by part (`location_of`;
-//! docs/plans/active/generic-hits.md).
+//! docs/DESIGN.md "Hits across games").
 //!
 //! Units: the data's (world units, hit points; `units` in each document).
 //!
@@ -215,7 +219,8 @@ use crate::{
     map::{SurfaceNames, sound::SurfaceGrid},
     weapon::{
         AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, WeaponEvent,
-        WeaponEventKind, WeaponFrame, Zoom, aim_of,
+        Armor, ArmorPieces, WeaponEventKind, WeaponFrame, Zoom, aim_of,
+        hits,
         data::{WeaponData, WeaponDataAppExt},
         lagcomp::{self, HitHistory, LagCompSettings, LagCompStats, ViewTick},
         random::{Rng, shared_random},
@@ -1137,7 +1142,7 @@ pub struct HitSphere {
 use Location::{Arm, Groin, Head, Leg, Torso};
 
 impl HitSphere {
-    /// Its body region (`core::BodyRegion`, docs/plans/active/generic-hits.md):
+    /// Its body region (`core::BodyRegion`, docs/DESIGN.md "Hits across games"):
     /// by location, the side by where it sits (`at.x`, as hits report it),
     /// the limb's part by its node's name (`*hand*`; `*arml*` the forearm;
     /// `*foot*`, `*toe*`; `*legl*` the shin; the rest of a limb, the
@@ -1339,10 +1344,13 @@ pub fn gear(name: &str) -> Option<Gear> {
     GEARS.iter().find(|(n, _)| *n == name).map(|(_, g)| *g)
 }
 
-/// The sum of `gear`'s torso entries for `damage_type` (flash protection
-/// sums them, grenades.md section 10), before any clamp.
-pub fn gear_torso(gear: &[Gear], damage_type: i32) -> f32 {
-    gear.iter().filter_map(|g| g.against(damage_type)).map(|p| p.torso).sum()
+/// The sum of `pieces`' torso entries for `damage_type` (flash protection
+/// sums them, grenades.md section 10), before any clamp. Only entries
+/// made for that type count (not an every-class kit such as CS:S's
+/// kevlar, which is no `ArmorPieces`).
+pub fn gear_torso(pieces: &[hits::ArmorPiece], damage_type: i32) -> f32 {
+    let class = Some(class_of(damage_type));
+    pieces.iter().flat_map(|p| p.entries.iter()).filter(|e| e.class == class).map(|e| e.torso).sum()
 }
 
 impl Gear {
@@ -1387,24 +1395,24 @@ pub struct Protection {
     pub consumable: bool,
 }
 
-impl Protection {
-    /// The fraction on `location`; the groin isn't one of the protected
-    /// four.
-    fn at(&self, location: Location) -> f32 {
-        match location {
-            Head => self.head,
-            Torso => self.torso,
-            Arm => self.arm,
-            Leg => self.leg,
-            Groin => 0.0,
-        }
-    }
-}
-
 impl Gear {
-    /// The piece's first entry for `damage_type`.
-    fn against(&self, damage_type: i32) -> Option<&Protection> {
-        self.protects.iter().find(|p| p.damage_type == damage_type)
+    /// The piece as Chimera's armour coverage (`weapon::hits`): its first
+    /// entry per damage type, by class (`class_of`), the groin uncovered,
+    /// worn by what it blocks when consumable.
+    pub fn coverage(&self) -> impl Iterator<Item = hits::Coverage> + '_ {
+        self.protects
+            .iter()
+            .enumerate()
+            .filter(|(i, p)| self.protects[..*i].iter().all(|o| o.damage_type != p.damage_type))
+            .map(|(_, p)| hits::Coverage {
+                class: Some(class_of(p.damage_type)),
+                head: p.head,
+                torso: p.torso,
+                arm: p.arm,
+                leg: p.leg,
+                groin: 0.0,
+                wear: if p.consumable { 1.0 } else { 0.0 },
+            })
     }
 }
 
@@ -1462,22 +1470,36 @@ pub const GAS_MASK: Gear = Gear {
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ExactAim;
 
-/// A character's armour: points (AP, hit points) and gear worn. The
-/// server's; replicated to clients (`game::net`).
-#[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct CaArmor {
-    pub points: f32,
-    pub gear: Vec<Gear>,
+/// Combat Arms' armour: Chimera's `weapon::Armor` (its amount: the
+/// points, AP, over `HIT_POINTS`) with the gear worn as `ArmorPieces`
+/// (`pieces_of`). The server's; replicated to clients (`game::net`).
+pub fn gear_armour(points: f32, gear: &[Gear]) -> (Armor, ArmorPieces) {
+    (
+        Armor {
+            amount: points / HIT_POINTS,
+            helmet: false,
+        },
+        pieces_of(gear),
+    )
 }
 
-impl Default for CaArmor {
-    /// A model's `MaxArmor` 100 with the default body gear.
-    fn default() -> Self {
-        Self {
-            points: 100.0,
-            gear: vec![DEFAULT_BODY_GEAR],
-        }
+/// The gear worn as Chimera's armour pieces (`Gear::coverage`), running
+/// out by what they block.
+pub fn pieces_of(gear: &[Gear]) -> ArmorPieces {
+    ArmorPieces {
+        pieces: gear.iter().map(|g| hits::ArmorPiece { entries: g.coverage().collect() }).collect(),
+        depletion: hits::Depletion::Blocked,
     }
+}
+
+/// A model's `MaxArmor` 100 with the default body gear.
+pub fn default_armour() -> (Armor, ArmorPieces) {
+    gear_armour(100.0, &[DEFAULT_BODY_GEAR])
+}
+
+/// Armour points (AP) of `armor`.
+pub fn points(armor: &Armor) -> f32 {
+    armor.amount * HIT_POINTS
 }
 
 /// What the armour step needs of a hit.
@@ -1495,28 +1517,46 @@ pub struct ArmourHit {
 
 /// Damage `d` (hit points) of `hit` after armour: returns what health
 /// loses, and takes the armour's share. With `lands` false (a refused hit)
-/// the armour is left whole.
-pub fn armour_and_zone(d: f32, hit: ArmourHit, armor: Option<&mut CaArmor>, lands: bool) -> f32 {
+/// the armour is left whole. The shared armour step
+/// (`weapon::hits::absorb`, ratio 1, fractions kept, `Depletion::Blocked`)
+/// with the gear as coverage (`Gear::coverage`), then the zone factor.
+pub fn armour_and_zone(d: f32, hit: ArmourHit, armor: Option<&mut Armor>, pieces: Option<&ArmorPieces>, lands: bool) -> f32 {
     let zone = hit.zone;
     let Some(armor) = armor else { return (d * zone).max(0.0) };
     let location = if hit.infected && hit.location == Groin { Torso } else { hit.location };
-    let entries = || armor.gear.iter().filter_map(|g| g.against(hit.damage_type));
-    let p: f32 = entries().map(|e| e.at(location)).sum();
-    let consumable: f32 = entries().filter(|e| e.consumable).map(|e| e.at(location)).sum();
-    let blocked = d * p.clamp(0.0, 1.0);
-    let c = if p != 0.0 { consumable / p } else { 0.0 };
-    let ap = armor.points;
-    let out = if ap <= 0.0 {
-        d * zone
-    } else if ap - blocked > 0.0 || c <= 0.001 {
-        (d - blocked) * zone
-    } else {
-        (d - ap) * zone
-    };
-    if ap > 0.0 && lands {
-        armor.points = (ap - blocked * c).max(0.0);
+    let ap = points(armor);
+    let (entries, depletion) = crate::weapon::coverage(armor, pieces);
+    let a = hits::absorb(d, part_of(location), class_of(hit.damage_type), Some(1.0), 0.0, ap, entries, depletion);
+    if a.covered && lands {
+        armor.amount = (ap - a.taken).max(0.0) / HIT_POINTS;
     }
-    out.max(0.0)
+    (a.to_health * zone).max(0.0)
+}
+
+/// Chimera's damage class of a damage type (`InstDamageType`): bullet,
+/// burn, explosion (blast), poison, flash and melee as Chimera's, any
+/// other as a class of Combat Arms' own (`DamageClass::OWN` + the type).
+pub fn class_of(damage_type: i32) -> hits::DamageClass {
+    match damage_type {
+        BULLET => hits::DamageClass::BULLET,
+        BURN => hits::DamageClass::BURN,
+        EXPLOSION => hits::DamageClass::BLAST,
+        POISON => hits::DamageClass::POISON,
+        FLASH => hits::DamageClass::FLASH,
+        MELEE => hits::DamageClass::MELEE,
+        t => hits::DamageClass(hits::DamageClass::OWN.saturating_add(t.clamp(0, i32::from(u16::MAX)) as u16)),
+    }
+}
+
+/// An armour location as Chimera's body part.
+pub fn part_of(location: Location) -> crate::core::BodyPart {
+    match location {
+        Head => crate::core::BodyPart::Head,
+        Torso => crate::core::BodyPart::Torso,
+        Arm => crate::core::BodyPart::Arm,
+        Leg => crate::core::BodyPart::Leg,
+        Groin => crate::core::BodyPart::Groin,
+    }
 }
 
 /// Steps 1 to 4 of "Damage per ray" before penetration and the victim:
@@ -1695,7 +1735,7 @@ impl Plugin for CaWeaponsPlugin {
                 Predict::Select,
                 zoom::zoom_input.after(crate::weapon::SelectWeapons).after(apply_handling),
             )
-            .add_systems(FixedUpdate, give_armour.run_if(crate::core::authoritative))
+            .add_systems(FixedUpdate, armour_follows_identity.run_if(crate::core::authoritative))
             // In the predicted tick: a client replaying a switch moves
             // with the penalty of the weapon it held then.
             .add_systems(Predict::Select, apply_handling.after(crate::weapon::SelectWeapons))
@@ -1737,10 +1777,44 @@ impl NetPart for CaSpread {
     }
 }
 
-/// Characters get the default armour when they first have health.
-fn give_armour(new: Query<Entity, (With<Health>, With<Intent>, Without<CaArmor>)>, mut commands: Commands) {
-    for e in &new {
-        commands.entity(e).insert(CaArmor::default());
+/// Combat Arms' armour on its own characters only (`slots::
+/// GameIdentity::allows`; where identity follows the weapon, once it has
+/// one): one that first has health gets the default
+/// armour; one that becomes Combat Arms' (another game's armour, or none)
+/// puts on the default gear over the armour it has (its amount kept);
+/// one that becomes another game's takes the gear off (what covers it is
+/// then its armour's default kit: CS:S's kevlar). docs/DESIGN.md "Hits
+/// across games".
+#[allow(clippy::type_complexity)]
+fn armour_follows_identity(
+    characters: Query<
+        (Entity, Has<Armor>, Has<ArmorPieces>, Option<&crate::slots::GameIdentity>, Has<crate::slots::FollowsWeapon>),
+        (With<Health>, With<Intent>),
+    >,
+    minigame: Option<Res<chimera_sim::minigame::ActiveMinigame>>,
+    mut commands: Commands,
+) {
+    // A minigame whose players' identity follows their weapon: a player
+    // without one yet (before it is taken in, or holding nothing) isn't
+    // Combat Arms'.
+    let following = minigame.is_some_and(|m| m.def.slots.identity == Some(chimera_sim::minigame::def::IdentityDef::Weapon));
+    for (e, armor, pieces, identity, follows) in &characters {
+        if (follows || following) && identity.is_none() {
+            continue;
+        }
+        let ours = crate::slots::GameIdentity::allows(identity, super::GAME);
+        match (ours, armor, pieces) {
+            (true, false, _) => {
+                commands.entity(e).insert(default_armour());
+            }
+            (true, true, false) => {
+                commands.entity(e).insert(pieces_of(&[DEFAULT_BODY_GEAR]));
+            }
+            (false, _, true) => {
+                commands.entity(e).remove::<ArmorPieces>();
+            }
+            _ => {}
+        }
     }
 }
 
@@ -1833,7 +1907,7 @@ struct Delivery<'w, 's> {
             ),
         ),
     >,
-    armor: Query<'w, 's, &'static mut CaArmor>,
+    armor: Query<'w, 's, (&'static mut Armor, Option<&'static ArmorPieces>)>,
     infected: Query<'w, 's, (), With<super::movement::CaInfected>>,
     /// The bots, whose shots the server traces on its own pose.
     bots: Query<'w, 's, (), With<crate::core::Bot>>,
@@ -3013,14 +3087,16 @@ fn hurt(
     }
     let knock = dmg.mods.stun(SpecialKind::Knockback, victim, &mut draw).unwrap_or_default();
     let ff = w.friendly_scale(r.owner, b.entity);
-    let armor = w.armor.get_mut(b.entity).ok();
     let hit = ArmourHit {
         damage_type: dmg.damage_type,
         location,
         zone: if w.mercs.contains(r.owner) { 1.0 } else { factor },
         infected,
     };
-    let after = armour_and_zone(d * ff / hp, hit, armor.map(|a| a.into_inner()), lands);
+    let after = match w.armor.get_mut(b.entity) {
+        Ok((a, pieces)) => armour_and_zone(d * ff / hp, hit, Some(a.into_inner()), pieces, lands),
+        Err(_) => armour_and_zone(d * ff / hp, hit, None, None, lands),
+    };
     // An AI's hit on a player is capped (not melee).
     let points = w.ai.cap(Some(r.owner), b.entity, after, dmg.damage_type == MELEE) * hp;
     // An infected victim hit by the other team is knocked back (movement.md,

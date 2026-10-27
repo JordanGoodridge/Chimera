@@ -1530,7 +1530,7 @@ fn hits_push_by_ammo_and_the_knife_deals_bullet_damage() {
 }
 
 // ---------------------------------------------------------------------------
-// Parity pin (docs/plans/active/generic-hits.md, step a)
+// Parity pin (docs/DESIGN.md "Hits across games")
 
 /// What CS:S's guns deal by hitgroup and armour, through the hitboxes
 /// path: four guns, one box of each hitgroup in turn 4 m ahead, no

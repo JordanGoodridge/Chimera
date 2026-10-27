@@ -18,7 +18,7 @@
 //! (takes `Damage` without `Health`: breakables), `Hitgroup` and the
 //! finer `BodyRegion` (with `BodyPart`, what armour covers), `Hitbox`/`Hitboxes`
 //! (boxes or spheres with their region, and the shape queries every gun's
-//! rule uses: docs/plans/active/generic-hits.md), physics layers (`RAGDOLL_LAYER`, also prop pieces;
+//! rule uses: docs/DESIGN.md "Hits across games"), physics layers (`RAGDOLL_LAYER`, also prop pieces;
 //! `ITEM_LAYER` for loose items, which slide on their own copy of the
 //! displacement mesh with its internal edges fixed (`ITEM_GROUND_LAYER`);
 //! gameplay queries mask with `SOLID_LAYERS`, characters' bodies and movement
@@ -365,7 +365,7 @@ pub enum Hitgroup {
 }
 
 /// Where on a body a hit landed: Chimera's body regions, the superset of
-/// what the games tell apart (docs/plans/active/generic-hits.md). Source's
+/// what the games tell apart (docs/DESIGN.md "Hits across games"). Source's
 /// hitgroups are the coarse view (`hitgroup`), Combat Arms' locations
 /// (`BodyPart`) the armour's; a game that tells fewer apart maps onto
 /// these (`from_hitgroup`).
@@ -828,7 +828,7 @@ pub struct Damageable;
 /// Combat Arms' server walk ranks shapes by and the body's own damage
 /// factor for it (`scale`: Combat Arms' zone factor; guns whose damage
 /// table says so use it). The body's game converts its own format into
-/// these (docs/plans/active/generic-hits.md); every gun's rule works on
+/// these (docs/DESIGN.md "Hits across games"); every gun's rule works on
 /// either shape.
 #[derive(Clone, Copy, Debug, PartialEq, Reflect)]
 pub struct Hitbox {

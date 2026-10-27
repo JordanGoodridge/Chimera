@@ -151,7 +151,7 @@ use super::{
     inventory::{CaSelection, UNIT},
     volumes::{CaVolume, LIQUID_GRAVITY},
     weapons::{
-        ArmourHit, BURN, CaArmor, CaSpread, EXPLOSION, FLASH, HitSpheres, Location, MALE, POISON, armour_and_zone,
+        ArmourHit, BURN, CaSpread, EXPLOSION, FLASH, HitSpheres, Location, MALE, POISON, armour_and_zone,
         body_geometry, box_entry, gear_torso, square_dir,
     },
 };
@@ -422,7 +422,7 @@ impl CaGrenadeSurfaces {
     }
 }
 
-/// Flash protection a victim has beyond its gear's (`CaArmor`'s flash
+/// Flash protection a victim has beyond its gear's (`weapon::ArmorPieces`' flash
 /// entries, summed with this; set items, tests).
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct CaFlashProtection(pub f32);
@@ -1296,7 +1296,7 @@ pub(crate) struct Out<'w, 's> {
     pub(crate) detonated: MessageWriter<'w, Detonated>,
     pub(crate) blast_surface: MessageWriter<'w, CaBlastSurface>,
     pub(crate) rules: DamageRules<'w, 's>,
-    pub(crate) armour: Query<'w, 's, &'static mut CaArmor>,
+    pub(crate) armour: Query<'w, 's, (&'static mut crate::weapon::Armor, Option<&'static crate::weapon::ArmorPieces>)>,
     pub(crate) effects: ResMut<'w, CaGrenadeEffects>,
     pub(crate) commands: Commands<'w, 's>,
     pub(crate) ai: super::weapons::AiHits<'w, 's>,
@@ -1357,8 +1357,10 @@ impl Out<'_, '_> {
             zone: 1.0,
             infected: false,
         };
-        let armour = self.armour.get_mut(victim).ok().map(|a| a.into_inner());
-        let after = armour_and_zone(amount / hp, hit, armour, lands);
+        let after = match self.armour.get_mut(victim) {
+            Ok((a, pieces)) => armour_and_zone(amount / hp, hit, Some(a.into_inner()), pieces, lands),
+            Err(_) => armour_and_zone(amount / hp, hit, None, None, lands),
+        };
         self.ai.cap(attacker, victim, after, false) * hp
     }
 
@@ -1985,7 +1987,7 @@ fn flash(f: &mut Frame, g: &CaGrenade, at: Vec3, world: &GrenadeWorld, out: &mut
             continue;
         }
         // The gear's torso flash entries summed, with any other protection.
-        let gear = out.armour.get(b.entity).map_or(0.0, |a| gear_torso(&a.gear, FLASH));
+        let gear = out.armour.get(b.entity).ok().and_then(|(_, p)| p).map_or(0.0, |p| gear_torso(&p.pieces, FLASH));
         let protection = (gear + b.flash_protection).clamp(0.0, 1.0);
         let amount = p.area_damage * falloff(r, d) * (1.0 - protection);
         if amount <= FLASH_MIN_AMOUNT {

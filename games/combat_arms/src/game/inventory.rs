@@ -129,7 +129,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     movement::CaInfected,
     weapons::{
-        ArmourHit, CaArmor, HitSpheres, Location, MALE, MELEE as MELEE_DAMAGE, RIFLE, armour_and_zone, body_geometry,
+        ArmourHit, HitSpheres, Location, MALE, MELEE as MELEE_DAMAGE, RIFLE, armour_and_zone, body_geometry,
         pick_sphere, square_dir,
     },
 };
@@ -961,7 +961,7 @@ fn swing_knives(
     spreads: Query<&super::weapons::CaSpread>,
     ai: super::weapons::AiHits,
     bodies: Query<(&Transform, &Intent, &MovementState, Option<&ColliderAabb>, Option<&HitSpheres>)>,
-    mut armour: Query<&mut CaArmor>,
+    mut armour: Query<(&mut crate::weapon::Armor, Option<&crate::weapon::ArmorPieces>)>,
     infected: Query<(), With<CaInfected>>,
     colliders: Query<&ColliderOf>,
     spatial: SpatialQuery,
@@ -1086,7 +1086,10 @@ fn swing_knives(
                     // An AI's knife x `AIDamageFactor` (weapon_firing.md
                     // Corrections 7; melee: no cap).
                     let points = attack.damage * u * b / HP * ai.factor(Some(owner));
-                    let amount = armour_and_zone(points, hit, armour.get_mut(target).ok().map(|a| a.into_inner()), true) * HP;
+                    let amount = match armour.get_mut(target) {
+                        Ok((a, pieces)) => armour_and_zone(points, hit, Some(a.into_inner()), pieces, true),
+                        Err(_) => armour_and_zone(points, hit, None, None, true),
+                    } * HP;
 
                     let side = |l, r| if sphere.is_some_and(|s| s.at.x < 0.0) { l } else { r };
                     let hitgroup = match sphere.map(|s| s.location) {

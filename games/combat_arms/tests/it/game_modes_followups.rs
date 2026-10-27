@@ -18,7 +18,7 @@ use combat_arms::game::{
         objects::{self, ObjBox},
         quarantine, seize, spawns,
     },
-    weapons::{self as ca, CaArmor, MALE},
+    weapons::{self as ca, MALE},
 };
 
 use crate::mode_kit::*;
@@ -238,7 +238,7 @@ fn case_73_spy_hunt_stage_two() {
     let w = sim.app.world().get::<Inventory>(p[0]).unwrap().active.unwrap();
     sim.app.world_mut().get_mut::<Magazine>(w).unwrap().clip = 0;
     sim.app.world_mut().get_mut::<Health>(p[0]).unwrap().current = 0.3;
-    sim.app.world_mut().get_mut::<CaArmor>(p[0]).unwrap().points = 0.0;
+    sim.app.world_mut().get_mut::<chimera_sim::weapon::Armor>(p[0]).unwrap().amount = 0.0 / 100.0;
     hold_at(&mut sim, p[1], intel, 0.1);
     let t = now(&sim);
     assert_eq!(objectives(&sim).stage, 2);
@@ -249,7 +249,7 @@ fn case_73_spy_hunt_stage_two() {
     assert_eq!(health(&sim, p[0]), 1.0);
     let mag = sim.app.world().get::<Magazine>(w).unwrap();
     assert_eq!((mag.clip, mag.reserve), (mag.size, mag.reserve_max));
-    assert!(sim.app.world().get::<CaArmor>(p[0]).unwrap().points > 0.0, "armour back");
+    assert!(sim.app.world().get::<chimera_sim::weapon::Armor>(p[0]).map(combat_arms::game::weapons::points).unwrap() > 0.0, "armour back");
     assert!(!dead(&sim, p[2]), "the dead respawned");
     sim.seconds(5.1);
     assert!(objectives(&sim).camera_until.is_none());
@@ -379,14 +379,14 @@ fn round_at(sim: &mut Sim, shooter: Entity, target: Entity) -> (f32, f32) {
         i.pitch = d.y.atan2(d.xz().length());
     }
     sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 1.0;
-    let armour = sim.app.world().get::<CaArmor>(target).unwrap().points;
+    let armour = sim.app.world().get::<chimera_sim::weapon::Armor>(target).map(combat_arms::game::weapons::points).unwrap();
     sim.intent(shooter).fire = true;
     sim.ticks(1);
     sim.intent(shooter).fire = false;
     // The round goes the trigger's latency (3 updates) after the press.
     sim.ticks(4);
     let lost = (1.0 - health(sim, target)) / HP;
-    let used = armour - sim.app.world().get::<CaArmor>(target).unwrap().points;
+    let used = armour - sim.app.world().get::<chimera_sim::weapon::Armor>(target).map(combat_arms::game::weapons::points).unwrap();
     sim.seconds(0.3);
     (lost, used)
 }
