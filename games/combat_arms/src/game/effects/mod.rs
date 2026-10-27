@@ -290,6 +290,7 @@ impl Plugin for CaEffectsPlugin {
                 play_dings,
                 shot_effects,
                 key_sounds,
+                crate::game::grenades::callout::hear,
                 grenade_effects,
                 bomb::bomb_effects,
                 footsteps,

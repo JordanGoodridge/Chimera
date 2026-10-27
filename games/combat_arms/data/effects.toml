@@ -302,6 +302,12 @@ awareness = ["ui_snd/perk/awareness/step1.wav", "ui_snd/perk/awareness/step2.wav
 # The killer's team's call-out at the killer (radius 1000).
 enemy_down = ["chars_snd/male/vma_enemydown_ma.wav"]
 enemy_down_radius = 1000
+# The thrower's team hears "grenade throwing" at the release (the
+# GrenadeThrowing auto-cast record: radius 500; one of two files by the
+# thrower's voice).
+grenade_throw = ["chars_snd/male/vma_grenade_ma.wav", "chars_snd/male/vma_fireinthehole_ma.wav"]
+grenade_throw_female = ["chars_snd/female/vma_grenade_fa.wav", "chars_snd/female/vma_fireinthehole_fa.wav"]
+grenade_throw_radius = 500
 
 # ---------------------------------------------------------------------------
 # The surface table (SURFACE.TXT's records the spec lists; `id` the world's

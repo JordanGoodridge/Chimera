@@ -118,6 +118,12 @@ pub struct EventSounds {
     pub groin: Vec<String>,
     pub enemy_down: Vec<String>,
     pub enemy_down_radius: f32,
+    /// The team's "grenade throwing" call-out (the auto-cast record
+    /// `GrenadeThrowing`, grenades.md Corrections (2026-10-27) C1): the
+    /// male and female templates' two files each, and its outer radius.
+    pub grenade_throw: Vec<String>,
+    pub grenade_throw_female: Vec<String>,
+    pub grenade_throw_radius: f32,
     /// The local auto-cast entries (Corrections 2026-10-22, 8), played in
     /// your head: the kill voice (not on a groin kill), the sprint
     /// (`dash`) sound, the idle sound and the low-health heartbeat's.

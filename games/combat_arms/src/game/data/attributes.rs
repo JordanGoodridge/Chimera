@@ -323,6 +323,13 @@ pub struct WeaponRecord {
     pub fire_snd_radius: i32,
     pub reload_snd_radius: i32,
     pub select_snd_radius: i32,
+    /// `MiscSound1..5` (view-model `sound_key` 10 to 14; the grenade's
+    /// pin pull is the first; empty when the record has none or a
+    /// non-string there, with no fallback by file name).
+    pub misc_sounds: [String; 5],
+    /// `PlayAutoThrowSound` (default on): a thrown weapon (`Guntype` 7)
+    /// makes the thrower's team call-out at its release.
+    pub play_auto_throw_sound: bool,
     /// `SilencedFireRadius1..10`.
     pub silenced_fire_radius: [i32; 10],
     pub drop_by_player_dead: bool,
@@ -456,6 +463,10 @@ impl WeaponRecord {
             fire_snd_radius: i("FireSndRadius", 1000),
             reload_snd_radius: i("ReloadSndRadius", 300),
             select_snd_radius: i("SelectSndRadius", 300),
+            misc_sounds: std::array::from_fn(|k| {
+                s.string(&format!("MiscSound{}", k + 1)).map(text).unwrap_or_default()
+            }),
+            play_auto_throw_sound: s.bool("PlayAutoThrowSound", true),
             silenced_fire_radius: silenced,
             drop_by_player_dead: s.bool("DropByPlayerDead", true),
             damage_weapon: s.bool("DamageWeapon", true),

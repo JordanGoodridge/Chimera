@@ -34,6 +34,7 @@ use chimera_sim::weapon::{
     grenade::{Detonated, GrenadeKind, Throwable},
 };
 use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim, map::loose::ShownItem};
+use lithtech_formats::attributes::Document;
 use combat_arms::{
     game::{
         TICK_INTERVAL,
@@ -41,7 +42,14 @@ use combat_arms::{
             self, CaFlashProtection, CaFlashed, CaGrenade, CaServerFrames, G7A, M18, M23F, M67, XM84, bounce,
             character_touches, flash_white, throw_perturb,
         },
-        effects::{self, CaFxRequest, FxKind, sounds::CaSound},
+        effects::{
+            self, CaFxRequest, FxKind,
+            data::{CaFxTables, CaWeaponFx, EFFECTS},
+            rules,
+            sounds::CaSound,
+        },
+        grenades::{callout, tumble},
+        view_model::CaViewKey,
         movement,
         volumes::CaVolume,
         weapons::{CaArmor, DEFAULT_BODY_GEAR, MALE, body_geometry, gear},
@@ -1717,4 +1725,370 @@ fn t63_resting_on_sand() {
     until_boom(&mut sim, 1.0);
     let (groups, _) = grenade_look(&mut sim);
     assert_eq!(groups, ["Grenade_Sand"]);
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-27): sounds, spin and pose of a throw (64-72)
+
+/// The M67 with the stock record's misc sounds (what the install's
+/// `MiscSound1` and `MiscSound2` give it, `data::sound_values`).
+const M67_PIN: &str = r#"
+id = "test:m67_pin"
+base = "combat_arms:m67"
+[hooks."combat_arms:effects"]
+misc_sounds = ["guns_snd_throwing/m67/fire.wav", "guns_snd_throwing/m67/firetoss.wav"]
+"#;
+
+fn pin_sim() -> Sim {
+    let mut sim = sim();
+    sim.app.add_weapon_data(&[("m67_pin", M67_PIN)]).unwrap();
+    sim
+}
+
+fn heard_all(sim: &mut Sim) -> Vec<CaSound> {
+    std::mem::take(&mut sim.app.world_mut().resource_mut::<Heard>().0)
+}
+
+/// The weapon documents the install's records make of our grenades.
+fn merged(weapons: &str) -> Vec<toml::Table> {
+    let file = combat_arms::game::data::attributes::WeaponsFile::read(&Document::parse(weapons.as_bytes()).unwrap()).unwrap();
+    let ours = [
+        ("m67.toml", include_str!("../../data/weapons/m67.toml")),
+        ("xm84.toml", include_str!("../../data/weapons/xm84.toml")),
+        ("m18.toml", include_str!("../../data/weapons/m18.toml")),
+    ];
+    combat_arms::game::data::merge_weapon_docs(&ours, &file, 0.018)
+        .unwrap()
+        .iter()
+        .map(|(_, t)| t.parse().unwrap())
+        .collect()
+}
+
+/// 64. Pin sound source: `MiscSound1` is key 10, named by the record (no
+/// fallback by file name); the other fields are loaded but their keys
+/// never fire on the stock models.
+#[test]
+fn t64_pin_sound_source() {
+    let docs = merged(
+        r#"[Ammo0] Name="a"
+[Weapon0] Name="M67" AmmoName0="a" Guntype=7
+  MiscSound1="GUNS_SND_Throwing\M67\fire.wav" MiscSound2="GUNS_SND_Throwing\M67\firetoss.wav"
+[Weapon1] Name="XM84" AmmoName0="a" Guntype=7 MiscSound1="GUNS_SND_Throwing\XM-84\fire.wav"
+[Weapon2] Name="M18" AmmoName0="a" Guntype=7"#,
+    );
+    let fx = |d: &toml::Table| -> Option<CaWeaponFx> {
+        d["hooks"].get(EFFECTS).cloned().map(|v| v.try_into().unwrap())
+    };
+    let m67 = fx(&docs[0]).expect("the M67 has misc sounds");
+    assert_eq!(m67.key_sound(10).map(|k| k.0), Some("guns_snd_throwing/m67/fire.wav"));
+    assert_eq!(m67.key_sound(11).map(|k| k.0), Some("guns_snd_throwing/m67/firetoss.wav"));
+    assert_eq!(m67.key_sound(12), None);
+    let xm84 = fx(&docs[1]).unwrap();
+    assert_eq!(xm84.key_sound(10).map(|k| k.0), Some("guns_snd_throwing/xm-84/fire.wav"));
+    assert!(fx(&docs[2]).is_none(), "a record without MiscSound1: silence, no fallback by file name");
+    // The call-out switch: Guntype 7 with PlayAutoThrowSound on.
+    for d in &docs {
+        assert_eq!(d["hooks"]["combat_arms:grenade"]["call_out"].as_bool(), Some(true));
+    }
+    let off = merged(r#"[Ammo0] Name="a" [Weapon0] Name="M67" AmmoName0="a" Guntype=7 PlayAutoThrowSound=FALSE [Weapon1] Name="XM84" AmmoName0="a" Guntype=10"#);
+    for d in &off[..2] {
+        assert_eq!(d["hooks"]["combat_arms:grenade"]["call_out"].as_bool(), Some(false));
+    }
+    // Keys 10 to 14 are MiscSound1..5.
+    let all = merged(
+        r#"[Ammo0] Name="a" [Weapon0] Name="M67" AmmoName0="a" Guntype=7
+        MiscSound1="a.wav" MiscSound2="b.wav" MiscSound3="c.wav" MiscSound4="d.wav" MiscSound5="e.wav""#,
+    );
+    let fx = fx(&all[0]).unwrap();
+    let files: Vec<_> = (10..=14).map(|k| fx.key_sound(k).unwrap().0.to_string()).collect();
+    assert_eq!(files, ["a.wav", "b.wav", "c.wav", "d.wav", "e.wav"]);
+}
+
+/// 65. Pin sound for others: the thrower's flash point at the key, fixed
+/// there, radius 2000 (inner 140), full volume; gain 0.717 at 1000 u and
+/// silent at 1900; the thrower hears it once, locally; none from the dead.
+#[test]
+fn t65_pin_sound_for_others() {
+    let mut sim = pin_sim();
+    let me = player(&mut sim, 0.0, 0.0, 0.0, 0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let other = player(&mut sim, 0.0, 300.0, 0.0, 0);
+    for p in [me, other] {
+        let w = weapon::give(sim.app.world_mut(), p, "test:m67_pin").unwrap();
+        sim.app.world_mut().get_mut::<Inventory>(p).unwrap().wanted = Some(w);
+    }
+    sim.seconds(1.0);
+    heard_all(&mut sim);
+    let key = |sim: &mut Sim, owner: Entity| {
+        sim.app.world_mut().write_message(CaViewKey {
+            owner,
+            key: combat_arms::game::view_model::machine::ViewKey::Sound(10),
+        });
+        sim.app.update();
+        heard_all(sim)
+            .into_iter()
+            .filter(|s| s.file.ends_with("m67/fire.wav"))
+            .collect::<Vec<_>>()
+    };
+    let own = key(&mut sim, me);
+    assert_eq!(own.len(), 1, "once");
+    assert_eq!((own[0].at, own[0].volume, own[0].server), (None, 100.0, false), "local, full volume");
+    let theirs = key(&mut sim, other);
+    assert_eq!(theirs.len(), 1);
+    let at = theirs[0].at.expect("3D");
+    assert_eq!(theirs[0].radii, (140.0, 2000.0));
+    assert_eq!(theirs[0].volume, 100.0);
+    assert_eq!(theirs[0].source, None, "fixed where the key fired, not following");
+    let eye = sim.app.world().get::<Transform>(other).unwrap().translation;
+    assert!((at - eye).length() < 3.0, "at the thrower's flash point (the eye without a view model)");
+    // The gain at 1000 and 1900 u.
+    let gain = |d: f32| rules::gain(d, rules::inner_radius(2000.0), 2000.0, 100.0);
+    assert!((gain(1000.0) - 0.717).abs() < 1e-3);
+    assert_eq!(gain(1900.0), 0.0);
+    // The thrower walking away doesn't move the sound that was started.
+    sim.app.world_mut().get_mut::<Transform>(other).unwrap().translation += Vec3::new(50.0, 0.0, 0.0);
+    sim.ticks(1);
+    // None from the dead.
+    sim.app.world_mut().get_mut::<Health>(other).unwrap().current = 0.0;
+    assert!(key(&mut sim, other).is_empty(), "dead: none");
+}
+
+/// 66. No release sound: a throw makes no weapon sound at the release or
+/// in flight before the first bounce (the call-out is a voice).
+#[test]
+fn t66_no_release_sound() {
+    let mut sim = pin_sim();
+    let (p, _) = holding(&mut sim, "test:m67_pin");
+    sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
+    heard_all(&mut sim);
+    let (g, _) = throw_timed(&mut sim, p, TICK_INTERVAL, 3.0).expect("thrown");
+    sim.ticks(3);
+    assert_eq!(state(&sim, g).contacts.len(), 0);
+    let files: Vec<String> = heard_all(&mut sim).into_iter().map(|s| s.file).collect();
+    assert!(files.iter().all(|f| f.contains("vma_")), "only the voice: {files:?}");
+}
+
+/// The call-out sounds heard (the male template's two files).
+fn call_outs(heard: Vec<CaSound>) -> Vec<CaSound> {
+    heard.into_iter().filter(|s| s.file.contains("vma_grenade") || s.file.contains("vma_fireinthehole")).collect()
+}
+
+/// 67. The throw call-out: the thrower's team hears one of two male
+/// files from the thrower, radius 500 (inner 35); another team nothing;
+/// a second grenade while it plays is dropped.
+#[test]
+fn t67_throw_call_out() {
+    for (mine, hears) in [(0, true), (1, false)] {
+        let mut sim = sim();
+        let (thrower, _) = holding(&mut sim, M67);
+        let listener = if mine == 0 { thrower } else { player(&mut sim, 400.0, 400.0, 0.0, 1) };
+        sim.app.world_mut().entity_mut(listener).insert(LocalPlayer);
+        heard_all(&mut sim);
+        throw_timed(&mut sim, thrower, TICK_INTERVAL, 3.0).expect("thrown");
+        sim.ticks(2);
+        let got = call_outs(heard_all(&mut sim));
+        if !hears {
+            assert!(got.is_empty(), "the other team hears nothing: {got:?}");
+            continue;
+        }
+        assert_eq!(got.len(), 1, "{got:?}");
+        let c = &got[0];
+        assert!(
+            ["chars_snd/male/vma_grenade_ma.wav", "chars_snd/male/vma_fireinthehole_ma.wav"].contains(&c.file.as_str()),
+            "{}",
+            c.file
+        );
+        assert_eq!(c.radii, (35.0, 500.0));
+        assert_eq!((c.volume, c.source, c.server), (100.0, Some(thrower), false), "follows the thrower (its source)");
+        assert!(c.at.is_some());
+    }
+}
+
+/// 67 (second part). A call-out is dropped while the client's previous one
+/// still plays.
+#[test]
+fn t67_a_second_call_out_is_dropped_while_one_plays() {
+    let mut l = callout::CalloutLimiter::default();
+    assert!(l.try_start(10.0, 1.5));
+    assert!(!l.try_start(11.0, 1.5), "still playing");
+    assert!(l.try_start(11.5, 1.5), "over");
+    let t = CaFxTables::built_in();
+    assert_eq!(callout::files(t, false).len(), 2);
+    assert!(callout::files(t, true).iter().all(|f| f.contains("female") && f.ends_with("_fa.wav")));
+    assert_eq!(t.sounds.grenade_throw_radius, 500.0);
+}
+
+/// 67 (over the network). The server sends the call-out to the thrower's
+/// team only, by their teams on the server; the thrower's own client plays
+/// it, as does a teammate's; a client on the other team hears nothing. And
+/// the client draws the flying grenade through the rotation blend.
+#[test]
+fn t67_net_call_out_reaches_the_thrower_s_team() {
+    let link = LinkConditions {
+        latency: Duration::from_millis(30),
+        jitter: Duration::ZERO,
+        loss: 0.0,
+    };
+    let mut sim = NetSim::new(CaSim, link, 7, 3, |app| {
+        app.add_plugins(GreyboxMapPlugin);
+        app.init_resource::<Heard>().add_systems(
+            Update,
+            (|mut r: MessageReader<CaSound>, mut h: ResMut<Heard>| h.0.extend(r.read().cloned()))
+                .after(effects::CaEffectsSet),
+        );
+    });
+    sim.set_frame(TICK_INTERVAL);
+    sim.until_joined(900);
+    sim.ticks(240);
+    let me = sim.local_player(0).unwrap();
+    // Clients 0 and 1 on one team, client 2 on the other (the server's).
+    let characters: Vec<Entity> = (0..3).map(|i| sim.character_of(i).unwrap()).collect();
+    for (i, c) in characters.iter().enumerate() {
+        sim.server.app.world_mut().entity_mut(*c).insert(Team(if i == 2 { 1 } else { 0 }));
+    }
+    sim.ticks(30);
+    sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().select = Some(3);
+    sim.ticks(1);
+    sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().select = None;
+    sim.ticks(40);
+    for c in &mut sim.clients {
+        c.app.world_mut().resource_mut::<Heard>().0.clear();
+    }
+    sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().fire = true;
+    sim.ticks(1);
+    sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().fire = false;
+    sim.ticks(120);
+    let heard: Vec<usize> = (0..3)
+        .map(|i| call_outs(heard_all_of(&mut sim.clients[i].app)).len())
+        .collect();
+    assert_eq!(heard, [1, 1, 0], "the thrower's team only, the thrower included");
+    // Client 1 draws the grenade through the blend.
+    let w = sim.clients[1].app.world_mut();
+    let blended = w.query::<&tumble::ThrownBlend>().iter(w).count();
+    assert!(blended <= 1);
+}
+
+fn heard_all_of(app: &mut App) -> Vec<CaSound> {
+    std::mem::take(&mut app.world_mut().resource_mut::<Heard>().0)
+}
+
+/// A grenade high above the floor with these spin rates, thrown along `v`.
+fn tumbling(sim: &mut Sim, v: Vec3, rates: Vec3) -> Entity {
+    let g = grenade(sim, M67, None, Vec3::new(0.0, 3000.0, 0.0), v);
+    sim.app.world_mut().get_mut::<CaGrenade>(g).unwrap().tumble.rates = rates;
+    g
+}
+
+fn axes(sim: &Sim, g: Entity) -> (Vec3, Vec3) {
+    tumble::game_axes(sim.app.world().get::<Transform>(g).unwrap().rotation)
+}
+
+fn close3(a: Vec3, b: [f32; 3], what: &str) {
+    assert!((a - Vec3::from(b)).abs().max_element() < 5e-4, "{what}: {a:?} vs {b:?}");
+}
+
+/// 68. Tumble numbers, and the same whichever way it was thrown.
+#[test]
+fn t68_tumble() {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let rates = Vec3::new(FRAC_PI_2, PI, -PI);
+    let mut sim = sim();
+    let a = tumbling(&mut sim, Vec3::new(0.0, 0.0, 1550.0), rates);
+    let b = tumbling(&mut sim, Vec3::new(-900.0, 300.0, -400.0), rates);
+    to_step(&mut sim, a, 1);
+    for g in [a, b] {
+        let s = state(&sim, g);
+        close3(s.tumble.angles, [0.0785, 0.1571, -0.1571], "angles after the creation frame");
+        let (f, u) = axes(&sim, g);
+        close3(f, [0.1560, -0.0785, 0.9846], "forward");
+        close3(u, [0.1666, 0.9846, 0.0521], "up");
+    }
+    to_step(&mut sim, a, 4);
+    let (f, u) = axes(&sim, a);
+    close3(state(&sim, a).tumble.angles, [0.3142, 0.6283, -0.6283], "angles after 4");
+    close3(f, [0.5590, -0.3090, 0.7694], "forward");
+    close3(u, [0.6225, 0.7694, -0.1432], "up");
+    to_step(&mut sim, a, 20);
+    let (f, u) = axes(&sim, a);
+    close3(f, [0.0, -1.0, 0.0], "forward after 20");
+    close3(u, [0.0, 0.0, 1.0], "up after 20");
+}
+
+/// 69. A bounce redraws the rates (uniform in their ranges) and leaves the
+/// angles where they were.
+#[test]
+fn t69_tumble_across_a_bounce() {
+    let mut sim = sim();
+    let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 60.0, 0.0), Vec3::new(0.0, 0.0, 1550.0));
+    let mut last = None;
+    let mut bounced = false;
+    for _ in 0..80 {
+        sim.ticks(1);
+        let Some(s) = sim.app.world().get::<CaGrenade>(g) else { break };
+        let s = s.clone();
+        if let Some((rates, angles, n)) = last
+            && s.contacts.len() > n
+        {
+            // The update that bounced still turned by the old rates.
+            let moved: Vec3 = s.tumble.angles - angles;
+            assert!(moved.abs_diff_eq(rates * 0.05, 1e-4), "{moved:?} vs {rates:?}");
+            assert_ne!(s.tumble.rates, rates, "redrawn");
+            let r = s.tumble.rates;
+            assert!(r.x.abs() <= std::f32::consts::PI && r.y.abs() <= std::f32::consts::TAU && r.z.abs() <= std::f32::consts::TAU);
+            bounced = true;
+            break;
+        }
+        last = Some((s.tumble.rates, s.tumble.angles, s.contacts.len()));
+    }
+    assert!(bounced, "bounced");
+}
+
+/// 70. Frozen at rest: the rotation is the same on every later frame.
+#[test]
+fn t70_frozen_at_rest() {
+    let mut sim = sim();
+    let g = grenade(&mut sim, M67, None, Vec3::new(0.0, 60.0, 0.0), Vec3::ZERO);
+    let s = to_step(&mut sim, g, 6);
+    assert!(s.resting);
+    let before = sim.app.world().get::<Transform>(g).unwrap().rotation;
+    let angles = s.tumble.angles;
+    sim.seconds(1.0);
+    assert_eq!(sim.app.world().get::<Transform>(g).unwrap().rotation, before);
+    assert_eq!(state(&sim, g).tumble.angles, angles);
+}
+
+/// 71. Client smoothing numbers (`tumble::RotationBlend`): 25.5, 19.9 and
+/// 12.3 degrees left after frames 1 to 3, 0 after the fourth.
+#[test]
+fn t71_client_smoothing() {
+    let server = Quat::from_rotation_y(30f32.to_radians());
+    let mut b = tumble::RotationBlend::snapped(Quat::IDENTITY);
+    b.receive(server, 0.05);
+    let left: Vec<f32> = (0..4)
+        .map(|_| {
+            b.frame(1.0 / 60.0);
+            b.drawn.angle_between(server).to_degrees()
+        })
+        .collect();
+    for (got, want) in left.iter().zip([25.5, 19.9, 12.3, 0.0]) {
+        assert!((got - want).abs() < 0.06, "{left:?}");
+    }
+}
+
+/// 72. Pose: a thrown (or death-released) grenade is shown in `World`
+/// from its creation, through its `thrown_key` model; its box stays the
+/// `Hand` one times 2.
+#[test]
+fn t72_world_pose_from_creation() {
+    assert_eq!(combat_arms::game::characters::models::THROWN_POSE, "World");
+    let mut sim = sim();
+    for id in [M67, XM84, M18] {
+        let g = grenade(&mut sim, id, None, Vec3::new(0.0, 60.0, 0.0), Vec3::ZERO);
+        // Before any frame has run.
+        assert_eq!(sim.app.world().get::<ShownItem>(g).unwrap().0, grenades::thrown_key(id));
+    }
+    let w = weapon_of(&mut sim, M67, None);
+    let data = sim.app.world().get::<grenades::CaGrenadeData>(w).unwrap();
+    assert_eq!(data.params.box_half, [6.0, 6.0, 8.0]);
+    assert_eq!(data.params.thrown_scale, [2.0; 3]);
 }

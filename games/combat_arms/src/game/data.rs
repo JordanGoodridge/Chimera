@@ -34,7 +34,10 @@
 //!   grenade's projectile record, `grenade_values`: the effect file's
 //!   `ProjectileFX#` its ammo's `ProjectileFXName` names, its `Velocity`,
 //!   `Lifetime`, `DropVelocity`, `FireOffset`, `CanHitSameKind` and
-//!   thrown `Model`, `ModelScale`, `Skin#` in `combat_arms:grenade`; the
+//!   thrown `Model`, `ModelScale`, `Skin#` in `combat_arms:grenade`;
+//!   `sound_values`: `MiscSound1..5` as `combat_arms:effects`
+//!   `misc_sounds` (the table made for a document without one) and the
+//!   grenade hook's `call_out` (`PlayAutoThrowSound` and `Guntype` 7); the
 //!   third-person `AniType`, `LowerAniType` and `HHSkin#` go to
 //!   `characters::records`): the record's value, or the spec's
 //!   built-in default when the install lacks it, never ours, and the
@@ -584,6 +587,27 @@ pub fn skin_paths(skins: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// The install weapon's sound fields: `MiscSound1..5` as the effects
+/// hook's `misc_sounds` (view-model `sound_key` 10 to 14; the grenade
+/// pin is the first: grenades.md Corrections (2026-10-27) C1) and, for
+/// the grenade hook, whether a release makes the team call-out
+/// (`PlayAutoThrowSound` on and `Guntype` 7).
+fn sound_values(w: &WeaponRecord) -> Vec<Set> {
+    let mut out = Vec::new();
+    if w.misc_sounds.iter().any(|f| !f.is_empty()) {
+        let files = w.misc_sounds.iter().map(|f| Value::String(super::model::normalize(f))).collect();
+        out.push(set(&["hooks", super::effects::data::EFFECTS, "misc_sounds"], Value::Array(files)));
+    }
+    out.push(set(
+        &["hooks", super::grenades::HOOK, "call_out"],
+        w.play_auto_throw_sound && w.gun_type == THROWN_GUNTYPE,
+    ));
+    out
+}
+
+/// `Guntype` of the thrown weapons.
+const THROWN_GUNTYPE: i32 = 7;
+
 /// The install weapon's models and their placement: `PVModelNormal`
 /// with `PVSkin#` and `Pos` as the view model, `HHModel` as the held one,
 /// `MuzzlePos` and `BreachOffset` in our `combat_arms:view_model` table
@@ -739,6 +763,18 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
         hooks.entry("combat_arms:zoom").or_insert_with(|| Value::Table(Table::new()));
     }
     for s in weapon_values(w, ammo, length_scale) {
+        apply(doc, &s);
+    }
+    // Its sounds: the effects hook is made for a weapon whose document
+    // has none (the grenades') when the record names misc sounds.
+    if w.misc_sounds.iter().any(|f| !f.is_empty())
+        && let Some(Value::Table(hooks)) = doc.get_mut("hooks")
+    {
+        hooks
+            .entry(super::effects::data::EFFECTS)
+            .or_insert_with(|| Value::Table(Table::new()));
+    }
+    for s in sound_values(w) {
         apply(doc, &s);
     }
     if let Some(a) = file.default_ammo(w) {
