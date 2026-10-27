@@ -372,6 +372,10 @@ pub struct GlassShatter {
     /// The shards' size (meters): small for one pane, large for a blast's
     /// burst.
     pub shard: f32,
+    /// A falling pane piece shattered where it landed
+    /// (`shatter_pane_pieces`; a network server doesn't send these: each
+    /// client's own piece shatters).
+    pub piece: bool,
 }
 
 /// A collapsing pane drops a falling piece (Source: the pane piece
@@ -891,6 +895,7 @@ pub fn shatter_pane_pieces(
                 velocity: v.0,
                 tile: false,
                 shard: piece.shard,
+                piece: true,
             });
             commands.entity(e).try_despawn();
         }
@@ -994,7 +999,7 @@ pub fn round_restart(world: &mut World, mut seen: Local<Option<u32>>) {
 
 /// A window node back to its whole brush (`render::breakables`
 /// draws its meshes whole again).
-fn make_whole(world: &mut World, node: Entity, index: usize) {
+pub fn make_whole(world: &mut World, node: Entity, index: usize) {
     let collider = world
         .get_resource::<super::MapEntities>()
         .and_then(|m| Some(super::entities::brush_collider(m.entities.get(index)?, m.scale)))

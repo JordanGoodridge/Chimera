@@ -1393,6 +1393,7 @@ fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
                     velocity: entity_to_engine(velocity, scale),
                     tile,
                     shard: shard * scale,
+                    piece: false,
                 });
             }
             Effect::PaneFall {

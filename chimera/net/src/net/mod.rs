@@ -27,6 +27,8 @@
 //! offers its map (name, hash, size); a client without that file fetches
 //! it over the connection or from `sv_downloadurl` into the content
 //! cache, and a map change on the server takes every client along.
+//! Breakables (`breakables`): broken windows' panes replicate and what
+//! breaking throws (gibs, shards, falling panes) goes to every client.
 //! Joining's stages, for the loading dialog: `client::JoinProgress`.
 //!
 //! `NetRole` (core) says what this process is; `authoritative` systems
@@ -78,7 +80,7 @@
 //! by someone else, or a train turning at a path corner mispredicts for a round
 //! trip (corrected; the rest of the ride doesn't); parented brushes and
 //! breakables aren't stepped ahead (drawn at their last snapshot); model doors
-//! (`prop_door_rotating`), broken window panes and prop skins/sequences aren't
+//! (`prop_door_rotating`) and prop skins/sequences aren't
 //! replicated yet (props' pose and presence are, loose weapons and grenades in
 //! flight too); others riding a mover are drawn in the past while the mover is
 //! drawn at the predicted tick, so they float or sink by the mover's travel
@@ -196,6 +198,7 @@
 //! check and replication too (`games/cs_source/tests/it/net.rs`).
 
 pub mod anchors;
+pub mod breakables;
 pub mod chat;
 pub mod cheats;
 pub mod client;
@@ -1300,6 +1303,7 @@ impl Plugin for NetPlugin {
         maps::plugin(app);
         manifest::plugin(app);
         mapfx::plugin(app);
+        breakables::plugin(app);
         decals::plugin(app);
         udp::plugin(app);
         upnp::plugin(app);
