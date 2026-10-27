@@ -543,7 +543,8 @@ fn held_weapons_point_forward() {
     let at_socket = models::socket_local(hand_socket.rotation, hand_socket.offset);
     // Each held model's muzzle in the right hand's frame (right-handed).
     let mut muzzles = Vec::new();
-    for held in &map.kit.held {
+    // (Grenades in flight, `grenades::thrown_key`, are in no hand.)
+    for held in map.kit.held.iter().filter(|h| !h.key.ends_with("#thrown")) {
         assert!(held.bone.eq_ignore_ascii_case("Right_hand"), "{}: on {}", held.key, held.bone);
         let w = ca.weapon_set().weapons.iter().find(|w| w.id == held.key).unwrap();
         let path = w.models.world.as_deref().unwrap().to_lowercase();
@@ -610,4 +611,44 @@ fn bodies_draw_one_level_per_piece() {
         .filter_map(|p| p.lods.first()?.mesh.geometry().map(|g| g.positions.len()))
         .collect();
     assert_eq!(drawn, lod0, "one mesh per piece, its LOD 0");
+}
+
+/// Grenades in flight are drawn with their projectile record's model
+/// (grenades.md, Data: the M67's `G62` and so on, `ModelScale` 2, its own
+/// skin) in its `World` pose, in no hand: twice the size of the held one
+/// (the same file in the stock data), every piece textured.
+#[test]
+fn thrown_grenades_draw_their_projectile_model() {
+    use chimera_world::map::MapData;
+    use combat_arms::game::{characters::models, grenades};
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
+    if !install.join("Game").is_dir() {
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let file = |p: &str| mount.read(p).ok();
+    let ca = combat_arms::game::data::CaData::install();
+    let mut map = MapData::default();
+    models::add_character_models(&mut map, &ca, &file);
+    if map.kit.held.is_empty() {
+        eprintln!("skipping: no third-person weapons (V2 key)");
+        return;
+    }
+    let size = |m: &chimera_world::map::MapModel| {
+        let (lo, hi) = m.meshes.iter().flat_map(|m| &m.positions).fold((Vec3::MAX, Vec3::MIN), |(lo, hi), p| {
+            (lo.min(Vec3::from(*p)), hi.max(Vec3::from(*p)))
+        });
+        (hi - lo).length()
+    };
+    for id in [grenades::M67, grenades::XM84, grenades::M18] {
+        let key = grenades::thrown_key(id);
+        let thrown = map.kit.held.iter().find(|h| h.key == key).unwrap_or_else(|| panic!("{key}: {:?}", map.warnings));
+        assert!(thrown.bone.is_empty(), "{key}: in no hand");
+        let untextured = thrown.model.meshes.iter().filter(|m| m.texture.is_none()).count();
+        assert_eq!(untextured, 0, "{key}: untextured pieces");
+        let held = map.kit.held.iter().find(|h| h.key == id).unwrap();
+        let ratio = size(&thrown.model) / size(&held.model);
+        eprintln!("{key}: {:.2} u across, {ratio:.2} x the held model", size(&thrown.model));
+        assert!((1.6..2.4).contains(&ratio), "{key}: {ratio} x the held model");
+    }
 }

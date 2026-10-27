@@ -718,6 +718,48 @@ fn t26_no_thrower_velocity() {
     assert_near(s.pos - start, Vec3::new(0.0, -1.0, 77.5), 0.05, "test 1's step");
 }
 
+/// A thrown frag (fire pressed and let go, view level) flies case 1's
+/// numbers from where it left, drawn with its projectile record's model
+/// (`thrown_key`), and is drawn on its path between the server's 20
+/// frames a second, one frame behind: at every tick on the segment from
+/// its place at the frame before to its place now, a different point each
+/// tick (playtest 2026-10-27: it hopped 50 ms at a time).
+#[test]
+fn thrown_frag_flies_the_spec_arc_and_is_drawn_between_frames() {
+    let mut sim = sim();
+    let (p, _) = holding(&mut sim, "test:m67_exact");
+    let (g, _) = throw_timed(&mut sim, p, TICK_INTERVAL, 3.0).expect("thrown");
+    let shown = sim.app.world().get::<ShownItem>(g).unwrap().0.clone();
+    assert_eq!(shown, grenades::thrown_key("test:m67_exact"), "drawn as its thrown model");
+    let first = state(&sim, g);
+    let (start, k0) = (first.pos, first.steps as f32);
+    let mut drawn = Vec::new();
+    for _ in 0..40 {
+        let s = state(&sim, g);
+        if s.steps >= 5 {
+            break;
+        }
+        let at = sim.app.world().get::<Transform>(g).unwrap().translation / U;
+        // On the segment from the frame before to now.
+        let seg = s.pos - s.drawn_from;
+        let t = if seg.length_squared() > 0.0 { (at - s.drawn_from).dot(seg) / seg.length_squared() } else { 0.0 };
+        assert!((-1e-3..=1.0 + 1e-3).contains(&t), "drawn off its segment: t = {t}");
+        assert_near(at, s.drawn_from + seg * t, 0.05, "drawn on the segment");
+        drawn.push((s.steps, at));
+        sim.ticks(1);
+    }
+    let inside = drawn.windows(2).filter(|w| w[0].0 == w[1].0 && w[0].1 != w[1].1).count();
+    assert!(inside >= 3, "it moves between server frames: {drawn:?}");
+    let s = to_step(&mut sim, g, 5);
+    // Case 1: (0, 59, 77.5) after step 1 and (0, 15, 387.5) after step 5
+    // from (0, 60, 0): a drop of 2n² - n u after n steps (the quarter
+    // gravity), 77.5 u ahead each.
+    let drop = |n: f32| 2.0 * n * n - n;
+    let want = Vec3::new(0.0, -(drop(5.0) - drop(k0)), 77.5 * (5.0 - k0));
+    assert_near(s.pos - start, want, 0.05, "test 1's step 5");
+    assert_near(s.velocity, Vec3::new(0.0, -400.0, 1550.0), 0.05, "and its velocity");
+}
+
 /// Press fire with a grenade in hand at tick t0 + 1, hold it `hold` s
 /// (at least a tick), run until a grenade leaves (or `limit` s): the
 /// grenade and its time since the press (s).
@@ -1489,7 +1531,7 @@ fn net_thrown_grenade_seen_and_damaging() {
     let ok = sim.until(300, |s| {
         for (i, c) in s.clients.iter_mut().enumerate() {
             let w = c.app.world_mut();
-            if w.query::<&ShownItem>().iter(w).any(|i| i.0 == M67) {
+            if w.query::<&ShownItem>().iter(w).any(|i| i.0 == grenades::thrown_key(M67)) {
                 seen[i] = true;
             }
         }

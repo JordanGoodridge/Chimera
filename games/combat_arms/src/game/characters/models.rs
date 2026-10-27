@@ -13,7 +13,10 @@
 //! mark of an enemy draws through `Alpha.dtx`'s alpha, nothing); each
 //! weapon's third-person model (`[models] world`, the weapons file's
 //! `HHModel`, in its `HHRenderStyle#`, drawn in its own `Hand` pose:
-//! `HELD_POSE`) as a held model on the `RightHand` socket. The body's nodes, sockets, weight sets and
+//! `HELD_POSE`) as a held model on the `RightHand` socket; each grenade's
+//! model in flight (its projectile record's `Model`, `Skin#` and
+//! `ModelScale`, in its `World` pose: `THROWN_POSE`) as a held model in no
+//! hand under `grenades::thrown_key`. The body's nodes, sockets, weight sets and
 //! animation list are kept as a `Rig` (`rig`, every record of the group
 //! posing on the first's) for posing.
 //!
@@ -37,6 +40,7 @@ use lithtech_formats::ltb;
 use super::{
     super::{
         data::{CaData, CaDataInner},
+        grenades::{self, GrenadeParams},
         model,
         render_style::{self, Style},
         view_model::hands,
@@ -226,6 +230,61 @@ pub fn add_character_models(map: &mut MapData, ca: &CaDataInner, file: &dyn Fn(&
             Err(e) => map.warnings.push(format!("{} third-person model: {e}", w.id)),
         }
     }
+    // Grenades in flight: their projectile record's model (grenades.md 5,
+    // 6), under `grenades::thrown_key`.
+    for w in ca.weapon_set().weapons.iter().filter(|w| ours.contains(&w.id)) {
+        let Some(p) = w.hook::<GrenadeParams>(grenades::HOOK) else { continue };
+        let Some(path) = p.thrown_model.as_deref() else { continue };
+        match thrown(path, &grenades::thrown_key(&w.id), &p.thrown_skins, p.thrown_scale, map, file) {
+            Ok(h) => map.kit.held.push(h),
+            Err(e) => map.warnings.push(format!("{} thrown model: {e}", w.id)),
+        }
+    }
+}
+
+/// The world model's animation a grenade in flight is drawn in (its
+/// `Hand` first, then `World`: grenades.md 6).
+pub const THROWN_POSE: &str = "World";
+
+/// A grenade's model as drawn in flight (its projectile record's `Model`,
+/// `Skin#` by texture index and `ModelScale`): its meshes in the `World`
+/// pose, scaled, in the model's own space (the source's units); drawn as
+/// a `map::loose::ShownItem` under `key`.
+fn thrown(
+    path: &str,
+    key: &str,
+    skins: &[String],
+    scale: [f32; 3],
+    map: &mut MapData,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<MapHeldModel, String> {
+    let loaded = model::load(path, file)?;
+    let mut m = model::convert(&loaded, 1.0, &|lod| {
+        let i = lod.used_textures().first().copied().unwrap_or(-1);
+        usize::try_from(i).ok().and_then(|i| skins.get(i)).cloned().unwrap_or_default()
+    });
+    super::super::world::textures(&mut m.meshes, map, file);
+    if let Some(entry) = model::rest_entry(&loaded, THROWN_POSE) {
+        model::pose_meshes(&loaded.model, entry, &mut m.meshes, 1.0);
+    }
+    m.rig = None;
+    // The scale's axes as the conversion turned them.
+    let s = Vec3::from(ltb::to_rh_vec(scale)).abs();
+    for mesh in &mut m.meshes {
+        for p in &mut mesh.positions {
+            *p = (Vec3::from(*p) * s).to_array();
+        }
+        mesh.joints.clear();
+        mesh.joint_weights.clear();
+    }
+    Ok(MapHeldModel {
+        key: key.to_string(),
+        model: m,
+        bone: String::new(),
+        muzzle: None,
+        merged: Vec::new(),
+        own: None,
+    })
 }
 
 /// The character models every map carries (`add_character_models` into

@@ -30,7 +30,11 @@
 //!   numbers for every field it maps (`weapon_values`; the models,
 //!   `model_values`: `PVModelNormal`, `PVSkin#` and `Pos` as `[models]
 //!   view`, `view_skins`, `view_offset`, `HHModel` as `world`,
-//!   `MuzzlePos` and `BreachOffset` in `combat_arms:view_model`; the
+//!   `MuzzlePos` and `BreachOffset` in `combat_arms:view_model`; a
+//!   grenade's projectile record, `grenade_values`: the effect file's
+//!   `ProjectileFX#` its ammo's `ProjectileFXName` names, its `Velocity`,
+//!   `Lifetime`, `DropVelocity`, `FireOffset`, `CanHitSameKind` and
+//!   thrown `Model`, `ModelScale`, `Skin#` in `combat_arms:grenade`; the
 //!   third-person `AniType`, `LowerAniType` and `HHSkin#` go to
 //!   `characters::records`): the record's value, or the spec's
 //!   built-in default when the install lacks it, never ours, and the
@@ -74,7 +78,7 @@
 //!   timings: they are the view model's animations). Not mapped (no field
 //!   in our data yet): the trigger's `latency` (the pre-fire's updates:
 //!   ours, 3 or a primary shotgun's 2, copied with the class's document),
-//!   the projectile's `FireOffset`, `TripleShot*` timing,
+//!   the special weapons' projectile records, `TripleShot*` timing,
 
 //!   `ContinuousFire`, sounds and sound radii, render styles,
 //!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
@@ -116,7 +120,7 @@ use toml::{Table, Value};
 use self::attributes::{
     ATTACHMENTS_FILE, AmmoRecord, PERKS_FILE, SETS_FILE, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, ServerTimeWeight, WEAPONS_FILE,
  WeaponRecord,
-    WeaponsFile,
+    WeaponsFile, FX_FILE, ProjectileRecord,
 };
 use super::{attachments::CaModTable, movement::MovementData};
 
@@ -266,6 +270,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
     let attachments = doc(ATTACHMENTS_FILE);
     let perks = doc(PERKS_FILE);
     let sets = doc(SETS_FILE);
+    let fx = doc(FX_FILE);
     let any_gear_file = [&weapons, &models, &attachments, &mods, &perks, &sets].iter().any(|d| d.is_some());
     let gear = any_gear_file.then(|| {
         super::gear::records::GearInstall::read(
@@ -281,6 +286,13 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
         WeaponsFile::read(&d)
             .map_err(|e| problems.push(format!("{WEAPONS_FILE}: {e}")))
             .ok()
+    });
+    // The projectile records the weapons' ammo names (grenades.md, Data).
+    let weapons = weapons.map(|mut w| {
+        if let Some(fx) = &fx {
+            w.projectiles = ProjectileRecord::read_all(fx);
+        }
+        w
     });
     let attrs = InstallAttributes {
         weapons,
@@ -477,8 +489,8 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
 /// What an install weapon's default ammo sets in the special weapons'
 /// hooks (special_weapons.md, "Where the numbers live"): the blast, the
 /// over-time sphere, the hit points, the counts and the knife's reach and
-/// damages. The projectile records (`FX.TXT`) aren't read: speeds,
-/// lifetimes and boxes are ours.
+/// damages. Their projectile records (`FX.TXT`) aren't used: speeds,
+/// lifetimes and boxes are ours (the grenades' are: `grenade_values`).
 fn special_values(w: &WeaponRecord, a: &AmmoRecord, length_scale: f64) -> Vec<Set> {
     use super::special::{BOLT, DEVICE, PROJECTILE};
     let mut out = Vec::new();
@@ -525,6 +537,37 @@ fn special_values(w: &WeaponRecord, a: &AmmoRecord, length_scale: f64) -> Vec<Se
         set(&["hooks", KNIFE, "primary", "damage"], a.inst_damage as f64),
         set(&["hooks", KNIFE, "secondary", "damage"], a.alt_inst_damage as f64),
     ]);
+    out
+}
+
+/// What a grenade's projectile record (`ProjectileFX#`, `FX.TXT`;
+/// grenades.md "Data") sets in the `combat_arms:grenade` hook: the speed,
+/// fuse, drop speed, `FireOffset` and `CanHitSameKind` where the record
+/// has them, and the thrown model (`Model`, `ModelScale`, `Skin#`: drawn
+/// in flight, `characters::models`).
+fn grenade_values(p: &ProjectileRecord, length_scale: f64) -> Vec<Set> {
+    const GRENADE: &str = super::grenades::HOOK;
+    let mut out = Vec::new();
+    let mut opt = |key: &str, v: Option<f64>, scale: f64| {
+        if let Some(v) = v {
+            out.push(set(&["hooks", GRENADE, key], v * scale));
+        }
+    };
+    opt("speed", p.velocity, length_scale);
+    opt("fuse", p.lifetime, 1.0);
+    opt("drop_speed", p.drop_velocity, length_scale);
+    opt("fire_offset", p.fire_offset, length_scale);
+    if let Some(h) = p.can_hit_same_kind {
+        out.push(set(&["hooks", GRENADE, "hits_same_kind"], h));
+    }
+    if !p.model.is_empty() {
+        let skins = skin_paths(&p.skins).into_iter().map(Value::String).collect::<Vec<_>>();
+        out.extend([
+            set(&["hooks", GRENADE, "thrown_model"], super::model::normalize(&p.model)),
+            set(&["hooks", GRENADE, "thrown_scale"], floats(p.model_scale)),
+            set(&["hooks", GRENADE, "thrown_skins"], Value::Array(skins)),
+        ]);
+    }
     out
 }
 
@@ -701,6 +744,12 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
     if let Some(a) = file.default_ammo(w) {
         for s in special_values(w, a, length_scale) {
             apply(doc, &s);
+        }
+        // A grenade's flight and look: its projectile record.
+        if let Some(p) = file.projectile(a) {
+            for s in grenade_values(p, length_scale) {
+                apply(doc, &s);
+            }
         }
     }
     // The models (view_models.md 1, 2, 4; characters.md 2): the install's
