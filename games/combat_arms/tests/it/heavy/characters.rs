@@ -512,3 +512,102 @@ fn default_bodies_wear_face_and_head() {
         assert!(held.model.meshes.iter().any(|m| m.texture.is_some()), "{id}: untextured (the grey box)");
     }
 }
+
+/// Third-person weapons point the way the body faces (models_ltb.md
+/// "Skinning": a model is drawn in its animated pose). Each `HHModel`'s
+/// own `Hand` animation turns its root half a turn from the bind pose;
+/// drawn in the bind pose, the guns were held backwards. For every held
+/// rifle-class model with a `Flash` socket: its muzzle in the `Hand` pose (the
+/// socket on its posed node) touches the drawn meshes, and on the
+/// standing aim pose of both bodies (they face +Z, LithTech's frame) it
+/// lies ahead of the grip.
+#[test]
+fn held_weapons_point_forward() {
+    use chimera_world::map::MapData;
+    use combat_arms::game::characters::models;
+    use lithtech_formats::anim as lta;
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
+    if !install.join("Game").is_dir() {
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let file = |p: &str| mount.read(p).ok();
+    let ca = combat_arms::game::data::CaData::install();
+    let mut map = MapData::default();
+    models::add_character_models(&mut map, &ca, &file);
+    if map.kit.held.is_empty() {
+        eprintln!("skipping: no third-person weapons (V2 key)");
+        return;
+    }
+    let hand_socket = ca.characters().skeleton(0).socket("RightHand").unwrap().clone();
+    let at_socket = models::socket_local(hand_socket.rotation, hand_socket.offset);
+    // Each held model's muzzle in the right hand's frame (right-handed).
+    let mut muzzles = Vec::new();
+    for held in &map.kit.held {
+        assert!(held.bone.eq_ignore_ascii_case("Right_hand"), "{}: on {}", held.key, held.bone);
+        let w = ca.weapon_set().weapons.iter().find(|w| w.id == held.key).unwrap();
+        let path = w.models.world.as_deref().unwrap().to_lowercase();
+        // The rifle stance (`URFRAmS`) holds rifles, SMGs, MGs and sniper
+        // rifles; launchers, pistols and the rest have their own.
+        if !["hh_ar_", "hh_smg_", "hh_mg_", "hh_sr_"].iter().any(|k| path.contains(k)) {
+            continue;
+        }
+        let loaded = model::load(&path, &file).unwrap();
+        let Some(flash) = loaded.model.sockets.iter().find(|s| s.name.eq_ignore_ascii_case("flash")) else { continue };
+        let entry = model::rest_entry(&loaded, models::HELD_POSE).expect("an animation");
+        assert!(entry.name().eq_ignore_ascii_case(models::HELD_POSE), "{}: {}", held.key, entry.name());
+        let pose: Vec<_> = (0..loaded.model.nodes.len()).map(|j| lta::sample(entry, j, 0.0)).collect();
+        let g = lta::globals(&loaded.model, &pose);
+        let lh = lta::transform_point(&g[flash.node as usize], flash.position);
+        let muzzle = at_socket.transform_point3(Vec3::from(lithtech_formats::ltb::to_rh_vec(lh)));
+        let touch = held.model.meshes.iter().flat_map(|m| &m.positions).map(|p| (Vec3::from(*p) - muzzle).length()).fold(f32::MAX, f32::min);
+        assert!(touch < 4.0, "{}: its muzzle is {touch} u from its drawn meshes", held.key);
+        muzzles.push((held.key.clone(), muzzle));
+    }
+    assert!(muzzles.len() >= 5, "guns with a muzzle: {}", muzzles.len());
+    for female in [false, true] {
+        let Some(rig) = load(female) else { return };
+        let posed = stand(&rig, 0.0);
+        let (at, q) = posed.globals[posed.node("Right_hand").expect("Right_hand")];
+        let grip = posed.socket("RightHand").expect("RightHand").0;
+        for (key, m) in &muzzles {
+            // Back to LithTech's frame (z mirrored), then posed.
+            let d = (at + q * Vec3::new(m.x, m.y, -m.z) - grip).normalize();
+            assert!(d.z > 0.5, "female {female}: {key}'s muzzle is {d:.2} from the grip (the body faces +Z)");
+        }
+    }
+}
+
+/// One level of detail per piece (models_ltb.md "Level-of-detail
+/// choice": LOD 0 up close): the default male body's pieces have three
+/// levels each, and its drawn meshes are exactly its pieces' LOD 0, in
+/// order, vertex for vertex (never a lower level, never two at once).
+#[test]
+fn bodies_draw_one_level_per_piece() {
+    use chimera_world::map::MapData;
+    use combat_arms::game::characters::models;
+    let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else { return };
+    if !install.join("Game").is_dir() {
+        return;
+    }
+    let mount = (INFO.open)(&install).unwrap();
+    let file = |p: &str| mount.read(p).ok();
+    let ca = combat_arms::game::data::CaData::install();
+    let mut map = MapData::default();
+    models::add_character_models(&mut map, &ca, &file);
+    let Some(body) = map.kit.characters.iter().find(|c| c.name.as_deref() == Some(models::body_name(0).as_str())) else {
+        eprintln!("skipping: no character bodies (V2 key)");
+        return;
+    };
+    let record = ca.characters().model(0).unwrap();
+    let loaded = model::load_own(&record.file, &file).unwrap();
+    assert!(loaded.model.pieces.iter().any(|p| p.lods.len() == 3), "the body has pieces with three levels");
+    let drawn: Vec<usize> = body.model.meshes.iter().filter(|m| m.body == Some((0, 0))).map(|m| m.positions.len()).collect();
+    let lod0: Vec<usize> = loaded
+        .model
+        .pieces
+        .iter()
+        .filter_map(|p| p.lods.first()?.mesh.geometry().map(|g| g.positions.len()))
+        .collect();
+    assert_eq!(drawn, lod0, "one mesh per piece, its LOD 0");
+}

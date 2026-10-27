@@ -34,12 +34,19 @@ the user's go-ahead: no Actions runs unless asked.
   models' `.vtx` switch points or `lod_models`/`align_lod` for them.
   `load_character` (games/cs_source/src/game/props.rs) loads no lower
   levels for now; measure the switch points and bounds, then restore.
-- **Combat Arms character models look wrong.** Heads look thin (e.g. the
-  female soldier with goggles); her head and backpack vanish when the
-  camera gets close (near clip or per-part culling/bounds?). Most of her
-  model looks odd.
-- **Combat Arms third-person guns held backwards** most of the time (the
-  weapon's attachment to the hand bone: orientation or wrong bone).
+- **Combat Arms character models and held guns: fixed, confirm in a
+  playtest.** Heads looked thin and the head and backpack vanished up
+  close: the body parts were culled by their bind pose's box, and the
+  female bodies are bound standing on their origin, half a body above
+  where the animation draws them, so the hair, backpack and upper body
+  dropped out while still on screen (leaving the narrow face mask); now
+  each part's bounds follow its joints (`render::bodies`,
+  `body_bounds::body_parts_are_culled_by_their_posed_bounds`). The
+  third-person guns were drawn in their bind pose; each `HHModel`'s own
+  `Hand` animation turns it half a turn, so they pointed backwards; now
+  they are drawn in that pose (`heavy::characters::
+  held_weapons_point_forward`; one level per piece:
+  `bodies_draw_one_level_per_piece`).
 - **Ladders don't work for Combat Arms characters.** Climbable ladders
   should work with Combat Arms' movement on every map, CS:S maps included
   (CS:S ladders under `combat_arms:movement`, and Combat Arms' own maps'
