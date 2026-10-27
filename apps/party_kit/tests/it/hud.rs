@@ -62,7 +62,13 @@ fn cs_look() -> ActiveHud {
 /// its drawn panels, CS:S's panels and the minigame's panel on it), a
 /// local soldier and another, the gun game playing.
 pub(crate) fn party_with_huds() -> (Sim, Entity, Entity) {
+    party_with_huds_and(|_| {})
+}
+
+/// `party_with_huds` with `extra` plugins added too.
+pub(crate) fn party_with_huds_and(extra: impl FnOnce(&mut App)) -> (Sim, Entity, Entity) {
     let mut sim = Sim::with(CaSim, |app| {
+        extra(app);
         app.add_plugins((GreyboxMapPlugin, PartyPartsPlugin))
             .init_resource::<UiFonts>()
             .add_plugins((HudSwitchPlugin, CaHudStatePlugin, GameHudPlugin, MinigameHudPlugin))

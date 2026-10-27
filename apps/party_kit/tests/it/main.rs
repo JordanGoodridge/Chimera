@@ -6,6 +6,7 @@
 
 mod controls;
 mod cross_game;
+mod cs_parts;
 mod gun_game;
 mod hud;
 mod identity;

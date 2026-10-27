@@ -65,6 +65,13 @@ pub fn with_huds(shell: PluginGroupBuilder) -> PluginGroupBuilder {
         .add_after::<GameHudPlugin>(HudSpritesPlugin)
         .add_after::<HudSpritesPlugin>(MinigameHudPlugin)
         .add_after::<ViewPlugin>(cs_source::ui::weapon_select::WeaponSelectPlugin)
+        // The rest of CS:S's HUD that follows the gun in hand: the radar,
+        // the names of the players aimed at, the freeze cam and the voice
+        // status (each draws only while CS:S's HUD is the gameplay's).
+        .add_after::<chimera_client::client::game_text::GameTextPlugin>(cs_source::ui::radar::RadarPlugin)
+        .add_after::<MinigameHudPlugin>(cs_source::ui::target_id::TargetIdPlugin)
+        .add_after::<cs_source::ui::target_id::TargetIdPlugin>(cs_source::ui::freeze_cam::FreezeCamPlugin)
+        .add_after::<cs_source::ui::freeze_cam::FreezeCamPlugin>(cs_source::ui::voice_hud::VoiceHudPlugin)
 }
 
 /// The client: the shell's plugins with the app's hooks and both games'

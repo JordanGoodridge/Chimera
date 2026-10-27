@@ -47,7 +47,12 @@ in the code.
 
 High and medium: the backlog section (nine items; the two sound items and
 the cross-game hit tests and shared armour ones done 2026-10-27:
-[DESIGN.md "Hits across games"](../../DESIGN.md#hits-across-games)). Low:
+[DESIGN.md "Hits across games"](../../DESIGN.md#hits-across-games);
+the party apps' CS:S parts done 2026-10-27: hit slowdown and flinch
+(`HitReactionPlugin`, CS:S identities only), the radar, target ID, freeze
+cam and voice HUD (shown only while CS:S's HUD is up), prop collision and
+scrape sounds (`ImpactSoundsPlugin`), kill-feed icons by the full weapon id;
+tests `apps/party_kit/tests/it/cs_parts.rs`). Low:
 
 - **Grenade water splash sounds (CS:S, L, S).** grenades.md 4 step 8:
   entering water plays `BaseEntity.EnterWater`, leaving
