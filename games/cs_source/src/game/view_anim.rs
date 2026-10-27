@@ -313,13 +313,23 @@ fn event(f: &mut ViewFrame, kind: &WeaponEventKind) {
     let dual = super::weapons::alternate_hands(f.state.weapon);
     match kind {
         WeaponEventKind::Shot { .. } if !f.fired => {
-            if let Some(b) = f.state.burst {
-                // One sequence per burst (the Glock's burst fire).
+            // A model with a burst fire activity (the Glock's) plays it
+            // once per burst; one without (the FAMAS's has only its three
+            // single-shot sequences, `dump --sequences`) plays a fire
+            // sequence on each round of the burst.
+            let burst_activity = f
+                .view
+                .animator
+                .as_ref()
+                .is_some_and(|a| a.set.pick_activity(SECONDARY, 0.0).is_some());
+            if let Some(b) = f.state.burst.filter(|_| burst_activity) {
                 let length = b.interval as f64 * b.count.saturating_sub(1) as f64;
                 if f.now - f.dice.burst_started > length + 0.01 {
                     f.dice.burst_started = f.now;
                     f.fired = f.play(&acts(&[SECONDARY, PRIMARY]));
                 }
+            } else if f.state.burst.is_some() {
+                f.fired = f.play(&acts(&[PRIMARY]));
             } else if dual {
                 // Dual pistols fire hand by hand (spec weapons.md,
                 // view-model table: left the primary activity, right the

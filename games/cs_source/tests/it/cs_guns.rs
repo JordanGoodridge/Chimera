@@ -1005,6 +1005,39 @@ fn a_famas_burst_kicks_on_its_first_round_only() {
     }
 }
 
+#[test]
+fn a_burst_switch_sends_the_owner_its_centre_notice() {
+    // The HUDs without the install's strings (minimal, Combat Arms') draw
+    // `CenterNotice`: the mode's words, for the local player only.
+    use crate::stack::weapon::notice::CenterNotice;
+    let mut sim = sim();
+    for (id, normal) in [(GLOCK, "Switched to semi-automatic"), (FAMAS, "Switched to automatic")] {
+        let p = shooter_with(&mut sim, id);
+        let shown = |sim: &Sim| {
+            let now = sim.app.world().resource::<Time>().elapsed_secs();
+            sim.app.world().resource::<CenterNotice>().text(now).map(str::to_string)
+        };
+        // Someone else's switch says nothing.
+        press2(&mut sim, p);
+        sim.ticks(2);
+        assert_eq!(mode(&sim, p), 1);
+        assert_eq!(shown(&sim), None, "{id}: a remote player's switch");
+        sim.seconds(0.4);
+        sim.app.world_mut().entity_mut(p).insert(LocalPlayer);
+        press2(&mut sim, p);
+        sim.ticks(2);
+        assert_eq!(mode(&sim, p), 0);
+        assert_eq!(shown(&sim).as_deref(), Some(normal), "{id}: back");
+        sim.seconds(0.4);
+        press2(&mut sim, p);
+        sim.ticks(2);
+        assert_eq!(shown(&sim).as_deref(), Some("Switched to Burst-Fire mode"), "{id}: burst");
+        sim.seconds(4.0);
+        assert_eq!(shown(&sim), None, "{id}: it goes away");
+        sim.app.world_mut().entity_mut(p).remove::<LocalPlayer>();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Dual Elites
 

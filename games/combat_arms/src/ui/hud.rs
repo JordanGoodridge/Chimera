@@ -309,6 +309,9 @@ pub struct CaHud {
     /// The playing minigame's state (its rung, the leader, brief
     /// notices), only while one plays.
     pub minigame: Option<MinigameView>,
+    /// The weapon mode switch's centre notice ("Switched to Burst-Fire
+    /// mode", `weapon::notice::CenterNotice`).
+    pub mode_notice: Option<String>,
     pub tags: Vec<TagView>,
     /// The local player's aim target (A11).
     pub aim_target: Option<Entity>,
@@ -378,7 +381,7 @@ impl Plugin for CaHudStatePlugin {
             .add_plugins(radar::CaRadarStatePlugin)
             .add_systems(
                 Update,
-                (track, update, heartbeat_sound, action::prompts, minigame_view, score::update_score, hide_panels)
+                (track, update, heartbeat_sound, action::prompts, minigame_view, mode_notice_view, score::update_score, hide_panels)
                     .chain()
                     .in_set(HudUpdate),
             );
@@ -513,6 +516,46 @@ fn minigame_view(
         results: m.results.as_ref().map_or_else(Vec::new, |r| {
             r.lines(|row| row.player.map_or_else(|| row.name.clone(), |p| name_of(&names, settings.as_deref(), p)))
         }),
+    });
+}
+
+/// `CaHud::mode_notice` from the shell's `CenterNotice`, while it lasts.
+fn mode_notice_view(
+    notice: Option<Res<crate::weapon::notice::CenterNotice>>,
+    time: Res<Time>,
+    mut hud: ResMut<CaHud>,
+) {
+    let text = notice.and_then(|n| n.text(time.elapsed_secs()).map(str::to_string));
+    if hud.mode_notice != text {
+        hud.mode_notice = text;
+    }
+}
+
+/// The mode switch's notice under the middle of the view, in the notices'
+/// looks (ours: the install's HUD has no such line).
+fn draw_mode_notice(
+    hud: Res<CaHud>,
+    params: PenParams,
+    root: Single<Entity, With<NoticeRoot>>,
+    mut last: Local<Option<(Option<String>, Screen)>>,
+    mut commands: Commands,
+) {
+    if !rebuild(&mut last, (hud.mode_notice.clone(), hud.screen), *root, &mut commands) {
+        return;
+    }
+    let Some(text) = &hud.mode_notice else { return };
+    let pen = pen(&params, hud.screen);
+    commands.entity(*root).with_children(|p| {
+        hud_text(
+            p,
+            pen,
+            (Vec2::new(262.0, 300.0), Vec2::new(500.0, 28.0), Vec2::ZERO),
+            text,
+            looks::NOTICE,
+            (HAlign::Centre, VAlign::Centre),
+            Effect::Stroke,
+            [255, 230, 120, 255],
+        );
     });
 }
 
@@ -1216,6 +1259,7 @@ impl Plugin for CaHudPlugin {
                     draw_feed,
                     draw_tags,
                     draw_minigame,
+                    draw_mode_notice,
                     score::draw_score,
                 )
                     .after(HudUpdate)
@@ -1277,6 +1321,8 @@ struct InstallRoot;
 struct MinigameRoot;
 #[derive(Component)]
 struct ActionRoot;
+#[derive(Component)]
+struct NoticeRoot;
 
 /// The rest of the game's HUD panels bound by name (`bound`), when the
 /// install's layouts have them: the kill feed, the score panel, the
@@ -1378,6 +1424,7 @@ fn spawn(mut commands: Commands) {
     commands.spawn((TagRoot, layer(HUD_Z - 2), HudRoot(crate::game::GAME)));
     commands.spawn((InstallRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
     commands.spawn((MinigameRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
+    commands.spawn((NoticeRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
 }
 
 /// The game's panels (`InstallHud`) with this frame's values.

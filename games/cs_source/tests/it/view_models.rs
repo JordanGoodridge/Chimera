@@ -10,7 +10,7 @@ use crate::stack::{
     games::cs_source::{
         TICK_INTERVAL,
         view_anim::ViewAnimPlugin,
-        weapons::{AK47, AUG, AWP, CsWeaponsPlugin, ELITE, GLOCK, KNIFE, M3, M4A1, TMP},
+        weapons::{AK47, AUG, AWP, CsWeaponsPlugin, ELITE, FAMAS, GLOCK, KNIFE, M3, M4A1, TMP},
     },
     greybox::{self, GreyboxMapPlugin},
     harness::{CsSim, Sim},
@@ -158,6 +158,18 @@ fn sim() -> Sim {
                 ("glock_firesingle", "ACT_VM_PRIMARYATTACK", 21, 40.0, false),
                 ("glock_firelast", "ACT_VM_DRYFIRE", 21, 35.0, false),
                 ("glock_draw", "ACT_VM_DRAW", 49, 45.0, false),
+            ],
+        ),
+        // v_rif_famas: idle, reload, draw and three single-shot fire
+        // sequences (no burst one), as in the install (dump --sequences).
+        view_model(
+            FAMAS,
+            &[
+                ("idle", "ACT_VM_IDLE", 2, 30.0, false),
+                ("shoot1", "ACT_VM_PRIMARYATTACK", 31, 35.0, false),
+                ("shoot2", "ACT_VM_PRIMARYATTACK", 31, 35.0, false),
+                ("shoot3", "ACT_VM_PRIMARYATTACK", 31, 35.0, false),
+                ("draw", "ACT_VM_DRAW", 31, 30.0, false),
             ],
         ),
         view_model(
@@ -496,6 +508,28 @@ fn glock_burst_plays_one_burst_sequence_and_the_last_round_its_own() {
     sim.app.world_mut().get_mut::<Magazine>(w).unwrap().clip = 1;
     press(&mut sim, p, false);
     assert_eq!(activity(&sim, p), "ACT_VM_DRYFIRE");
+}
+
+#[test]
+fn famas_burst_plays_a_fire_sequence_on_every_round() {
+    // Its model has no burst sequence, only the single-shot ones: each
+    // round of the burst (5 ticks apart) plays one from the start.
+    let mut sim = sim();
+    let p = holding(&mut sim, FAMAS);
+    press(&mut sim, p, true);
+    sim.seconds(0.4);
+    let cycle = |sim: &Sim| sim.app.world().get::<ViewAnimator>(p).unwrap().animator.as_ref().unwrap().cycle;
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    assert_eq!(activity(&sim, p), "ACT_VM_PRIMARYATTACK");
+    // Let the first round's sequence run, then see the second restart it.
+    sim.ticks(4);
+    let before = cycle(&sim);
+    assert!(before > 0.05, "{before}");
+    sim.ticks(2);
+    assert!(cycle(&sim) < before, "the second round didn't restart: {} after {before}", cycle(&sim));
+    assert_eq!(activity(&sim, p), "ACT_VM_PRIMARYATTACK");
 }
 
 #[test]

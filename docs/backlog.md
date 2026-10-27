@@ -53,8 +53,6 @@ the user's go-ahead: no Actions runs unless asked.
 - **Clients don't see glass break properly.** Breakable glass breaking on
   the server doesn't show correctly on joined clients (check what of the
   break — shards, the hole, sound — is replicated).
-- **CS:S FAMAS burst plays the single-shot animation.** In 3-round burst
-  the view model should play the burst fire animation.
 - **Combat Arms full-auto fire clips (painfully loud): fixed, confirm by
   ear.** The fire sound was already one voice per shooter (its fire
   channel); the pile was every round's impact and casing sound, a new
@@ -76,10 +74,6 @@ the user's go-ahead: no Actions runs unless asked.
   other players' shots seen on a client (`remote_shots` keeps the old
   gun's fire sound after the ladder swap); the shooter's own predicted
   last shot before the swap was not checked.
-- **Glock burst toggle shows nothing.** Right-click switches to burst but
-  there's no indication; CS:S prints "Switched to Burst-Fire mode" /
-  "Switched to semi-automatic" as a center message (needs the HUD hint
-  in our HUD).
 
 ### Decisions 2026-10-13 (user)
 
