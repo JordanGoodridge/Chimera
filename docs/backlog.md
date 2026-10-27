@@ -58,6 +58,66 @@ the user's go-ahead: no Actions runs unless asked.
   entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
   playtest; if it still peaks, a limiter on the mix is next.
 
+### Gaps vs the originals (audit 2026-10-27)
+
+specs/ compared with the code, spec by spec. Plain CS:S and Combat Arms
+match their specs wherever the docs don't already say otherwise; the
+unlisted gaps are where the party apps (Lucker Party's gun game, the
+Ultimate Gun Game: `apps/party_kit`) put the two games together. Most
+noticeable first (impact H/M/L, size S/M/L). The rest, the method and
+two misdescribed docs:
+[plans/active/parity-audit-2026-10.md](plans/active/parity-audit-2026-10.md).
+
+- **Doubled footsteps with a CS:S gun (H, S).** CS:S steps come from
+  Source movement (sounds.md 3); Combat Arms' `effects::footsteps`
+  (games/combat_arms/src/game/effects/mod.rs) steps every character with
+  a `MovementState` whatever its `GameIdentity`, so a CS:S-gun player is
+  heard twice (own steps too), and CA's own voices (`effects::voice`:
+  jump, sprint, kill) play for CS:S players. Gate by identity, as
+  `characters` already does.
+- **No CS:S hit slowdown or flinch in the party apps (H, S).** CS:S
+  slows a hit player (0.5/0.65, back over 1/3 s) and kicks its view
+  (weapons.md M18); `PartyPartsPlugin` (apps/party_kit/src/lib.rs) adds
+  `CsGunsPlugin` but not `hit_reaction::HitReactionPlugin` (only
+  `CsWeaponsPlugin` does), so CS:S-gun fights have no tagging.
+- **Both games' hurt and death sounds on every hit (M-H, S).** CS:S's
+  `pain::hurt_sounds`/`death_sounds` (kevlar, headshot, flesh,
+  `Player.Death`; sounds.md "Hurt and death sounds") and Combat Arms'
+  `effects::hurt_sounds` (effects_sounds.md 11: `Hurtpain_*`, no death
+  cry) both run for every victim: a CA soldier dies with CS:S's cry and
+  groans in both voices (CS:S's `Player.FallDamage` on CA falls too).
+  Pick by the victim's identity.
+- **Cross-game hit tests don't follow the drawn body (M-H, M).** CS:S
+  guns test hitboxes (weapons.md 5) but Combat Arms' bodies register none
+  (`characters/models.rs`, `hitboxes: Vec::new()`), so on CA soldiers
+  they fall back to height bands on the collider (`weapon/deliver.rs`);
+  CA guns hit a CS:S-dressed player on CA's measured standing skeleton
+  (`weapons.rs` `geometry_at`, characters.md 11), not the CS:S pose.
+- **Armour isn't shared across games (M, M).** Every character gets
+  Combat Arms' `CaArmor` (100 points, games/combat_arms/src/game/weapons.rs),
+  which CS:S guns ignore (they read `weapon::Armor`, weapons.md M7): a
+  CA-gun player's HUD shows armour CS:S bullets go through, a CS:S-gun
+  player (CS:S HUD: 0) carries unseen armour against CA guns.
+- **Water and ladders across movements (M, M).** CA movement swims only
+  in its liquid volumes (movement.md "Volumes"); `volumes.rs` makes
+  Source ladder brushes `Ladder` volumes but not Source water
+  (`MapWater`, which CA grenades already treat as Water), so a CA-gun
+  player walks the bottom of a CS:S map's water (the UGG pool). On CA
+  maps CS:S movement has neither water nor ladders (CA's are volumes).
+- **CS:S HUD pieces missing in the party apps (M, S).** With a CS:S gun
+  the CS:S HUD is up, but `party_kit::client` adds only `GameHudPlugin`,
+  `HudSpritesPlugin`, `WeaponSelectPlugin` and the minigame panel: no
+  target ID (`ui::target_id`), radar, freeze cam or voice HUD (all in
+  `CsSourceUiPlugin`); CA's name tags are its HUD's, so a CS:S-gun player
+  sees no names at all.
+- **No prop collision or scrape sounds in the party apps (M-L, S).**
+  CS:S's `impacts::ImpactSoundsPlugin` (sounds.md 4) comes only with
+  `CsWeaponsPlugin`; `PartyPartsPlugin` adds `BulletImpactsPlugin`
+  alone, so props knocked about on CS:S maps are silent.
+- **CS:S kill-feed icons for CA guns (L-M, S).** `ui::game_hud` looks an
+  icon up as `d_<last part of the id>`: `combat_arms:m4a1` shows CS:S's
+  M4A1 icon, the other CA guns none.
+
 ### Decisions 2026-10-13 (user)
 
 - Refactor: go ahead with engine-split.md "Crates and compile time"
