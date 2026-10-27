@@ -79,15 +79,6 @@ two misdescribed docs:
   (weapons.md M18); `PartyPartsPlugin` (apps/party_kit/src/lib.rs) adds
   `CsGunsPlugin` but not `hit_reaction::HitReactionPlugin` (only
   `CsWeaponsPlugin` does), so CS:S-gun fights have no tagging.
-- **Armour isn't shared across games (M, M).** Every character gets
-  Combat Arms' `CaArmor` (100 points, games/combat_arms/src/game/weapons.rs),
-  which CS:S guns ignore (they read `weapon::Armor`, weapons.md M7): a
-  CA-gun player's HUD shows armour CS:S bullets go through, a CS:S-gun
-  player (CS:S HUD: 0) carries unseen armour against CA guns. Plan:
-  [plans/active/generic-hits.md](plans/active/generic-hits.md): the
-  shared armour step (`weapon::hits::absorb`) and CS:S's kevlar on it are
-  in; left are Combat Arms' hits through it and `CaArmor` becoming
-  `weapon::Armor` (steps d3, d4), then the cross-game armour tests.
 - **Water and ladders across movements (M, M).** CA movement swims only
   in its liquid volumes (movement.md "Volumes"); `volumes.rs` makes
   Source ladder brushes `Ladder` volumes but not Source water

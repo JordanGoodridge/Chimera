@@ -46,7 +46,8 @@ in the code.
 ## All gaps found
 
 High and medium: the backlog section (nine items; the two sound items and
-the cross-game hit tests one done 2026-10-27, [generic-hits.md](generic-hits.md)). Low:
+the cross-game hit tests and shared armour ones done 2026-10-27:
+[DESIGN.md "Hits across games"](../../DESIGN.md#hits-across-games)). Low:
 
 - **Grenade water splash sounds (CS:S, L, S).** grenades.md 4 step 8:
   entering water plays `BaseEntity.EnterWater`, leaving
