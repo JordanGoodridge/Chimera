@@ -1677,6 +1677,16 @@ chimera_core (19 units: every test binary relinks), interleaved:
 | a test binary (cs_source's) | ~1 GB | 478 MB |
 | switching profile: every unit again (528) | | 4,781 s once (load 22-48) |
 
+The hooks, a one-line change in chimera_sim staged in a warm slot (load
+25-35):
+
+| | time |
+|---|---|
+| old pre-commit (`CHIMERA_COMMIT_TESTS=affected`): 20 crates' fast tier, 3,374 tests | 749 s |
+| new pre-commit: those 20 crates' tests built, chimera_sim's and repo_checks' run, 118 tests | 638 s right after a profile switch, 226 s the next change |
+| new pre-push (identity, traces, repo_checks) | 38 s |
+| `post-push-tests.sh`, nothing to test but repo_checks: its build checks from a test-only slot | 1,376 s (the first run; the checks' builds then stay warm) |
+
 `cargo run`/`build` keep full debug info (the dev profile), so a slot
 that also runs the game builds the dependencies a second time.
 
