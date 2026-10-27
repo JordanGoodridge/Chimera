@@ -117,6 +117,8 @@ pub const CHANNEL_IDLE: u8 = 5;
 /// them); our mixer sums every voice and clips past full scale.
 pub const CHANNEL_IMPACT: u8 = 6;
 pub const CHANNEL_SHELL: u8 = 7;
+/// A team's grenade call-out at its thrower (`grenades::callout`).
+pub const CHANNEL_CALLOUT: u8 = 8;
 
 /// The install's sound files loaded so far: clip index in the bank (None:
 /// doesn't read).

@@ -19,6 +19,9 @@ sprint_out = 0.267
 move_penalty = 0.03
 
 [hooks."combat_arms:grenade"]
+# PlayAutoThrowSound (default on) and Guntype 7: the team's call-out
+# (grenades.md Corrections (2026-10-27) C1).
+call_out = true
 # SpawnedAmount / MaxAmount 2 / 2 [Data; 2].
 spawned = 2
 max = 2

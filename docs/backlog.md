@@ -57,29 +57,23 @@ the user's go-ahead: no Actions runs unless asked.
   and Chimera's playback limits voices per source (8) and per sourceless
   entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
   playtest; if it still peaks, a limiter on the mix is next.
-- **Combat Arms grenades: fixed, confirm in a playtest; pin and throw
-  sounds need a spec answer** (user, 2026-10-27). The flight already
-  matched grenades.md (arc, bounce, rest, fuse: `grenades::t01`-`t49`)
-  but was drawn at the server's 20 frames a second, hopping 50 ms at a
-  time; now it is drawn on its path between frames
-  (`grenades::draw_between_frames`;
-  `thrown_frag_flies_the_spec_arc_and_is_drawn_between_frames`). In
-  flight it was the held model at its own size (plus a placeholder
-  ball); now it is the projectile record's model (`FX.TXT`
-  `ProjectileFX#`: `Model`, `Skin0`, `ModelScale` 2, `World` pose), and
-  the record's `Velocity`, `Lifetime`, `DropVelocity`, `FireOffset` and
-  `CanHitSameKind` reach the grenade hook (`data::grenade_values`;
-  `attribute_data::grenade_projectile_records_from_the_install`,
-  `heavy::characters::thrown_grenades_draw_their_projectile_model`). The
-  view model's pin pull, throw and release already played
-  (`view_model::a_throw_plays_pin_pull_throw_and_release`), and the
-  bounce and blast sounds already fire. Left: the pin pull's view-model
-  key is `sound_key 10` (misc sound 1, view_models.md 8), but no spec
-  names the field misc sounds read and the install's grenade records
-  have none (nor `FireSnd`/`PreFireSnd`), so the pin and throw are
-  silent; a spec session should say which file (if any) plays there
-  (the M67's sound folder has `reload1.wav`, `fire.wav`,
-  `firetoss.wav`, which nothing names).
+- **Combat Arms grenades: fixed, confirm in a playtest** (user,
+  2026-10-27; nothing left). The flight matched grenades.md (arc, bounce,
+  rest, fuse: `grenades::t01`-`t49`) but was drawn at the server's 20
+  frames a second; now it is drawn on its path between frames
+  (`grenades::draw_between_frames`), with the projectile record's model
+  in its `World` pose (`data::grenade_values`,
+  `heavy::characters::thrown_grenades_draw_their_projectile_model`).
+  The spec's sounds, spin and pose (grenades.md Corrections (2026-10-27)
+  C1-C3, cases 64-72, `grenades::t64_`-`t72_`): the pin pull plays the
+  record's `MiscSound1` (view-model keys 10-14 are `MiscSound1..5`,
+  loaded by `data::sound_values`; others hear it 3D at the thrower's
+  flash point, radius 2000); the throw call-out "GrenadeThrowing" goes to
+  the thrower's team (`grenades::callout`, over the network as
+  `CaThrowCallout`); the tumble is set from accumulated angles and a
+  client smooths it (`grenades::tumble`). Known shortcut: the call-out
+  does not follow the thrower once it has started (Chimera's one-shot
+  sounds fix their gain at the start).
 
 ### Gaps vs the originals (audit 2026-10-27)
 

@@ -95,6 +95,13 @@
 //! `inventory::UNIT`) and hit points inside; the world in metres and
 //! health (1.0 = 100 HP).
 //!
+//! The throw's sounds, spin and pose (specs/combat_arms/grenades.md,
+//! Corrections (2026-10-27) C1 to C3): `tumble` turns the grenade from
+//! accumulated angles set each update (rates drawn at creation and each
+//! bounce from the deterministic `shared_random`) and smooths it on a
+//! client; `callout` sends the thrower's team the "grenade throwing"
+//! voice when `GrenadeParams::call_out` is on.
+//!
 //! Corrections 2026-10-22 (b): the M-23F and G7A are one grenade, shown and
 //! real (the spec's recommendation; the original shows 2 and ignores the
 //! second throw: not copied); the Parting Gift grenade is the perk's own
@@ -117,7 +124,7 @@
 //!   G7A boxes are the M67's (PLACEHOLDER: not in the spec). Bounce
 //!   sounds are `effects`' (each contact's `loudness`, half in water);
 //!   a character touch's is at full loudness (6 gives the formula for
-//!   world bounces only); bots don't hear them; spin is drawn only.
+//!   world bounces only); bots don't hear them.
 //! - Grenades don't tell the map's invisible polygons or sky portals apart
 //!   (Combat Arms maps' surfaces have no names here): they bounce off clip
 //!   walls and sky surfaces of the map; colliders named "invisible" and
@@ -135,11 +142,17 @@
 //!   install's model, a grey ball for the smoke (`ui::visuals`), no
 //!   explosion or flash models. In flight the model holds its `World`
 //!   pose from the throw (the `Hand` animation before it isn't drawn) and
-//!   starts unturned (the spec turns it to face its direction).
-//! - No pin or throw sound: the pin pull's `sound_key 10` (the weapon's
-//!   misc sound 1, view_models.md 8) names no attribute field in the specs
-//!   and the install's grenade records have no misc, `FireSnd` or
-//!   `PreFireSnd` field, so nothing plays (the bounce and the blast do).
+//!   turns as `tumble` says.
+//! - The sounds (C1) are `effects`' (the pin pull's `sound_key 10` plays
+//!   the record's `MiscSound1`, each client deriving others' from the
+//!   view-model keys it replays) and `callout`'s (the team's voice at the
+//!   release, which does not follow the thrower once started); there is no
+//!   flight sound and no release sound, as in the spec. The tumble and the
+//!   client's smoothing of it are `tumble`'s (C2); the model is drawn in
+//!   its `World` pose from creation, `Hand` never (C3).
+
+pub mod callout;
+pub mod tumble;
 
 use std::collections::HashMap;
 
@@ -147,6 +160,7 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use serde::Deserialize;
 
+use self::tumble::Tumble;
 use super::{
     inventory::{CaSelection, UNIT},
     volumes::{CaVolume, LIQUID_GRAVITY},
@@ -161,6 +175,7 @@ use crate::{
         MovementState, Predict, PropSurface, SOLID_LAYERS, SimClock, SimSet,
     },
     map::{PropEntity, loose::ShownItem},
+    net::NetAppExt,
     weapon::{
         Inventory, Weapon, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
@@ -168,7 +183,7 @@ use crate::{
             Blast, Detonated, Flash, Flight, GameFlown, GrenadeEffect, GrenadeKind, Launch, Projectile, Smoke,
             SmokeCloud, SurvivesRestart, ThrowOptions, ThrowRule, Throwable, spawn_projectile,
         },
-        random::shared_random,
+        random::{Rng, shared_random},
     },
 };
 
@@ -245,6 +260,16 @@ pub const OVER_TIME_TRACE_START: f32 = 1.0;
 /// Spin rates' ranges, rad/s (pitch; yaw and roll).
 pub const SPIN_PITCH: f32 = std::f32::consts::PI;
 pub const SPIN_YAW_ROLL: f32 = std::f32::consts::TAU;
+/// The spin rates (pitch, yaw, roll; rad/s), uniform in their ranges:
+/// drawn when a grenade is made and at each bounce (C2).
+pub fn spin_rates(rng: &mut Rng) -> Vec3 {
+    Vec3::new(
+        (rng.next() * 2.0 - 1.0) * SPIN_PITCH,
+        (rng.next() * 2.0 - 1.0) * SPIN_YAW_ROLL,
+        (rng.next() * 2.0 - 1.0) * SPIN_YAW_ROLL,
+    )
+}
+
 /// Kept between a grenade and the surface it touched, u (ours: the next
 /// step's trace starts outside it).
 const SKIN: f32 = 1e-3;
@@ -338,6 +363,11 @@ pub struct GrenadeParams {
     /// 23's).
     #[serde(default)]
     pub fire_offset: f32,
+    /// The release makes the team's call-out (`callout`): the weapon's
+    /// `PlayAutoThrowSound` (default on) and `Guntype` 7. Ours for the
+    /// five stock grenades; the install's record says.
+    #[serde(default)]
+    pub call_out: bool,
     /// The projectile record's `Model` (an archive path of the install):
     /// the grenade as drawn in flight, in its `World` pose; None: the front
     /// end's placeholder. `ModelScale` (stock 2 per axis; the box above is
@@ -359,8 +389,11 @@ fn stock_model_scale() -> [f32; 3] {
 /// The key of weapon `id`'s grenade as drawn in flight (its `ShownItem`
 /// and held-model key; the thrown model, `GrenadeParams::thrown_model`).
 pub fn thrown_key(id: &str) -> String {
-    format!("{id}#thrown")
+    format!("{id}{THROWN_SUFFIX}")
 }
+
+/// What `thrown_key` appends to a weapon id.
+pub const THROWN_SUFFIX: &str = "#thrown";
 
 /// Weapon part: a Combat Arms grenade's numbers, and its document's units
 /// (metres per length unit, health per damage point).
@@ -622,8 +655,8 @@ pub struct CaGrenade {
     pub last_surface: Option<String>,
     /// Its hit points are gone (13): it goes off on the next frame.
     pub destroyed: bool,
-    /// Visual spin, rad/s.
-    pub spin: Vec3,
+    /// Visual spin: the accumulated angles and their rates (`tumble`).
+    pub tumble: Tumble,
 }
 
 /// Server frames (`SERVER_FRAME` apart, the first tick at or after each
@@ -848,6 +881,7 @@ impl Plugin for CaGrenadesPlugin {
             .add_message::<CaBlastSurface>()
             .add_message::<Damage>()
             .add_message::<Died>()
+            .add_message::<callout::CaThrowCallout>()
             // Predicted with the throw: sprint holds a grenade's fire.
             .add_systems(Predict::Weapons, sprint_gate.before(WeaponFrame))
             .add_systems(
@@ -862,6 +896,16 @@ impl Plugin for CaGrenadesPlugin {
                 )
                     .run_if(crate::core::authoritative),
             );
+        // A client draws a flying grenade's turn smoothed (C2).
+        app.add_systems(
+            Update,
+            tumble::smooth.run_if(bevy::ecs::schedule::common_conditions::resource_equals(crate::core::NetRole::Client)),
+        );
+        // The call-out reaches a remote player as a server message.
+        app.net_part("combat_arms_callout", |app| {
+            use bevy_replicon::prelude::{Channel, ServerMessageAppExt};
+            app.add_mapped_server_message::<callout::CaThrowCallout>(Channel::Ordered);
+        });
     }
 }
 
@@ -952,6 +996,9 @@ pub fn launch(world: &mut World, l: Launch) {
     let aim = Quat::from_euler(EulerRot::YXZ, l.yaw, l.pitch, 0.0);
     let dir = square_dir(aim, n / 1000.0, u1, u2);
     let at = fire_offset(world, l.thrower, l.eye, dir, p.fire_offset * data.unit);
+    if p.call_out {
+        callout::send(world, l.thrower, l.command);
+    }
     // Pitcher's force (gear_perks.md 14; 1 without it).
     let force = super::perks::throw_force(world, l.thrower);
     spawn_grenade(world, l.weapon, Some(l.thrower), at, dir * p.speed * data.unit * force);
@@ -993,11 +1040,7 @@ pub fn spawn_grenade(
         frames.next_seq
     };
     let mut rng = shared_random(seq as u32, "combat_arms:spin", 0);
-    let spin = Vec3::new(
-        (rng.next() * 2.0 - 1.0) * SPIN_PITCH,
-        (rng.next() * 2.0 - 1.0) * SPIN_YAW_ROLL,
-        (rng.next() * 2.0 - 1.0) * SPIN_YAW_ROLL,
-    );
+    let spin = spin_rates(&mut rng);
     let mut ent = world.entity_mut(e);
     if let Some(mut p) = ent.get_mut::<Projectile>() {
         p.thrower = thrower;
@@ -1028,7 +1071,7 @@ pub fn spawn_grenade(
             contacts: Vec::new(),
             last_surface: None,
             destroyed: false,
-            spin,
+            tumble: Tumble::new(spin),
         },
     ));
     Some(e)
@@ -1476,14 +1519,16 @@ fn run_frame(
             if g.resting {
                 continue;
             }
+            // The spin comes first in an update and only while it moves
+            // (C2): the rotation is set from the angles; a bounce below
+            // draws the rates the next update uses.
+            transform.rotation = g.tumble.step(f.dt);
             let Some(touched) = step(f, e, &mut g, world, &others) else {
                 // Into the sky: gone without a trace.
                 f.gone.push(e);
                 out.commands.entity(e).try_despawn();
                 continue;
             };
-            let spin = g.spin * f.dt;
-            transform.rotation *= Quat::from_euler(EulerRot::YXZ, spin.y, spin.x, spin.z);
             projectile.velocity = g.velocity * g.unit;
             if let Some(o) = others.iter_mut().find(|o| o.entity == e) {
                 o.pos = g.pos;
@@ -1718,14 +1763,9 @@ fn step(f: &Frame, me: Entity, g: &mut CaGrenade, world: &GrenadeWorld, others: 
     });
     // A new spin at every bounce.
     let mut rng = shared_random(g.seq as u32, "combat_arms:spin", g.steps as i32);
-    g.spin = Vec3::new(
-        (rng.next() * 2.0 - 1.0) * SPIN_PITCH,
-        (rng.next() * 2.0 - 1.0) * SPIN_YAW_ROLL,
-        (rng.next() * 2.0 - 1.0) * SPIN_YAW_ROLL,
-    );
+    g.tumble.rates = spin_rates(&mut rng);
     if rest {
         g.resting = true;
-        g.spin = Vec3::ZERO;
         g.nudge = Some(-start_dir * g.params.box_half[1] * h.max(0.1));
     }
     Some(touched)
