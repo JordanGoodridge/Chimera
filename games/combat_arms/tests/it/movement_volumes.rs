@@ -901,3 +901,68 @@ fn case_79_safety_net_physics() {
     close(t.mv().speed_limit, 285.0, TOL, "limit");
     close(before.z - t.pos().z, 4.44784, TOL, "distance");
 }
+
+// --- Map ladder brushes (Source maps' climbable contents) ---
+
+/// A ladder brush (`MapBrush::ladder`, as a Source map carries them) in
+/// front of the player (engine -Z), 16 u thick and `top` u tall.
+fn brush_ladder(t: &mut T, top: f32) {
+    use chimera_core::core::{MapBrush, MapBrushes};
+    let (lo, hi) = (Vec3::new(-50.0, 0.0, -80.0), Vec3::new(50.0, top, -64.0));
+    let mut b = MapBrush::from_box(lo * s(), hi * s());
+    b.ladder = true;
+    t.sim.app.world_mut().insert_resource(MapBrushes(vec![b]));
+    t.ticks(2);
+}
+
+/// A map's ladder brush works with Combat Arms' movement: walking into it
+/// while looking up climbs it, at the spec's steady 245 u/s (the 200 cap, then a tick's acceleration).
+#[test]
+fn a_map_ladder_brush_is_climbed() {
+    let mut t = T::standing();
+    brush_ladder(&mut t, 600.0);
+    t.keys().pitch = UP;
+    t.forward(true);
+    let start = t.pos().y;
+    let mut peak = 0.0f32;
+    for _ in 0..120 {
+        t.tick();
+        peak = peak.max(t.vel().y);
+    }
+    assert!(t.mv().on_ladder, "on the ladder at {}", t.pos());
+    assert!(t.pos().y - start > 100.0, "climbed {} u", t.pos().y - start);
+    // The cap (200) is applied before the tick's acceleration (case 56's
+    // steady state ends each tick at 245).
+    close(peak, 245.0, TOL, "steady climb speed");
+}
+
+/// Looking down and walking forward climbs down it (look-direction
+/// climbing), and a jump does nothing on it.
+#[test]
+fn a_map_ladder_brush_is_climbed_down_looking_down() {
+    let mut t = T::standing();
+    brush_ladder(&mut t, 600.0);
+    set_vel(&mut t, Vec3::ZERO);
+    t.keys().pitch = UP;
+    t.forward(true);
+    t.ticks(120);
+    let high = t.pos().y;
+    assert!(t.mv().on_ladder);
+    t.keys().pitch = -UP;
+    t.ticks(60);
+    assert!(t.pos().y < high - 20.0, "went down from {high} to {}", t.pos().y);
+}
+
+/// Standing on top of a ladder brush (its upward face carries the flag)
+/// does not grab it, as with Source's movement.
+#[test]
+fn standing_on_a_map_ladder_brushs_top_does_not_grab() {
+    use chimera_core::core::{MapBrush, MapBrushes};
+    let mut t = T::new(vec![floor(), block(Vec3::new(0.0, 25.0, 0.0), Vec3::new(50.0, 25.0, 50.0))], on(0.0, 50.0, 0.0));
+    let mut b = MapBrush::from_box(Vec3::new(-50.0, 0.0, -50.0) * s(), Vec3::new(50.0, 50.0, 50.0) * s());
+    b.ladder = true;
+    t.sim.app.world_mut().insert_resource(MapBrushes(vec![b]));
+    t.ticks(60);
+    assert!(!t.mv().on_ladder, "standing on the top at {}", t.pos());
+    assert!(t.mv().on_ground);
+}

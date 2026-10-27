@@ -40,6 +40,11 @@
 //! carries its `Water` and `PoisonGas00`), each found by its map entity
 //! index (`VolumeIndex`).
 //!
+//! A Source map's ladder brushes (`MapBrush::ladder`, any game's map) become
+//! `Ladder` volumes too (`BrushLadder`, upward faces lowered 2 cm so
+//! standing on top doesn't grab), so Combat Arms' movement climbs every
+//! map's ladders (the spec is silent on Source maps; our choice).
+//!
 //! Known shortcuts: the volume is its world model's polygons' planes (the
 //! exact shape for a convex brush; a concave one is taken as the
 //! intersection of its faces' half-spaces); a moved volume's world model
@@ -395,6 +400,9 @@ impl Plugin for CaVolumesPlugin {
                 load_volumes
                     .run_if(resource_exists_and_changed::<MapEntities>)
                     .before(super::objects::CaObjectsSet),
+                load_brush_ladders
+                    .run_if(resource_exists_and_changed::<crate::core::MapBrushes>)
+                    .before(super::objects::CaObjectsSet),
                 volume_damage
                     .run_if(crate::core::authoritative)
                     .after(super::objects::CaObjectsSet)
@@ -450,7 +458,11 @@ pub fn volumes_near(w: &mut World, centre: Vec3, radius_u: f32) -> String {
 }
 
 /// Each map entity of a volume class as a `CaVolume` (part of the map).
-fn load_volumes(entities: Res<MapEntities>, old: Query<Entity, With<CaVolume>>, mut commands: Commands) {
+fn load_volumes(
+    entities: Res<MapEntities>,
+    old: Query<Entity, (With<CaVolume>, Without<BrushLadder>)>,
+    mut commands: Commands,
+) {
     for e in &old {
         commands.entity(e).despawn();
     }
@@ -462,6 +474,45 @@ fn load_volumes(entities: Res<MapEntities>, old: Query<Entity, With<CaVolume>>, 
             };
             commands.spawn((Name::new(name), v, VolumeIndex(i), MapPart));
         }
+    }
+}
+
+/// Marks a `Ladder` volume made from a ladder brush of the map's
+/// collision (`MapBrush::ladder`: a Source map's climbable contents), so
+/// Combat Arms' movement climbs the ladders of any map, not only the
+/// `Ladder` volumes of its own maps.
+#[derive(Component, Debug)]
+pub struct BrushLadder;
+
+/// How far (m) a brush ladder's top face is lowered: standing on top of
+/// the brush (its upward face carries the ladder flag) must not grab it,
+/// as Source's movement ignores such faces (cs_source `movement.rs`).
+const LADDER_TOP_INSET: f32 = 0.02;
+
+/// The `Ladder` volume of a ladder brush: the brush's planes, upward
+/// faces lowered by `LADDER_TOP_INSET`.
+pub fn ladder_from_brush(b: &crate::core::MapBrush) -> CaVolume {
+    let mut v = CaVolume::class_box("Ladder", b.min, b.max).expect("the Ladder class");
+    v.planes = b
+        .planes
+        .iter()
+        .map(|&(n, d)| if n.y >= 0.7 { (n, d - LADDER_TOP_INSET) } else { (n, d) })
+        .collect();
+    v.max.y = (v.max.y - LADDER_TOP_INSET).max(v.min.y);
+    v
+}
+
+/// Replaces the brush ladders when the map's brushes change.
+fn load_brush_ladders(
+    brushes: Option<Res<crate::core::MapBrushes>>,
+    old: Query<Entity, With<BrushLadder>>,
+    mut commands: Commands,
+) {
+    for e in &old {
+        commands.entity(e).despawn();
+    }
+    for b in brushes.iter().flat_map(|b| b.0.iter()).filter(|b| b.ladder) {
+        commands.spawn((Name::new("Ladder (map brush)"), ladder_from_brush(b), BrushLadder, MapPart));
     }
 }
 
