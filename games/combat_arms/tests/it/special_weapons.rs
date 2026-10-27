@@ -33,7 +33,7 @@ use combat_arms::{
         grenades::{self, CaDamageSphere, CaGrenadeEffects, CaServerFrames, OverTimeKind},
         movement,
         special::{self, CaDeviceData, CaObject, CaProjectileData, Kind, ProjectileParams},
-        weapons::{CaArmor, Location, MALE, body_geometry},
+        weapons::{Location, MALE, body_geometry},
     },
     harness::CaSim,
 };
@@ -226,10 +226,7 @@ pub(super) fn player(sim: &mut Sim, x: f32, z: f32, yaw: f32, team: u8) -> Entit
     sim.seconds(0.5);
     sim.app.world_mut().entity_mut(p).insert((
         Health { current: 1.0, max: 1.0 },
-        CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        },
+        combat_arms::game::weapons::gear_armour(0.0, &Vec::new()),
     ));
     p
 }

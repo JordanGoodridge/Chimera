@@ -43,7 +43,7 @@ use combat_arms::{
         inventory::{self, Dropped},
         movement::{self, CaMovement, StunPenalty},
         weapons::{
-            self as ca, CaArmor, CaKick, CaRecoil, CaSpread, CaZoom, FireMode, MALE, RIFLE, RecoilParams, SpreadScales,
+            self as ca, CaKick, CaRecoil, CaSpread, CaZoom, FireMode, MALE, RIFLE, RecoilParams, SpreadScales,
         },
     },
     harness::CaSim,
@@ -196,10 +196,7 @@ fn player(sim: &mut Sim, at: Vec3, yaw: f32, health: f32, id: &str, parts: &[&st
             current: health,
             max: health,
         },
-        CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        },
+        combat_arms::game::weapons::gear_armour(0.0, &Vec::new()),
     ));
     p
 }

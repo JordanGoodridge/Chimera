@@ -21,7 +21,7 @@ use combat_arms::{
     game::{
         TICK_INTERVAL, movement,
         weapons::{
-            self as ca, CaArmor, CaKick, CaRecoil, CaSpread, ConeParams, DEFAULT_BODY_GEAR, FireMode, HitSphere,
+            self as ca, CaKick, CaRecoil, CaSpread, ConeParams, DEFAULT_BODY_GEAR, FireMode, HitSphere,
             MALE, RecoilParams, SpreadParams, SpreadScales,
         },
     },
@@ -178,10 +178,7 @@ fn player(sim: &mut Sim, at: Vec3, yaw: f32, health: f32) -> Entity {
             current: health,
             max: health,
         },
-        CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        },
+        combat_arms::game::weapons::gear_armour(0.0, &Vec::new()),
     ));
     p
 }
@@ -609,16 +606,13 @@ fn t59_ai_damage() {
         let (shooter, target) = range_lane(&mut sim, "test:m4a1_exact", 100.0);
         sim.app.world_mut().entity_mut(shooter).insert(Bot);
         if armoured {
-            sim.app.world_mut().entity_mut(target).insert(CaArmor {
-                points: 100.0,
-                gear: vec![DEFAULT_BODY_GEAR],
-            });
+            sim.app.world_mut().entity_mut(target).insert(combat_arms::game::weapons::gear_armour(100.0, &vec![DEFAULT_BODY_GEAR]));
         }
         let at = sphere(&sim, shooter, target, part);
         aim(&mut sim, shooter, at);
         let lost = pull(&mut sim, shooter, &[target]);
         close(lost[0], want, 1e-3, part);
-        close(sim.app.world().get::<CaArmor>(target).unwrap().points, ap, 1e-3, "AP");
+        close(sim.app.world().get::<chimera_sim::weapon::Armor>(target).map(combat_arms::game::weapons::points).unwrap(), ap, 1e-3, "AP");
     }
     // A bot shooting a bot: the factor, no cap.
     let mut sim = sim();

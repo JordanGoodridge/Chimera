@@ -1237,7 +1237,6 @@ fn t42_better_weapon_rule() {
 /// default body gear a torso hit is 45 and uses no armour.
 #[test]
 fn t43_knife_ray_and_zones() {
-    use combat_arms::game::weapons::CaArmor;
     let (mut sim, p) = knife_out(STOCK);
     let k = carried(&sim, p, KNIFE);
     assert!((sim.app.world().get::<Knife>(k).unwrap().perturb - 0.001).abs() < 1e-7, "n = 1");
@@ -1260,7 +1259,7 @@ fn t43_knife_ray_and_zones() {
         let got = hit_at(&mut sim, name);
         assert!((got - want).abs() < 1e-3, "{name}: {got}, want {want}");
     }
-    let ap = sim.app.world().get::<CaArmor>(target).unwrap().points;
+    let ap = sim.app.world().get::<chimera_sim::weapon::Armor>(target).map(combat_arms::game::weapons::points).unwrap();
     assert_eq!(ap, 100.0, "the default body gear: melee uses no armour");
 }
 

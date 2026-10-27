@@ -22,7 +22,7 @@ use combat_arms::{
     game::{
         movement,
         weapons::{
-            self as ca, CaArmor, CaDamage, CaKick, CaRecoil, CaSpread, DEFAULT_BODY_GEAR, DEFAULT_HEAD_GEAR, FireMode,
+            self as ca, CaDamage, CaKick, CaRecoil, CaSpread, DEFAULT_BODY_GEAR, DEFAULT_HEAD_GEAR, FireMode,
             HEAVY_BODY_GEAR, MALE, SpreadScales,
         },
     },
@@ -93,10 +93,7 @@ fn player(sim: &mut Sim, at: Vec3, yaw: f32, health: f32) -> Entity {
             current: health,
             max: health,
         },
-        CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        },
+        combat_arms::game::weapons::gear_armour(0.0, &Vec::new()),
     ));
     p
 }
@@ -114,11 +111,11 @@ fn health(sim: &Sim, p: Entity) -> f32 {
 }
 
 fn armour(sim: &Sim, p: Entity) -> f32 {
-    sim.app.world().get::<CaArmor>(p).unwrap().points
+    sim.app.world().get::<chimera_sim::weapon::Armor>(p).map(combat_arms::game::weapons::points).unwrap()
 }
 
 fn set_armour(sim: &mut Sim, p: Entity, points: f32, gear: Vec<ca::Gear>) {
-    sim.app.world_mut().entity_mut(p).insert(CaArmor { points, gear });
+    sim.app.world_mut().entity_mut(p).insert(combat_arms::game::weapons::gear_armour(points, &gear));
 }
 
 fn mag(sim: &Sim, w: Entity) -> Magazine {
@@ -1399,9 +1396,9 @@ fn t48_armour_by_damage_type() {
         ("bullet, groin", hit(ca::BULLET, Location::Groin), 35.0, 35.0, 100.0),
         ("bullet, torso", hit(ca::BULLET, Location::Torso), 35.0, 29.75, 94.75),
     ] {
-        let mut a = CaArmor::default();
-        close(ca::armour_and_zone(d, h, Some(&mut a), true), want, 1e-4, what);
-        close(a.points, ap, 1e-4, &format!("{what}: AP"));
+        let (mut a, pieces) = ca::default_armour();
+        close(ca::armour_and_zone(d, h, Some(&mut a), Some(&pieces), true), want, 1e-4, what);
+        close(ca::points(&a), ap, 1e-4, &format!("{what}: AP"));
     }
     // A round on the groin in play.
     let mut sim = sim();
@@ -1420,9 +1417,9 @@ fn t49_groin_on_an_infected_victim() {
         zone: 1.0,
         infected: true,
     };
-    let mut a = CaArmor::default();
-    close(ca::armour_and_zone(35.0, h, Some(&mut a), true), 29.75, 1e-4, "damage");
-    close(a.points, 94.75, 1e-4, "AP");
+    let (mut a, pieces) = ca::default_armour();
+    close(ca::armour_and_zone(35.0, h, Some(&mut a), Some(&pieces), true), 29.75, 1e-4, "damage");
+    close(ca::points(&a), 94.75, 1e-4, "AP");
 }
 
 /// Case 55 of movement.md through a real round: an infected victim of
@@ -1451,7 +1448,7 @@ fn knock_back_on_an_infected_victim() {
 }
 
 // ---------------------------------------------------------------------------
-// Parity pin (docs/plans/active/generic-hits.md, step a)
+// Parity pin (docs/DESIGN.md "Hits across games")
 
 /// What the M4A1 (roll 1.0, 1000 units) deals on every zone of the male
 /// skeleton through the default body and head gear, each shot on 100

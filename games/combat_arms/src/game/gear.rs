@@ -1,7 +1,8 @@
 //! What a player's gear changes (specs/combat_arms/gear_perks.md; section
 //! numbers below are its): the vest (the selection's body record), helmet,
 //! goggles or mask, backpack and gear mods give an armour pool and a list
-//! of protection pieces (3, 4, 9: `weapons::CaArmor`, whose armour step
+//! of protection pieces (3, 4, 9: `weapon::Armor` with `weapon::ArmorPieces`,
+//! `weapons::gear_armour`, whose armour step
 //! the weapons and grenades already run), a speed penalty, sprint and
 //! stamina bonuses (10: `movement::CaCharacter`) and, with the set items
 //! and Fighting Chance, extra ammunition and damage (11, 12, 15).
@@ -84,12 +85,12 @@ use super::{
     data::CaData,
     movement::{CaCharacter, Figure, Gear as WornGear, MovementData},
     rules::CaMatchView,
-    weapons::{CaArmor, Gear, Protection},
+    weapons::{Gear, HIT_POINTS, Protection, default_armour, gear_armour},
 };
 use crate::{
     core::{self, Health, Intent, LocalPlayer, MovementState, NetRole},
     net::{NetAppExt, ordered::OrderedAppExt, server::Player},
-    weapon::{Magazine, Weapon},
+    weapon::{Armor, ArmorPieces, Magazine, Weapon},
 };
 
 /// Damage types (`InstDamageType`) the armour step sees; a set's
@@ -589,21 +590,16 @@ fn figure_hp() -> f32 {
 
 /// The armour a freshly spawned player has: the pool at the vest's
 /// `MaxArmor`, then the pieces added (their repair changes nothing).
-pub fn spawn_armour(resolved: &Resolved) -> CaArmor {
-    CaArmor {
-        points: resolved.max_armor,
-        gear: resolved.pieces.clone(),
-    }
+pub fn spawn_armour(resolved: &Resolved) -> (Armor, ArmorPieces) {
+    gear_armour(resolved.max_armor, &resolved.pieces)
 }
 
 /// A living player's armour after its gear changed: the list is
 /// refilled and the pool repaired by the added pieces' `Armor`, capped
 /// at the vest's maximum (section 9; test case 24).
-pub fn rebuild_armour(old: &CaArmor, resolved: &Resolved) -> CaArmor {
-    CaArmor {
-        points: (old.points + resolved.repair).min(resolved.max_armor.max(old.points)),
-        gear: resolved.pieces.clone(),
-    }
+pub fn rebuild_armour(old: &Armor, resolved: &Resolved) -> (Armor, ArmorPieces) {
+    let points = old.amount * HIT_POINTS;
+    gear_armour((points + resolved.repair).min(resolved.max_armor.max(points)), &resolved.pieces)
 }
 
 // ---------------------------------------------------------------------------
@@ -826,13 +822,13 @@ fn armour(
         &Selection,
         &CaGearKey,
         &CaGearEffects,
-        &mut CaArmor,
+        (&mut Armor, &mut ArmorPieces),
         Option<&mut Health>,
         Option<&CaGearBuilt>,
     )>,
     mut commands: Commands,
 ) {
-    for (e, look, key, effects, mut armor, health, built) in &mut characters {
+    for (e, look, key, effects, (mut armor, mut pieces), health, built) in &mut characters {
         if built.is_some_and(|b| b.0 == *key) {
             continue;
         }
@@ -841,8 +837,8 @@ fn armour(
         match built {
             // First seen: an untouched default armour becomes the gear's.
             None => {
-                if *armor == CaArmor::default() {
-                    *armor = spawn_armour(&resolved);
+                if (*armor, pieces.clone()) == default_armour() {
+                    (*armor, *pieces) = spawn_armour(&resolved);
                     if let Some(mut h) = health
                         && (resolved.max_hp / 100.0 - h.max).abs() > 1e-6
                     {
@@ -851,7 +847,7 @@ fn armour(
                     }
                 }
             }
-            Some(_) => *armor = rebuild_armour(&armor, &resolved),
+            Some(_) => (*armor, *pieces) = rebuild_armour(&armor, &resolved),
         }
     }
 }
@@ -915,7 +911,7 @@ pub fn set(items: &[i32], tiers: Vec<(usize, Vec<SetEffect>)>) -> SetDef {
 /// health (full). Without a look the default armour.
 pub fn spawn_gear(world: &mut World, e: Entity) {
     let Some(look) = world.get::<Selection>(e).copied() else {
-        world.entity_mut(e).insert(CaArmor::default());
+        world.entity_mut(e).insert(default_armour());
         return;
     };
     let loadout = world.get::<CaLoadout>(e).cloned().unwrap_or_default();
@@ -923,11 +919,11 @@ pub fn spawn_gear(world: &mut World, e: Entity) {
     let infected = world.get::<super::movement::CaInfected>(e).is_some();
     let quirks = world.get_resource::<CaGearQuirks>().copied().unwrap_or_default();
     let Some(data) = world.get_resource::<CaGearData>().map(|d| d.0.clone()) else {
-        world.entity_mut(e).insert(CaArmor::default());
+        world.entity_mut(e).insert(default_armour());
         return;
     };
     let Some(movement) = world.get_resource::<MovementData>() else {
-        world.entity_mut(e).insert(CaArmor::default());
+        world.entity_mut(e).insert(default_armour());
         return;
     };
     let resolved = resolve(&data, &movement.character.figure, quirks, &look, &loadout, &effects, infected);

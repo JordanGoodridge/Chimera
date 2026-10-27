@@ -90,7 +90,6 @@ use self::{
 use super::{
     inventory::UNIT,
     rules::{CaMatch, CaMatchView, CaRuleSettings, LAST_MAN_STANDING, current_mode, mercs::CaMerc, spawns::CaHeld},
-    weapons::CaArmor,
 };
 use crate::{
     console::resource_cvar,
@@ -516,7 +515,7 @@ fn drive(
     players: Query<(Entity, &Transform, Option<&CaSlot>, Option<&Team>, &Health, Has<Dead>, Has<CaHeld>, Has<Spectating>, Option<&Name>), (With<Intent>, Without<Npc>)>,
     (mercs, armour, inventory, weapons): (
         Query<(Entity, &CaMerc, &Transform, &Health, Has<Dead>)>,
-        Query<&CaArmor>,
+        Query<&crate::weapon::Armor>,
         Query<&Inventory>,
         Query<&crate::weapon::Weapon>,
     ),
@@ -590,7 +589,7 @@ fn drive(
             killer,
             name: k.and_then(|k| names.get(k).ok().flatten()).map(|n| n.to_string()),
             hp: k.and_then(|k| players.get(k).ok()).map_or(0.0, |p| p.4.current * 100.0 + 1e-3),
-            ap: k.and_then(|k| armour.get(k).ok()).map_or(0.0, |a| a.points),
+            ap: k.and_then(|k| armour.get(k).ok()).map_or(0.0, super::weapons::points),
             teammate: k.is_some_and(|k| team(k).is_some() && team(k) == local.as_ref().and_then(|l| l.7).map(|t| t.0)),
             weapon,
             hitgroup: d.damage.hitgroup,

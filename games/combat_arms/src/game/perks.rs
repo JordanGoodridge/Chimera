@@ -1255,15 +1255,15 @@ fn take_box(world: &mut World, p: Entity, b: &CaPerkBox) -> bool {
         BoxKind::Medikit => {
             let max_ap = super::gear::max_armour(world, p);
             let hp_full = world.get::<Health>(p).is_none_or(|h| h.current >= h.max);
-            let ap_full = world.get::<super::weapons::CaArmor>(p).is_none_or(|a| a.points >= max_ap);
+            let ap_full = world.get::<crate::weapon::Armor>(p).is_none_or(|a| super::weapons::points(a) >= max_ap);
             if hp_full && ap_full {
                 return false;
             }
             if let Some(mut h) = world.get_mut::<Health>(p) {
                 h.current = h.max;
             }
-            if let Some(mut a) = world.get_mut::<super::weapons::CaArmor>(p) {
-                a.points = a.points.max(max_ap);
+            if let Some(mut a) = world.get_mut::<crate::weapon::Armor>(p) {
+                a.amount = a.amount.max(max_ap / super::weapons::HIT_POINTS);
             }
             true
         }

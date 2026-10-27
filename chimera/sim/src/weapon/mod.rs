@@ -36,7 +36,8 @@
 //! more than one of its boxes, exact damage); damage, armour and pushes only
 //! where `core::authoritative`, armour only from hits that land (`HitArmor`,
 //! the one place bullets, knives and blasts take it, through the shared
-//! armour step `hits::absorb`: `Armor`'s coverage, `KEVLAR` and `HELMET`),
+//! armour step `hits::absorb`: `Armor`'s coverage, `KEVLAR` and `HELMET`, or
+//! a game's own pieces worn with it, `ArmorPieces`: `coverage`),
 //! with a `BulletHit` for each bullet hit on something with health (games'
 //! reactions: CS:S's slowdown and flinch); `ViewPunch` (pitch, yaw, roll) on
 //! the view and, scaled, on the shots.
@@ -1091,13 +1092,15 @@ pub struct DamageEffect {
     pub armor_ratio: Option<f32>,
 }
 
-/// Body armour (CS:S kevlar and helmet), normalized like `Health`
-/// (1.0 = 100). Its coverage per body part (`entries`: `KEVLAR`, and
+/// Body armour, one per character whatever its game, normalized like
+/// `Health` (1.0 = 100): the default kit (CS:S's kevlar and helmet) or a
+/// game's own pieces worn with it (`ArmorPieces`: Combat Arms' gear). The
+/// default kit's coverage per body part (`entries`: `KEVLAR`, and
 /// `HELMET` with a helmet) goes through the shared armour step
 /// (`hits::absorb`): hits it covers (CS:S, measured M7: chest, stomach,
 /// arms, generic, and the head only with a helmet) take `damage x ratio x
 /// 0.5` from health and half the rest from armour, both truncated.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Armor {
     pub amount: f32,
     pub helmet: bool,
@@ -1150,6 +1153,30 @@ impl Armor {
     }
 }
 
+/// A game's own armour pieces worn with `Armor` (Combat Arms' gear):
+/// their coverage and how they run out, in place of the default kit
+/// (`KEVLAR`, and `HELMET` with a helmet: CS:S's). The game whose armour
+/// it is puts it on its own characters and takes it off when one becomes
+/// another game's (`slots::GameIdentity`); `Armor`'s amount stays. So a
+/// character has one armour value, and what covers it follows its
+/// identity (docs/DESIGN.md "Hits across games").
+#[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArmorPieces {
+    pub pieces: Vec<hits::ArmorPiece>,
+    pub depletion: hits::Depletion,
+}
+
+/// What `armor` covers (a game's `pieces` when worn, else its default
+/// kit) and how it runs out.
+pub fn coverage<'a>(armor: &Armor, pieces: Option<&'a ArmorPieces>) -> (impl Iterator<Item = &'a hits::Coverage>, hits::Depletion) {
+    let (kit, own): (&'static [hits::Coverage], &'a [hits::ArmorPiece]) = match pieces {
+        Some(p) => (&[], &p.pieces),
+        None => (armor.entries(), &[]),
+    };
+    let depletion = pieces.map_or(armor.depletion(), |p| p.depletion);
+    (kit.iter().chain(own.iter().flat_map(|p| p.entries.iter())), depletion)
+}
+
 /// What armour did to one hit (`HitArmor::apply`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ArmorHit {
@@ -1170,7 +1197,7 @@ pub struct ArmorHit {
 /// "Refused hits").
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct HitArmor<'w, 's> {
-    armor: Query<'w, 's, &'static mut Armor>,
+    armor: Query<'w, 's, (&'static mut Armor, Option<&'static ArmorPieces>)>,
     rules: crate::core::DamageRules<'w, 's>,
 }
 
@@ -1202,9 +1229,10 @@ impl HitArmor<'_, '_> {
         quantum: f32,
     ) -> ArmorHit {
         let lands = self.rules.lands(damage);
-        let Ok(mut armor) = self.armor.get_mut(damage.target) else {
+        let Ok((mut armor, pieces)) = self.armor.get_mut(damage.target) else {
             return ArmorHit::default();
         };
+        let (entries, depletion) = coverage(&armor, pieces);
         let mut hit = ArmorHit {
             covered: false,
             helmet: armor.amount > 0.0 && armor.helmet,
@@ -1216,8 +1244,8 @@ impl HitArmor<'_, '_> {
             ratio,
             quantum,
             armor.amount,
-            armor.entries(),
-            armor.depletion(),
+            entries,
+            depletion,
         );
         if a.covered {
             damage.amount = a.to_health;

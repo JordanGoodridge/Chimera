@@ -1,5 +1,5 @@
 //! The numbers of the one hit path every gun shares
-//! (docs/plans/active/generic-hits.md): a gun's damage per body region
+//! (docs/DESIGN.md "Hits across games"): a gun's damage per body region
 //! (`RegionScale`, `RegionDamage`: its game's table), what armour covers
 //! per region and damage class (`Coverage`, `ArmorPiece`, `ArmorRules`:
 //! the armour's game's data) and how a hit splits between armour and
@@ -57,7 +57,7 @@ impl RegionScale {
 /// What armour coverage is looked up by: Chimera's damage classes (a
 /// game maps its own types onto these; numbers past `OWN` are a game's
 /// own, which only its armour lists).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct DamageClass(pub u16);
 
 impl DamageClass {
@@ -89,7 +89,7 @@ impl DamageClass {
 /// class): the fraction it covers on each part, and how many armour
 /// points it loses per point it takes (CS:S's kevlar 0.5; Combat Arms'
 /// gear 1 if used up, else 0).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Coverage {
     pub class: Option<DamageClass>,
     pub head: f32,
@@ -122,11 +122,18 @@ impl Coverage {
 /// health takes `raw - amount / wear` (`Cost`, CS:S: measured on C4
 /// blasts, objectives.md Q3) or `raw - amount` once what it blocks
 /// reaches what is left (`Blocked`, Combat Arms' armour step).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Depletion {
     #[default]
     Cost,
     Blocked,
+}
+
+/// One piece of a game's own armour (`weapon::ArmorPieces`: Combat Arms'
+/// gear): its coverage entries, at most one per damage class.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ArmorPiece {
+    pub entries: Vec<Coverage>,
 }
 
 /// What armour did to one hit (`absorb`).

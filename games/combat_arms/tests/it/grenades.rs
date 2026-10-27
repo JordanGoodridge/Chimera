@@ -44,7 +44,7 @@ use combat_arms::{
         effects::{self, CaFxRequest, FxKind, sounds::CaSound},
         movement,
         volumes::CaVolume,
-        weapons::{CaArmor, DEFAULT_BODY_GEAR, MALE, body_geometry, gear},
+        weapons::{DEFAULT_BODY_GEAR, MALE, body_geometry, gear},
     },
     harness::CaSim,
 };
@@ -198,10 +198,7 @@ fn player(sim: &mut Sim, x: f32, z: f32, yaw: f32, team: u8) -> Entity {
     sim.seconds(0.5);
     sim.app.world_mut().entity_mut(p).insert((
         Health { current: 1.0, max: 1.0 },
-        CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        },
+        combat_arms::game::weapons::gear_armour(0.0, &Vec::new()),
     ));
     p
 }
@@ -468,14 +465,11 @@ fn t13_frag_vs_armour() {
     let mut sim = sim();
     let thrower = far_thrower(&mut sim, 0);
     let victim = player(&mut sim, 0.0, 0.0, 0.0, 0);
-    sim.app.world_mut().entity_mut(victim).insert(CaArmor {
-        points: 100.0,
-        gear: vec![DEFAULT_BODY_GEAR],
-    });
+    sim.app.world_mut().entity_mut(victim).insert(combat_arms::game::weapons::gear_armour(100.0, &vec![DEFAULT_BODY_GEAR]));
     let at = in_front(&mut sim, victim, 300.0, true);
     explode_at(&mut sim, M67, Some(thrower), at);
     assert!((health(&sim, victim) - 46.67).abs() < 0.01, "{}", health(&sim, victim));
-    assert_eq!(sim.app.world().get::<CaArmor>(victim).unwrap().points, 100.0);
+    assert_eq!(sim.app.world().get::<chimera_sim::weapon::Armor>(victim).map(combat_arms::game::weapons::points).unwrap(), 100.0);
 }
 
 #[test]
@@ -1291,11 +1285,8 @@ fn t52_flash_gear() {
         let mut sim = sim();
         let thrower = far_thrower(&mut sim, 0);
         let victim = player(&mut sim, 0.0, 0.0, 0.0, 0);
-        let worn = names.iter().map(|n| gear(n).unwrap_or_else(|| panic!("{n}"))).collect();
-        sim.app.world_mut().entity_mut(victim).insert(CaArmor {
-            points: 0.0,
-            gear: worn,
-        });
+        let worn = names.iter().map(|n| gear(n).unwrap_or_else(|| panic!("{n}"))).collect::<Vec<_>>();
+        sim.app.world_mut().entity_mut(victim).insert(combat_arms::game::weapons::gear_armour(0.0, &worn));
         let (t, _) = flashed(&mut sim, victim, thrower, 200.0, true).expect("flashed");
         assert!((t - time).abs() < 1e-3, "{names:?}: {t}");
     }

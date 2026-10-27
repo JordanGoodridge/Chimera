@@ -37,8 +37,9 @@
 //!
 //! What this part adds (`CaNetPlugin`, registered as `combat_arms`):
 //!
-//! - **Armour** (`weapons::CaArmor`): the server's, replicated in tick order
-//!   to every client (the HUD's armour points; others' for spectating).
+//! - **Armour** (Chimera's `weapon::Armor` and the gear as
+//!   `weapon::ArmorPieces`): the server's, replicated in tick order to
+//!   every client (the HUD's armour points; others' for spectating).
 //! - **The pickup prompt** (`CaPickup`): the weapon id of the dropped item
 //!   a player's view is on, the server's (`inventory::pickups` runs there),
 //!   for its HUD.
@@ -110,7 +111,6 @@ use super::{
         objectives::{CaAction, CaCarry, CaObjectives},
         spawns,
     },
-    weapons::CaArmor,
 };
 use crate::{
     core::{NetRole, SimClock},
@@ -120,7 +120,7 @@ use crate::{
         ordered::OrderedAppExt,
         server::Player,
     },
-    weapon::Weapon,
+    weapon::{Armor, ArmorPieces, Weapon},
 };
 
 /// Combat Arms' part of the network (`register`), named `combat_arms`.
@@ -141,8 +141,10 @@ pub struct CaPickup(pub Option<String>);
 fn register(app: &mut App) {
     let server = || resource_equals(NetRole::Server);
     let client = || resource_equals(NetRole::Client);
-    app.replicate::<CaArmor>()
-        .ordered::<CaArmor>()
+    app.replicate::<Armor>()
+        .ordered::<Armor>()
+        .replicate::<ArmorPieces>()
+        .ordered::<ArmorPieces>()
         .replicate::<CaPickup>()
         .ordered::<CaPickup>()
         .replicate::<CaStats>()

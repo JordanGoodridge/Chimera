@@ -271,6 +271,56 @@ Chimera has a generic fallback (`chimera_world::map::impact`,
   weapon zeroes the punch: the old game's kick doesn't keep returning
   into the new game's view.
 
+### Hits across games
+
+Any game's gun hits any game's body by one game-agnostic interface
+(`chimera_core::core`, `chimera_sim::weapon::hits`); nothing is written
+per gun-body pair. Plain CS:S and plain Combat Arms keep their exact
+numbers (pinned by `parity_pin_*` tests in each game).
+
+- **Regions.** `BodyRegion` is the superset of what the games tell apart
+  (head, neck, chest, stomach, groin, upper arm, forearm, hand, thigh,
+  shin, foot by side, generic); `hitgroup()` gives Source's coarser
+  hitgroup that `Damage` and everything downstream carry, `part()` the
+  part armour covers (head, torso, arm, leg, groin).
+- **Hitboxes, from the body's game.** Each body fills `Hitboxes` in its
+  own game's way, converted into Chimera's shapes (boxes or spheres with
+  region, priority and the body's own damage scale): CS:S from the
+  model's hitbox set (regions by bone), Combat Arms its skeleton's hit
+  spheres posed every tick. Lag compensation keeps them
+  (`weapon::lagcomp::HitHistory`). A gun's rule (CS:S's nearest box
+  entered, Combat Arms' client test and server walk) asks only shape
+  queries (`ray_span`, `segment_passes`/`power`, `line_passes`), so it
+  works on any body.
+- **Damage per region, from the gun's game.** A gun's table scales by
+  region (CS:S's five hitgroup multipliers; Combat Arms' zone factor, the
+  body's own scale where its shape has one, else its male skeleton's).
+- **Armour: one value, coverage by identity.** Every character has at
+  most one `weapon::Armor` (normalized points, 1.0 = 100). What covers
+  it is its game's: the default kit (CS:S's kevlar: torso, arms and
+  groin half, every damage class; the helmet the head), or a game's own
+  pieces worn with it (`weapon::ArmorPieces`: Combat Arms' gear, its
+  protection fractions per damage class, used up when consumable). Every
+  gun's hit splits between armour and health through one step,
+  `hits::absorb`: P, the part's coverage for the damage class, lets
+  `(1 - 2P) + P x ratio` through (the gun's armour ratio: CS:S's
+  `WeaponArmorRatio`, Combat Arms' guns 1), armour loses the rest times
+  the pieces' wear, and running out is the armour's rule (CS:S by what
+  it would lose, Combat Arms by what it blocks). So a Combat Arms round
+  on CS:S kevlar is halved, a CS:S AK-47 on Combat Arms' body gear loses
+  0.15 x 0.45 of itself.
+- **Armour when the identity switches** (the party apps, where a
+  character's game follows the held gun): the armour value stays and
+  what covers it follows the identity. A game gives armour only to its
+  own characters (Combat Arms its default 100 points at the first life;
+  CS:S by buying), puts its pieces on a character that becomes its own
+  and takes them off one that becomes another game's; a character
+  without pieces is covered by the default kit. So a CS:S-gun player's
+  armour is kevlar by CS:S's rules and shows on CS:S's HUD, a Combat
+  Arms-gun player's the same points as Combat Arms' gear on its HUD,
+  and nobody carries armour their HUD doesn't show. (Combat Arms puts on
+  its default gear at a switch, not a loadout's.)
+
 ## Multiplayer
 
 Same principles as the main game: the server owns the loadout, rules and

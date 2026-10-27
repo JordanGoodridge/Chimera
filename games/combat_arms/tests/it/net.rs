@@ -40,7 +40,7 @@ use combat_arms::{
         TICK_INTERVAL,
         inventory::{CaSelection, KNIFE, Knife, KnifePhase},
         movement::CaMovement,
-        weapons::{CaArmor, CaKick, CaSpread, CaZoom, RIFLE},
+        weapons::{CaKick, CaSpread, CaZoom, RIFLE},
 
     },
     harness::CaSim,
@@ -224,12 +224,12 @@ fn players_join_on_their_own_teams_at_the_spawns() {
     }
     for e in [a, b] {
         assert_eq!(world.get::<Health>(e).unwrap().current, 1.0);
-        assert_eq!(world.get::<CaArmor>(e).unwrap().points, 100.0);
+        assert_eq!(world.get::<chimera_sim::weapon::Armor>(e).map(combat_arms::game::weapons::points).unwrap(), 100.0);
     }
     // Each client has its armour from the server, and the other player.
     for i in 0..2 {
         let me = sim.local_player(i).unwrap();
-        assert_eq!(sim.clients[i].app.world().get::<CaArmor>(me).map(|a| a.points), Some(100.0));
+        assert_eq!(sim.clients[i].app.world().get::<chimera_sim::weapon::Armor>(me).map(combat_arms::game::weapons::points), Some(100.0));
         let other = copy_of(&mut sim, i, 1 - i);
         assert!(sim.clients[i].app.world().get::<Health>(other).is_some());
     }
@@ -311,13 +311,13 @@ fn shots_and_damage_are_seen_by_both() {
     assert!(rewinds >= 3, "the server traced the rounds where client 0 saw client 1: {rewinds} rewinds");
     assert!(after < before, "the server hurt client 1");
     let target = sim.character_of(1).unwrap();
-    let target_armour = sim.server.app.world().get::<CaArmor>(target).unwrap().points;
+    let target_armour = sim.server.app.world().get::<chimera_sim::weapon::Armor>(target).map(combat_arms::game::weapons::points).unwrap();
     assert!(target_armour < 100.0, "armour took its share: {target_armour}");
     let me1 = sim.local_player(1).unwrap();
     let copy1 = copy_of(&mut sim, 0, 1);
     let w1 = sim.clients[1].app.world();
     assert_eq!(w1.get::<Health>(me1).unwrap().current, after, "client 1's own health");
-    assert_eq!(w1.get::<CaArmor>(me1).unwrap().points, target_armour, "client 1's own armour");
+    assert_eq!(w1.get::<chimera_sim::weapon::Armor>(me1).map(combat_arms::game::weapons::points).unwrap(), target_armour, "client 1's own armour");
     let seen1 = w1.resource::<Seen>();
     assert!(!seen1.taken.is_empty(), "client 1 heard it was hurt");
     assert!(

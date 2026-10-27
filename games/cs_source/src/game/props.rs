@@ -390,7 +390,7 @@ pub fn load_character(
 /// Most solids a ragdoll may have (specs/cs_source/ragdolls.md, Constants).
 const RAGDOLL_MAX_BODIES: usize = 24;
 
-/// A CS:S hitbox's body region (docs/plans/active/generic-hits.md): its
+/// A CS:S hitbox's body region (docs/DESIGN.md "Hits across games"): its
 /// hitgroup, a limb's refined by the box's bone (`*Forearm*`, `*Hand*`
 /// or a finger, `*Calf*`, `*Foot*` or a toe; else the upper arm or
 /// thigh). The head group stays the head (its neck box too) and the

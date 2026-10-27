@@ -697,9 +697,11 @@ pub(super) fn shoot(cx: &mut Cx, o: &CaObject, b: &grenades::Body, si: usize, ba
         zone,
         infected: false,
     };
-    let armour = cx.out.armour.get_mut(b.entity).ok().map(|a| a.into_inner());
     let hp = o.hp;
-    let points = armour_and_zone(base / hp, hit, armour, lands) * hp;
+    let points = match cx.out.armour.get_mut(b.entity) {
+        Ok((a, pieces)) => armour_and_zone(base / hp, hit, Some(a.into_inner()), pieces, lands),
+        Err(_) => armour_and_zone(base / hp, hit, None, None, lands),
+    } * hp;
     cx.out
         .deal(cx.f, b.entity, b.health, points, DamageKind::Bullet, o.owner, o.weapon, point, hp);
 }

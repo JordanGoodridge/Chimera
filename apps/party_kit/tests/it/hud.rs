@@ -36,23 +36,25 @@ use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
 use crate::gun_game::held;
 
-/// A CS:S HUD look with a health panel, as a CS:S map's.
+/// A CS:S HUD look with health and armour panels, as a CS:S map's.
 fn cs_look() -> ActiveHud {
     let mut hud = GameHud::default();
-    hud.panels.insert(
-        "HudHealth".into(),
-        HudPanel {
-            x: HudCoord::Start(16.0),
-            y: HudCoord::End(42.0),
-            wide: 102.0,
-            tall: 36.0,
-            background: Some([0, 0, 0, 96]),
-            icon: Vec2::new(8.0, 2.0),
-            digit: Vec2::new(50.0, 2.0),
-            digit2: Vec2::ZERO,
-            keys: HashMap::new(),
-        },
-    );
+    for (name, x) in [("HudHealth", 16.0), ("HudArmor", 148.0)] {
+        hud.panels.insert(
+            name.into(),
+            HudPanel {
+                x: HudCoord::Start(x),
+                y: HudCoord::End(42.0),
+                wide: 102.0,
+                tall: 36.0,
+                background: Some([0, 0, 0, 96]),
+                icon: Vec2::new(8.0, 2.0),
+                digit: Vec2::new(50.0, 2.0),
+                digit2: Vec2::ZERO,
+                keys: HashMap::new(),
+            },
+        );
+    }
     ActiveHud(Arc::new(hud), HashMap::new())
 }
 

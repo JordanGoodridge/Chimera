@@ -734,7 +734,6 @@ mod world {
             screen::FastView,
         },
         rules::spawns::CaHeld,
-        weapons::CaArmor,
     };
 
     use crate::mode_kit::*;
@@ -808,10 +807,7 @@ mod world {
         let mut r = rig("TSV", 1);
         let w = r.sim.app.world_mut();
         w.get_mut::<Health>(r.b).unwrap().current = 0.42;
-        w.entity_mut(r.b).insert(CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        });
+        w.entity_mut(r.b).insert(combat_arms::game::weapons::gear_armour(0.0, &Vec::new()));
         kill_now(&mut r.sim, r.me, r.b);
         assert!(r.cam().machine.is_dead());
         assert_eq!(r.cam().phase(), Phase::PullBack);
@@ -939,10 +935,7 @@ mod world {
         // 20 HP left and no armour: the blast of 37.8 HP kills.
         let w = r.sim.app.world_mut();
         w.get_mut::<Health>(r.me).unwrap().current = 0.2;
-        w.entity_mut(r.me).insert(CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        });
+        w.entity_mut(r.me).insert(combat_arms::game::weapons::gear_armour(0.0, &Vec::new()));
         hit(&mut r.sim, r.me, Some(r.b), 0.378, DamageKind::Blast, Some("combat_arms:m67"));
         r.sim.ticks(2);
         assert!(dead(&r.sim, r.me));

@@ -1673,7 +1673,7 @@ fn character_models_and_hitboxes() {
         assert_eq!(count(Hitgroup::Stomach), 2, "pelvis and spine1");
         assert_eq!(count(Hitgroup::LeftLeg), 4);
         assert_eq!(count(Hitgroup::RightArm), 3);
-        // Limbs' regions by bone (docs/plans/active/generic-hits.md):
+        // Limbs' regions by bone (docs/DESIGN.md "Hits across games"):
         // upper arm, forearm, hand; thigh, calf and foot.
         use crate::stack::core::BodyRegion as R;
         for r in [R::RightUpperArm, R::RightForearm, R::RightHand, R::LeftThigh, R::LeftShin, R::LeftFoot] {

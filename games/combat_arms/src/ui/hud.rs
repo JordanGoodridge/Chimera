@@ -23,8 +23,8 @@
 //! the gameplay's.
 //!
 //! Inputs: the viewed player (the local one, or whom it watches in first
-//! person), its `core::Health`, its armour (`game::weapons::CaArmor`'s
-//! points, else `weapon::Armor`), `Inventory`, `Zoomed`,
+//! person), its `core::Health`, its armour (`weapon::Armor`: Combat
+//! Arms' points, or another game's armour it wears), `Inventory`, `Zoomed`,
 //! `Intent` (crouch held) and `game::movement::CaMovement` (moving, the
 //! crouch blend, stamina); the held weapon's spread fraction r
 //! (`game::weapons::CaSpread::fraction`; without it, r read back from
@@ -162,7 +162,7 @@ use crate::{
         inventory::{self, CaItem, CaSelection, Dropped},
         movement::{CaCharacter, CaMovement, movement_data},
         net::CaPickup,
-        weapons::{CaArmor, CaSpread},
+        weapons::CaSpread,
     },
     map::interp::RenderedView,
     net::{NetCharacter, NetSettings},
@@ -827,7 +827,6 @@ type Viewed<'a> = (
     Option<&'a CaCharacter>,
     Option<&'a Armor>,
     Has<Dead>,
-    Option<&'a CaArmor>,
 );
 
 type HeldWeapon<'a> = (
@@ -1044,7 +1043,7 @@ fn update(
         let character = p.5.unwrap_or(&movement_data().character);
         next.status = Some(StatusView {
             hp: hp_shown(h, max, INTERFACE_MAX_HEALTH).to_string(),
-            ap: ap_shown(p.8.map_or_else(|| p.6.map_or(0.0, |a| a.amount * 100.0), |a| a.points)).to_string(),
+            ap: ap_shown(p.6.map_or(0.0, |a| a.amount * 100.0)).to_string(),
             low,
             colours: health_colours(low),
             crouched: crouch_image(p.4.map_or(0.0, |m| m.crouch_rate)),

@@ -10,7 +10,7 @@
 //! height bands on its collider), the gun's table (`DamageEffect::regions`)
 //! or the target's own its multiplier, and armour takes its share through
 //! the shared step (`HitArmor`, `hits::absorb`;
-//! docs/plans/active/generic-hits.md). Each bullet hit on
+//! docs/DESIGN.md "Hits across games"). Each bullet hit on
 //! something with health is also told as a `BulletHit` (the damage before
 //! armour and truncation, whether armour covered it, a helmet).
 

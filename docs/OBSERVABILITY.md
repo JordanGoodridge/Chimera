@@ -1506,7 +1506,7 @@ server, which checks it and shows it to every player): `ca_perks "16012
 (Fighting Chance in Quarantine), `ca_perks_enabled` (the room's Perks
 option) and `ca_gear_byte_ids 1` (the reference's byte-wide gear ids: quirk
 1). `ca_perk <1-4>` starts the active perk in that position. Live: `world.query`
-`CaArmor` (points and pieces), `CaCharacter` (the figure's and worn terms),
+`Armor` (points / 100) and `ArmorPieces` (the gear's coverage), `CaCharacter` (the figure's and worn terms),
 `CaPerks`, `CaPerkEffects`, `CaLoadout` on a player.
 When a spot hurts or kills (a playtest's
 `setpos` line: the feet, in inches as CS:S's, not Combat Arms units),

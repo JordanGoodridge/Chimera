@@ -21,7 +21,7 @@ use combat_arms::{
         movement,
         rules::state::{CaMatch, Phase},
         special::{self, CaBoltData, CaCameraReverse, CaDeviceData, CaObject, Kind, devices},
-        weapons::{CaArmor, CaDamage, Location},
+        weapons::{CaDamage, Location},
     },
     harness::CaSim,
 };
@@ -64,10 +64,7 @@ fn player_on(sim: &mut Sim, x: f32, z: f32, feet: f32, team: u8) -> Entity {
     sim.seconds(0.5);
     sim.app.world_mut().entity_mut(p).insert((
         Health { current: 1.0, max: 1.0 },
-        CaArmor {
-            points: 0.0,
-            gear: Vec::new(),
-        },
+        combat_arms::game::weapons::gear_armour(0.0, &Vec::new()),
     ));
     p
 }

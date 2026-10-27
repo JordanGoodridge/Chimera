@@ -298,6 +298,14 @@ schedule and determinism ratchets.
   grenades) is `hits::absorb` with its gear as `Coverage`
   (`Gear::coverage`, `class_of`: its damage types as `DamageClass`),
   ratio 1, fractions kept, `Depletion::Blocked`; pins unchanged.
-- Left: d4 (`CaArmor` into `weapon::Armor`: pieces, net, HUD,
-  gear, perks, grenades, melee; given to Combat Arms' characters only),
-  the armour half of e, the DESIGN.md section.
+- d4 and the armour half of e: `CaArmor` is gone; Combat Arms' armour
+  is `weapon::Armor` (points / 100) with its gear as
+  `weapon::ArmorPieces` (`weapons::gear_armour`, `pieces_of`,
+  `default_armour`; net replicates both; HUD, death cam, gear, perks,
+  grenades, melee, special devices read them). `HitArmor` covers by the
+  pieces when worn, else the default kit. Armour follows the identity
+  (`weapons::armour_follows_identity`; DESIGN.md "Hits across games"):
+  one value, Combat Arms' pieces on its own characters only. Tests in
+  `party_kit` tests/it/cross_game.rs (kevlar against a Combat Arms round,
+  Combat Arms' gear against a CS:S round, the armour across a switch on
+  both HUDs). DESIGN.md has the section; this plan goes next.

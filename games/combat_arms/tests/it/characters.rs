@@ -29,7 +29,7 @@ use combat_arms::{
         },
         inventory::{self, UNIT},
         movement,
-        weapons::{CaArmor, FEMALE, MALE, RIFLE},
+        weapons::{FEMALE, MALE, RIFLE},
     },
     harness::CaSim,
 };
@@ -1055,10 +1055,7 @@ fn player(sim: &mut Sim, at: Vec3, yaw: f32) -> Entity {
     let p = sim.spawn_character(at, movement::ID);
     sim.intent(p).yaw = yaw;
     sim.seconds(0.5);
-    sim.app.world_mut().entity_mut(p).insert(CaArmor {
-        points: 0.0,
-        gear: Vec::new(),
-    });
+    sim.app.world_mut().entity_mut(p).insert(combat_arms::game::weapons::gear_armour(0.0, &Vec::new()));
     p
 }
 

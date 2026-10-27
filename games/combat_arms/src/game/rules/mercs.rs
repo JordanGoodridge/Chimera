@@ -56,7 +56,7 @@ use super::{
     super::{
         bots::{CaBot, MercMind, Template, data::BotData, data::Level, roster::Kit},
         inventory,
-        weapons::{CaArmor, ExactAim},
+        weapons::{ExactAim, default_armour},
     },
     CaRuleSettings,
     objects::CaMapObjects,
@@ -200,7 +200,7 @@ fn spawn(world: &mut World, hirer: Entity, unit: u8, team: u8, at: Transform, te
     world.entity_mut(e).remove::<crate::core::Bot>();
     inventory::respawn_inventory(world, e);
     spawning::revive(world, e, Some(at));
-    world.entity_mut(e).insert(CaArmor::default());
+    world.entity_mut(e).insert(default_armour());
     e
 }
 
