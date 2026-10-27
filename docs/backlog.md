@@ -87,19 +87,15 @@ two misdescribed docs:
   cry) both run for every victim: a CA soldier dies with CS:S's cry and
   groans in both voices (CS:S's `Player.FallDamage` on CA falls too).
   Pick by the victim's identity.
-- **Cross-game hit tests don't follow the drawn body (M-H, M).** CS:S
-  guns test hitboxes (weapons.md 5) but Combat Arms' bodies register none
-  (`characters/models.rs`, `hitboxes: Vec::new()`), so on CA soldiers
-  they fall back to height bands on the collider (`weapon/deliver.rs`);
-  CA guns hit a CS:S-dressed player on CA's measured standing skeleton
-  (`weapons.rs` `geometry_at`, characters.md 11), not the CS:S pose. Plan:
-  [plans/active/generic-hits.md](plans/active/generic-hits.md).
 - **Armour isn't shared across games (M, M).** Every character gets
   Combat Arms' `CaArmor` (100 points, games/combat_arms/src/game/weapons.rs),
   which CS:S guns ignore (they read `weapon::Armor`, weapons.md M7): a
   CA-gun player's HUD shows armour CS:S bullets go through, a CS:S-gun
   player (CS:S HUD: 0) carries unseen armour against CA guns. Plan:
-  [plans/active/generic-hits.md](plans/active/generic-hits.md).
+  [plans/active/generic-hits.md](plans/active/generic-hits.md): the
+  shared armour step (`weapon::hits::absorb`) and CS:S's kevlar on it are
+  in; left are Combat Arms' hits through it and `CaArmor` becoming
+  `weapon::Armor` (steps d3, d4), then the cross-game armour tests.
 - **Water and ladders across movements (M, M).** CA movement swims only
   in its liquid volumes (movement.md "Volumes"); `volumes.rs` makes
   Source ladder brushes `Ladder` volumes but not Source water

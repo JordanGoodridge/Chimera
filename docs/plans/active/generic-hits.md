@@ -107,21 +107,24 @@ format):
 - **Combat Arms** (`combat_arms::game::characters`): the skeleton's hit
   table as spheres, posed every tick from `CaPose` (a body model's pose)
   or the measured skeleton (`geometry_at`), in the body's frame; region
-  from location and node (head; torso: the neck sphere Neck, the lowest
-  torso sphere Stomach, the rest Chest; groin; arms by side and
+  from location and node (head; torso: the neck sphere Neck, the rest
+  Chest, so Combat Arms' own hits keep reporting the chest hitgroup;
+  groin; arms by side (`at.x`, as its hits report it) and
   upper/forearm/hand; legs by side, the pelvis spheres Thigh, then shin,
-  foot), `priority` and `scale` (the zone factor) from the table.
+  foot: `HitSphere::region`), `priority` and `scale` (the zone factor) from the table.
   Characters without a model get the same from the measured skeleton,
   so every CA body has `Hitboxes`. Their `HitSpheres` stays as the
   table's index (which skeleton).
 
 Lag compensation needs nothing new: `HitHistory` keeps `Hitboxes`
 (interpolated per shape, spheres' radii too), so whatever the body's
-game, a rewound shot sees the drawn pose of then. The server's own pose
-for bots' shots (`CaPose::server_spheres`, no `Torso` pitch) stays a
-Combat Arms detail of how it poses its own hitboxes (a second
-`Hitboxes`-shaped list, `ServerHitboxes`, filled only by CA bodies; the
-generic code ignores it).
+game, a rewound shot sees the drawn pose of then. Combat Arms' own guns
+keep posing Combat Arms bodies at the shot (this tick's pose, and the
+server's pose for bots' shots: `CaPose::server_spheres`, no `Torso`
+pitch), as the same shapes; only another game's body comes from its
+`Hitboxes` (rewound: from `HitHistory`). A body without hitboxes keeps
+each gun's own fallback (CS:S: height bands; Combat Arms: its measured
+skeleton).
 
 ### Damage table: per gun, from the gun's game
 
@@ -234,16 +237,16 @@ tests per step: both games' parity pins, CS:S `weapons::`, CA
 `weapon_firing::`, `characters::`, `gear_perks::`, `grenades::`, the
 schedule and determinism ratchets.
 
-- [ ] **a. Pin parity.** CS:S: a table test through the sim (AK-47,
+- [x] **a. Pin parity.** CS:S: a table test through the sim (AK-47,
   Glock, AWP, knife; head, chest, stomach, arm, leg; no armour, kevlar,
   kevlar and helmet): health lost and armour left. Combat Arms: zones on
   both skeletons, armour by damage type, running out, the AI cap: health
   and armour after. Values recorded from the current code.
-- [ ] **b. Chimera types.** `BodyRegion`, `BodyPart`, `Hitbox` shapes and
+- [x] **b. Chimera types.** `BodyRegion`, `BodyPart`, `Hitbox` shapes and
   queries, `RegionDamage`, `DamageClass`, `ArmorPiece`, `ArmorRules`,
   `absorb`, with unit tests (including `absorb` against `armor_split` and
   `armour_and_zone` on their spec cases).
-- [ ] **c. CS:S onto them.** Hitbox regions from bone names; `DamageEffect`
+- [x] **c. CS:S onto them.** Hitbox regions from bone names; `DamageEffect`
   and `Swing` carry `RegionDamage`; `deliver` lands hits through
   `weapon::hits`; `Armor` with pieces (kevlar, helmet). Pins unchanged.
 - [ ] **d. Combat Arms onto them.** (d1) CA bodies fill `Hitboxes`
@@ -264,4 +267,34 @@ schedule and determinism ratchets.
 
 ## Progress
 
-(none yet)
+- 2026-10-27, a: pins in `cs_source` tests/it/weapons.rs
+  (`parity_pin_damage_and_armour_by_hitgroup`: AK-47, Glock, Deagle, AWP
+  by hitgroup and armour, recorded from the code before any change) and
+  `combat_arms` tests/it/weapon_firing.rs
+  (`parity_pin_zones_through_armour`: every zone of the male skeleton
+  through body and head gear).
+- b and c (one commit): `core::BodyRegion`, `BodyPart`, `Hitbox` with
+  `region`, `radius`, `priority`, `scale` and the shape queries
+  (`ray_span` for spheres too, `segment_passes`, `power`,
+  `line_passes`, `Hitboxes::{nearest, by_power, by_priority}`);
+  `weapon::hits` (`RegionScale`, `DamageClass`, `Coverage`, `Depletion`,
+  `absorb`, unit tests against `armor_split` bit for bit and Combat Arms'
+  spec cases); `DamageEffect::regions`; `deliver` lands hits by region and
+  `HitArmor` takes armour through `absorb` (`Armor::entries`: `KEVLAR`,
+  `HELMET`); CS:S hitboxes get regions from their bones
+  (`props::body_region`). Not yet: `RegionDamage` as one struct with
+  `body_scales`/`after_armor` on `DamageEffect` (Combat Arms' guns don't
+  go through `deliver`; their table is `weapons::zone_factor` and the
+  body's own scale for now), `[damage.regions]` in the data.
+- d1, d2: Combat Arms bodies fill `Hitboxes` (`characters::hitboxes`,
+  `CaHitboxes`); Combat Arms' delivery tests shapes (`Body::shapes`:
+  its own spheres posed at the shot as before, another game's body's
+  `Hitboxes`, rewound too) with the shape queries, and its victim step
+  takes the region's hitgroup, location and zone factor. Cross-game
+  tests: `party_kit` tests/it/cross_game.rs (a CS:S gun on a Combat Arms
+  body: head, right hand, right foot; a Combat Arms gun on a short CS:S
+  body: head, chest, shin).
+- Left: d3 (Combat Arms' victim step through `absorb` with its gear as
+  `Coverage`), d4 (`CaArmor` into `weapon::Armor`: pieces, net, HUD,
+  gear, perks, grenades, melee; given to Combat Arms' characters only),
+  the armour half of e, the DESIGN.md section.
