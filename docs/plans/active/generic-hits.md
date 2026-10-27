@@ -294,7 +294,10 @@ schedule and determinism ratchets.
   tests: `party_kit` tests/it/cross_game.rs (a CS:S gun on a Combat Arms
   body: head, right hand, right foot; a Combat Arms gun on a short CS:S
   body: head, chest, shin).
-- Left: d3 (Combat Arms' victim step through `absorb` with its gear as
-  `Coverage`), d4 (`CaArmor` into `weapon::Armor`: pieces, net, HUD,
+- d3: Combat Arms' armour step (`armour_and_zone`: its hits, melee and
+  grenades) is `hits::absorb` with its gear as `Coverage`
+  (`Gear::coverage`, `class_of`: its damage types as `DamageClass`),
+  ratio 1, fractions kept, `Depletion::Blocked`; pins unchanged.
+- Left: d4 (`CaArmor` into `weapon::Armor`: pieces, net, HUD,
   gear, perks, grenades, melee; given to Combat Arms' characters only),
   the armour half of e, the DESIGN.md section.

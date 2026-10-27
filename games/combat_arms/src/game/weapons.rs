@@ -45,7 +45,9 @@
 //!   reported victim only) x the stepped range band at the reported point
 //!   (`band_scale`; beyond the last band: 1) x penetration dampening, an
 //!   AI's x `AIDamageFactor` (`CaAiDamage`, `AiHits`), then armour
-//!   (`CaArmor`: gear protection by damage type and location, the groin
+//!   (`CaArmor`: gear protection by damage type and location as Chimera's
+//!   coverage, `Gear::coverage`, through the shared armour step
+//!   `weapon::hits::absorb`; the groin
 //!   unprotected but on an infected victim, armour points) and the
 //!   sphere's zone factor, an AI's hit on a player capped (50; 990 at
 //!   1000 or more; not melee: Corrections 7); the victim dies at 1 HP or
@@ -216,6 +218,7 @@ use crate::{
     weapon::{
         AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, WeaponEvent,
         WeaponEventKind, WeaponFrame, Zoom, aim_of,
+        hits,
         data::{WeaponData, WeaponDataAppExt},
         lagcomp::{self, HitHistory, LagCompSettings, LagCompStats, ViewTick},
         random::{Rng, shared_random},
@@ -1387,21 +1390,26 @@ pub struct Protection {
     pub consumable: bool,
 }
 
-impl Protection {
-    /// The fraction on `location`; the groin isn't one of the protected
-    /// four.
-    fn at(&self, location: Location) -> f32 {
-        match location {
-            Head => self.head,
-            Torso => self.torso,
-            Arm => self.arm,
-            Leg => self.leg,
-            Groin => 0.0,
-        }
-    }
-}
-
 impl Gear {
+    /// The piece as Chimera's armour coverage (`weapon::hits`): its first
+    /// entry per damage type, by class (`class_of`), the groin uncovered,
+    /// worn by what it blocks when consumable.
+    pub fn coverage(&self) -> impl Iterator<Item = hits::Coverage> + '_ {
+        self.protects
+            .iter()
+            .enumerate()
+            .filter(|(i, p)| self.protects[..*i].iter().all(|o| o.damage_type != p.damage_type))
+            .map(|(_, p)| hits::Coverage {
+                class: Some(class_of(p.damage_type)),
+                head: p.head,
+                torso: p.torso,
+                arm: p.arm,
+                leg: p.leg,
+                groin: 0.0,
+                wear: if p.consumable { 1.0 } else { 0.0 },
+            })
+    }
+
     /// The piece's first entry for `damage_type`.
     fn against(&self, damage_type: i32) -> Option<&Protection> {
         self.protects.iter().find(|p| p.damage_type == damage_type)
@@ -1495,28 +1503,54 @@ pub struct ArmourHit {
 
 /// Damage `d` (hit points) of `hit` after armour: returns what health
 /// loses, and takes the armour's share. With `lands` false (a refused hit)
-/// the armour is left whole.
+/// the armour is left whole. The shared armour step
+/// (`weapon::hits::absorb`, ratio 1, fractions kept, `Depletion::Blocked`)
+/// with the gear as coverage (`Gear::coverage`), then the zone factor.
 pub fn armour_and_zone(d: f32, hit: ArmourHit, armor: Option<&mut CaArmor>, lands: bool) -> f32 {
     let zone = hit.zone;
     let Some(armor) = armor else { return (d * zone).max(0.0) };
     let location = if hit.infected && hit.location == Groin { Torso } else { hit.location };
-    let entries = || armor.gear.iter().filter_map(|g| g.against(hit.damage_type));
-    let p: f32 = entries().map(|e| e.at(location)).sum();
-    let consumable: f32 = entries().filter(|e| e.consumable).map(|e| e.at(location)).sum();
-    let blocked = d * p.clamp(0.0, 1.0);
-    let c = if p != 0.0 { consumable / p } else { 0.0 };
-    let ap = armor.points;
-    let out = if ap <= 0.0 {
-        d * zone
-    } else if ap - blocked > 0.0 || c <= 0.001 {
-        (d - blocked) * zone
-    } else {
-        (d - ap) * zone
-    };
-    if ap > 0.0 && lands {
-        armor.points = (ap - blocked * c).max(0.0);
+    let entries: Vec<hits::Coverage> = armor.gear.iter().flat_map(Gear::coverage).collect();
+    let a = hits::absorb(
+        d,
+        part_of(location),
+        class_of(hit.damage_type),
+        Some(1.0),
+        0.0,
+        armor.points,
+        &entries,
+        hits::Depletion::Blocked,
+    );
+    if a.covered && lands {
+        armor.points = (armor.points - a.taken).max(0.0);
     }
-    out.max(0.0)
+    (a.to_health * zone).max(0.0)
+}
+
+/// Chimera's damage class of a damage type (`InstDamageType`): bullet,
+/// burn, explosion (blast), poison, flash and melee as Chimera's, any
+/// other as a class of Combat Arms' own (`DamageClass::OWN` + the type).
+pub fn class_of(damage_type: i32) -> hits::DamageClass {
+    match damage_type {
+        BULLET => hits::DamageClass::BULLET,
+        BURN => hits::DamageClass::BURN,
+        EXPLOSION => hits::DamageClass::BLAST,
+        POISON => hits::DamageClass::POISON,
+        FLASH => hits::DamageClass::FLASH,
+        MELEE => hits::DamageClass::MELEE,
+        t => hits::DamageClass(hits::DamageClass::OWN.saturating_add(t.clamp(0, i32::from(u16::MAX)) as u16)),
+    }
+}
+
+/// An armour location as Chimera's body part.
+pub fn part_of(location: Location) -> crate::core::BodyPart {
+    match location {
+        Head => crate::core::BodyPart::Head,
+        Torso => crate::core::BodyPart::Torso,
+        Arm => crate::core::BodyPart::Arm,
+        Leg => crate::core::BodyPart::Leg,
+        Groin => crate::core::BodyPart::Groin,
+    }
 }
 
 /// Steps 1 to 4 of "Damage per ray" before penetration and the victim:
