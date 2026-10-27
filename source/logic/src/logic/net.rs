@@ -500,7 +500,9 @@ pub fn place(world: &mut World) {
                 solid,
             });
         }
-        if shootable == e.contains::<avian3d::prelude::ColliderDisabled>() {
+        // A broken window's collider is its unbroken panes' (`net::breakables`
+        // copies the server's; `map::breakables::update_panes`).
+        if !e.contains::<crate::map::BrushPanes>() && shootable == e.contains::<avian3d::prelude::ColliderDisabled>() {
             if shootable {
                 e.remove::<avian3d::prelude::ColliderDisabled>();
             } else {

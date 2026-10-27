@@ -44,9 +44,11 @@
 //! the owner's `Zoomed` and `ViewPunch` (Chimera's predicted parts).
 //!
 //! Known shortcuts:
-//! - The scope's overlay picture and sounds aren't loaded: Chimera's
-//!   placeholder scope overlay is drawn, no sound plays (the range readout
-//!   and gauge are the HUD's, `ui::hud`). `ZoomedMovePenalty` is read and
+//! - The scope's sounds aren't loaded and no sound plays; its overlay
+//!   picture (`Scope::sprite`) is drawn by `ui::scope` (centred at its own
+//!   aspect with black borders; `ZoomSpriteScale` isn't applied), and
+//!   Chimera's placeholder is drawn while it loads or when the install has
+//!   none (the range readout and gauge are the HUD's, `ui::hud`). `ZoomedMovePenalty` is read and
 //!   unused (Q4).
 //! - The camera's vertical FOV keeps Chimera's rule (the client's); 7.3's
 //!   proportional rule is `vertical_fov` (FovX/FovY 90/75, not settable).
@@ -130,6 +132,9 @@ pub struct Scope {
     /// `ZoomFov0..`: each level's horizontal FOV, degrees (`ZoomLevel`
     /// entries; at most `MAX_ZOOM_LEVELS` are used).
     pub fov: Vec<f32>,
+    /// `ZoomSpriteName`: the overlay picture (an install path; empty:
+    /// none, the shell's stand-in is drawn).
+    pub sprite: String,
 }
 
 /// `combat_arms:zoom`: a weapon's zoom fields (its scope is the fitted
@@ -541,6 +546,7 @@ mod tests {
         z.scope = Some(Scope {
             name: String::new(),
             fov: fov.to_vec(),
+            sprite: String::new(),
         });
         z
     }
