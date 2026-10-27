@@ -22,10 +22,10 @@ fn main() {
     let problems = party_kit::requirements();
     if !problems.is_empty() {
         let (text, fatal) = party_kit::report(&problems);
-        eprintln!("{text}");
         if fatal {
-            std::process::exit(1);
+            party_kit::exit_fatal(&text);
         }
+        eprintln!("{text}");
     }
     let app = party_kit::client_app(args, "Lucker Party");
     // The executors, `CHIMERA_SYSTEM_DUMP`, then the game, as every app.

@@ -20,10 +20,10 @@ fn main() {
     let problems = party_kit::requirements();
     if !problems.is_empty() {
         let (text, fatal) = party_kit::report(&problems);
-        eprintln!("{text}");
         if fatal {
-            std::process::exit(1);
+            party_kit::exit_fatal(&text);
         }
+        eprintln!("{text}");
     }
     let mut app = party_kit::client_app(args, "Ultimate Gun Game");
     app.add_plugins((
