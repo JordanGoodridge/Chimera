@@ -7,7 +7,9 @@
 //! The maths runs in Source units (inches, Z up) like the spec; the
 //! character's `Transform` (engine meters, Y up) is the centre of the
 //! standing box, so feet = origin - 36 units. Ladders and water (swimming,
-//! water jumps) follow the spec's sections. Not implemented yet: base
+//! water jumps) follow the spec's sections; other games' liquid and ladder
+//! volumes (`WaterZone`, `LadderZone`: Combat Arms' maps') count as the
+//! map's water and ladder brushes (a ladder zone is swept as a solid). Not implemented yet: base
 //! velocity (conveyors, water currents). Landings and wall slams roll the
 //! view (the punch angle's roll, `MovementState::view_roll`); hard
 //! landings deal fall damage (specs/cs_source/fall_damage.md) and play
@@ -89,8 +91,8 @@ use bevy::prelude::*;
 
 use crate::{
     core::{
-        BaseVelocity, Damage, EntityGravity, Health, Hitgroup, Intent, MapBrush, MaxSpeed, MovementState, MovingSolid,
-        PredictedAppExt, Velocity,
+        BaseVelocity, Damage, EntityGravity, Health, Hitgroup, Intent, LadderZone, MapBrush, MaxSpeed, MovementState, MovingSolid,
+        PredictedAppExt, Velocity, WaterZone,
     },
     map::{
         MapBrushCollider, MapBrushTree, MapBrushes, MapTerrain, MapTerrainCollider, MapWater, PhysicsProp, PlaySound, PropSurface,
@@ -774,6 +776,8 @@ struct Tracer<'a, 'w, 's> {
     /// faces hit at the same distance a trace reports.
     tree: Option<&'a MapBrushTree>,
     water: Option<&'a MapWater>,
+    /// Other games' liquid volumes (`WaterZone`), engine space.
+    water_zones: &'a [MapBrush],
     surfaces: Option<&'a SurfaceGrid>,
     /// Surface property of a physics collider (props), by entity.
     prop_surfaces: &'a dyn Fn(Entity) -> Option<String>,
@@ -1147,7 +1151,9 @@ impl<'a> Tracer<'a, '_, '_> {
     /// Point contents: water (`Some(false)`) or slime (`Some(true)`).
     fn point_water(&self, p: Vec3) -> Option<bool> {
         let at = to_engine(p);
-        self.water?.0.iter().find(|w| w.brush.contains(at)).map(|w| w.slime)
+        self.water
+            .and_then(|w| w.0.iter().find(|w| w.brush.contains(at)).map(|w| w.slime))
+            .or_else(|| self.water_zones.iter().any(|z| z.contains(at)).then_some(false))
     }
 }
 
@@ -2343,12 +2349,13 @@ fn step(
     brushes: Option<Res<MapBrushes>>,
     water: Option<Res<MapWater>>,
     brush_colliders: Query<Entity, With<MapBrushCollider>>,
-    (terrain, terrain_colliders, movers, tree, shadow_props): (
+    (terrain, terrain_colliders, movers, tree, shadow_props, zones): (
         Option<Res<MapTerrain>>,
         Query<Entity, With<MapTerrainCollider>>,
         Query<(Entity, &MovingSolid)>,
         Option<Res<MapBrushTree>>,
         super::shadow::ShadowProps,
+        (Query<&WaterZone>, Query<&LadderZone>),
     ),
     // Props that are there: a broken or killed one (body and collider
     // disabled until a round restart) neither blocks nor pushes back.
@@ -2380,6 +2387,10 @@ fn step(
     let noblock = noblock.map_or_else(Default::default, |n| *n);
     let team = |e: Entity| teams.get(e).ok().map(|t| t.0);
     let dt = clock.dt();
+    // Other games' volumes: liquids swum in, ladders climbed (swept like
+    // movers without an owner).
+    let water_zones: Vec<MapBrush> = zones.0.iter().map(|z| z.0.clone()).collect();
+    let ladder_zones: Vec<MapBrush> = zones.1.iter().map(|z| MapBrush { ladder: true, ..z.0.clone() }).collect();
     // Every living character's box: Source hulls for Source movers, else
     // the collider's bounds. Those whose collider is off (the dead, also
     // those waiting to respawn with their health, unseen) block nobody.
@@ -2478,6 +2489,10 @@ fn step(
             others.push(b);
             owners.push(Some(e));
         }
+        for b in &ladder_zones {
+            others.push(b);
+            owners.push(None);
+        }
         let (forward, right) = Mover::view(intent);
         let push_input = super::pushaway::push_back(
             super::pushaway::player_box(&transform, &me, &cfg),
@@ -2493,6 +2508,7 @@ fn step(
             grid,
             tree: tree.as_deref(),
             water: water.as_deref(),
+            water_zones: &water_zones,
             surfaces: surfaces.as_deref(),
             prop_surfaces: &prop_surface,
             sounds: bank.as_ref().map(|b| &*b.0),

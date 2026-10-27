@@ -45,7 +45,7 @@
 //!    fuse (8: the first frame at or after start + `fuse`; or its hit
 //!    points gone, 13), else its physics (`step`: |v|² < 0.1 zeroed;
 //!    volumes (7, `volumes::CaVolume`: viscosity and current above 1 u/s,
-//!    the liquids' −200 u/s² gravity; other games' water as `Water`); the
+//!    the liquids' −200 u/s² gravity; other games' water too: `volumes::BrushWater`); the
 //!    quarter-gravity move of 5 under 1600 u/s²; a point against the
 //!    world (traces-only detail and solid world models too): a mirror
 //!    bounce with the engine's push (0.05 u/s per contact, twice) inside
@@ -171,7 +171,7 @@ use super::{
 };
 use crate::{
     core::{
-        Blinded, Damage, DamageKind, DamageRules, Damageable, Died, Health, Hitgroup, Intent, MapWater,
+        Blinded, Damage, DamageKind, DamageRules, Damageable, Died, Health, Hitgroup, Intent,
         MovementState, Predict, PropSurface, SOLID_LAYERS, SimClock, SimSet,
     },
     map::{PropEntity, loose::ShownItem},
@@ -239,9 +239,6 @@ pub const WHITE_DECL: f32 = 2.0;
 pub const CAPTURED_DECL: f32 = 1.0;
 /// The live grenade released when its holder dies, u/s.
 pub const DEATH_RELEASE_SPEED: f32 = 500.0;
-/// The class defaults other games' water takes (`MapWater`): `Water`'s
-/// viscosity.
-pub const WATER_VISCOSITY: f32 = 0.035;
 /// Speed lost per unit of a volume's viscosity, u/s².
 pub const LIQUID_VISCOSITY_SCALE: f32 = 5000.0;
 /// Damage type 1, bleeding (caltrops).
@@ -1140,7 +1137,6 @@ pub(crate) struct GrenadeWorld<'w, 's> {
     pub(crate) targets: Query<'w, 's, (Entity, &'static super::special::CaTarget)>,
     prop_boxes: Query<'w, 's, (Entity, &'static ColliderAabb), With<PropEntity>>,
     volumes: Query<'w, 's, &'static CaVolume>,
-    water: Option<Res<'w, MapWater>>,
     pub(crate) table: Res<'w, CaGrenadeSurfaces>,
     pub(crate) entities: &'w bevy::ecs::entity::Entities,
 }
@@ -1266,7 +1262,7 @@ impl GrenadeWorld<'_, '_> {
     }
 
     /// The volumes `p` (m) is inside (7): (liquid, viscosity, current
-    /// u/s) each; other games' water as `Water` at its class defaults.
+    /// u/s) each (other games' water too: `volumes::BrushWater`).
     pub(crate) fn volumes_at(&self, p: Vec3) -> Vec<(bool, f32, Vec3)> {
         let mut out: Vec<(bool, f32, Vec3)> = self
             .volumes
@@ -1274,13 +1270,7 @@ impl GrenadeWorld<'_, '_> {
             .filter(|v| v.contains(p))
             .map(|v| (v.liquid, v.viscosity, v.current))
             .collect();
-        let wet = self.water.as_ref().is_some_and(|w| {
-            w.0.iter()
-                .any(|v| v.brush.planes.iter().all(|(n, d)| n.dot(p) - d <= 0.0))
-        });
-        if wet {
-            out.push((true, WATER_VISCOSITY, Vec3::ZERO));
-        }
+        // (Other games' water is `Water` volumes already: `volumes::BrushWater`.)
         out
     }
 }

@@ -966,3 +966,48 @@ fn standing_on_a_map_ladder_brushs_top_does_not_grab() {
     assert!(!t.mv().on_ladder, "standing on the top at {}", t.pos());
     assert!(t.mv().on_ground);
 }
+
+// --- Map water (Source maps' water brushes) ---
+
+/// A water brush of the map (`MapWater`, as a Source map carries them):
+/// the slab from `y0` to `y1` (u).
+fn brush_water(t: &mut T, y0: f32, y1: f32) {
+    use chimera_core::core::{MapBrush, MapWater, MapWaterVolume};
+    let (lo, hi) = slab(y0, y1);
+    let brush = MapBrush::from_box(lo * s(), hi * s());
+    t.sim.app.world_mut().insert_resource(MapWater(vec![MapWaterVolume { brush, slime: false }]));
+    t.ticks(2);
+}
+
+/// A map's water brush is a liquid to Combat Arms' movement: a player in
+/// it swims (free movement, in the liquid) and sinks at the liquid's
+/// pace, as in case 66 (viscosity 0.035 instead of 0.03).
+#[test]
+fn a_map_water_brush_is_swum_in() {
+    let mut t = T::standing();
+    brush_water(&mut t, 0.0, 5000.0);
+    t.place_in_air(Vec3::new(0.0, 2000.0, 0.0));
+    t.tick();
+    assert!(t.mv().in_liquid && t.mv().free_movement, "swimming");
+    t.ticks(19);
+    // Still water slows the fall: 20 ticks of plain gravity reach -330.
+    assert!(t.vel().y < -200.0 && t.vel().y > -320.0, "sinking at {}", t.vel().y);
+    // Dry, the same fall is free-fall, not swimming.
+    let mut dry = T::standing();
+    dry.place_in_air(Vec3::new(0.0, 2000.0, 0.0));
+    dry.ticks(20);
+    assert!(!dry.mv().in_liquid && !dry.mv().free_movement);
+}
+
+/// Swimming up from the bottom of a map's water: the jump key pushes up
+/// as in case 68.
+#[test]
+fn a_map_water_brush_can_be_swum_up_in() {
+    let mut t = T::standing();
+    brush_water(&mut t, -10.0, 1000.0);
+    assert!(t.mv().free_movement && t.mv().on_ground, "standing on the bottom");
+    t.keys().jump = true;
+    t.tick();
+    close(t.mv().accel.y, 3000.0, TOL, "the push up");
+    assert!(t.vel().y > 300.0, "rising at {}", t.vel().y);
+}

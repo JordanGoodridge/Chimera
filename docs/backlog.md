@@ -84,13 +84,8 @@ Ultimate Gun Game: `apps/party_kit`) put the two games together. Most
 noticeable first (impact H/M/L, size S/M/L). The rest, the method and
 two misdescribed docs:
 [plans/active/parity-audit-2026-10.md](plans/active/parity-audit-2026-10.md).
-
-- **Water and ladders across movements (M, M).** CA movement swims only
-  in its liquid volumes (movement.md "Volumes"); `volumes.rs` makes
-  Source ladder brushes `Ladder` volumes but not Source water
-  (`MapWater`, which CA grenades already treat as Water), so a CA-gun
-  player walks the bottom of a CS:S map's water (the UGG pool). On CA
-  maps CS:S movement has neither water nor ladders (CA's are volumes).
+All nine items fixed 2026-10-27 (hits and armour: DESIGN.md "Hits across
+games"); confirm in a playtest.
 
 ### Decisions 2026-10-13 (user)
 
