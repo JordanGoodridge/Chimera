@@ -63,6 +63,7 @@ mod net_votes;
 mod net_weapons;
 mod noclip_damage;
 mod pain_sounds;
+mod player_lods;
 mod phy_spec;
 mod prediction;
 mod prop_motion;

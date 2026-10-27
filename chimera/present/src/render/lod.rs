@@ -58,7 +58,12 @@ pub fn metric(distance: f32, radius: f32, tan_half_fov: f32) -> f32 {
 /// The level drawn among `switches` (each level's switch point, LOD 0's
 /// first): the last one whose switch point the metric has passed, or
 /// `r_lod`'s when set, never finer than `r_rootlod`, at most the last.
+/// Levels from the first negative switch point on are never drawn (a
+/// level only for shadows: CS:S's player models end in one, -1; as a
+/// switch point it would be passed at any distance).
 pub fn pick(switches: &[f32], metric: f32, settings: &ModelSettings) -> usize {
+    let drawn = 1 + switches.iter().skip(1).take_while(|s| **s >= 0.0).count();
+    let switches = &switches[..drawn.min(switches.len())];
     let last = switches.len().saturating_sub(1);
     let wanted = if settings.lod >= 0 {
         settings.lod as usize
@@ -160,5 +165,22 @@ mod tests {
         assert_eq!(pick(&switches, metric(5000.0, r, 0.75), &low), 3);
         assert_eq!(pick(&switches, 0.0, &ModelSettings { root_lod: 0, lod: 1 }), 1);
         assert_eq!(pick(&[0.0], 1e6, &low), 0, "a model with one level");
+    }
+
+    #[test]
+    fn a_negative_switch_point_is_never_drawn() {
+        // A player model's levels (CS:S's ct_urban: the last, -1, a
+        // shadow-only copy of the one before).
+        let switches = [0.0, 10.0, 20.0, 35.0, 50.0, 70.0, -1.0];
+        let auto = ModelSettings::default();
+        // A body about 42 units in bounding radius at fov 90.
+        let r = 42.0;
+        let m = |d: f32| metric(d / 0.0254, r, 0.75);
+        assert_eq!(pick(&switches, m(2.0), &auto), 0, "2 m: LOD 0");
+        assert_eq!(pick(&switches, m(10.0), &auto), 0, "10 m: LOD 0");
+        assert_eq!(pick(&switches, m(40.0), &auto), 2, "40 m: LOD 2");
+        assert_eq!(pick(&switches, m(1000.0), &auto), 5, "far off: the last drawn level");
+        assert_eq!(pick(&switches, 0.0, &ModelSettings { root_lod: 0, lod: 6 }), 5);
+        assert_eq!(pick(&[0.0, -1.0], 1e6, &auto), 0);
     }
 }
