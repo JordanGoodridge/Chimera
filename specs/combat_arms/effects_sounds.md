@@ -890,7 +890,7 @@ never used) (Open question 21).
 | Own shot | `FireSnd` (silenced: `SilencedFireSnd`ℓ) | local, volume 100 | — |
 | Other's shot | same file | 3D at their flash socket, volume 100 | `FireSndRadius` (silenced: `SilencedFireRadius`ℓ) |
 | Dry fire | `DryFireSnd` | never plays (corrected, `view_models.md` Open question 10): the dry-fire state is unreachable and its direct sound is disabled | — |
-| Reload / draw keys | view-model `sound_key n`: 1–3 → `ReloadSnd1..3`, 4 → `SelectSnd`, 5 → `DeselectSnd`, 10–14 → misc | local; others 3D at your flash point | `ReloadSndRadius` / `SelectSndRadius` (300) |
+| Reload / draw keys | view-model `sound_key n`: 1–3 → `ReloadSnd1..3`, 4 → `SelectSnd`, 5 → `DeselectSnd`, 10–14 → `MiscSound1..5` (the grenade pin is `MiscSound1`, `grenades.md` Corrections (2026-10-27)) | local; others 3D at your flash point | `ReloadSndRadius` / `SelectSndRadius` (300); misc: a fixed 2000 |
 | Bullet impact | surface list by ammo kind (below) | 3D at the impact, volume 100 (50 under water) | ImpactFX `SoundRadius` (900; melee 153) |
 | Grenade bounce | surface `GrenadeImpactSnd` | server 3D, volume per `grenades.md` | `GrenadeSndRadius` (1000) |
 | Grenade detonation | ImpactFX `Sound` (`gren.wav`, `flash.wav`, `Smoke_Exp_GAS.wav`) | 3D at the blast | 1500 |
@@ -901,6 +901,7 @@ never used) (Open question 21).
 | Hit confirm | `MultiDing1.wav` or `MultiDing2.wav` (50/50) | local | — |
 | Jump | your voice from the auto-cast `Jump` list (`jump1.wav`/`jump2.wav`), you only | local | — |
 | Kill call-outs | team auto-cast sounds (`EnemyDown` …) | 3D, **own team only** | 500–1000 |
+| Grenade throw call-out | team auto-cast `GrenadeThrowing` at the release (`grenades.md` Corrections (2026-10-27)) | 3D, follows the thrower, **own team only**, thrower included | 500 |
 | Map sounds | placed `SoundFX` objects | server 3D or ambient | object's radii |
 
 Details:

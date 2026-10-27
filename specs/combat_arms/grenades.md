@@ -28,7 +28,8 @@ each kind; Behavior (1 kinds, 2 carrying and starting counts, 3 pin pull and
 grenade as a target, 14 death release and the drop perk, 15 the end of a
 round); Per-tick order;
 Edge cases; Quirks; Corrections (2026-10-19); Corrections (2026-10-22);
-Corrections (2026-10-22, b); Test cases; Open questions.
+Corrections (2026-10-22, b); Corrections (2026-10-27): sounds, spin and
+pose of a throw; Test cases; Open questions.
 
 ---
 
@@ -1012,6 +1013,189 @@ Corrections (2026-10-22) above and are not repeated.
      frag goes off 2.5 s after the death, at the body (section 8's frame
      rule); no flash.
 
+## Corrections (2026-10-27): sounds, spin and pose of a throw
+
+A later session read the client's view-model key handling and weapon
+sound playing, the server's relay of weapon sounds, its projectile
+creation and grenade update, the team voice call-outs, the engine's
+rotation update and client-side rotation smoothing, the engine's
+animation switch on clients, and, from the Steam install (read through our
+own format readers, nothing kept), the weapon, projectile-effect and
+auto-cast attribute records and the M67, XM84 and M18 view models and
+hand-held models. This answers Open questions 24 to 26; sections 3 to 6
+stand, with the details below added.
+
+### C1. What the pin pull and the throw sound like
+
+**The pin.** View-model key `sound_key 10` plays the weapon record's
+`MiscSound1`. Keys 10 to 14 map to the record's fields `MiscSound1` to
+`MiscSound5` (1 to 3 are `ReloadSnd1..3`, 4 `SelectSnd`, 5 `DeselectSnd`,
+as in `animation.md`). The stock records have them:
+
+| Weapon | `MiscSound1` (the pin, key 10) | `MiscSound2` | `ReloadSnd1` / `2` / `3` |
+|---|---|---|---|
+| M67 | `GUNS_SND_Throwing\M67\fire.wav` | `...\M67\firetoss.wav` | `reload1.wav` / `idle_1.wav` / `idle_2.wav` in the same folder |
+| XM84 | `GUNS_SND_Throwing\XM-84\fire.wav` | `...\XM-84\firetoss.wav` | same names, `XM-84` folder |
+| M18, M-23F, G7A | `GUNS_SND_Throwing\M18\fire.wav` | `...\M18\firetoss.wav` | same names, `M18` folder (the M-23F and G7A borrow the M18's sounds) |
+
+So the file called `fire.wav` is the pin sound, and it is named by a
+field, not found by a naming rule: nothing in the game looks up a sound by
+its folder or file name. A loader that misses `MiscSound1` gets silence.
+
+**What is never heard.** The stock grenade view models carry no other
+sound key: `select`, `reload`, `fire_0` and `postfire` have none (the
+census of `view_models.md` 8 holds for the Steam files: pin key at 513,
+497 and 507 ms, `THROW_KEY` at 0, `FIRE_KEY` at 133 of `postfire`). So
+`MiscSound2` (`firetoss.wav`), the three `ReloadSnd` files, `SelectSnd`
+and `DeselectSnd` are named in the data but **never played** for these
+grenades. `Alt_FireSnd` is never played (grenades have no alternate fire)
+and `DryFireSnd` never (`effects_sounds.md` 11). The records have **no
+`FireSnd`**, so the release itself plays no weapon sound, locally or for
+anyone else.
+
+**The projectile makes no sound of its own in flight.** Its record has
+`Sound` (`GUNS_PT\Snd\Grenade.wav`) and `SoundRadius`, but those two
+fields are not read for projectiles at all. The in-flight loop would come
+from `FlySound`, which the stock records write as the integer `0` where a
+file name is read, so it reads as empty (the strict typed reads of
+`attribute_data.md`): no flight sound. The only grenade sounds after the
+release are the bounces (section 6) and the detonation (section 8).
+
+**How the pin sound plays.**
+
+- On the thrower's own client, when the key fires (`view_models.md` 8):
+  local (no position, no distance falloff), volume 100, in the **weapons**
+  volume class, with the room reverb.
+- If the thrower is alive, the client also sends the server the sound
+  (key number, weapon, and the position of its view model's flash point
+  $\vec F$ at that moment). The server forwards it to **every** client (no
+  team filter). The thrower's own client drops the echo; every other
+  client plays the same file as a 3D sound **fixed at that point** (it does
+  not follow the thrower), volume 100, weapons class, with reverb, outer
+  radius **R = 2000 u** and the default inner radius 0.07·R = 140 u. The
+  2000 is a fixed default: misc sounds have no radius field of their own
+  (they do not use `ReloadSndRadius`, `SelectSndRadius` or `FireSndRadius`).
+  Gain and muffling with distance follow `effects_sounds.md` 10, so it is
+  silent beyond about 0.93·R = 1865 u.
+
+**The throw: a voice call-out, not a weapon sound.** When the server
+creates the grenade from the fire message, if the thrower is a player, the
+weapon's `PlayAutoThrowSound` is on (default on; none of the five stock
+grenades sets it) and the weapon is a thrown weapon (`Guntype` 7), the
+server sends the thrower's team the "grenade throwing" call-out:
+
+- Data: the attribute file `autocastsound.txt`, record
+  `[AutoCastTeams3DSound6]` (`Name = "GrenadeThrowing"`), outer radius
+  `3DsoundRadius` = 500 u (inner 0.07·R = 35 u), files picked uniformly at
+  random from the list for the thrower's sound template: male
+  `CHARS_SND\MALE\VMA_Grenade_Ma.wav` or `CHARS_SND\MALE\VMA_FireINTheHole_Ma.wav`;
+  female `CHARS_SND\Female\VMA_Grenade_Fa.wav` or `...\VMA_FireINTheHole_Fa.wav`;
+  the male VIP template uses the two female files. A third line for each
+  ("frag out") is commented out in the data.
+- Who hears it: every client whose own team equals the thrower's,
+  **the thrower included**; clients of other teams drop it. It is 3D,
+  starts at the thrower's position on the server when the grenade is
+  created, and **follows the thrower** while it plays (moved to the
+  thrower's position each frame). Volume 100, default volume class (not
+  weapons), high priority, no reverb flag.
+- One at a time: if this client's previous grenade call-out is still
+  playing, the new one is dropped (the per-kind rule of
+  `effects_sounds.md` 10).
+- It is sent at the release, in the server frame that creates the
+  grenade, so about one-way latency after the client's release (section 4,
+  release delay), not at the pin pull.
+- Mines (`Guntype` 10) send a different call-out ("charging mine") under
+  the same switch. With `PlayAutoThrowSound` off, the server instead plays
+  the projectile record's `CreateSound` at `CreateSoundRadius` (3D at the
+  fire position, volume 100), if both are set; the stock grenade records
+  set neither.
+
+### C2. Orientation at launch and in flight
+
+- The grenade object is created with its thrower's body rotation, then
+  turned to face its velocity (forward along the throw direction, up in
+  the vertical plane through it). Both are overwritten before any client
+  sees the grenade: its first update runs in the server frame it is
+  created in (section 5, "First step"), and from then on its rotation is
+  set every update from three accumulated angles.
+- **The angles.** Pitch p, yaw y and roll r start at **0** when the
+  grenade is created, whatever the throw direction. Each update while the
+  grenade is moving (and not at rest),
+
+```math
+p \mathrel{+}= \omega_p\,\Delta t,\qquad y \mathrel{+}= \omega_y\,\Delta t,\qquad r \mathrel{+}= \omega_r\,\Delta t
+```
+
+  with Δt the server frame time (0.05 s) and the spin rates ω of the
+  Constants: ω_p uniform in [−π, π], ω_y and ω_r uniform in [−2π, 2π]
+  rad/s, drawn when the grenade is created and drawn again at every
+  bounce. The angles are never reset or wrapped; a bounce only changes the
+  rates. The rotation is then **set** (not added) to
+
+```math
+R = R_y(y)\,R_x(p)\,R_z(r),\quad
+R_x(p) = \begin{pmatrix}1&0&0\\0&\cos p&-\sin p\\0&\sin p&\cos p\end{pmatrix},\
+R_y(y) = \begin{pmatrix}\cos y&0&\sin y\\0&1&0\\-\sin y&0&\cos y\end{pmatrix},\
+R_z(r) = \begin{pmatrix}\cos r&-\sin r&0\\\sin r&\cos r&0\\0&0&1\end{pmatrix}
+```
+
+  in the game's frame (+X right, +Y up, +Z forward); R's columns are where
+  the model's +X, +Y and +Z axes point. So the model's forward axis points
+  along (cos p sin y, −sin p, cos p cos y): positive pitch tips it down,
+  positive yaw turns it toward +X.
+- **Consequence:** the visible orientation has nothing to do with the
+  throw direction. Every grenade starts near the model's rest orientation
+  in world axes (after the first frame's small turn) and tumbles from
+  there; two grenades thrown in different directions with the same spin
+  rates look the same. Because all three Euler angles grow at once, the
+  tumble is not a spin about one fixed axis.
+- **At rest** the angles stop changing (the update returns before the spin
+  once the velocity is zero, and the grenade is marked as no longer
+  updating). There is no turning to lie flat: the grenade stays frozen in
+  whatever tumbling orientation it had on the bounce that stopped it. The
+  code that would turn it upright at rest is disabled.
+- Spin is visual only; it never touches the collision box or the motion.
+- **On clients** each new rotation from the server is smoothed, not
+  snapped (only a new object, or one teleported or snap-rotated, is
+  snapped). On receiving a rotation the client sets a blend time
+  T = 1.1 × its measured time between server updates (55 ms at 20 updates
+  a second). Each rendered frame of length Δ, with τ = min(T, Δ) and
+  p = τ/T, the drawn rotation q moves to slerp(q, q_server, p/2), and T
+  drops by τ; when T reaches 0, q becomes q_server exactly. At 60 fps
+  (Δ = 16.7 ms) that leaves 84.8 %, 66.4 % and 40.9 % of the turn
+  remaining after frames 1 to 3 and none after frame 4; but the next
+  server rotation usually arrives (every 50 ms) before frame 4 and restarts
+  the blend, so the drawn grenade lags the server's tumble slightly and
+  never quite catches it while flying.
+
+### C3. The Hand and World poses of the flying grenade
+
+- The flying grenade's model is the projectile record's `Model` (the
+  grenade's hand-held model, `GUNS_M_HH\HH_Throwing_M67Frag_SH.ltb` and
+  the XM84 and M18 equivalents) at `ModelScale` 2. Each of these models has
+  exactly two animations, `Hand` then `World`; each is a single still
+  pose (one key frame, length 0) with a 200 ms blend time stored in it.
+  Box sizes (animation dims): M67 Hand (3, 3, 4), World (3, 3, 3); XM84
+  Hand (2, 5, 5), World (5, 2, 3); M18 Hand (3, 5, 5), World (5, 2, 3).
+- The grenade starts on its first animation, `Hand`, and that is when its
+  collision box is set (section 6, unchanged). In its first update, in the
+  same server frame it is created, the server switches it to `World`
+  (found by name, ignoring case), not looping, playing. Each later update
+  sees `World` already set and does nothing. A resting grenade keeps
+  `World`.
+- **What clients see: always `World`, with no blend.** The grenade first
+  reaches clients at the end of its creation frame, already in `World`,
+  and a client applies a new object's animation without a transition. The
+  200 ms blend time is therefore never used and `Hand` is never seen on a
+  thrown grenade. Because the pose is a single still frame, "playing" it
+  changes nothing over time; all the motion seen is the tumble of C2.
+- The same holds for a grenade released by a death (section 14): same
+  object kind, same first update.
+- Not traced: what pose the grenade held in a third-person character's
+  hand shows. The held model has no `PreFire`, `Fire` or `PostFire`
+  animations (the server looks for those names on it and finds none), so
+  nothing plays on it during the throw.
+
 ## Test cases
 
 Common setup unless stated: server dt = 0.05 s; flat floor y = 0 with
@@ -1229,6 +1413,47 @@ from the blast point, in the open, armour points 0, no gear, no buffs.
 63. **Mid-air frag look (Corrections 2026-10-22, 3).** M67 exploding in the
     air without having touched anything, seen at 500 u → the grenade's own
     surface group (metal: `Grenade_Stone`) plus `gren.wav`.
+64. **Pin sound source (C1).** Stock M67 → `sound_key 10` plays
+    `GUNS_SND_Throwing\M67\fire.wav`; XM84 → `...\XM-84\fire.wav`; M-23F
+    → `...\M18\fire.wav`. A record without `MiscSound1` → silence, with
+    no fallback by file name.
+65. **Pin sound for others (C1).** Thrower's flash point at the moment of
+    the key at (0, 60, 0); listener standing still at (0, 60, 1000) → the
+    sound plays there with gain 1 − (1000² − 140²)/(1860²) = 0.717 (×
+    volume 1.0), not muffled (under 1200 u); at 1900 u → silent. The
+    thrower walking away after the key does not move it. The thrower hears
+    it once, locally, at full volume.
+66. **No release sound (C1).** Watch another player throw an M67 from
+    300 u away (same team or not) → no weapon sound at the release and none
+    during the flight until the first bounce.
+67. **Throw call-out (C1).** Male thrower on team A releases an M67 → every
+    client on team A, the thrower's included, hears `VMA_Grenade_Ma.wav` or
+    `VMA_FireINTheHole_Ma.wav` (50/50) from the thrower, radius 500, moving
+    with them; team B clients hear nothing. A second grenade released while
+    the first call-out is still playing on a client → no second call-out on
+    that client.
+68. **Tumble (C2).** Spin rates drawn as (ω_p, ω_y, ω_r) = (π/2, π, −π)
+    rad/s, dt 0.05 s. After the creation frame's update: angles (0.0785,
+    0.1571, −0.1571), forward axis (0.1560, −0.0785, 0.9846), up axis
+    (0.1666, 0.9846, 0.0521). After 4 updates: angles (0.3142, 0.6283,
+    −0.6283), forward (0.5590, −0.3090, 0.7694), up (0.6225, 0.7694,
+    −0.1432). After 20 updates: forward (0, −1, 0), up (0, 0, 1). All
+    ±0.0005, and the same whichever direction the grenade was thrown.
+69. **Tumble across a bounce (C2).** As case 68 for 4 updates, then a
+    bounce draws (0, 2π, 0) → after 2 more updates the angles are (0.3142,
+    1.2566, −0.6283) and the forward axis (0.9045, −0.3090, 0.2939); the
+    angles did not reset.
+70. **Frozen at rest (C2).** A grenade that stops on a floor → its rotation
+    is unchanged on every later frame until it detonates; it is not turned
+    flat or upright.
+71. **Client smoothing (C2).** 60 fps client, server updates 50 ms apart, a
+    new server rotation 30° from the drawn one → 25.5° left after one
+    frame, 19.9° after two, 12.3° after three, 0° after a fourth frame
+    if no newer update arrived first.
+72. **Pose (C3).** Any thrown or death-released M67, XM84 or M18, seen by
+    any client from its first drawn frame → `World` pose; never `Hand`, and
+    no blend between them. The collision box stays the `Hand` one × 2
+    (M67 half-extents (6, 6, 8)).
 
 ## Open questions
 
@@ -1405,3 +1630,22 @@ from the blast point, in the open, armour points 0, no gear, no buffs.
     ground, throw level from a standing position and measure where the
     first bounce lands; compare with section 5's arc from the eye. A landing
     further by about the offset means it is positive.
+    **Answered (2026-10-27):** the Steam install's records for all five
+    (`G62`, `FB6`, `SB3`, `M-23F`, `G7A`) have `FireOffset` 0.0, so every
+    stock grenade starts at the eye.
+24. **Pin and throw sounds** (from the implementation, 2026-10-27).
+    Which field supplies the view model's `sound_key 10`, what the throw
+    plays, and how the install's `reload1.wav`, `fire.wav` and
+    `firetoss.wav` are chosen. **Answered** in Corrections (2026-10-27) C1:
+    `MiscSound1` (`fire.wav`) for the pin; the release plays no weapon
+    sound but sends the team "grenade throwing" voice call-out; the other
+    files are named by `MiscSound2` and `ReloadSnd1..3` but no key plays
+    them. Live check: listen for `firetoss.wav` on a throw; it should never
+    play.
+25. **In-flight orientation.** **Answered** in C2: Euler angles from zero,
+    integrated from random spin rates re-drawn per bounce; frozen at rest.
+    Not checked: whether grenade objects have client prediction disabled
+    (which would make clients snap rotations instead of smoothing them);
+    nothing seen suggests it.
+26. **Hand → World switch.** **Answered** in C3: switched on the server in
+    the creation frame, so clients only ever see `World`, with no blend.
