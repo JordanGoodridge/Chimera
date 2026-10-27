@@ -5,6 +5,12 @@
 //! the listener, and plays it, pitch as playback speed. A new sound on the
 //! same (source entity, channel) replaces the one playing there.
 //!
+//! Voice limits (ours, for the mix: every voice is summed and the output
+//! clips past full scale): a source sounds at most
+//! `MAX_VOICES_PER_SOURCE` voices at once and a sound without a source
+//! at most `MAX_VOICES_PER_ENTRY` copies of one entry; a new one past the
+//! limit fades out the oldest.
+//!
 //! The listener: `SoundListener` (the client has one) and its `Ear`s.
 
 use std::sync::Arc;
@@ -78,12 +84,56 @@ impl Ear {
 pub const NEAR_PAN: f32 = 0.4;
 
 /// A playing sound: who made it on which channel, and its live gains
-/// (to fade it out when another replaces it).
+/// (to fade it out when another replaces it). Public to read (tests
+/// count the voices a source has sounding and their gains).
 #[derive(Component)]
-struct Playing {
+pub struct Playing {
     source: Option<Entity>,
     channel: Option<u8>,
     gains: Arc<Gains>,
+    entry: String,
+    /// When it started and when its clip ends (`Time` elapsed, s).
+    started: f64,
+    ends: f64,
+}
+
+impl Playing {
+    pub fn source(&self) -> Option<Entity> {
+        self.source
+    }
+    pub fn channel(&self) -> Option<u8> {
+        self.channel
+    }
+    /// Its per-ear gains as set when it started.
+    pub fn gains(&self) -> (f32, f32) {
+        self.gains.get()
+    }
+    pub fn entry(&self) -> &str {
+        &self.entry
+    }
+    /// Still sounding at `now` (`Time` elapsed, s): its clip hasn't
+    /// ended. Headless, nothing despawns a finished one.
+    pub fn sounding(&self, now: f64) -> bool {
+        self.ends > now
+    }
+}
+
+/// The most voices one source sounds at once (every channel and none):
+/// a player's gun, steps, voice and reload together stay under it.
+pub const MAX_VOICES_PER_SOURCE: usize = 8;
+
+/// The most copies of one entry sounding at once among sounds without a
+/// source (impacts, debris).
+pub const MAX_VOICES_PER_ENTRY: usize = 4;
+
+/// Fade out a playing sound (replaced, or over a voice limit).
+fn fade(commands: &mut Commands, stopped: &mut Vec<Entity>, e: Entity, p: &Playing) {
+    p.gains.fade_out();
+    stopped.push(e);
+    // The audio backend may despawn a finished one first.
+    if let Ok(mut e) = commands.get_entity(e) {
+        e.try_remove::<Playing>().try_insert(FadingOut);
+    }
 }
 
 /// A sound another replaced on its channel: fading out, then ended
@@ -130,8 +180,10 @@ fn play_sounds(
     hearing: Res<Hearing>,
     room: Res<RoomDsp>,
     mix: Option<Res<super::live_sound::SoundMix>>,
+    time: Res<Time>,
     mut seed: Local<u64>,
 ) {
+    let now = time.elapsed_secs_f64();
     let mix = mix.map_or_else(Default::default, |m| *m);
     let Some(bank) = bank else {
         messages.clear();
@@ -149,6 +201,8 @@ fn play_sounds(
     // each time, hundreds in a 17-minute live soak).
     let mut stopped: Vec<Entity> = Vec::new();
     let mut started: Vec<((Entity, u8), Entity)> = Vec::new();
+    // Every sound started this run (source, entry), for the voice limits.
+    let mut fresh: Vec<(Entity, Option<Entity>, String)> = Vec::new();
     for m in messages.read() {
         let Some(entry) = bank.0.entry(&m.entry) else {
             continue;
@@ -191,22 +245,48 @@ fn play_sounds(
         if let (Some(source), Some(channel)) = (m.source, m.channel) {
             for (e, p) in &playing {
                 if p.source == Some(source) && p.channel == Some(channel) && !stopped.contains(&e) {
-                    p.gains.fade_out();
-                    stopped.push(e);
-                    // The audio backend may despawn a finished one first.
-                    if let Ok(mut e) = commands.get_entity(e) {
-                        e.try_remove::<Playing>().try_insert(FadingOut);
-                    }
+                    fade(&mut commands, &mut stopped, e, p);
                 }
             }
             if let Some(i) = started.iter().position(|(k, _)| *k == (source, channel)) {
-                commands.entity(started.swap_remove(i).1).despawn();
+                let e = started.swap_remove(i).1;
+                fresh.retain(|f| f.0 != e);
+                commands.entity(e).despawn();
             }
+        }
+        // The voice limits: the oldest of the source's (or of this
+        // entry's, without a source) go first.
+        let same = |source: Option<Entity>, entry: &str| match m.source {
+            Some(s) => source == Some(s),
+            None => source.is_none() && entry.eq_ignore_ascii_case(&m.entry),
+        };
+        let limit = if m.source.is_some() { MAX_VOICES_PER_SOURCE } else { MAX_VOICES_PER_ENTRY };
+        let mut old: Vec<(Entity, &Playing)> = playing
+            .iter()
+            .filter(|(e, p)| !stopped.contains(e) && p.sounding(now) && same(p.source, &p.entry))
+            .collect();
+        old.sort_by(|a, b| a.1.started.total_cmp(&b.1.started));
+        let mut over = (old.len() + fresh.iter().filter(|f| same(f.1, &f.2)).count() + 1).saturating_sub(limit);
+        for (e, p) in old {
+            if over == 0 {
+                break;
+            }
+            fade(&mut commands, &mut stopped, e, p);
+            over -= 1;
+        }
+        while over > 0 {
+            let Some(i) = fresh.iter().position(|f| same(f.1, &f.2)) else { break };
+            let e = fresh.remove(i).0;
+            started.retain(|s| s.1 != e);
+            commands.entity(e).despawn();
+            over -= 1;
         }
         let once = MapSoundClip {
             loop_start: None,
             ..clip.clone()
         };
+        let frames = clip.samples.len() / clip.channels.max(1) as usize;
+        let length = frames as f64 / clip.rate.max(1) as f64 / (pitch as f64 / 100.0);
         let gains = Arc::new(Gains::new(left, right).with_send(send).with_cutoff(cutoff));
         let handle = sources.add(LiveClip::new(once, gains.clone(), hearing.mix.clone()).with_room(&room));
         let e = commands
@@ -219,9 +299,13 @@ fn play_sounds(
                     source: m.source,
                     channel: m.channel,
                     gains,
+                    entry: m.entry.clone(),
+                    started: now,
+                    ends: now + length,
                 },
             ))
             .id();
+        fresh.push((e, m.source, m.entry.clone()));
         if let (Some(source), Some(channel)) = (m.source, m.channel) {
             started.push(((source, channel), e));
         }

@@ -124,7 +124,7 @@ use self::{
     data::{AmmoKind, CaFxTables, CaWeaponFx, EFFECTS, ImpactFx},
     fx::{CaFx, effect_frame},
     rules::{Casing, CasingHit, CasingStep, DingQueue, Gait, HurtKind, HurtLimiter, OwnSteps, StepInputs, TracerCounter, TracerPath},
-    sounds::{CHANNEL_FIRE, CHANNEL_GRENADE, CaSound, CaSoundFiles},
+    sounds::{CHANNEL_FIRE, CHANNEL_GRENADE, CHANNEL_IMPACT, CHANNEL_SHELL, CaSound, CaSoundFiles},
 };
 use super::{
     attachments::{CaMods, MUZZLE, ObserverSound},
@@ -220,6 +220,9 @@ pub struct CaTracerCounters(pub HashMap<Entity, TracerCounter>);
 #[derive(Component, Clone, Debug)]
 pub struct CaShell {
     pub owner: Entity,
+    /// The gun it came from: its first bounce sounds on that gun's shell
+    /// channel (`sounds::CHANNEL_SHELL`; None: no channel).
+    pub weapon: Option<Entity>,
     pub casing: Casing,
     /// The FireFX record (its model, skin, scale).
     pub fire: String,
@@ -844,7 +847,7 @@ fn shot_effects(
                     let frame = aim_of(*yaw, *pitch);
                     state.serial += 1;
                     let serial = state.serial;
-                    spawn_casing(&mut commands, &mut state.rolls, e.owner, &wfx.fire, f, breach, frame, mine, serial);
+                    spawn_casing(&mut commands, &mut state.rolls, (e.owner, Some(e.weapon)), &wfx.fire, f, breach, frame, mine, serial);
                 }
                 let _ = (weapon, view);
             }
@@ -948,7 +951,7 @@ fn shot_effects(
                 if wet {
                     submerge(&mut out, record, surface, wfx.ammo_kind, gates.impact_seen);
                 }
-                emit_impact(&out, at, n, &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
+                emit_impact(&out, at, n, Some(e.weapon), &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
             }
             WeaponEventKind::Swing { at, .. } => {
                 if let Some((file, radius)) = fire_sound(wfx, mods, true) {
@@ -965,7 +968,7 @@ fn shot_effects(
                 if in_liquid(volumes.iter(), *point + *n * UNIT) {
                     submerge(&mut out, record, tables.surface(ty), AmmoKind::Melee, seen);
                 }
-                emit_impact(&out, *point, *n, &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
+                emit_impact(&out, *point, *n, Some(e.weapon), &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
             }
             // Dry fire never plays and makes no sound (Open question 25,
             // view_models.md C6).
@@ -981,12 +984,15 @@ fn shot_effects(
     }
 }
 
-/// Write an impact's sound, groups and decal.
+/// Write an impact's sound, groups and decal. A gun's round's impact
+/// sound plays on that gun's impact channel (`source`: the weapon,
+/// `sounds::CHANNEL_IMPACT`), so its next round's replaces it.
 #[allow(clippy::too_many_arguments)]
 fn emit_impact(
     out: &Impact,
     at: Vec3,
     normal: Vec3,
+    source: Option<Entity>,
     sounds: &mut MessageWriter<CaSound>,
     fx: &mut MessageWriter<CaFxRequest>,
     marks: &mut rules::CaMarks,
@@ -994,7 +1000,11 @@ fn emit_impact(
     record: &ImpactFx,
 ) {
     if let Some((file, radius)) = &out.sound {
-        sounds.write(CaSound::at(file, at, *radius).volume(out.sound_volume()));
+        let s = CaSound::at(file, at, *radius).volume(out.sound_volume());
+        sounds.write(match source {
+            Some(w) => s.from_source(w, CHANNEL_IMPACT),
+            None => s,
+        });
     }
     if let Some(g) = &out.ammo_fx {
         fx.write(CaFxRequest {
@@ -1032,7 +1042,7 @@ fn emit_impact(
 fn spawn_casing(
     commands: &mut Commands,
     rolls: &mut Rolls,
-    owner: Entity,
+    (owner, weapon): (Entity, Option<Entity>),
     fire: &str,
     record: &data::FireFx,
     breach: Vec3,
@@ -1056,6 +1066,7 @@ fn spawn_casing(
         Name::new("Casing"),
         CaShell {
             owner,
+            weapon,
             casing: Casing {
                 at: breach / UNIT,
                 velocity,
@@ -1124,7 +1135,7 @@ fn key_sounds(
                 spawn_casing(
                     &mut commands,
                     &mut state.rolls,
-                    k.owner,
+                    (k.owner, inv.active),
                     &fx.fire,
                     &shown,
                     vm.breach_point,
@@ -1207,7 +1218,7 @@ fn grenade_effects(
                 kind: FxKind::Grenade,
             });
         }
-        emit_impact(&out, d.at, Vec3::Y, &mut sounds, &mut fx, &mut marks, &mut rolls, record);
+        emit_impact(&out, d.at, Vec3::Y, None, &mut sounds, &mut fx, &mut marks, &mut rolls, record);
     }
 }
 
@@ -1559,7 +1570,11 @@ fn step_effects(
                 s.sounded = true;
                 let surface = tables.surface(grid.at(s.casing.at * UNIT));
                 if !surface.shell.is_empty() {
-                    sounds.write(CaSound::at(&surface.shell, s.casing.at * UNIT, surface.shell_radius));
+                    let sound = CaSound::at(&surface.shell, s.casing.at * UNIT, surface.shell_radius);
+                    sounds.write(match s.weapon {
+                        Some(w) => sound.from_source(w, CHANNEL_SHELL),
+                        None => sound,
+                    });
                 }
             }
             _ => {}

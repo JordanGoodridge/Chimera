@@ -17,8 +17,11 @@
 //! are set when it starts (Chimera's one-shots don't follow a moving
 //! listener); server sounds reach every client, not those within 2R
 //! (`rules::server_sends`: beyond R they are silent anyway); priorities
-//! aren't kept (none are used to pick) and Chimera plays every sound
-//! started (no 255-voice cap).
+//! aren't kept (none are used to pick) and there is no 255-voice cap
+//! (Chimera's own per-source and per-entry voice limits instead); a
+//! gun's round impacts and casing bounces each replace its previous
+//! one (`CHANNEL_IMPACT`, `CHANNEL_SHELL`; the original lets them pile
+//! up, which clipped our mix at full auto).
 
 use std::collections::HashMap;
 
@@ -105,6 +108,15 @@ pub const CHANNEL_GRENADE: u8 = 2;
 pub const CHANNEL_KILL: u8 = 3;
 pub const CHANNEL_DASH: u8 = 4;
 pub const CHANNEL_IDLE: u8 = 5;
+/// A gun's (the weapon entity's, not its holder's: those would be heard
+/// as the listener's own) round impacts and casing bounces: each
+/// round's replaces the last round's, so full-auto fire up close keeps
+/// one of each sounding instead of a pile at almost full gain
+/// (`rules::sound_level_radii`'s falloff is nearly flat near the
+/// source). Not the original's (effects_sounds.md 10 sets no limit on
+/// them); our mixer sums every voice and clips past full scale.
+pub const CHANNEL_IMPACT: u8 = 6;
+pub const CHANNEL_SHELL: u8 = 7;
 
 /// The install's sound files loaded so far: clip index in the bank (None:
 /// doesn't read).

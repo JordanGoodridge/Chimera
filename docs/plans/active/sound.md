@@ -17,7 +17,10 @@ Started 2026-10-05, from specs/cs_source/sounds.md.
   5 ms (`live_sound::FADE_OUT_SECONDS`) instead of stopping on a loud
   sample: a full-auto AK's shots (one wave, CHAN_WEAPON) each cut the
   last one off, as in Source, without a click. Stopped long-lived sounds
-  fade the same way.
+  fade the same way. Voice limits (ours, since every voice is summed and
+  the output clips): a source sounds at most 8 voices at once, a sound
+  without a source at most 4 copies of one entry; past them the oldest
+  fades (`sound::MAX_VOICES_PER_SOURCE`, `MAX_VOICES_PER_ENTRY`).
 - **Distance model:** one function. Until measured (spec open question
   1): sound levels use H1 (inverse distance from a 36-unit reference),
   CompatibilityAttenuation entries H2 (linear to 1000/a units), level 0

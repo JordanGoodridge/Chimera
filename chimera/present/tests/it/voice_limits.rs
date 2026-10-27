@@ -1,0 +1,122 @@
+//! Playback's voice limits (`audio::sound`): one source sounds at most
+//! `MAX_VOICES_PER_SOURCE` voices at once, a sound without a source at
+//! most `MAX_VOICES_PER_ENTRY` copies of one entry; past the limit the
+//! oldest fades (`FadingOut`). Headless: a voice counts while its clip
+//! lasts (`Playing::sounding`).
+
+use std::sync::Arc;
+
+use bevy::prelude::*;
+use chimera_present::{
+    MapPlugin,
+    audio::{
+        live_sound::LiveClip,
+        sound::{MAX_VOICES_PER_ENTRY, MAX_VOICES_PER_SOURCE, Playing},
+    },
+    render::{
+        prop_material::PropMaterial, rope_material::RopeMaterial, shadows::ShadowMaterial,
+        sprite_material::SpriteMaterial, world_material::WorldMaterial,
+    },
+};
+use chimera_world::{
+    harness::Sim,
+    map::{
+        MapData, MapSoundClip, MapSoundEntry, MapSounds, PlaySound, SoundLevel,
+        sound::Interval,
+    },
+};
+
+use crate::prop_shadows::base;
+
+/// One entry, "test.shot": a one-second clip.
+fn sim() -> Sim {
+    let mut sounds = MapSounds::default();
+    sounds.clips.push(MapSoundClip {
+        rate: 11025,
+        channels: 1,
+        samples: vec![1000i16; 11025].into(),
+        loop_start: None,
+    });
+    sounds.entries.insert(
+        "test.shot".into(),
+        MapSoundEntry {
+            waves: vec![0],
+            volume: Interval::fixed(1.0),
+            pitch: Interval::fixed(100.0),
+            level: SoundLevel::Db(0.0),
+            channel: 0,
+            dry: false,
+        },
+    );
+    let data = MapData {
+        name: "test:voice_limits".into(),
+        sounds: Arc::new(sounds),
+        ..default()
+    };
+    let mut sim = Sim::with(base(), |app| {
+        app.init_asset::<Image>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<WorldMaterial>()
+            .init_asset::<PropMaterial>()
+            .init_asset::<SpriteMaterial>()
+            .init_asset::<RopeMaterial>()
+            .init_asset::<ShadowMaterial>()
+            .init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>()
+            .init_asset::<LiveClip>()
+            .add_plugins(MapPlugin::new(data));
+    });
+    sim.app.set_error_handler(bevy::ecs::error::panic);
+    sim.ticks(2);
+    sim
+}
+
+fn shot(source: Option<Entity>, channel: Option<u8>) -> PlaySound {
+    PlaySound {
+        entry: "test.shot".into(),
+        at: None,
+        volume: None,
+        pitch: None,
+        source,
+        channel,
+    }
+}
+
+/// Voices sounding (not faded) now, by source.
+fn sounding(sim: &mut Sim, source: Option<Entity>) -> usize {
+    let now = sim.app.world().resource::<Time>().elapsed_secs_f64();
+    let w = sim.app.world_mut();
+    w.query::<&Playing>()
+        .iter(w)
+        .filter(|p| p.source() == source && p.sounding(now))
+        .count()
+}
+
+/// A source starting a sound on every channel (and on none) each frame
+/// keeps at most the limit sounding; so does an entry played without a
+/// source, many at once and frame after frame.
+#[test]
+fn voices_are_limited_per_source_and_per_entry() {
+    let mut sim = sim();
+    let source = sim.app.world_mut().spawn(Transform::default()).id();
+    for frame in 0..6u8 {
+        for channel in 0..4u8 {
+            sim.app.world_mut().write_message(shot(Some(source), Some(frame * 4 + channel)));
+        }
+        sim.app.world_mut().write_message(shot(Some(source), None));
+        for _ in 0..3 {
+            sim.app.world_mut().write_message(shot(None, None));
+        }
+        sim.app.update();
+        assert!(sounding(&mut sim, Some(source)) <= MAX_VOICES_PER_SOURCE, "frame {frame}");
+        assert!(sounding(&mut sim, None) <= MAX_VOICES_PER_ENTRY, "frame {frame}");
+    }
+    assert_eq!(sounding(&mut sim, Some(source)), MAX_VOICES_PER_SOURCE);
+    assert_eq!(sounding(&mut sim, None), MAX_VOICES_PER_ENTRY);
+    // Under the limit nothing is stopped: two sources' sounds.
+    let other = sim.app.world_mut().spawn(Transform::default()).id();
+    sim.app.world_mut().write_message(shot(Some(other), Some(1)));
+    sim.app.world_mut().write_message(shot(Some(other), Some(2)));
+    sim.app.update();
+    assert_eq!(sounding(&mut sim, Some(other)), 2);
+    assert_eq!(sounding(&mut sim, Some(source)), MAX_VOICES_PER_SOURCE);
+}
