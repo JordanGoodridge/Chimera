@@ -235,6 +235,50 @@ pub fn anim_set_at(model: &Model, list: &AnimList, bones: &[MapBone], fps: f32) 
     set
 }
 
+/// The pose a model is drawn in when nothing animates it: its own
+/// animation named `name` (any case), else its first entry, at t = 0
+/// (models_ltb.md "Skinning": the engine draws A_j G_j^-1, A the
+/// animated pose, not the bind pose). A third-person weapon's `Hand`
+/// animation turns its root half a turn, so drawn in the bind pose the
+/// gun points backwards.
+pub fn rest_entry<'a>(loaded: &'a LoadedModel, name: &str) -> Option<&'a lta::Entry> {
+    let list = &loaded.list;
+    list.find(name).or((!list.entries.is_empty()).then_some(0)).map(|i| &list.entries[i])
+}
+
+/// `meshes` (`convert`'s, `scale` metres per unit) skinned once into
+/// `entry`'s pose at t = 0, each vertex by its joints and weights: the
+/// model as drawn in that pose, in model space.
+pub fn pose_meshes(model: &Model, entry: &lta::Entry, meshes: &mut [MapMesh], scale: f32) {
+    let pose: Vec<(ltb::Vec3, ltb::Quat)> = (0..model.nodes.len()).map(|j| lta::sample(entry, j, 0.0)).collect();
+    let skins: Vec<Mat4> = lta::skin_matrices(model, &lta::globals(model, &pose))
+        .iter()
+        .map(|k| {
+            let k = mat(&ltb::to_rh_mat(k));
+            // Metres in and out: the translation scales.
+            Mat4::from_scale(Vec3::splat(scale)) * k * Mat4::from_scale(Vec3::splat(1.0 / scale))
+        })
+        .collect();
+    for mesh in meshes {
+        for (v, p) in mesh.positions.iter_mut().enumerate() {
+            let (joints, weights) = (mesh.joints.get(v), mesh.joint_weights.get(v));
+            let (Some(joints), Some(weights)) = (joints, weights) else { continue };
+            let mut out = Vec3::ZERO;
+            for (j, w) in joints.iter().zip(weights).filter(|(_, w)| **w > 0.0) {
+                out += skins.get(*j as usize).copied().unwrap_or(Mat4::IDENTITY).transform_point3(Vec3::from(*p)) * *w;
+            }
+            *p = out.to_array();
+            if let Some(n) = mesh.normals.get_mut(v) {
+                let mut sum = Vec3::ZERO;
+                for (j, w) in joints.iter().zip(weights).filter(|(_, w)| **w > 0.0) {
+                    sum += skins.get(*j as usize).copied().unwrap_or(Mat4::IDENTITY).transform_vector3(Vec3::from(*n)) * *w;
+                }
+                *n = sum.normalize_or_zero().to_array();
+            }
+        }
+    }
+}
+
 /// The model's meshes (LOD 0 of each piece, metres, right-handed, skinned
 /// to its nodes) and its rig; `texture` gives a piece's material name
 /// from its LOD (empty: none).

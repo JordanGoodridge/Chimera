@@ -12,8 +12,8 @@
 //! style (`render_style`: the body record's `RenderStyle#`, so the team
 //! mark of an enemy draws through `Alpha.dtx`'s alpha, nothing); each
 //! weapon's third-person model (`[models] world`, the weapons file's
-//! `HHModel`, in its `HHRenderStyle#`) as a held model on the
-//! `RightHand` socket. The body's nodes, sockets, weight sets and
+//! `HHModel`, in its `HHRenderStyle#`, drawn in its own `Hand` pose:
+//! `HELD_POSE`) as a held model on the `RightHand` socket. The body's nodes, sockets, weight sets and
 //! animation list are kept as a `Rig` (`rig`, every record of the group
 //! posing on the first's) for posing.
 //!
@@ -657,9 +657,15 @@ pub fn socket_local(rotation: ltb::Quat, offset: ltb::Vec3) -> Mat4 {
     Mat4::from_rotation_translation(q, Vec3::from(ltb::to_rh_vec(offset)))
 }
 
-/// A weapon's third-person model held at the `RightHand` socket: the
-/// socket's offset and rotation baked into its meshes, in the frame of
-/// the socket's parent node (`Right_hand`), the source's units.
+/// The third-person weapon models' own animation they are held in (each
+/// has `Hand` and `World`; `Hand` turns the root half a turn from the
+/// bind pose for almost every gun).
+pub const HELD_POSE: &str = "Hand";
+
+/// A weapon's third-person model held at the `RightHand` socket: its
+/// meshes in its `Hand` pose (`HELD_POSE`), the socket's offset and
+/// rotation baked into them, in the frame of the socket's parent node
+/// (`Right_hand`), the source's units.
 fn held(
     path: &str,
     key: &str,
@@ -681,6 +687,10 @@ fn held(
         render_style::apply(mesh, style);
     }
     super::super::world::textures(&mut m.meshes, map, file);
+    // Drawn in its own `Hand` pose, not the bind pose (`model::rest_entry`).
+    if let Some(entry) = model::rest_entry(&loaded, HELD_POSE) {
+        model::pose_meshes(&loaded.model, entry, &mut m.meshes, 1.0);
+    }
     m.rig = None;
     // The socket in the parent node's space, right-handed.
     let at = socket_local(socket.rotation, socket.offset);

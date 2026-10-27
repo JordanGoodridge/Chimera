@@ -9,7 +9,8 @@
 //!
 //! Character bodies (by team or `BodyName`; the local one hidden unless
 //! `ShowLocalBody`), held models with their muzzles and bone-merged parts,
-//! posed from the character's `Animator`, lit where they are
+//! posed from the character's `Animator`, culled by their posed bounds
+//! (`DynamicSkinnedMeshBounds`, not the bind pose's), lit where they are
 //! (`probe_lit`); `PlayModels`/`HeldAssets` are built when the map
 //! spawns (`render::spawn`); `adopt_bodies`/`pose_ragdolls` hand a dead
 //! character's body to its ragdoll and pose it from the ragdoll's bodies.
@@ -226,6 +227,10 @@ pub fn attach_bodies(
                     inverse_bindposes: assets.bindposes.clone(),
                     joints: joints.clone(),
                 },
+                // Culled by where the pose puts it: a bind pose far from
+                // the drawn one (a body bound standing on its origin and
+                // drawn half a body lower) culled parts still on screen.
+                bevy::camera::visibility::DynamicSkinnedMeshBounds,
                 ChildOf(body),
             ));
             if let (Some(_), Some(levels)) = (&assets.lod_group, assets.levels.get(k)) {
@@ -598,6 +603,9 @@ pub fn body_assets(
                 bevy::mesh::VertexAttributeValues::Uint16x4(m.joints.clone()),
             );
             mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, m.joint_weights.clone());
+            // Per-joint boxes, so the drawn part's bounds follow the pose
+            // (`DynamicSkinnedMeshBounds`) instead of the bind pose's.
+            let _ = mesh.generate_skinned_mesh_bounds();
         }
         meshes.add(mesh)
     };
