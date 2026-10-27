@@ -568,7 +568,11 @@ impl ViewMachine {
             && i.clip > 0
             && (self.setup.per_press == 0 || self.press_shots < self.setup.per_press);
         let reload = i.reload || self.auto_reload;
-        if i.reload && self.can_reload(i) {
+        // A request while the reload already plays (the weapon's reload
+        // starting a frame after the view model's own automatic one) is
+        // that reload: queued, it would play again once this one ends
+        // and before the weapon fills the clip.
+        if i.reload && self.can_reload(i) && !matches!(self.stage, Stage::Reloading(_)) {
             self.reload_pending = true;
         }
         let done = self.done();
