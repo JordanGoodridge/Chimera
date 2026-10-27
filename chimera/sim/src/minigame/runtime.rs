@@ -25,6 +25,8 @@
 //!   (`Protected`, through `core::God`) for `protection` s or until it
 //!   fires. The dead respawn after `delay` s (`respawn_dead`) unless the
 //!   match is over or the mode refuses.
+//! - Held (`MatchHold`, a server changing map for the next match): no
+//!   one joins or respawns, the phases don't step.
 //! - Deaths (`handle_deaths`, after the tick's damage): the dead marked
 //!   (`Dead`, not solid), `core::Score`'s deaths and an enemy kill's kill
 //!   counted while the match counts, the mode's `on_death`, then its
@@ -313,6 +315,9 @@ pub fn take_weapon(world: &mut World, owner: Entity, weapon: Entity) {
 /// New characters into the minigame: a team as the mode makes them, at
 /// once into play unless the match is over.
 fn join(world: &mut World) {
+    if super::held(world) {
+        return;
+    }
     let new: Vec<(Entity, u8)> = world
         .query_filtered::<(Entity, &Team), (
             With<Intent>,
@@ -344,6 +349,9 @@ fn join(world: &mut World) {
 /// The runtime's phases, once `players.min` are in.
 fn step_phases(world: &mut World) {
     let Some(min) = world.get_resource::<ActiveMinigame>().map(|a| a.def.players.min) else { return };
+    if super::held(world) {
+        return;
+    }
     if world.resource::<Match>().phase == Phase::Waiting && (players(world).len() as u32) < min {
         return;
     }
@@ -354,7 +362,7 @@ fn step_phases(world: &mut World) {
 fn respawn_dead(world: &mut World) {
     let Some(def) = world.get_resource::<ActiveMinigame>().map(|a| a.def) else { return };
     let Some(mode) = current_mode(world) else { return };
-    if !mode.respawns || world.resource::<Match>().phase == Phase::MatchOver {
+    if super::held(world) || !mode.respawns || world.resource::<Match>().phase == Phase::MatchOver {
         return;
     }
     let now = world.resource::<SimClock>().now;

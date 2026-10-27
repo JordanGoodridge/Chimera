@@ -34,10 +34,6 @@ the user's go-ahead: no Actions runs unless asked.
   models' `.vtx` switch points or `lod_models`/`align_lod` for them.
   `load_character` (games/cs_source/src/game/props.rs) loads no lower
   levels for now; measure the switch points and bounds, then restore.
-- **Map change at match end is unclear.** The new round starts on the old
-  map, then the new map loads and players are moved over with a hitch.
-  Want a loading screen (or at least an indicator), and the round to
-  start only once everyone is on the new map.
 - **Combat Arms character models look wrong.** Heads look thin (e.g. the
   female soldier with goggles); her head and backpack vanish when the
   camera gets close (near clip or per-part culling/bounds?). Most of her

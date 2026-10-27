@@ -30,12 +30,19 @@
 //!   client then plays anew.
 //! - **Changing match** (`change_match`, console `change_match <id>
 //!   [map]`): the server starts another minigame, players kept and
-//!   connected, scores anew, and changes level through the app's
-//!   `changelevel` (a standalone game's `map`) when the map differs; only
-//!   one every connected player can play there. A server rotates through
-//!   it by itself once a match has been over for `RESULTS_HOLD` s
-//!   (`serve_minigame`, `MinigameDef::rotate`) and puts the results up
-//!   meanwhile (`NetMinigame::results`).
+//!   connected, scores anew; only one every connected player can play
+//!   there. On another map (`MapChange`) it holds the match
+//!   (`minigame::MatchHold`: nothing starts or respawns), changes level
+//!   through the app's `changelevel` (a standalone game's `map`; clients
+//!   get `ChangingLevel` and show the loading dialog), and starts the
+//!   match only once the map is in here and every client reported it
+//!   loaded (`server::ClientMap`), or `CLIENT_GRACE` s after the map came
+//!   in; a load that fails (or none in `MAP_LOAD_TIMEOUT` s) starts it
+//!   where the server is. The manifest names the coming minigame
+//!   meanwhile. A server rotates through it by itself once a match has
+//!   been over for `RESULTS_HOLD` s (`serve_minigame`,
+//!   `MinigameDef::rotate`) and puts the results up meanwhile
+//!   (`NetMinigame::results`).
 //! - **The playable set** (`playable`, `PartyOffer`, console
 //!   `party_offer`): each registered minigame on its pool's first map
 //!   against the players' mount doctor reports (their userinfo); the
@@ -407,17 +414,116 @@ pub fn change_match(world: &mut World, id: &str, map: Option<&str>) -> Result<St
             lacking_text(games.as_ref(), &p.lacking)
         ));
     }
-    minigame::start(world, id)?;
     if target != here {
+        minigame::check(world, def)?;
+        // Nothing starts on the map being left: the match is held until
+        // the new one is in everywhere (`follow_map_change`).
+        let began = world.get_resource::<SimClock>().map_or(0.0, |c| c.now);
+        world.insert_resource(minigame::MatchHold);
+        world.insert_resource(MapChange {
+            def,
+            map: target.clone(),
+            began,
+            loading: false,
+            arrived: None,
+        });
         // A server moves its players with it; a standalone game (no
         // server) just loads the map.
         let command = if world.get_resource::<NetRole>() == Some(&NetRole::Server) { "changelevel" } else { "map" };
         world
             .resource_mut::<crate::console::Console>()
             .submit(format!("{command} {target}"));
-        return Ok(format!("playing {id}: {}; changing level to {target}", def.name));
+        return Ok(format!(
+            "playing {id}: {}; changing level to {target}, the match starts once everyone has it",
+            def.name
+        ));
     }
+    world.remove_resource::<MapChange>();
+    minigame::start(world, id)?;
     Ok(format!("playing {id}: {} on {target}", def.name))
+}
+
+/// How long (s) a match's map change waits for the map to come in here
+/// before it gives up and starts the match where the server is.
+pub const MAP_LOAD_TIMEOUT: f64 = 60.0;
+/// How long (s) after the new map came in the match waits for clients
+/// still loading it.
+pub const CLIENT_GRACE: f64 = 20.0;
+
+/// A server (or a standalone game) changing map for its next match
+/// (`change_match` to another map): the match is held
+/// (`minigame::MatchHold`) until the map is in and every client has it.
+#[derive(Resource, Clone, Debug)]
+pub struct MapChange {
+    /// The minigame to start there.
+    pub def: &'static MinigameDef,
+    /// The map (`net::normalize_map`'s form).
+    pub map: String,
+    /// When the change began (`SimClock`).
+    pub began: f64,
+    /// The load was seen under way (the current map became `map`).
+    pub loading: bool,
+    /// When the map was in here.
+    pub arrived: Option<f64>,
+}
+
+/// Whether every client reported `map` loaded (`server::ClientMap`);
+/// true without clients.
+fn clients_have(world: &mut World, map: &str) -> bool {
+    world
+        .query::<(&crate::net::server::Player, Option<&crate::net::server::ClientMap>)>()
+        .iter(world)
+        .all(|(_, m)| m.is_some_and(|m| m.0.eq_ignore_ascii_case(map)))
+}
+
+/// A match's map change (`MapChange`) on: once the map is in here and
+/// every client has it (or `CLIENT_GRACE` s after it came in), the
+/// match starts there; a load that failed, or none in
+/// `MAP_LOAD_TIMEOUT` s, starts it where the server is.
+fn follow_map_change(world: &mut World) {
+    let Some(mut c) = world.get_resource::<MapChange>().cloned() else {
+        return;
+    };
+    let now = world.resource::<SimClock>().now;
+    let here = crate::net::current_map(world);
+    let ready = match c.arrived {
+        None => {
+            let arrived = crate::net::maps::loaded_map(world).is_some_and(|(id, _)| id == c.map);
+            if arrived {
+                info!("{} is in: the next match waits for the players to load it", c.map);
+                c.arrived = Some(now);
+                clients_have(world, &c.map)
+            } else if here == c.map {
+                c.loading = true;
+                false
+            } else if c.loading || now > c.began + MAP_LOAD_TIMEOUT {
+                warn!("{} didn't load: the next match starts on {here}", c.map);
+                true
+            } else {
+                false
+            }
+        }
+        Some(at) => {
+            let all = clients_have(world, &c.map);
+            if !all && now >= at + CLIENT_GRACE {
+                warn!("not every player has {} after {CLIENT_GRACE} s: the match starts", c.map);
+            }
+            all || now >= at + CLIENT_GRACE
+        }
+    };
+    if !ready {
+        world.insert_resource(c);
+        return;
+    }
+    world.remove_resource::<MapChange>();
+    let id = c.def.id.clone();
+    match minigame::start(world, &id) {
+        Ok(def) => info!("{} starts on {here}", def.id),
+        Err(e) => {
+            world.remove_resource::<minigame::MatchHold>();
+            warn!("starting {id} after the map change: {e}");
+        }
+    }
 }
 
 /// The games minigame `def` reads from a player's install: its first
@@ -451,14 +557,16 @@ fn wanted(def: &MinigameDef) -> Vec<String> {
     out
 }
 
-/// The server's manifest hook: the playing minigame (its id, its
-/// definition's hash and text), the games it names (wanted), its weapon
-/// sets and the slots it names over the gameplay's.
+/// The server's manifest hook: the playing minigame (the coming one
+/// during a map change for it; its id, its definition's hash and text),
+/// the games it names (wanted), its weapon sets and the slots it names
+/// over the gameplay's.
 fn add_to_manifest(world: &mut World, m: &mut MatchManifest) {
-    let Some(active) = world.get_resource::<ActiveMinigame>().copied() else {
+    // The match to come while the map changes for it (`MapChange`).
+    let coming = world.get_resource::<MapChange>().map(|c| c.def);
+    let Some(def) = coming.or_else(|| world.get_resource::<ActiveMinigame>().map(|a| a.def)) else {
         return;
     };
-    let def = active.def;
     let games = world.get_resource::<Games>();
     // Its pool's first map's game too, wanted: the map played is the
     // served one (`manifest::current` requires its game).
@@ -589,10 +697,12 @@ fn apply_minigame(world: &mut World, mut refused: Local<Option<String>>) {
     }
 }
 
-/// The minigame's end of the tick on a server or a standalone game: the
+/// The minigame's end of the tick on a server or a standalone game: a
+/// map change for the next match followed (`follow_map_change`), the
 /// next map once the match has been over a while (`rotate`), and (a
 /// server) the match into `NetMinigame`.
 fn serve_minigame(world: &mut World, mut over_since: Local<Option<f64>>) {
+    follow_map_change(world);
     rotate(world, &mut over_since);
     if world.get_resource::<NetRole>() == Some(&NetRole::Server) {
         write_minigame(world);
@@ -604,7 +714,8 @@ fn serve_minigame(world: &mut World, mut over_since: Local<Option<f64>>) {
 /// that every player can play (`MinigameDef::rotate`; else the same map
 /// anew), by `change_match`.
 fn rotate(world: &mut World, over_since: &mut Option<f64>) {
-    let over = world.get_resource::<Match>().is_some_and(|m| m.phase == Phase::MatchOver);
+    let over = world.get_resource::<Match>().is_some_and(|m| m.phase == Phase::MatchOver)
+        && !world.contains_resource::<MapChange>();
     let Some(active) = world.get_resource::<ActiveMinigame>().copied().filter(|_| over) else {
         *over_since = None;
         return;

@@ -30,7 +30,9 @@
 //!   definition's points, the weapons of a life (the kit, then the
 //!   module's), deaths counted (`core::Score`, the mode's `on_death`), the
 //!   time limit, a single round whose winner wins the match, then the
-//!   match over (`minigame_restart` plays it again).
+//!   match over (`minigame_restart` plays it again). `MatchHold` holds
+//!   the match (no joins, respawns or phases) while a server changes map
+//!   for the next one; `start` lifts it.
 //! - `MinigameEvent`: named events (`rung_up`, `rung_down`, `match_won`)
 //!   for a HUD or an announcer; `hud::MinigameHud` is what the local
 //!   player's HUD shows of the minigame (status lines from the rules
@@ -262,9 +264,24 @@ pub fn weapon(def: &MinigameDef, catalog: &WeaponCatalog, id: &str) -> Result<&'
 }
 
 /// Start minigame `id`: its definition checked and made the active one,
-/// the gameplay switched to it, a fresh match that every player joins.
+/// the gameplay switched to it, a fresh match that every player joins
+/// (a `MatchHold` lifted).
 pub fn start(world: &mut World, id: &str) -> Result<&'static MinigameDef, String> {
-    begin(world, id, true)
+    let def = begin(world, id, true)?;
+    world.remove_resource::<MatchHold>();
+    Ok(def)
+}
+
+/// The match held (a server changing map for its next match:
+/// `chimera_net::minigame_net`): while it is in, no one joins the match
+/// or respawns and its phases don't step, so nothing starts on the map
+/// being left nor before the players have the new one. `start` lifts it.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct MatchHold;
+
+/// Whether the match is held (`MatchHold`).
+pub fn held(world: &World) -> bool {
+    world.contains_resource::<MatchHold>()
 }
 
 /// A network client's `start`: the minigame the server plays, made the

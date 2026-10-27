@@ -8,8 +8,8 @@
 //! `Refused` and dropped a second later), a character per client (team with
 //! fewer players, out of the game (`core::Connecting`: dead, not solid, no
 //! health) until its client reports the map loaded (`Loaded`, also after each
-//! map change), then spawned as the rules allow (`rules::enter_game`), `Seed`
-//! from its id), each player's commands queued by tick (`CommandBuffer`: late
+//! map change; the map kept on its client's entity: `ClientMap`), then
+//! spawned as the rules allow (`rules::enter_game`), `Seed` from its id), each player's commands queued by tick (`CommandBuffer`: late
 //! and too-early ones dropped; the lead reported for the client's newest clock
 //! epoch only), `kick <name>` and `kickid <id> [message]` ("Kicked by Console")
 //! and one applied per tick before the rules (the last repeated when missing),
@@ -719,6 +719,12 @@ fn spawn_player(world: &mut World, id: u64, name: &str, choice: Option<&str>) ->
 /// CS:S's `rules::JoinChoice::key`).
 pub const JOIN_KEY: &str = "_jointeam";
 
+/// On a client's entity: the map its client last reported loaded
+/// (`Loaded`) while the server was on it (a match waits for it after a
+/// map change: `minigame_net`).
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct ClientMap(pub String);
+
 /// A client has the map loaded: its player comes into the game, if it's
 /// the map the server is on (a report from before a map change counts
 /// for nothing).
@@ -734,6 +740,9 @@ fn receive_loaded(mut loaded: MessageReader<FromClient<super::Loaded>>, players:
             if !map.eq_ignore_ascii_case(&serving) || world.get_entity(character).is_err() {
                 info!("a client reported {map} loaded; the server is on {serving}");
                 return;
+            }
+            if let Ok(mut c) = world.get_entity_mut(client) {
+                c.insert(ClientMap(serving));
             }
             let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
             (rules.enter)(world, character);
