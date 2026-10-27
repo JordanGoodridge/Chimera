@@ -2287,7 +2287,7 @@ pub fn client_commands(app: &mut App) {
                 .map_or(t.translation, |b| t.translation.with_y(b.min.y));
             let point = w
                 .get::<Hitboxes>(p)
-                .and_then(|h| h.0.iter().find(|b| b.group == group).map(|b| feet + yaw * b.center))
+                .and_then(|h| h.0.iter().find(|b| b.group() == group).map(|b| feet + yaw * b.center))
                 .unwrap_or(t.translation);
             // Shot from `from` around the facing: travelling toward it.
             let dir = yaw * Quat::from_rotation_y(from) * Vec3::Z;

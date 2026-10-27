@@ -146,3 +146,144 @@ fn both_games_bullets_push_a_physics_object() {
     let ca = pushed_by_one_round(7, "combat_arms:m4a1");
     assert!(ca > 1.5 && ca < 5.0, "Combat Arms' round pushes it too: {ca} m/s");
 }
+
+// ---------------------------------------------------------------------------
+// Hits across games (docs/plans/active/generic-hits.md)
+
+/// Every hit a weapon dealt: (target, hitgroup).
+#[derive(Resource, Default)]
+struct Hits(Vec<(Entity, chimera_core::core::Hitgroup)>);
+
+fn collect_hits(mut events: MessageReader<chimera_sim::weapon::WeaponEvent>, mut out: ResMut<Hits>) {
+    for e in events.read() {
+        if let chimera_sim::weapon::WeaponEventKind::Hit { target, hitgroup, .. } = e.kind
+            && !e.replay
+        {
+            out.0.push((target, hitgroup));
+        }
+    }
+}
+
+/// A shooter holding rung `shooter`'s gun and a target 4 m ahead holding
+/// rung `target`'s, facing each other, the target unkillable; with
+/// `bodies`, the map's systems (which give characters their bodies) and
+/// those bodies.
+fn duel(shooter: usize, target: usize, bodies: Option<fn(&mut App)>) -> (Sim, Entity, Entity) {
+    let mut sim = match bodies {
+        None => party(),
+        Some(setup) => {
+            let mut sim = Sim::new(
+                combat_arms::harness::CaSim,
+                (
+                    chimera_world::greybox::GreyboxMapPlugin,
+                    chimera_world::map::MapSimPlugin::empty(),
+                    party_kit::PartyPartsPlugin,
+                ),
+            );
+            setup(&mut sim.app);
+            chimera_sim::minigame::start(sim.app.world_mut(), party_kit::DEFAULT_MINIGAME).expect("the gun game starts");
+            sim
+        }
+    };
+    sim.app.init_resource::<Hits>().add_systems(Update, collect_hits);
+    let a = soldier(&mut sim);
+    let b = soldier(&mut sim);
+    sim.seconds(1.5);
+    // Standing on the floor (the spawn's height, then settled).
+    place(&mut sim, a, Vec3::new(0.0, 1.0, 0.0));
+    place(&mut sim, b, Vec3::new(0.0, 1.0, -4.0));
+    set_rung(&mut sim, a, shooter);
+    set_rung(&mut sim, b, target);
+    sim.intent(a).yaw = 0.0;
+    sim.intent(b).yaw = std::f32::consts::PI;
+    sim.seconds(1.5);
+    let mut h = sim.app.world_mut().get_mut::<chimera_core::core::Health>(b).unwrap();
+    h.current = 100.0;
+    h.max = 100.0;
+    (sim, a, b)
+}
+
+/// Where the centre of `b`'s first hitbox of `region` is in the world.
+fn shape_at(sim: &Sim, b: Entity, region: chimera_core::core::BodyRegion) -> Vec3 {
+    let w = sim.app.world();
+    let boxes = w.get::<chimera_core::core::Hitboxes>(b).expect("hitboxes");
+    let shape = boxes.0.iter().find(|h| h.region == region).unwrap_or_else(|| panic!("no {region:?}"));
+    let t = w.get::<Transform>(b).unwrap().translation;
+    let feet = w.get::<avian3d::prelude::ColliderAabb>(b).map_or(t, |a| t.with_y(a.min.y));
+    feet + w.get::<chimera_core::core::Intent>(b).unwrap().yaw_rotation() * shape.center
+}
+
+/// One round from `a` at `point`; the hitgroups `b` was hit in.
+fn shot_at(sim: &mut Sim, a: Entity, b: Entity, point: Vec3) -> Vec<chimera_core::core::Hitgroup> {
+    sim.app.world_mut().resource_mut::<Hits>().0.clear();
+    testkit::aim_at(sim, a, point);
+    sim.ticks(1);
+    sim.intent(a).fire = true;
+    sim.ticks(1);
+    sim.intent(a).fire = false;
+    sim.ticks(6);
+    let hits = sim.app.world().resource::<Hits>().0.iter().filter(|(t, _)| *t == b).map(|(_, g)| *g).collect();
+    sim.seconds(1.0);
+    hits
+}
+
+#[test]
+fn a_cs_source_gun_hits_a_combat_arms_body_where_it_is_drawn() {
+    use chimera_core::core::{BodyRegion as R, Hitgroup as G};
+    // Rung 6: CS:S's AK-47; rung 7: Combat Arms' M4A1 (its body, its
+    // hit spheres as the target's hitboxes).
+    let (mut sim, a, b) = duel(6, 7, None);
+    let boxes = sim.app.world().get::<chimera_core::core::Hitboxes>(b).expect("Combat Arms' body has hitboxes");
+    assert!(boxes.0.iter().all(|h| h.radius.is_some()), "spheres");
+    // The head is the head; the right hand and shin are the right arm and
+    // leg (height bands on the collider would say left for both).
+    let head = shape_at(&sim, b, R::Head);
+    assert_eq!(shot_at(&mut sim, a, b, head), vec![G::Head]);
+    let hand = shape_at(&sim, b, R::RightHand);
+    assert_eq!(shot_at(&mut sim, a, b, hand), vec![G::RightArm]);
+    let shin = shape_at(&sim, b, R::RightShin);
+    assert_eq!(shot_at(&mut sim, a, b, shin), vec![G::RightLeg]);
+}
+
+/// The map's bodies: Combat Arms' (no hitboxes: it makes its own) and a
+/// short CS:S stand-in whose head box is 1 m up, below where Combat Arms'
+/// own skeleton has its chest, so only its own boxes give a head shot.
+fn short_cs_body(app: &mut App) {
+    use chimera_core::core::{BodyRegion as R, Hitbox};
+    use chimera_world::map::{CharacterModels, MapCharacterModel};
+    let body = |game, hitboxes| MapCharacterModel {
+        game: Some(game),
+        team: None,
+        name: None,
+        class: None,
+        model: default(),
+        hitboxes,
+        bones: Vec::new(),
+        root: Transform::IDENTITY,
+        animations: None,
+        boxes: Vec::new(),
+        ragdoll: None,
+    };
+    let cube = |y: f32, x: f32, region| Hitbox::cuboid(Vec3::new(x, y, 0.0), Vec3::splat(0.12), Quat::IDENTITY, region);
+    let boxes = vec![cube(1.0, 0.0, R::Head), cube(0.7, 0.0, R::Chest), cube(0.25, 0.12, R::RightShin)];
+    app.insert_resource(CharacterModels(std::sync::Arc::new(vec![
+        body("combat_arms", Vec::new()),
+        body("cs_source", boxes),
+    ])));
+}
+
+#[test]
+fn a_combat_arms_gun_hits_a_cs_source_body_where_it_is_drawn() {
+    use chimera_core::core::{BodyRegion as R, Hitgroup as G};
+    // Rung 7: Combat Arms' M4A1 at rung 6's CS:S player, who wears the
+    // short CS:S body: its boxes, not Combat Arms' skeleton standing.
+    let (mut sim, a, b) = duel(7, 6, Some(short_cs_body));
+    let boxes = sim.app.world().get::<chimera_core::core::Hitboxes>(b).expect("the CS:S body's hitboxes");
+    assert!(boxes.0.iter().all(|h| h.radius.is_none()), "boxes");
+    let head = shape_at(&sim, b, R::Head);
+    assert_eq!(shot_at(&mut sim, a, b, head), vec![G::Head]);
+    let chest = shape_at(&sim, b, R::Chest);
+    assert_eq!(shot_at(&mut sim, a, b, chest), vec![G::Chest]);
+    let shin = shape_at(&sim, b, R::RightShin);
+    assert_eq!(shot_at(&mut sim, a, b, shin), vec![G::RightLeg]);
+}

@@ -39,10 +39,16 @@
 //! model (`models::rig` has the selection's body file) the pose is the
 //! model's own, drawn through Chimera's body (`map::BodyName`,
 //! `Animator::fixed`) with the weapon held at `RightHand` (`map::Held`).
+//! After the pose (`hitboxes`) a Combat Arms character's spheres are also
+//! Chimera's hitboxes (`core::Hitboxes`, marked `CaHitboxes`: spheres with
+//! their region, `Node#Priority` and zone factor as the body's own scale;
+//! docs/plans/active/generic-hits.md), so other games' guns hit the
+//! drawn body by region.
 //!
 //! A character whose identity is another game's (`slots::GameIdentity`:
 //! Lucker Party's players follow their weapon's game) keeps its trackers,
-//! pose and hit spheres (our guns still hit it so) but wears no look of
+//! pose and hit spheres (our guns hit it so while it has no hitboxes of
+//! its own game's; with them, `weapons` hits those) but wears no look of
 //! ours (`dress` takes `BodyName`, `BodyNumber` and `BodySkin` off, `drive`
 //! leaves its `Animator` and visibility alone) and leaves no body of ours
 //! when it dies.
@@ -399,6 +405,7 @@ impl Plugin for CaCharactersPlugin {
             )
             .init_resource::<CaOwnLook>()
             .add_systems(FixedUpdate, dress.after(drive).after(bodies))
+            .add_systems(FixedUpdate, hitboxes.after(drive))
             .add_systems(FixedUpdate, wear_looks.before(setup).run_if(core::authoritative))
             .add_systems(FixedUpdate, client_clock.before(drive).run_if(core::shows_others));
         look_cvars(app);
@@ -1249,3 +1256,72 @@ mod visibility_tests {
         assert_eq!(object_visibility(true, false, true), None);
     }
 }
+
+/// Combat Arms' bodies as Chimera's hitboxes (docs/plans/active/generic-hits.md),
+/// so other games' guns hit the drawn body by region: after the pose,
+/// every hit sphere of a Combat Arms character's table where its own
+/// guns test it (`weapons::body_geometry`, a body model's pose by
+/// `weapons::posed_geometry`), as a `core::Hitbox` sphere in the frame
+/// shots turn it by (feet at its box's bottom, the look's yaw), with its
+/// region (`HitSphere::region`), `Node#Priority` and zone factor as the
+/// body's own scale. Characters of another game's identity wear that
+/// game's body and hitboxes.
+#[allow(clippy::type_complexity)]
+fn hitboxes(
+    mut characters: Query<(
+        Entity,
+        (&Transform, &Intent, &MovementState, Option<&avian3d::prelude::ColliderAabb>),
+        (&HitSpheres, Option<&CaPose>, Option<&GameIdentity>),
+        (Option<&mut core::Hitboxes>, Has<CaHitboxes>),
+    )>,
+    mut commands: Commands,
+) {
+    for (e, (t, intent, state, aabb), (table, pose, identity), (current, made)) in &mut characters {
+        if !GameIdentity::allows(identity, super::GAME) {
+            // Now another game's: its body's hitboxes (or none), not ours.
+            // Checked when the command runs: that game's body may have put
+            // its own in this tick (`map::bodies::attach_hitboxes`).
+            if made {
+                commands.entity(e).queue(|mut ent: EntityWorldMut| {
+                    let ours = ent.get::<core::Hitboxes>().is_some_and(|h| h.0.iter().all(|b| b.radius.is_some()));
+                    if ours {
+                        ent.remove::<core::Hitboxes>();
+                    }
+                    ent.remove::<CaHitboxes>();
+                });
+            }
+            continue;
+        }
+        let data = table.0;
+        let Some((min, _, mut world)) = super::weapons::body_geometry(t, intent, state, aabb, data) else {
+            continue;
+        };
+        if let Some(p) = pose.filter(|p| p.modelled && p.skeleton == data.first().map_or(0, |s| s.skeleton)) {
+            world = super::weapons::posed_geometry(t.translation, min, p.body_yaw, p, data);
+        }
+        let feet = aabb.map_or(t.translation, |b| t.translation.with_y(b.min.y));
+        let turn = intent.yaw_rotation().inverse();
+        let shapes: Vec<core::Hitbox> = data
+            .iter()
+            .zip(&world)
+            .map(|(s, (c, r))| core::Hitbox {
+                priority: s.priority,
+                scale: Some(s.factor),
+                ..core::Hitbox::sphere(turn * (*c - feet), *r, s.region())
+            })
+            .collect();
+        match current {
+            Some(mut h) => h.0 = shapes,
+            None => {
+                commands.entity(e).insert(core::Hitboxes(shapes));
+            }
+        }
+        if !made {
+            commands.entity(e).insert(CaHitboxes);
+        }
+    }
+}
+
+/// On a character whose `core::Hitboxes` Combat Arms makes (`hitboxes`).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct CaHitboxes;

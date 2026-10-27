@@ -35,7 +35,8 @@
 //! `pellet_dirs`); `BulletTarget` (a target's own hitgroup multipliers, hits on
 //! more than one of its boxes, exact damage); damage, armour and pushes only
 //! where `core::authoritative`, armour only from hits that land (`HitArmor`,
-//! the one place bullets, knives and blasts take it),
+//! the one place bullets, knives and blasts take it, through the shared
+//! armour step `hits::absorb`: `Armor`'s coverage, `KEVLAR` and `HELMET`),
 //! with a `BulletHit` for each bullet hit on something with health (games'
 //! reactions: CS:S's slowdown and flinch); `ViewPunch` (pitch, yaw, roll) on
 //! the view and, scaled, on the shots.
@@ -60,6 +61,7 @@ pub mod economy;
 pub mod economy_data;
 pub mod equip;
 pub mod grenade;
+pub mod hits;
 pub mod impact;
 pub mod lagcomp;
 pub mod notice;
@@ -77,6 +79,7 @@ use serde::{Deserialize, Serialize};
 pub use sync::{CarriedAppExt, NetPart};
 
 pub use deliver::{aim_of, armor_split, falloff, hitgroup_at, pellet_dirs, quantize, spread_dir};
+pub use hits::{Absorbed, Coverage, DamageClass, Depletion, RegionScale, absorb};
 
 use crate::{
     console::{Command, Console, ConsoleAppExt},
@@ -1075,7 +1078,9 @@ pub struct DamageEffect {
     /// Damage × falloff^(distance / falloff_step).
     pub falloff: f32,
     pub falloff_step: f32,
-    pub hitgroups: HitgroupScale,
+    /// The gun's damage per body region (its game's table; from the
+    /// data's hitgroups, `RegionScale::from_hitgroups`).
+    pub regions: hits::RegionScale,
     /// Impulse given to physics objects per shot, kg·m/s.
     pub impulse: f32,
     /// Damage dealt is truncated to whole multiples of this (CS:S: one hit
@@ -1087,23 +1092,61 @@ pub struct DamageEffect {
 }
 
 /// Body armour (CS:S kevlar and helmet), normalized like `Health`
-/// (1.0 = 100). Hits it covers (CS:S, measured M7: chest, stomach, arms,
-/// generic, and the head only with a helmet) take `damage x ratio x 0.5`
-/// from health and half the rest from armour, both truncated.
+/// (1.0 = 100). Its coverage per body part (`entries`: `KEVLAR`, and
+/// `HELMET` with a helmet) goes through the shared armour step
+/// (`hits::absorb`): hits it covers (CS:S, measured M7: chest, stomach,
+/// arms, generic, and the head only with a helmet) take `damage x ratio x
+/// 0.5` from health and half the rest from armour, both truncated.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct Armor {
     pub amount: f32,
     pub helmet: bool,
 }
 
+/// CS:S's kevlar as coverage: half of every class on the torso (generic,
+/// chest, stomach, the groin too), the arms; armour points lose half of
+/// what it takes.
+pub const KEVLAR: hits::Coverage = hits::Coverage {
+    class: None,
+    head: 0.0,
+    torso: 0.5,
+    arm: 0.5,
+    leg: 0.0,
+    groin: 0.5,
+    wear: 0.5,
+};
+
+/// CS:S's helmet: the head, as kevlar covers the body.
+pub const HELMET: hits::Coverage = hits::Coverage {
+    class: None,
+    head: 0.5,
+    torso: 0.0,
+    arm: 0.0,
+    leg: 0.0,
+    groin: 0.0,
+    wear: 0.5,
+};
+
 impl Armor {
+    /// The coverage worn.
+    pub fn entries(&self) -> &'static [hits::Coverage] {
+        if self.helmet { &[KEVLAR, HELMET] } else { &[KEVLAR] }
+    }
+
+    /// How it runs out (CS:S: by what it would lose).
+    pub fn depletion(&self) -> hits::Depletion {
+        hits::Depletion::Cost
+    }
+
+    /// Whether it covers a hit on `group` (it has points and coverage
+    /// there).
     pub fn covers(&self, group: Hitgroup) -> bool {
-        self.amount > 0.0
-            && match group {
-                Hitgroup::Head => self.helmet,
-                Hitgroup::LeftLeg | Hitgroup::RightLeg => false,
-                _ => true,
-            }
+        self.covers_region(crate::core::BodyRegion::from_hitgroup(group))
+    }
+
+    /// Whether it covers a hit on `region`.
+    pub fn covers_region(&self, region: crate::core::BodyRegion) -> bool {
+        self.amount > 0.0 && self.entries().iter().any(|e| e.at(region.part()) > 0.0)
     }
 }
 
@@ -1138,10 +1181,26 @@ impl HitArmor<'_, '_> {
     }
 
     /// Split `raw` damage (before armour, normalized like `Health`) of
-    /// `damage` between armour and health (`armor_split` with the weapon's
-    /// `ratio`, truncated to `quantum`): sets `damage.amount` to health's
-    /// share, and takes armour's from the target if the hit lands.
+    /// `damage` between armour and health (the shared armour step,
+    /// `hits::absorb`, with the weapon's `ratio`, truncated to `quantum`),
+    /// on the region of its hitgroup (`BodyRegion::from_hitgroup`): sets
+    /// `damage.amount` to health's share when armour covers it, and takes
+    /// armour's from the target if the hit lands.
     pub fn apply(&mut self, damage: &mut crate::core::Damage, raw: f32, ratio: Option<f32>, quantum: f32) -> ArmorHit {
+        let region = crate::core::BodyRegion::from_hitgroup(damage.hitgroup);
+        self.apply_region(damage, region, raw, ratio, quantum)
+    }
+
+    /// `apply` on a body region (the damage's class by its kind,
+    /// `hits::DamageClass::of`).
+    pub fn apply_region(
+        &mut self,
+        damage: &mut crate::core::Damage,
+        region: crate::core::BodyRegion,
+        raw: f32,
+        ratio: Option<f32>,
+        quantum: f32,
+    ) -> ArmorHit {
         let lands = self.rules.lands(damage);
         let Ok(mut armor) = self.armor.get_mut(damage.target) else {
             return ArmorHit::default();
@@ -1150,14 +1209,21 @@ impl HitArmor<'_, '_> {
             covered: false,
             helmet: armor.amount > 0.0 && armor.helmet,
         };
-        if let Some(ratio) = ratio
-            && armor.covers(damage.hitgroup)
-        {
-            let (to_health, to_armor) = armor_split(raw, ratio, armor.amount, quantum);
-            damage.amount = to_health;
+        let a = hits::absorb(
+            raw,
+            region.part(),
+            hits::DamageClass::of(damage.kind),
+            ratio,
+            quantum,
+            armor.amount,
+            armor.entries(),
+            armor.depletion(),
+        );
+        if a.covered {
+            damage.amount = a.to_health;
             hit.covered = true;
             if lands {
-                armor.amount = (armor.amount - to_armor).max(0.0);
+                armor.amount = (armor.amount - a.taken).max(0.0);
             }
         }
         hit

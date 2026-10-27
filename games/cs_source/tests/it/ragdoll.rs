@@ -9,7 +9,7 @@ use std::sync::Arc;
 use avian3d::prelude::Position;
 use bevy::prelude::*;
 use crate::stack::{
-    core::{Damage, DamageKind, Health, Hitbox, Hitgroup},
+    core::{BodyRegion, Damage, DamageKind, Health, Hitbox, Hitgroup},
     harness::{CsSim, Sim},
     map::{
         BoneBox, MapBone, MapBrush, MapCharacterModel, MapData, MapModel, MapPlugin, MapRagdoll, MapRagdollBody,
@@ -126,12 +126,7 @@ pub(crate) fn model() -> MapCharacterModel {
         model: MapModel::default(),
         hitboxes: boxes
             .iter()
-            .map(|b| Hitbox {
-                center: Vec3::ZERO,
-                half: b.half * SCALE,
-                rotation: Quat::IDENTITY,
-                group: b.group,
-            })
+            .map(|b| Hitbox::cuboid(Vec3::ZERO, b.half * SCALE, Quat::IDENTITY, BodyRegion::from_hitgroup(b.group)))
             .collect(),
         bones,
         root: Transform::from_rotation(face * axes).with_scale(Vec3::splat(SCALE)),
@@ -277,12 +272,12 @@ fn armed_model(pairs: Vec<(usize, usize)>) -> MapCharacterModel {
         half: Vec3::new(2.0, 2.0, 7.0),
         group: Hitgroup::LeftArm,
     };
-    m.hitboxes.push(Hitbox {
-        center: Vec3::ZERO,
-        half: arm.half * SCALE,
-        rotation: Quat::IDENTITY,
-        group: arm.group,
-    });
+    m.hitboxes.push(Hitbox::cuboid(
+        Vec3::ZERO,
+        arm.half * SCALE,
+        Quat::IDENTITY,
+        BodyRegion::from_hitgroup(arm.group),
+    ));
     m.boxes.push(arm);
     m
 }

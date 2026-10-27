@@ -50,7 +50,7 @@ fn head(f: &HitFrame) -> Vec3 {
     let boxes = f.hitboxes.as_ref().expect("hitboxes");
     let b = boxes
         .iter()
-        .filter(|b| b.group == Hitgroup::Head)
+        .filter(|b| b.group() == Hitgroup::Head)
         .max_by(|a, b| a.center.y.total_cmp(&b.center.y))
         .unwrap();
     f.origin.with_y(f.origin.y + f.min.y) + Quat::from_rotation_y(f.yaw) * b.center

@@ -904,13 +904,13 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
             amount: x.amount * dmg,
             falloff: x.falloff,
             falloff_step: x.falloff_step * len,
-            hitgroups: HitgroupScale {
+            regions: super::hits::RegionScale::from_hitgroups(&HitgroupScale {
                 head: x.hitgroups.head,
                 chest: x.hitgroups.chest,
                 stomach: x.hitgroups.stomach,
                 arm: x.hitgroups.arm,
                 leg: x.hitgroups.leg,
-            },
+            }),
             impulse: x.impulse * len,
             quantum: x.quantum * dmg,
             armor_ratio: x.armor_ratio,

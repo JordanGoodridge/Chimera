@@ -549,7 +549,7 @@ fn office_hostage_shots_from_150_units() {
             let (o, dl) = (frame.1 * (from - frame.0), frame.1 * dir);
             let group = boxes
                 .iter()
-                .filter_map(|b| Some((b.ray_entry(o, dl)?, b.group)))
+                .filter_map(|b| Some((b.ray_entry(o, dl)?, b.group())))
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .map(|(_, g)| g)
                 .expect("a box where the bullet stopped");
