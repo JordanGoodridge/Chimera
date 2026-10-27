@@ -34,10 +34,6 @@ the user's go-ahead: no Actions runs unless asked.
   models' `.vtx` switch points or `lod_models`/`align_lod` for them.
   `load_character` (games/cs_source/src/game/props.rs) loads no lower
   levels for now; measure the switch points and bounds, then restore.
-- **Double reload, still.** Empty the magazine, reload: after the reload
-  finishes, a second reload animation sometimes plays. Intermittent;
-  trigger unknown (seen before on Combat Arms; check both games' guns and
-  the swap/refill path of `refill_ammo`).
 - **Map change at match end is unclear.** The new round starts on the old
   map, then the new map loads and players are moved over with a hitch.
   Want a loading screen (or at least an indicator), and the round to

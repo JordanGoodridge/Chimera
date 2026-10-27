@@ -1814,3 +1814,69 @@ fn v06_fire_animation_rate_includes_the_weapons_own() {
     let draw = animation_rate(1.0 + 0.0 + 0.3 + 0.1);
     assert!((reload - 1.3).abs() < 1e-6 && (draw - 1.4).abs() < 1e-6);
 }
+
+const M4A1: &str = "combat_arms:m4a1";
+
+/// Frames of `frame` seconds (the fixed ticks keep the game's rate),
+/// sampling the view model after each: emptying the clip of `id` with
+/// fire held until the clip is full again or let go as it empties, starts one weapon reload and enters the view model's reload once.
+fn one_reload_at_frame_rate(id: &str, anims: Arc<Vec<AnimInfo>>, frame: f64, held: bool) {
+    let mut sim = sim();
+    let pistol: Vec<AnimInfo> = m92fs().iter().cloned().collect();
+    let rifle: Vec<AnimInfo> = anims.iter().cloned().collect();
+    sim.app.insert_resource(ViewModels(Arc::new(vec![view_model(M92FS, &pistol), view_model(M4A1, &rifle)])));
+    let p = player(&mut sim);
+    let w = drawn(&mut sim, p, id);
+    {
+        let mut m = sim.app.world_mut().get_mut::<Magazine>(w).unwrap();
+        m.clip = 1;
+        m.reserve = 60;
+    }
+    sim.app
+        .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f64(frame)));
+    sim.intent(p).fire = true;
+    let (mut plays, mut starts) = (0, 0);
+    let (mut last, mut last_end) = (false, false);
+    let (mut t, mut emptied) = (0.0, false);
+    while t < 6.0 {
+        let clip = sim.app.world().get::<Magazine>(w).unwrap().clip;
+        emptied |= clip == 0;
+        if emptied && (!held || clip > 0) {
+            sim.intent(p).fire = false;
+        }
+        sim.app.update();
+        t += frame;
+        let now = vm(&sim, p).machine.as_ref().is_some_and(|m| matches!(m.stage, Stage::Reloading(_)));
+        if now && !last {
+            plays += 1;
+        }
+        last = now;
+        let end = sim.app.world().get::<weapon::WeaponState>(w).unwrap().reloading();
+        if end && !last_end {
+            starts += 1;
+        }
+        last_end = end;
+    }
+    assert_eq!(
+        (plays, starts),
+        (1, 1),
+        "{id} at {:.0} fps, held {held}: view reloads, weapon reloads",
+        1.0 / frame
+    );
+    assert!(sim.app.world().get::<Magazine>(w).unwrap().clip > 0, "refilled");
+}
+
+/// The view model's own automatic reload can start a frame before the
+/// weapon's (the M4A1's fire animation is as long as its cycle): the
+/// weapon's reload starting meanwhile must not queue a second animation
+/// for the still empty clip. At several frame rates (the race is the
+/// frames' phase against the ticks), fire held and released.
+#[test]
+fn an_emptied_magazine_reloads_once_at_any_frame_rate() {
+    for frame in [1.0 / 60.0, 1.0 / 75.0, 1.0 / 100.0, 1.0 / 144.0, 1.0 / 240.0, 1.0 / 37.0] {
+        for held in [false, true] {
+            one_reload_at_frame_rate(M4A1, m4a1(), frame, held);
+            one_reload_at_frame_rate(M92FS, m92fs(), frame, held);
+        }
+    }
+}

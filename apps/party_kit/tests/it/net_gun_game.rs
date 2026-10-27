@@ -308,3 +308,116 @@ fn a_swap_ends_the_old_games_recoil_on_server_and_client_alike() {
     assert_eq!(game(sim.server.app.world(), a).as_deref(), Some("cs_source"));
     assert_eq!(game(sim.clients[0].app.world(), me).as_deref(), Some("cs_source"));
 }
+
+/// Reload starts client 0's own weapons showed (`WeaponEvent::shown`: what
+/// the view models play a reload animation for).
+#[derive(Resource, Default)]
+struct ShownReloads(u32);
+
+fn count_shown_reloads(
+    mut events: MessageReader<chimera_sim::weapon::WeaponEvent>,
+    me: Query<(), With<chimera_core::core::LocalPlayer>>,
+    mut n: ResMut<ShownReloads>,
+) {
+    for e in events.read() {
+        if e.shown() && me.contains(e.owner) && matches!(e.kind, chimera_sim::weapon::WeaponEventKind::ReloadStarted) {
+            n.0 += 1;
+        }
+    }
+}
+
+/// On client 0, rung `rung`'s gun emptied by firing (fire held after the
+/// last round until the reload is over, or let go): one reload shown, one predicted reload, and the
+/// server's one, over the next seconds.
+fn empty_and_reload_on_a_client(sim: &mut NetSim, rung: usize, hold: bool) {
+    let a = sim.character_of(0).unwrap();
+    {
+        let w = sim.server.app.world_mut();
+        let l = w.resource::<minigame::ladder::Ladder>().clone();
+        minigame::ladder::set_rung(w, a, rung, &l);
+    }
+    let gun = sim.server.app.world().resource::<minigame::ladder::Ladder>().rungs[rung];
+    assert!(sim.until(300, |s| held(s, 0) == Some(gun)), "{gun} on the client");
+    sim.ticks(150);
+    if clip(sim, 0).is_none() {
+        // A knife or a grenade: nothing to reload.
+        return;
+    }
+    let me = sim.local_player(0).unwrap();
+    let ahead = sim.server.position(a) + Vec3::new(0.0, 6.0, -20.0);
+    let reloading = |w: &World, e: Entity| {
+        testkit::active(w, e)
+            .and_then(|g| w.get::<chimera_sim::weapon::WeaponState>(g))
+            .is_some_and(|s| s.reloading())
+    };
+    sim.clients[0].app.world_mut().resource_mut::<ShownReloads>().0 = 0;
+    // Fire (pressed again and again for a semi-automatic) until empty.
+    let mut t = 0u64;
+    while clip(sim, 0).is_some_and(|c| c > 0) {
+        testkit::aim_at(&mut sim.clients[0], me, ahead);
+        sim.clients[0].intent(me).fire = t % 2 == 0;
+        sim.step();
+        t += 1;
+        assert!(t < 2000, "{gun} emptied");
+    }
+    let (mut client, mut server) = (0, 0);
+    let (mut was_c, mut was_s) = (false, false);
+    // Held until the clip has rounds again (a shell-by-shell reload: until
+    // it starts, as a shot ends it; CS:S's guns wait for the trigger let
+    // go: a second at most).
+    let shells = {
+        let w = sim.clients[0].app.world();
+        testkit::active(w, me).is_some_and(|g| w.get::<chimera_sim::weapon::ShellReload>(g).is_some())
+    };
+    for n in 0..(8.0 / TICK_INTERVAL) as u64 {
+        testkit::aim_at(&mut sim.clients[0], me, ahead);
+        let refilled = client > 0 && (shells || clip(sim, 0).is_some_and(|c| c > 0));
+        let waits = client == 0 && n as f64 * TICK_INTERVAL > 1.0;
+        sim.clients[0].intent(me).fire = hold && !refilled && !waits;
+        sim.step();
+        let c = reloading(sim.clients[0].app.world(), me);
+        let s = reloading(sim.server.app.world(), a);
+        client += (c && !was_c) as u32;
+        server += (s && !was_s) as u32;
+        (was_c, was_s) = (c, s);
+    }
+    sim.clients[0].intent(me).fire = false;
+    let shown = sim.clients[0].app.world().resource::<ShownReloads>().0;
+    assert_eq!(
+        (shown, client, server),
+        (1, 1, 1),
+        "{gun}, fire held {hold}: reloads shown, predicted, on the server"
+    );
+    assert!(clip(sim, 0).is_some_and(|c| c > 0), "{gun} refilled");
+}
+
+/// Emptying a gun on a client reloads it once: one reload shown (one
+/// reload animation), predicted and on the server, fire held or not, with
+/// the ladder's ammo refill on, on a link that jitters and loses packets
+/// (corrections re-run commands): CS:S's Glock, Combat Arms' M92FS, 870
+/// (shell by shell) and M4A1.
+#[test]
+fn an_emptied_gun_reloads_once_on_a_client() {
+    let mut sim = joined();
+    sim.set_conditions(
+        0,
+        LinkConditions {
+            latency: Duration::from_millis(30),
+            jitter: Duration::from_millis(15),
+            loss: 0.05,
+        },
+    );
+    sim.clients[0].app.init_resource::<ShownReloads>().add_systems(Update, count_shown_reloads);
+    let ladder = sim.server.app.world().resource::<minigame::ladder::Ladder>().rungs.clone();
+    for gun in [
+        cs_source::game::weapons::GLOCK,
+        "combat_arms:beretta_m92fs",
+        "combat_arms:remington_870",
+        "combat_arms:m4a1",
+    ] {
+        let rung = ladder.iter().position(|g| *g == gun).unwrap();
+        for hold in [false, true] {
+            empty_and_reload_on_a_client(&mut sim, rung, hold);
+        }
+    }
+}
