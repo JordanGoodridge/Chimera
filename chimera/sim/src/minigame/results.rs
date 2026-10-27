@@ -107,9 +107,19 @@ pub(super) fn record(world: &mut World) {
     let have = world.contains_resource::<MatchResults>();
     if decided && !have {
         if let Some(r) = collect(world) {
+            if let (Some(w), Some(mut wins)) = (r.winner(), world.get_resource_mut::<super::wins::MatchWins>()) {
+                wins.add(&w.name);
+            }
             world.insert_resource(r);
         }
     } else if !decided && have {
         world.remove_resource::<MatchResults>();
     }
+    // Every player's matches won, from the tally.
+    let names: Vec<(Entity, String)> = runtime::players(world)
+        .into_iter()
+        .enumerate()
+        .map(|(i, (e, _))| (e, world.get::<Name>(e).map_or_else(|| format!("Player {}", i + 1), |n| n.as_str().to_string())))
+        .collect();
+    super::wins::publish(world, &names);
 }

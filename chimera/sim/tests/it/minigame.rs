@@ -12,7 +12,7 @@ use chimera_core::{
     gameplay::Gameplay,
 };
 use chimera_sim::{
-    minigame::{self, InMinigame, MatchResults, MINIGAME, MinigameAppExt, MinigamePlugin, Protected, ladder::Rung},
+    minigame::{self, InMinigame, MatchResults, MINIGAME, MinigameAppExt, MinigamePlugin, Protected, ladder::Rung, wins::{MatchWins, MatchesWon}},
     mode::{FFA_FIRST, Match, Phase},
     movement::placeholder,
     testkit::{self, PISTOL, RIFLE, SHOTGUN},
@@ -285,4 +285,37 @@ fn the_same_death_outside_a_ladder_drops_the_gun() {
     let b = testkit::with_player(&mut sim, Some(greybox::SPAWNS[1]), RIFLE);
     kill(&mut sim, b, a, DamageKind::Bullet);
     assert_eq!(loose(&mut sim), 1);
+}
+
+#[test]
+fn a_won_match_counts_for_its_winner_and_the_count_survives_a_restart() {
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.app.world_mut().entity_mut(a).insert(Name::new("Alpha"));
+    sim.app.world_mut().entity_mut(b).insert(Name::new("Bravo"));
+    let won = |sim: &Sim, p: Entity| sim.app.world().get::<MatchesWon>(p).map(|w| w.0);
+    settle(&mut sim);
+    assert_eq!((won(&sim, a), won(&sim, b)), (Some(0), Some(0)), "everyone starts at none");
+    // `a` climbs to the last rung and wins; `b` is killed on the way.
+    for _ in 0..3 {
+        kill(&mut sim, b, a, DamageKind::Bullet);
+        sim.seconds(1.7);
+    }
+    sim.seconds(minigame::runtime::ROUND_OVER as f64 + minigame::runtime::INTERMISSION as f64 + 0.2);
+    assert!(sim.app.world().resource::<MatchResults>().winner().is_some_and(|w| w.name == "Alpha"));
+    assert_eq!((won(&sim, a), won(&sim, b)), (Some(1), Some(0)), "the winner has one");
+    assert_eq!(sim.app.world().resource::<MatchWins>().of("Alpha"), 1);
+    // A new match (what a rotation, `change_match` and `ugg_new` all do):
+    // the tally stays.
+    minigame::restart(sim.app.world_mut());
+    settle(&mut sim);
+    assert_eq!((won(&sim, a), won(&sim, b)), (Some(1), Some(0)), "kept over the restart");
+    // The second match is `b`'s: both have one, `a` is not counted twice.
+    for _ in 0..3 {
+        kill(&mut sim, a, b, DamageKind::Bullet);
+        sim.seconds(1.7);
+    }
+    sim.seconds(minigame::runtime::ROUND_OVER as f64 + minigame::runtime::INTERMISSION as f64 + 0.2);
+    assert_eq!((won(&sim, a), won(&sim, b)), (Some(1), Some(1)));
 }

@@ -195,7 +195,9 @@ fn update(world: &mut World) {
     // The score key, unless an in-game popup is up (Corrections 9); while
     // the result shows it does nothing (the board stays up).
     let popup = world.get_resource::<InGameMenu>().is_some_and(|m| m.open);
-    let held = world.resource::<HeldActions>().showscores && !popup;
+    // A minigame has its own scoreboard (the shell's).
+    let minigame = world.get_resource::<chimera_sim::minigame::hud::MinigameHud>().is_some_and(|h| h.playing());
+    let held = world.resource::<HeldActions>().showscores && !popup && !minigame;
     let shown = mode.is_some() && (showing || held);
     let order = mode.map_or(ScoreOrder::Kills, |m| m.order);
     let ffa = mode.is_some_and(|m| m.teams == Teams::FreeForAll);

@@ -26,7 +26,7 @@ use chimera_net::{
     },
 };
 use chimera_sim::{
-    minigame::{self, ActiveMinigame, MatchHold, MatchResults, hud::MinigameHud, ladder::Rung},
+    minigame::{self, ActiveMinigame, MatchHold, MatchResults, hud::MinigameHud, ladder::Rung, wins::MatchesWon},
     mode::{Match, Phase},
 };
 use chimera_world::map::{LoadedMapName, MapFile};
@@ -151,6 +151,12 @@ fn a_won_match(text: &str) -> (NetSim, Entity) {
     sim.until_joined(900);
     sim.ticks(120);
     let (a, b) = (sim.character_of(0).unwrap(), sim.character_of(1).unwrap());
+    // Players are told apart by name (matches won are counted by it).
+    for (e, name) in [(a, "Ann"), (b, "Ben")] {
+        let w = sim.server.app.world_mut();
+        w.entity_mut(e).insert(Name::new(name));
+        w.get_mut::<chimera_net::net::NetCharacter>(e).unwrap().name = name.into();
+    }
     for _ in 0..2 {
         assert!(sim.until(600, |s| s.server.app.world().get::<Dead>(b).is_none()), "the victim is back");
         sim.ticks(30);
@@ -255,4 +261,26 @@ fn without_rotation_the_same_map_is_played_again() {
     assert!(sim.server.app.world().resource::<Levels>().0.is_empty(), "no level change");
     assert_eq!(sim.server.app.world().resource::<Match>().phase, Phase::Live, "a new match on the same map");
     assert!((0..2).all(|i| sim.clients[i].app.world().contains_resource::<Joined>()));
+}
+
+/// Every `MatchesWon` a client has, sorted.
+fn tallies(sim: &mut NetSim, client: usize) -> Vec<u32> {
+    let w = sim.clients[client].app.world_mut();
+    let mut v: Vec<u32> = w.query::<&MatchesWon>().iter(w).map(|m| m.0).collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn matches_won_reach_every_client_and_survive_the_rotation() {
+    let (mut sim, _a) = a_won_match(ROTATING);
+    // The winner has one, the other none, on both clients.
+    let ok = sim.until(1500, |s| (0..2).all(|i| tallies(s, i) == [0, 1]));
+    assert!(ok, "both clients see one match won: {:?} {:?}", tallies(&mut sim, 0), tallies(&mut sim, 1));
+    // The party moves to the next map: a new match, the count kept.
+    assert!(sim.until(3000, |s| s.server.app.world().get_resource::<MatchResults>().is_none()));
+    sim.ticks(240);
+    for i in 0..2 {
+        assert_eq!(tallies(&mut sim, i), [0, 1], "client {i}: kept over the rotation");
+    }
 }

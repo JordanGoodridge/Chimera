@@ -42,6 +42,8 @@
 //!   `client_app` (the whole client app, the binary's and the Ultimate
 //!   Gun Game's, apps/ultimate_gun_game) and `with_defaults` (the command
 //!   line as the app plays it; `with_defaults_for` another app's minigame).
+//! - The Tab scoreboard (`chimera_client::client::minigame_scoreboard`):
+//!   one for every minigame, whatever game's HUD is up.
 //! - Both games' parts registered (`chimera_core::game_parts`, each game's
 //!   `parts::PARTS`): what the Ultimate Gun Game builds its ladder from.
 //!

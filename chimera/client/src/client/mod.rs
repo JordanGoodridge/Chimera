@@ -31,6 +31,7 @@ pub mod gamma;
 pub mod hdr;
 pub mod hud;
 pub mod hud_minimal;
+pub mod minigame_scoreboard;
 pub mod hud_text;
 pub mod input;
 pub mod interp;

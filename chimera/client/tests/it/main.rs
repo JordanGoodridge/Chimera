@@ -6,3 +6,4 @@
 //! docs/OBSERVABILITY.md, section 1.
 
 mod metrics;
+mod minigame_scoreboard;
