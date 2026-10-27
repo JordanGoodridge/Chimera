@@ -45,6 +45,13 @@
 //! standing on top doesn't grab), so Combat Arms' movement climbs every
 //! map's ladders (the spec is silent on Source maps; our choice).
 //!
+//! A Source map's water (`MapWater`, any game's map) becomes `Water`
+//! volumes too (`BrushWater`), so Combat Arms' movement swims in it. The
+//! other way round, the `Water`-like liquids and `Ladder`s of Combat Arms'
+//! own maps are handed to Chimera as `WaterZone`s and `LadderZone`s
+//! (`sync_zones`, hidden ones left out), which any game's movement (CS:S's)
+//! swims in and climbs; a ladder zone is solid to it (our choice).
+//!
 //! Known shortcuts: the volume is its world model's polygons' planes (the
 //! exact shape for a convex brush; a concave one is taken as the
 //! intersection of its faces' half-spaces); a moved volume's world model
@@ -68,7 +75,7 @@ use bevy::prelude::*;
 use super::{effects::sounds::CaSound, inventory, special::CaHeals};
 use crate::{
     console::ConsoleAppExt,
-    core::{Bot, Damage, DamageKind, Dead, Health, Hitgroup, Intent, MovementState, Npc, SimClock, SimSet, Team},
+    core::{Bot, Damage, LadderZone, WaterZone, DamageKind, Dead, Health, Hitgroup, Intent, MovementState, Npc, SimClock, SimSet, Team},
     map::{MapEntities, MapEntity, MapPart, entities::entity_to_engine},
 };
 
@@ -400,9 +407,7 @@ impl Plugin for CaVolumesPlugin {
                 load_volumes
                     .run_if(resource_exists_and_changed::<MapEntities>)
                     .before(super::objects::CaObjectsSet),
-                load_brush_ladders
-                    .run_if(resource_exists_and_changed::<crate::core::MapBrushes>)
-                    .before(super::objects::CaObjectsSet),
+                load_brush_volumes.before(super::objects::CaObjectsSet),
                 volume_damage
                     .run_if(crate::core::authoritative)
                     .after(super::objects::CaObjectsSet)
@@ -460,7 +465,7 @@ pub fn volumes_near(w: &mut World, centre: Vec3, radius_u: f32) -> String {
 /// Each map entity of a volume class as a `CaVolume` (part of the map).
 fn load_volumes(
     entities: Res<MapEntities>,
-    old: Query<Entity, (With<CaVolume>, Without<BrushLadder>)>,
+    old: Query<Entity, (With<CaVolume>, Without<BrushLadder>, Without<BrushWater>)>,
     mut commands: Commands,
 ) {
     for e in &old {
@@ -502,17 +507,79 @@ pub fn ladder_from_brush(b: &crate::core::MapBrush) -> CaVolume {
     v
 }
 
-/// Replaces the brush ladders when the map's brushes change.
-fn load_brush_ladders(
-    brushes: Option<Res<crate::core::MapBrushes>>,
-    old: Query<Entity, With<BrushLadder>>,
+/// Marks a `Water` volume made from a water brush of the map
+/// (`MapWater`: a Source map's water or slime), so Combat Arms' movement
+/// swims in any map's water.
+#[derive(Component, Debug)]
+pub struct BrushWater;
+
+/// The volumes made from the map's own data, in one system (an exclusive
+/// system anywhere in the schedule is ambiguous with each system added):
+/// replaces the brush ladders when the map's brushes change and the brush
+/// waters when its water changes (or moves), and keeps the zones in step
+/// (`sync_zones`).
+fn load_brush_volumes(
+    (brushes, water): (Option<Res<crate::core::MapBrushes>>, Option<Res<crate::core::MapWater>>),
+    (old_ladders, old_waters): (Query<Entity, With<BrushLadder>>, Query<Entity, With<BrushWater>>),
+    zoned: Query<
+        (Entity, &CaVolume, Has<WaterZone>, Has<LadderZone>),
+        (Changed<CaVolume>, Without<BrushLadder>, Without<BrushWater>),
+    >,
     mut commands: Commands,
 ) {
-    for e in &old {
-        commands.entity(e).despawn();
+    if brushes.as_ref().is_some_and(|b| b.is_changed()) {
+        for e in &old_ladders {
+            commands.entity(e).despawn();
+        }
+        for b in brushes.iter().flat_map(|b| b.0.iter()).filter(|b| b.ladder) {
+            commands.spawn((Name::new("Ladder (map brush)"), ladder_from_brush(b), BrushLadder, MapPart));
+        }
     }
-    for b in brushes.iter().flat_map(|b| b.0.iter()).filter(|b| b.ladder) {
-        commands.spawn((Name::new("Ladder (map brush)"), ladder_from_brush(b), BrushLadder, MapPart));
+    if water.as_ref().is_some_and(|w| w.is_changed()) {
+        for e in &old_waters {
+            commands.entity(e).despawn();
+        }
+        for w in water.iter().flat_map(|w| w.0.iter()) {
+            let mut v = CaVolume::class_box("Water", w.brush.min, w.brush.max).expect("the Water class");
+            v.planes = w.brush.planes.clone();
+            commands.spawn((Name::new("Water (map water)"), v, BrushWater, MapPart));
+        }
+    }
+    sync_zones(&zoned, &mut commands);
+}
+
+/// Keeps Chimera's `WaterZone` / `LadderZone` of each of the map's own
+/// liquid and ladder volumes in step with it (not hidden: none), for other
+/// games' movement. Volumes made from the map's brushes are those games'
+/// already.
+fn sync_zones(
+    volumes: &Query<
+        (Entity, &CaVolume, Has<WaterZone>, Has<LadderZone>),
+        (Changed<CaVolume>, Without<BrushLadder>, Without<BrushWater>),
+    >,
+    commands: &mut Commands,
+) {
+    for (e, v, water, ladder) in volumes {
+        let brush = |ladder: bool| {
+            let mut b = if v.planes.is_empty() {
+                crate::core::MapBrush::from_box(v.min, v.max)
+            } else {
+                crate::core::MapBrush { planes: v.planes.clone(), min: v.min, max: v.max, ladder, surface: None }
+            };
+            b.ladder = ladder;
+            b
+        };
+        let mut e = commands.entity(e);
+        if !v.hidden && v.liquid {
+            e.insert(WaterZone(brush(false)));
+        } else if water {
+            e.remove::<WaterZone>();
+        }
+        if !v.hidden && v.is_ladder() {
+            e.insert(LadderZone(brush(true)));
+        } else if ladder {
+            e.remove::<LadderZone>();
+        }
     }
 }
 

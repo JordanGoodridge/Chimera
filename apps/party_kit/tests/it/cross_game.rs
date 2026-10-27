@@ -29,7 +29,7 @@ fn punch(sim: &Sim, e: Entity) -> Vec3 {
 }
 
 /// A soldier at the greybox's middle holding the ladder's rung `r`.
-fn holding(sim: &mut Sim, r: usize, id: &str) -> Entity {
+pub(crate) fn holding(sim: &mut Sim, r: usize, id: &str) -> Entity {
     let a = soldier(sim);
     let _b = soldier(sim);
     sim.seconds(1.5);

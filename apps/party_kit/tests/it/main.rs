@@ -6,6 +6,7 @@
 
 mod controls;
 mod cross_game;
+mod cross_water_ladders;
 mod gun_game;
 mod hud;
 mod identity;

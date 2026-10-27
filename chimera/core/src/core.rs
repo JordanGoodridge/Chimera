@@ -2531,6 +2531,19 @@ pub struct MapWaterVolume {
 #[derive(Resource, Clone, Debug, Default)]
 pub struct MapWater(pub Vec<MapWaterVolume>);
 
+/// A game's liquid volume, in the form any game's movement reads: swimming
+/// follows it like a `MapWater` volume (a game's own water that isn't the
+/// map's data, e.g. Combat Arms' `Water` volumes). The game keeps it in step
+/// with its volume (moved, hidden: removed).
+#[derive(Component, Clone, Debug)]
+pub struct WaterZone(pub MapBrush);
+
+/// A game's ladder volume, in the form any game's movement reads: climbed
+/// like a map ladder brush (`MapBrush::ladder`). It is swept as a solid, so
+/// a player climbs its faces rather than through it.
+#[derive(Component, Clone, Debug)]
+pub struct LadderZone(pub MapBrush);
+
 /// The loaded map's brushes (`MapData::collision_brushes`).
 #[derive(Resource, Clone, Debug, Default)]
 pub struct MapBrushes(pub Vec<MapBrush>);

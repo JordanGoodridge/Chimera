@@ -105,12 +105,6 @@ two misdescribed docs:
   shared armour step (`weapon::hits::absorb`) and CS:S's kevlar on it are
   in; left are Combat Arms' hits through it and `CaArmor` becoming
   `weapon::Armor` (steps d3, d4), then the cross-game armour tests.
-- **Water and ladders across movements (M, M).** CA movement swims only
-  in its liquid volumes (movement.md "Volumes"); `volumes.rs` makes
-  Source ladder brushes `Ladder` volumes but not Source water
-  (`MapWater`, which CA grenades already treat as Water), so a CA-gun
-  player walks the bottom of a CS:S map's water (the UGG pool). On CA
-  maps CS:S movement has neither water nor ladders (CA's are volumes).
 - **CS:S HUD pieces missing in the party apps (M, S).** With a CS:S gun
   the CS:S HUD is up, but `party_kit::client` adds only `GameHudPlugin`,
   `HudSpritesPlugin`, `WeaponSelectPlugin` and the minigame panel: no
