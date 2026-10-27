@@ -1533,9 +1533,10 @@ default here) 3.0 s, mold 3.0.0 1.6 s; without debug info 0.8 s and 0.4 s.
 With one test binary that is a second per change, so mold stays an
 opt-in line in `.cargo/config.toml`. Dropping dependencies' debug info
 (`split-debuginfo` or `debug = "line-tables-only"`) would save about as
-much but costs a full rebuild and backtraces into Bevy; not done.
-sccache (a compile cache shared by worktrees) could make a new worktree's
-first build cheaper; not tried.
+much but costs a full rebuild and backtraces into Bevy; not done then
+(done 2026-10-27 for tests, and mold in the agents' slots: "Warm slots"
+below). sccache (a compile cache shared by worktrees) could make a new
+worktree's first build cheaper; not tried then (docs/OBSERVABILITY.md 3e).
 
 ### The heavy tier (2026-10-14)
 
@@ -1628,6 +1629,73 @@ agents building:
 The heavy tests now sum to ~5,500 s of the suite's ~7,200: with five
 heavy slots the wall time can't go much under ~1,100 s without more
 slots (memory allowed it in the last run) or cheaper map loads.
+
+### Warm slots, a lighter commit, push first (2026-10-27)
+
+A one-line fix took ~45 minutes to land: a new worktree's first build
+10-20 minutes, the pre-commit hook 5-15 (every affected crate's fast
+tier), the pre-push hook ~38 (15 compiling, 23 running 3,763 tests).
+Measured on the dev box (12 threads, 31 GB) with three other agents
+building and testing (load given with each number).
+
+What changed:
+
+- Build slots (`tools/agent-slot.sh`, docs/OBSERVABILITY.md 3e):
+  worktrees at fixed paths whose `target/` stays warm, incremental
+  builds on, sccache for the registry crates.
+- The hooks build with the agents' settings (`agent-env.sh`) in agent
+  checkouts. Before, the agent built with `CARGO_INCREMENTAL=0` and the
+  hook with cargo's default (incremental): the profile differs, so each
+  workspace crate was built twice per change, once by each (checked on
+  repo_checks: switching recompiles, switching back doesn't).
+- pre-commit builds the affected crates' tests (`--no-run`) and runs only
+  the changed crates' fast tier and repo_checks (`affected --direct`).
+  The old hook on a commit that selected everything (it changed the
+  hooks): 6,629 s (load 30-56), the whole fast tier from a worktree's
+  cold workspace crates.
+- pre-push keeps identity, personal traces and repo_checks; the build
+  checks and the affected tests (heavy too) run after the push,
+  `tools/post-push-tests.sh`, in their own warm checkout.
+- `[profile.test] debug = "line-tables-only"`.
+- mold for links, in slots (where `ld.mold` is installed).
+
+| `cargo test -p chimera_sim --features dev --test it <one test>` | time |
+|---|---|
+| new slot, cold (483 units; sccache for registry crates) | 1,964 s (load 10-56) |
+| one-line change in chimera_sim, slot (incremental) | 5.5 s, 4.3 s (load 9-12) |
+| the same with `CARGO_INCREMENTAL=0` (a worktree's settings) | 25.0 s, 46.6 s (load 6-9) |
+| second agent: new branch from main (31 files ahead) in the slot, one-line change | 28.5 s, then 6.3 s (load 9-10) |
+
+Debug info in test builds, `cargo test --workspace --features dev
+--no-run` in a slot (incremental), after a one-line change in
+chimera_core (19 units: every test binary relinks), interleaved:
+
+| | full debug info (before) | `line-tables-only` |
+|---|---|---|
+| rebuild after the change | 383 s (load 18-23), 427 s (load 20-23) | 197 s (load 13-20), 237 s (load 18-20) |
+| the build's artifacts (`target/debug/deps`) | ~68 GB, plus ~15 GB incremental | +23 GB beside them |
+| a test binary (cs_source's) | ~1 GB | 478 MB |
+| switching profile: every unit again (528) | | 4,781 s once (load 22-48) |
+
+The hooks, a one-line change in chimera_sim staged in a warm slot (load
+25-35):
+
+| | time |
+|---|---|
+| old pre-commit (`CHIMERA_COMMIT_TESTS=affected`): 20 crates' fast tier, 3,374 tests | 749 s |
+| new pre-commit: those 20 crates' tests built, chimera_sim's and repo_checks' run, 118 tests | 638 s right after a profile switch, 226 s the next change |
+| new pre-push (identity, traces, repo_checks) | 38 s |
+| `post-push-tests.sh`, nothing to test but repo_checks: its build checks from a test-only slot | 1,376 s (the first run; the checks' builds then stay warm) |
+
+`cargo run`/`build` keep full debug info (the dev profile), so a slot
+that also runs the game builds the dependencies a second time.
+
+Linking cs_source's test binary (478 MB, line tables), replaying its
+link command three times under load 33: LLD 4.3, 2.8, 3.5 s; mold 2.5,
+2.3, 3.0 s. Small per link (every test binary relinks after a change
+below it), so mold is only in the slots' environment, where the one full
+rebuild a rustflags change costs comes with a new slot anyway;
+`.cargo/config.toml` stays without it (Windows and other clones).
 
 ### The first crate: `source_formats` (2026-10-14)
 

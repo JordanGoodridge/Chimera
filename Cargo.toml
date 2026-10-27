@@ -300,6 +300,16 @@ opt-level = 3
 [profile.dev.build-override]
 debug = false
 
+# Tests (`cargo test`, nextest): line tables only, for every crate. Panics
+# and backtraces keep their files and lines; a debugger loses variables.
+# Measured (docs/performance.md, "Test cycle"): rebuilding every test
+# binary after a change to chimera_core 197-237 s instead of 383-427 s, a
+# full test build's artifacts a third the size (23 GB instead of ~68), a
+# test binary 478 MB instead of ~1 GB. `cargo run`/`build` (dev) keep full
+# debug info, so they no longer share the dependencies' build with tests.
+[profile.test]
+debug = "line-tables-only"
+
 [profile.release]
 codegen-units = 1
 lto = "thin"

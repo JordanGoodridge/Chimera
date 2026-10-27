@@ -171,17 +171,30 @@ workspace-hack or a build.rs select everything (the summary says
 compared commit missing from the clone (the remote moved since the last
 fetch) is fetched first.
 
-- Fast tier, before every commit (`.githooks/pre-commit`): unit tests and
-  everything outside `heavy` of the crates the staged changes can affect
-  (`affected --staged`; `cargo test -p <crates> --features dev -- --skip
-  heavy::`). `CHIMERA_COMMIT_TESTS=all` runs the whole fast tier (`cargo
-  test --features dev -- --skip heavy::`, about 90 s warm), `=0` none.
+- Before every commit (`.githooks/pre-commit`): the tests of the crates
+  the staged changes can affect are built (`affected --staged`; `cargo
+  test -p <crates> --features dev --no-run`), and the fast tier (unit
+  tests and everything outside `heavy`) runs for the crates whose own
+  files changed and `repo_checks` (`affected --staged --direct`; a change
+  that selects everything runs only `repo_checks`). The dependents' tests
+  run after the push. `CHIMERA_COMMIT_TESTS=affected` runs every affected
+  crate's fast tier (the hook before 2026-10-27), `=all` the whole fast
+  tier (`cargo test --features dev -- --skip heavy::`, about 90 s warm),
+  `=0` none. In an agent checkout (`.claude/worktrees/*`,
+  `.claude/slots/*`) the hook builds with `tools/agent-env.sh`'s settings,
+  as the agent does (section 3e), so it reuses the agent's build.
+- Before every push, `.githooks/pre-push` checks the commits' identity
+  (UTC, the repository's author) and runs `cargo test -p repo_checks`.
+  Nothing slower: push first, test after (below).
 - Before every push, `.githooks/pre-push` refuses personal traces in what's
   pushed (commit messages and added lines): machine paths (`/home/<name>/`,
   `/Users/<name>/`, `C:\\Users\\<name>`) always, plus the extended regexes in
   the git-ignored `.githooks/private-patterns` (one per line; e.g. real
   names), so the names themselves never reach the repository.
-- Before every push, `.githooks/pre-push` also checks the build without
+- After every push, `tools/post-push-tests.sh` (run it right after the
+  push; it tests the remote's main in its own warm checkout,
+  `.claude/slots/post-push`, so main's working tree isn't touched)
+  checks the build without
   `--features dev` (`cargo check --workspace --lib --bins --features tools`;
   the playtest and release builds use that configuration and the tests
   don't), even with `CHIMERA_PUSH_TESTS=0`. The debugging binaries are
@@ -190,13 +203,17 @@ fetch) is fetched first.
   the presentation (`cargo check -p cs_source_server -p
   combat_arms_server`; `architecture::server_builds_without_presentation`
   checks their dependencies).
-- Before a push or a merge to main (`.githooks/pre-push`): the tests,
-  heavy ones included, of the crates what's pushed can affect (each
-  pushed ref against the remote's copy, a new branch against its
-  merge-base with origin/main; the hook prints the selection and why).
-  `CHIMERA_PUSH_TESTS=all` runs the full suite, `=0` no tests. Afterwards
-  it trims the clone's `target/` to 150 GB with `cargo sweep` (install it
-  with `cargo install cargo-sweep`; skipped without it). The full
+- After every push (`tools/post-push-tests.sh [base]`): the tests,
+  heavy ones included, of the crates the push can affect (`affected
+  --range <base>..<pushed>`; `base` defaults to the last commit the script
+  passed, else the pushed commit's first parent; it prints the selection
+  and why). `CHIMERA_PUSH_TESTS=all` runs the full suite, `=0` no tests
+  (the build checks still run). It writes `.claude/post-push/<commit>.log`
+  (`last.log`) and a one-line `PASS`/`FAIL` summary to
+  `.claude/post-push/last.txt` (and `history.txt`), exits non-zero on a
+  failure, and trims its checkout's `target/` to 40 GB with `cargo sweep`.
+  The pre-push hook trims the clone's own `target/` to 150 GB (install
+  `cargo install cargo-sweep`; skipped without it). The full
   suite is `cargo nextest run --features dev` (at most 8 tests at once
   and 5 heavy slots, the biggest heavy tests taking 2-3,
   `.config/nextest.toml`: memory, not CPU, is the limit with other
@@ -208,7 +225,7 @@ fetch) is fetched first.
   `cargo test --features dev` without nextest (twice as slow: in one
   process the heavy tests contend). nextest runs each test in its own
   process; install it once with `cargo install cargo-nextest --locked` (or
-  its prebuilt binary, https://nexte.st); without it the hook runs whole
+  its prebuilt binary, https://nexte.st); without it the script runs whole
   crates through `cargo test`. It accepts the same `-- --skip heavy::`
   filter. It doesn't run doctests (there are none); `cargo test --doc`
   does.
@@ -1375,6 +1392,55 @@ when no build is running. Measured (12 threads, load 30 from other
 agents, `cargo build -p source_formats --tests`, new worktree each): cold
 79 s with 0 of 20 hits, second worktree 25 s with 19 of 20 (the miss is
 `source_formats` itself).
+
+### Build slots (warm checkouts for agents)
+
+A fresh worktree rebuilds every workspace crate: cargo fingerprints them
+by absolute path, so neither sccache nor a shared `CARGO_TARGET_DIR`
+helps across paths. Slots are git worktrees at fixed paths,
+`.claude/slots/slot1..3`, whose `target/` stays from one agent to the
+next:
+
+```
+slot=$(tools/agent-slot.sh acquire <branch> [base])   # prints the path
+cd "$slot"; source tools/agent-env.sh; agent_run cargo test ...
+git commit ...                                        # in the slot
+tools/agent-slot.sh release                           # when done
+tools/agent-slot.sh status                            # who holds which
+```
+
+`acquire` takes a free slot under a lock (the one that last held the
+branch first), creates its worktree the first time, saves whatever a
+previous holder left uncommitted as `.claude/slots/slotN-discarded-*.patch`,
+resets and cleans it (ignored files, `target/`, stay) and checks out the
+branch: reset to `base` when given (`git checkout -B`), else the existing
+branch, else a new one from main. Only the files that differ from the
+previous holder's get new mtimes, so cargo rebuilds just the crates they
+touch. `release` detaches HEAD (the branch can be merged or deleted
+elsewhere) and frees the slot; a slot stays held until then (`release
+slotN` frees one whose agent is gone). `AGENT_SLOTS` raises the count.
+In a slot `agent-env.sh` leaves cargo's incremental builds on (they only
+apply to workspace crates, which sccache can't share across paths
+anyway; registry crates still hit the cache) and links with mold where
+`ld.mold` is installed (`brew install mold`; `AGENT_NO_MOLD=1` turns it
+off). The hooks source `agent-env.sh` in `.claude/` checkouts, so a
+commit reuses the agent's build: toggling `CARGO_INCREMENTAL` between
+the agent's builds and the hook's (as before) kept two builds of every
+workspace crate, each rebuilt per change.
+
+`tools/agent-slot.sh trim` (and `tools/clean-worktrees.sh`, which
+otherwise leaves slots alone) shrinks a free slot's `target/` past
+`AGENT_SLOT_MAX_GB` (60) with `cargo sweep`; `acquire` trims the slot it
+takes. A whole-workspace test build is about 40 GB with the test
+profile's line tables, a `cargo run --features dev` build more.
+
+Measured 2026-10-27 (12 threads, load 10-50 from other agents;
+docs/performance.md, "Test cycle"): `cargo test -p chimera_sim --features
+dev --test it <one test>` from cold in a new slot 1,964 s; after a
+one-line change in chimera_sim 4.3-5.5 s (with `CARGO_INCREMENTAL=0`, as
+in a worktree: 25-47 s); a second agent taking the slot for a new branch
+from main (31 files ahead of the first's) and changing one line, 28.5 s,
+then 6.3 s per change.
 
 ## 4. Logs
 

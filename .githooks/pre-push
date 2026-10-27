@@ -1,37 +1,29 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # Refuse to push commits whose dates aren't UTC or whose author/committer
 # isn't the repo's identity: commit metadata stays anonymous (CLAUDE.md,
 # "Commit identity"). Fix with TZ=UTC and the repo-local user.name/email,
-# then amend or rebase the listed commits.
-# Then run the tests of every package what's pushed can affect, heavy ones
-# included (pre-commit runs only the fast tier): `repo_checks`' `affected`
-# maps the changed files to workspace packages and follows cargo's crate
-# graph up to every package whose tests depend on them, and prints which
-# packages it picked and why (checks/src/affected.rs has the rules). What's
-# compared: each pushed ref against the remote's copy, or a new branch
-# against its merge-base with origin/main.
-# CHIMERA_PUSH_TESTS=all runs the full suite; =0 skips the tests, keeping
-# the identity, privacy and build checks (the old name, MASHUP_PUSH_TESTS,
-# still works).
-# The remote pushed to (git passes its name, or the URL): `affected`
-# fetches from it a compared commit this clone doesn't have yet.
-remote_name=${1:-origin}
+# then amend or rebase the listed commits. Refuse personal traces (machine
+# paths, .githooks/private-patterns) in what's pushed, and a push while the
+# repository checks (`cargo test -p repo_checks`: layering, the asset and
+# spec rules, the docs) fail.
+# Push first, test after: the tests of every package the push can affect
+# (heavy ones too), the build without --features dev, the dedicated
+# servers' builds and the workspace-hack run after the push, in their own
+# warm checkout: `tools/post-push-tests.sh` (CHIMERA_PUSH_TESTS=all|0 is
+# read there). The pre-commit hook has already built what each commit can
+# affect and run its changed packages' fast tier.
 want_name=r0pi0x
 want_email=339403489+r0pi0x@users.noreply.github.com
 zero=0000000000000000000000000000000000000000
 bad=0
 pushing=0
-# What `affected` compares: one `--range old..new` or `--new sha` per ref.
-changes=
 while read -r _local_ref local_sha _remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
     pushing=1
     if [ "$remote_sha" = "$zero" ]; then
         range="$local_sha"
-        changes="$changes --new $local_sha"
     else
         range="$remote_sha..$local_sha"
-        changes="$changes --range $remote_sha..$local_sha"
     fi
     out=$(git log --format='%h %an|%ae|%ad|%cn|%ce|%cd' --date=format:%z "$range" |
         awk -F'|' -v n="$want_name" -v e="$want_email" '{
@@ -64,73 +56,20 @@ if [ "$bad" = 1 ]; then
     exit 1
 fi
 if [ "$pushing" = 1 ]; then
-    # The tests build with --features dev; playtest and release builds
-    # don't. Check that configuration too (always: the suite can't catch
-    # a dev-only dependency), with the binaries behind features (the
-    # debugging tools: `tools`).
+    case "$PWD" in
+        */.claude/worktrees/*|*/.claude/slots/*)
+            # shellcheck source=/dev/null
+            [ -z "${AGENT_ENV:-}" ] && [ -f tools/agent-env.sh ] && . tools/agent-env.sh ;;
+    esac
+    run() { if command -v agent_run >/dev/null 2>&1; then agent_run "$@"; else "$@"; fi; }
     mkdir -p target
-    echo "pre-push: checking the build without --features dev..." >&2
-    if ! cargo check --workspace --lib --bins --features tools --quiet >target/pre-push-check.log 2>&1; then
-        grep -E "^error" -A6 target/pre-push-check.log | head -30
-        echo "pre-push: the build without --features dev fails (log: target/pre-push-check.log); not pushing." >&2
+    echo "pre-push: the repository checks (cargo test -p repo_checks)..." >&2
+    if ! run cargo test -p repo_checks --quiet >target/pre-push.log 2>&1; then
+        grep -E "panicked|FAILED|^error" target/pre-push.log | head -20
+        echo "pre-push: the repository checks fail (log: target/pre-push.log); not pushing." >&2
         exit 1
     fi
-    # The dedicated servers as released: without the presentation
-    # (chimera_present, the client shell): their packages alone (CS:S's
-    # uses the app without `present`, apps/cs_source_server/Cargo.toml;
-    # Combat Arms' the game without `ui`, apps/combat_arms_server/Cargo.toml).
-    echo "pre-push: checking the dedicated servers' builds without the presentation..." >&2
-    if ! cargo check -p cs_source_server -p combat_arms_server --quiet >target/pre-push-check-server.log 2>&1; then
-        grep -E "^error" -A6 target/pre-push-check-server.log | head -30
-        echo "pre-push: a dedicated server doesn't build without the presentation (log: target/pre-push-check-server.log); not pushing." >&2
-        exit 1
-    fi
-    # The workspace-hack matches the dependencies (where cargo-hakari is
-    # installed: `cargo install cargo-hakari --locked`).
-    if cargo hakari --version >/dev/null 2>&1 && ! cargo hakari generate --diff --quiet >/dev/null 2>&1; then
-        echo "pre-push: chimera/workspace-hack is out of date: run \`cargo hakari generate\` (and \`cargo hakari manage-deps -y\`) and commit it; not pushing." >&2
-        exit 1
-    fi
-fi
-mode=${CHIMERA_PUSH_TESTS:-${MASHUP_PUSH_TESTS:-affected}}
-if [ "$pushing" = 1 ] && [ "$mode" != 0 ]; then
-    mkdir -p target
-    log=target/pre-push.log
-    # nextest (a process per test) is twice as fast as one libtest process
-    # for the heavy tests, and picks single test modules; without it, whole
-    # packages through `cargo test`.
-    if cargo nextest --version >/dev/null 2>&1; then
-        format=nextest
-        run="cargo nextest run --features dev --no-fail-fast --color never"
-    else
-        format=cargo
-        run="cargo test --features dev --quiet --no-fail-fast"
-    fi
-    if [ "$mode" = all ]; then
-        args=--workspace
-        echo "pre-push: CHIMERA_PUSH_TESTS=all: the full suite" >&2
-    # shellcheck disable=SC2086
-    elif ! args=$(cargo run --quiet -p repo_checks --bin affected -- $changes --remote "$remote_name" --format $format 2>target/pre-push-affected.txt); then
-        cat target/pre-push-affected.txt >&2
-        echo "pre-push: couldn't select the affected tests; running the full suite." >&2
-        args=--workspace
-    else
-        sed 's/^/pre-push: /' target/pre-push-affected.txt >&2
-    fi
-    echo "pre-push: running the tests (log: $log)..." >&2
-    # One argument per line (the selection prints them so; the filter has
-    # spaces).
-    set -f
-    IFS='
-'
-    # shellcheck disable=SC2086
-    set -- $args
-    unset IFS
-    if ! $run "$@" >"$log" 2>&1; then
-        grep -E "panicked|FAILED|FAIL \[|^error" "$log" | head -20
-        echo "pre-push: tests failed (full log: $log); not pushing." >&2
-        exit 1
-    fi
+    echo "pre-push: pushed untested beyond that: run tools/post-push-tests.sh now (it tests the pushed main in .claude/slots/post-push)." >&2
 fi
 
 # Keep this clone's build folder from growing without bound: cargo never

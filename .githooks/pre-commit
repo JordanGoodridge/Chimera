@@ -1,42 +1,81 @@
-#!/usr/bin/env sh
-# Refuse commits while the fast tier of tests fails (unit tests and
-# integration tests outside `heavy::`, docs/OBSERVABILITY.md section 1)
-# for the packages the staged changes can affect: `repo_checks`' `affected`
-# maps the staged files to workspace packages and follows cargo's crate
-# graph up to every package whose tests depend on them (checks/src/affected.rs
-# has the rules: the workspace manifest, .config/, the hooks or a build.rs
-# select everything; the lockfile the crates whose resolved dependencies
-# changed; Markdown and docs only the repository checks).
-# CHIMERA_COMMIT_TESTS=all runs the whole fast tier; =0 skips it (the old
+#!/usr/bin/env bash
+# Refuse commits that break the build of what the staged changes can
+# affect, or the fast tier of tests (unit tests and integration tests
+# outside `heavy::`, docs/OBSERVABILITY.md section 1) of the packages
+# whose files changed. `repo_checks`' `affected` maps the staged files to
+# workspace packages and follows cargo's crate graph up to every package
+# whose tests depend on them (checks/src/affected.rs has the rules: the
+# workspace manifest, .config/, the hooks or a build.rs select everything;
+# the lockfile the crates whose resolved dependencies changed; Markdown
+# and docs only the repository checks). The hook compiles the tests of
+# all of those (`cargo test --no-run`) and runs only the changed
+# packages' own (`affected --direct`) and repo_checks'; the dependents'
+# tests, and the heavy ones, run after the push (tools/post-push-tests.sh).
+# CHIMERA_COMMIT_TESTS=affected runs every affected package's fast tier
+# (the old behaviour); =all the whole fast tier; =0 skips it (the old
 # name, MASHUP_COMMIT_TESTS, still works).
-# The affected heavy tests run before a push (.githooks/pre-push).
+# In an agent checkout (.claude/worktrees, .claude/slots) cargo runs with
+# tools/agent-env.sh's settings, as the agents' own builds do, so the
+# hook reuses their build instead of making a second one.
 # Enable once per clone: git config core.hooksPath .githooks
 # Skip in an emergency with: git commit --no-verify
-mode=${CHIMERA_COMMIT_TESTS:-${MASHUP_COMMIT_TESTS:-affected}}
+mode=${CHIMERA_COMMIT_TESTS:-${MASHUP_COMMIT_TESTS:-changed}}
 [ "$mode" = 0 ] && exit 0
 if [ -z "$(git diff --cached --name-only)" ]; then
     exit 0
 fi
+case "$PWD" in
+    */.claude/worktrees/*|*/.claude/slots/*)
+        # shellcheck source=/dev/null
+        [ -z "${AGENT_ENV:-}" ] && [ -f tools/agent-env.sh ] && . tools/agent-env.sh ;;
+esac
+run() { if command -v agent_run >/dev/null 2>&1; then agent_run "$@"; else "$@"; fi; }
 mkdir -p target
 log=target/pre-commit.log
+# The staged changes' selection, one argument per line (`affected` prints
+# them so; extra options in "$@"); fails when it can't select (then the
+# whole workspace).
+pick() {
+    run cargo run --quiet -p repo_checks --bin affected -- --staged --format cargo "$@" 2>target/pre-commit-affected.txt
+}
 if [ "$mode" = all ]; then
-    args=--workspace
+    build=--workspace
+    tests=--workspace
     echo "pre-commit: CHIMERA_COMMIT_TESTS=all: the whole fast tier" >&2
-elif ! args=$(cargo run --quiet -p repo_checks --bin affected -- --staged --format cargo 2>target/pre-commit-affected.txt); then
+elif ! build=$(pick); then
     cat target/pre-commit-affected.txt >&2
     echo "pre-commit: couldn't select the affected tests; running the whole fast tier." >&2
-    args=--workspace
+    build=--workspace
+    tests=--workspace
 else
     sed 's/^/pre-commit: /' target/pre-commit-affected.txt >&2
+    if [ "$mode" = affected ]; then
+        tests=$build
+    elif ! tests=$(pick --direct --quiet); then
+        tests=$build
+    fi
 fi
-# One argument per line (the selection prints them so).
 set -f
+if [ "$build" != "$tests" ]; then
+    IFS='
+'
+    # shellcheck disable=SC2086
+    set -- $build
+    unset IFS
+    echo "pre-commit: building the affected tests: $*" >&2
+    if ! run cargo test "$@" --features dev --quiet --no-run >"$log" 2>&1; then
+        grep -E "^error" -A6 "$log" | head -30
+        echo "pre-commit: the affected tests don't build (full log: $log); not committing." >&2
+        exit 1
+    fi
+fi
 IFS='
 '
 # shellcheck disable=SC2086
-set -- $args
+set -- $tests
 unset IFS
-if ! cargo test "$@" --features dev --quiet --no-fail-fast -- --skip heavy:: >"$log" 2>&1; then
+echo "pre-commit: running the fast tier of: $*" >&2
+if ! run cargo test "$@" --features dev --quiet --no-fail-fast -- --skip heavy:: >>"$log" 2>&1; then
     grep -E "panicked|FAILED|^error" "$log" | head -20
     echo "pre-commit: fast tests failed (full log: $log); not committing." >&2
     exit 1
