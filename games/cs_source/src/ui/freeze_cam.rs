@@ -45,7 +45,16 @@ pub struct FreezeCamPlugin;
 impl Plugin for FreezeCamPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Frozen>()
-            .add_systems(Update, freeze.after(crate::client::spectate::SpectateSet));
+            .add_systems(
+                Update,
+                (
+                    freeze.run_if(crate::gameplay::hud_is(crate::game::GAME)),
+                    // Another game's HUD up (a party app's player holding
+                    // that game's gun): the held picture goes.
+                    release.run_if(not(crate::gameplay::hud_is(crate::game::GAME))),
+                )
+                    .after(crate::client::spectate::SpectateSet),
+            );
     }
 }
 
@@ -64,6 +73,15 @@ struct FreezeOverlay;
 
 #[derive(Component)]
 struct FreezeFlash;
+
+fn release(mut frozen: ResMut<Frozen>, overlay: Query<Entity, With<FreezeOverlay>>, mut commands: Commands) {
+    if frozen.since.is_some() {
+        for e in &overlay {
+            commands.entity(e).despawn();
+        }
+        *frozen = Frozen::default();
+    }
+}
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn freeze(

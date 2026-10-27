@@ -30,7 +30,15 @@ pub struct VoiceHudPlugin;
 impl Plugin for VoiceHudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<VoiceActivity>()
-            .add_systems(Update, (self_icon, rows).run_if(resource_exists::<ActiveHud>));
+            .add_systems(
+                Update,
+                (self_icon, rows)
+                    .run_if(resource_exists::<ActiveHud>)
+                    .run_if(crate::gameplay::hud_is(crate::game::GAME)),
+            )
+            // The look put away (another game's HUD up in a party app): the
+            // icon and rows go with it, built again when it is back.
+            .add_systems(Update, teardown.run_if(resource_removed::<ActiveHud>));
     }
 }
 
@@ -40,6 +48,12 @@ struct SelfIcon;
 /// A row of `HudVoiceStatus` (rebuilt when who talks changes).
 #[derive(Component)]
 struct Row;
+
+fn teardown(parts: Query<Entity, Or<(With<SelfIcon>, With<Row>)>>, mut commands: Commands) {
+    for e in &parts {
+        commands.entity(e).despawn();
+    }
+}
 
 /// An image of a HUD sprite (its sheet and rectangle), if the HUD has it.
 fn sprite_image(hud: &ActiveHud, name: &str) -> Option<ImageNode> {

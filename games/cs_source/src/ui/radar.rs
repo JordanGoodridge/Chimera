@@ -35,12 +35,27 @@ impl Plugin for RadarPlugin {
         app.add_systems(
             Update,
             (
-                build.run_if(resource_exists_and_changed::<ActiveOverview>),
+                build.run_if(needs_build),
                 teardown.run_if(resource_removed::<ActiveOverview>),
                 update.run_if(resource_exists::<ActiveOverview>),
             )
                 .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
-        );
+        )
+        // Another game's HUD up (a party app's player holding that game's
+        // gun): the radar is put away until CS:S's is back.
+        .add_systems(Update, put_away.run_if(not(crate::gameplay::hud_is(crate::game::GAME))));
+    }
+}
+
+/// The overview is new, or the radar isn't built yet (it was up while
+/// another game's HUD was, in a party app).
+fn needs_build(overview: Option<Res<ActiveOverview>>, built: Query<(), With<RadarPart>>) -> bool {
+    overview.is_some_and(|o| o.is_changed() || built.is_empty())
+}
+
+fn put_away(mut frame: Query<&mut Visibility, With<RadarFrame>>) {
+    for mut v in &mut frame {
+        v.set_if_neq(Visibility::Hidden);
     }
 }
 
@@ -127,8 +142,9 @@ impl UiMaterial for RadarMaterial {
 
 #[derive(Component)]
 struct RadarPart;
+/// The radar's box (its node hidden while another game's HUD is up).
 #[derive(Component)]
-struct RadarFrame;
+pub struct RadarFrame;
 #[derive(Component)]
 struct RadarPivot;
 #[derive(Component)]
@@ -260,7 +276,7 @@ fn update(
         Query<(Entity, &GlobalTransform), With<crate::objectives::bomb::PlantedBomb>>,
         Query<(Entity, &GlobalTransform, &crate::weapon::drop::Loose)>,
         Query<(), With<crate::objectives::bomb::C4>>,
-        Res<crate::objectives::bomb::BombRules>,
+        Option<Res<crate::objectives::bomb::BombRules>>,
     ),
     // Spectating: the watched player's radar.
     spectating: (
@@ -368,7 +384,8 @@ fn update(
     for (e, t) in &planted {
         seen.push((e, turn * ((o.pixel(t.translation()) - centre) * k), bomb_color));
     }
-    if team == Some(&rules.carrier_team) {
+    // (An app without CS:S's bomb rules, a party's, has no carrier.)
+    if rules.is_some_and(|r| team == Some(&r.carrier_team)) {
         for (e, t, l) in &loose {
             if c4s.contains(l.weapon) {
                 seen.push((e, turn * ((o.pixel(t.translation()) - centre) * k), bomb_color));

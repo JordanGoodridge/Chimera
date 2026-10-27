@@ -44,6 +44,7 @@ use bevy::prelude::*;
 
 use super::movement::SourceMovement;
 use crate::{
+    slots::GameIdentity,
     core::{DamageRules, Died, God, Health, Hitgroup, Intent, Refusal, SimSet},
     weapon::{BulletHit, ViewPunch},
 };
@@ -123,14 +124,20 @@ fn react(
         Option<&Intent>,
         Option<&mut SourceMovement>,
         Option<&mut ViewPunch>,
+        Option<&GameIdentity>,
     )>,
     mut commands: Commands,
 ) {
     for (n, hit) in hits.read().enumerate() {
         let d = &hit.damage;
-        let Ok((health, god, intent, movement, punch)) = victims.get_mut(d.target) else {
+        let Ok((health, god, intent, movement, punch, identity)) = victims.get_mut(d.target) else {
             continue;
         };
+        // A character of another game's identity (a party app's player
+        // holding that game's gun) has its own game's hit reaction.
+        if identity.is_some_and(|i| !i.0.eq_ignore_ascii_case(super::GAME)) {
+            continue;
+        }
         // By the living (this runs after the damage is applied). A hit
         // taken slows and flinches; a noclipping player's (refused) only
         // flinches; any other refused one does neither (measured
@@ -168,7 +175,7 @@ fn react(
     }
     // A new life starts at full speed.
     for d in died.read() {
-        if let Ok((.., Some(mut m), _)) = victims.get_mut(d.entity) {
+        if let Ok((_, _, _, Some(mut m), ..)) = victims.get_mut(d.entity) {
             m.velocity_modifier = 1.0;
         }
     }

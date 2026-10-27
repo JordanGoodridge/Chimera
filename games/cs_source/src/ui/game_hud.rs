@@ -333,16 +333,7 @@ fn death_notices(
                     .and_then(|w| weapons.get(w).ok())
                     .map(|w| w.id)
             })
-            .and_then(|id| {
-                // The weapon's data's kill icon (`d_<weapon>` without).
-                match crate::game::weapons::data(id).and_then(|d| d.hud.icon.as_deref()) {
-                    Some(icon) => hud.0.icons.get(icon).cloned(),
-                    None => {
-                        let short = id.rsplit([':', '_']).next().unwrap_or(id);
-                        hud.0.icons.get(&format!("d_{short}")).cloned()
-                    }
-                }
-            });
+            .and_then(|id| kill_icon(id, &hud.0.icons));
         // (A network client has no damage messages: the killing hit's.)
         let headshot = hits
             .0
@@ -368,6 +359,23 @@ fn death_notices(
     }
     if notices.0.len() != before {
         notices.1 += 1;
+    }
+}
+
+/// The kill-feed icon of weapon `id` (the full id, `game:name`): CS:S's
+/// guns' own (their data's `hud.icon`, else `d_<name>`); another game's
+/// gun has none here (`combat_arms:m4a1` isn't CS:S's M4A1).
+pub fn kill_icon<T: Clone>(id: &str, icons: &HashMap<String, T>) -> Option<T> {
+    let (game, name) = id.split_once(':').unwrap_or((crate::game::GAME, id));
+    if !game.eq_ignore_ascii_case(crate::game::GAME) {
+        return None;
+    }
+    match crate::game::weapons::data(id).and_then(|d| d.hud.icon.as_deref()) {
+        Some(icon) => icons.get(icon).cloned(),
+        None => {
+            let short = name.rsplit('_').next().unwrap_or(name);
+            icons.get(&format!("d_{short}")).cloned()
+        }
     }
 }
 

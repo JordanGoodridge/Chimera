@@ -150,7 +150,16 @@ pub struct TargetIdPlugin;
 impl Plugin for TargetIdPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(TargetIdStatePlugin)
-            .add_systems(Update, draw.after(FindTarget));
+            .add_systems(
+                Update,
+                (
+                    draw.run_if(crate::gameplay::hud_is(crate::game::GAME)),
+                    // Another game's HUD up (a party app's player holding
+                    // that game's gun): no names from CS:S's.
+                    put_away.run_if(not(crate::gameplay::hud_is(crate::game::GAME))),
+                )
+                    .after(FindTarget),
+            );
     }
 }
 
@@ -209,8 +218,15 @@ fn find(
     out.set_if_neq(next);
 }
 
+/// The target ID's text node.
 #[derive(Component)]
-struct TargetIdText;
+pub struct TargetIdText;
+
+fn put_away(mut text: Query<&mut Visibility, With<TargetIdText>>) {
+    for mut v in &mut text {
+        v.set_if_neq(Visibility::Hidden);
+    }
+}
 
 #[allow(clippy::type_complexity)]
 fn draw(

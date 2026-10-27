@@ -91,11 +91,6 @@ noticeable first (impact H/M/L, size S/M/L). The rest, the method and
 two misdescribed docs:
 [plans/active/parity-audit-2026-10.md](plans/active/parity-audit-2026-10.md).
 
-- **No CS:S hit slowdown or flinch in the party apps (H, S).** CS:S
-  slows a hit player (0.5/0.65, back over 1/3 s) and kicks its view
-  (weapons.md M18); `PartyPartsPlugin` (apps/party_kit/src/lib.rs) adds
-  `CsGunsPlugin` but not `hit_reaction::HitReactionPlugin` (only
-  `CsWeaponsPlugin` does), so CS:S-gun fights have no tagging.
 - **Armour isn't shared across games (M, M).** Every character gets
   Combat Arms' `CaArmor` (100 points, games/combat_arms/src/game/weapons.rs),
   which CS:S guns ignore (they read `weapon::Armor`, weapons.md M7): a
@@ -111,19 +106,6 @@ two misdescribed docs:
   (`MapWater`, which CA grenades already treat as Water), so a CA-gun
   player walks the bottom of a CS:S map's water (the UGG pool). On CA
   maps CS:S movement has neither water nor ladders (CA's are volumes).
-- **CS:S HUD pieces missing in the party apps (M, S).** With a CS:S gun
-  the CS:S HUD is up, but `party_kit::client` adds only `GameHudPlugin`,
-  `HudSpritesPlugin`, `WeaponSelectPlugin` and the minigame panel: no
-  target ID (`ui::target_id`), radar, freeze cam or voice HUD (all in
-  `CsSourceUiPlugin`); CA's name tags are its HUD's, so a CS:S-gun player
-  sees no names at all.
-- **No prop collision or scrape sounds in the party apps (M-L, S).**
-  CS:S's `impacts::ImpactSoundsPlugin` (sounds.md 4) comes only with
-  `CsWeaponsPlugin`; `PartyPartsPlugin` adds `BulletImpactsPlugin`
-  alone, so props knocked about on CS:S maps are silent.
-- **CS:S kill-feed icons for CA guns (L-M, S).** `ui::game_hud` looks an
-  icon up as `d_<last part of the id>`: `combat_arms:m4a1` shows CS:S's
-  M4A1 icon, the other CA guns none.
 
 ### Decisions 2026-10-13 (user)
 

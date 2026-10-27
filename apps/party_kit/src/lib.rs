@@ -19,7 +19,8 @@
 //!   names), then `PartyPartsPlugin`: CS:S registered as a second game,
 //!   Source's map logic, CS:S's guns and their impacts (sounds, decals,
 //!   debris, blood, tracers; `weapon::impact` routes each impact to one
-//!   game), the minigame runtime
+//!   game; props' collision and scrape sounds; the hit slowdown and view
+//!   flinch of a CS:S-identity player), the minigame runtime
 //!   (`MinigamePlugin`), its part of the network (`chimera_net::
 //!   minigame_net`) and the original minigames (`OriginalsPlugin`).
 //!   The app's gameplay is Combat Arms' until a minigame starts
@@ -42,6 +43,8 @@
 //!   `client_app` (the whole client app, the binary's and the Ultimate
 //!   Gun Game's, apps/ultimate_gun_game) and `with_defaults` (the command
 //!   line as the app plays it; `with_defaults_for` another app's minigame).
+//! - CS:S's radar, target ID, freeze cam and voice HUD (`client::with_huds`)
+//!   draw only while CS:S's HUD is the gameplay's (a CS:S gun in hand).
 //! - The Tab scoreboard (`chimera_client::client::minigame_scoreboard`):
 //!   one for every minigame, whatever game's HUD is up.
 //! - Both games' parts registered (`chimera_core::game_parts`, each game's
@@ -231,6 +234,12 @@ impl Plugin for PartyPartsPlugin {
             // tracers) for its guns, on any map (`weapon::impact`: Combat
             // Arms' maps carry CS:S's looks as a guest's).
             cs_source::game::impacts::BulletImpactsPlugin,
+            // Props knocked about and scraping make CS:S's sounds
+            // (sounds.md 4); adds `BulletImpactsPlugin` if not in.
+            cs_source::game::impacts::ImpactSoundsPlugin,
+            // Being hit by a CS:S gun: the slowdown and the view flinch
+            // (weapons.md M18), on CS:S-identity characters only.
+            cs_source::game::hit_reaction::HitReactionPlugin,
             cs_source::game::impact_effects::ImpactEffectsPlugin,
             // CS:S's movement, for a player holding a CS:S gun (the gun
             // game's `identity = "weapon"`), and a network server's
