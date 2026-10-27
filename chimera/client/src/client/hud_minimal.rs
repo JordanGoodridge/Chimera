@@ -50,6 +50,9 @@ pub struct MinimalStatus;
 pub struct MinimalAmmo;
 #[derive(Component)]
 pub struct MinimalPanel;
+/// The mode switch's centre notice (`weapon::notice::CenterNotice`).
+#[derive(Component)]
+pub struct MinimalNotice;
 
 const COLOR: Color = Color::srgb(0.95, 0.95, 0.95);
 
@@ -84,6 +87,19 @@ fn spawn(mut commands: Commands) {
                 text(16.0),
                 Node { position_type: PositionType::Absolute, top: px(10.0), left: px(10.0), ..default() },
             ));
+            // The weapon mode switch's notice, under the crosshair.
+            root.spawn((
+                MinimalNotice,
+                text(20.0),
+                TextLayout::justify(Justify::Center),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0.0),
+                    width: percent(100.0),
+                    top: percent(60.0),
+                    ..default()
+                },
+            ));
             // The crosshair: two bars across the screen's middle.
             for (w, h) in [(14.0, 2.0), (2.0, 14.0)] {
                 root.spawn((
@@ -107,10 +123,29 @@ fn draw(
     player: Option<Single<(&Health, Option<&Armor>, Option<&Inventory>), With<LocalPlayer>>>,
     weapons: Query<(&Weapon, Option<&Magazine>)>,
     panel: Option<Res<MinigameHud>>,
-    mut status: Single<&mut Text, (With<MinimalStatus>, Without<MinimalAmmo>, Without<MinimalPanel>)>,
-    mut ammo: Single<&mut Text, (With<MinimalAmmo>, Without<MinimalStatus>, Without<MinimalPanel>)>,
-    mut lines: Single<&mut Text, (With<MinimalPanel>, Without<MinimalStatus>, Without<MinimalAmmo>)>,
+    mut status: Single<
+        &mut Text,
+        (With<MinimalStatus>, Without<MinimalAmmo>, Without<MinimalPanel>, Without<MinimalNotice>),
+    >,
+    mut ammo: Single<
+        &mut Text,
+        (With<MinimalAmmo>, Without<MinimalStatus>, Without<MinimalPanel>, Without<MinimalNotice>),
+    >,
+    mut lines: Single<
+        &mut Text,
+        (With<MinimalPanel>, Without<MinimalStatus>, Without<MinimalAmmo>, Without<MinimalNotice>),
+    >,
+    mut notice: Single<
+        &mut Text,
+        (With<MinimalNotice>, Without<MinimalStatus>, Without<MinimalAmmo>, Without<MinimalPanel>),
+    >,
+    center: Option<Res<crate::weapon::notice::CenterNotice>>,
+    time: Res<Time>,
 ) {
+    let wanted = center.and_then(|c| c.text(time.elapsed_secs()).map(str::to_string)).unwrap_or_default();
+    if notice.0 != wanted {
+        notice.0 = wanted;
+    }
     let (mut s, mut a) = (String::new(), String::new());
     if let Some(p) = player {
         let (health, armor, inv) = *p;

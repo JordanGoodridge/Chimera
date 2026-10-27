@@ -60,8 +60,6 @@ the user's go-ahead: no Actions runs unless asked.
 - **Clients don't see glass break properly.** Breakable glass breaking on
   the server doesn't show correctly on joined clients (check what of the
   break — shards, the hole, sound — is replicated).
-- **CS:S FAMAS burst plays the single-shot animation.** In 3-round burst
-  the view model should play the burst fire animation.
 - **Combat Arms full-auto fire clips (painfully loud).** Holding the
   trigger on a Combat Arms gun peaks the audio (friend's report). Suspect
   each shot's sound plays as a new voice summed on top of the still-ringing
@@ -75,10 +73,6 @@ the user's go-ahead: no Actions runs unless asked.
   (counted while the server runs; it survives map rotation and
   `ugg_new`). Generic, so other minigames can reuse it (a minigame-level
   scoreboard in Chimera, not either game's).
-- **Glock burst toggle shows nothing.** Right-click switches to burst but
-  there's no indication; CS:S prints "Switched to Burst-Fire mode" /
-  "Switched to semi-automatic" as a center message (needs the HUD hint
-  in our HUD).
 
 ### Decisions 2026-10-13 (user)
 

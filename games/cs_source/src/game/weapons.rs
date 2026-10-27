@@ -452,6 +452,18 @@ pub struct CsWeaponsPlugin;
 impl Plugin for CsWeaponsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(CsGunsPlugin);
+        // The burst guns' switch notices for HUDs without the install's
+        // strings (the minimal HUD, Combat Arms' with a CS:S gun in hand).
+        {
+            let mut words = app.world_mut().get_resource_or_insert_with(crate::weapon::notice::NoticeStrings::default);
+            for (token, text) in [
+                ("#Cstrike_TitlesTXT_Switch_To_BurstFire", "Switched to Burst-Fire mode"),
+                ("#Cstrike_TitlesTXT_Switch_To_SemiAuto", "Switched to semi-automatic"),
+                ("#Cstrike_TitlesTXT_Switch_To_FullAuto", "Switched to automatic"),
+            ] {
+                words.add(token, text);
+            }
+        }
         // The shop after the weapons it names; a spawn kit the app set
         // before the game (tests) stays.
         let kept = app

@@ -62,6 +62,7 @@ pub mod equip;
 pub mod grenade;
 pub mod impact;
 pub mod lagcomp;
+pub mod notice;
 mod pass_data;
 pub mod random;
 pub mod remote;
@@ -136,6 +137,9 @@ impl Plugin for WeaponPlugin {
             .init_resource::<crate::map::entities::EntityAnchors>()
             .add_message::<crate::core::Equip>()
             .add_message::<WeaponEvent>()
+            .init_resource::<notice::NoticeStrings>()
+            .init_resource::<notice::CenterNotice>()
+            .add_systems(Update, notice::mode_notice)
             .add_message::<BulletHit>()
             .add_message::<crate::map::RagdollShot>()
             .add_message::<PlaySound>()
