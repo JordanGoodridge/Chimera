@@ -23,7 +23,8 @@
 # and frees the slot. A slot is held until released: `status` shows who
 # holds which, `release slotN` frees one whose agent is gone.
 # Settings: AGENT_SLOTS (number of slots, default 3), AGENT_SLOT_MAX_GB
-# (trim target/ past this, default 40; acquire trims the slot it takes),
+# (trim target/ past this, default 60: a whole-workspace test build is
+# ~40 GB; acquire trims the slot it takes),
 # AGENT_SLOTS_DIR (where the slots live).
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -31,7 +32,7 @@ common=$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)
 repo=$(dirname "$common")
 slots_dir=${AGENT_SLOTS_DIR:-$repo/.claude/slots}
 count=${AGENT_SLOTS:-3}
-max_gb=${AGENT_SLOT_MAX_GB:-40}
+max_gb=${AGENT_SLOT_MAX_GB:-60}
 mkdir -p "$slots_dir"
 
 say() { echo "agent-slot: $*" >&2; }

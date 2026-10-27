@@ -4,7 +4,7 @@
 # are kept; only regenerable build output goes. Usage: clean-worktrees.sh [repo]
 # The build slots (.claude/slots/*, tools/agent-slot.sh) keep their target/
 # on purpose (it's what makes them fast): this only trims the free ones
-# past AGENT_SLOT_MAX_GB (40 GB) through `agent-slot.sh trim`.
+# past AGENT_SLOT_MAX_GB (60 GB) through `agent-slot.sh trim`.
 set -u
 repo="${1:-$(git rev-parse --show-toplevel)}"
 freed=0

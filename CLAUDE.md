@@ -49,9 +49,9 @@ cargo test --features dev -- --skip heavy::   # whole fast tier
 cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
                                    # 2x slower)
 cargo run -q -p repo_checks --bin affected -- --base main   # which crates' tests
-                                   # a branch can affect, and why (the hooks
-                                   # run only those: fast tier before a commit,
-                                   # with heavy tests before a push)
+                                   # a branch can affect, and why (pre-commit
+                                   # builds those and runs the changed crates'
+                                   # fast tier; post-push-tests.sh runs all)
 cargo test -p cs_source --features dev --test it weapons::   # one test
                                    # file (games/cs_source/tests/it/weapons.rs)
 cargo test -p chimera_world --features dev   # one crate's own tests (also
@@ -73,8 +73,13 @@ cargo run --features dev --bin lucker_party -- +minigame originals:gun_game_dust
 cargo run --features dev --bin lucker_party_server -- +minigame originals:gun_game_dust2 +MaxPlayer 3   # its server
 cargo run --features dev --bin ultimate_gun_game   # Ultimate Gun Game (every game's guns)
 cargo run --features dev --bin ultimate_gun_game_server -- +map greybox   # its server
+tools/agent-slot.sh acquire <branch>   # an agent's warm checkout: cd to the
+                                   # printed path, work and commit there; then
+                                   # `tools/agent-slot.sh release` (OBSERVABILITY 3e)
 source tools/agent-env.sh && agent_run cargo ...   # several agents on one box:
                                    # shared jobserver + agents.slice (OBSERVABILITY 3e)
+tools/post-push-tests.sh   # right after each push: the affected tests (heavy too)
+                                   # and build checks of what was pushed
 cargo hakari generate   # after changing a dependency (chimera/workspace-hack)
 cargo run -q -p repo_checks --bin docs_index   # regenerate docs/modules.md and the
                                    # debt list after editing a `//!` doc
@@ -84,7 +89,7 @@ Each crate's integration tests are one binary, `<crate>/tests/it/` (slow
 ones in `tests/it/heavy/`), in the lowest crate whose API they need;
 scenario tests run on Chimera's `harness::Sim` with their layer's base
 (`SimBasePlugins` in Chimera, `CsSim` in cs_source); docs/OBSERVABILITY.md
-section 1 says where new ones go. Pushes run the
+section 1 says where new ones go. `tools/post-push-tests.sh` runs the
 affected crates' tests (`CHIMERA_PUSH_TESTS=all`: everything, `=0`: none).
 Environment variables are `CHIMERA_*` and the local config
 `chimera.local.toml`; the old names (`MASHUP_*`, `mashup.local.toml`)
@@ -95,11 +100,13 @@ still work.
 - Verify your own work with tests, screenshots or remote queries
   (docs/OBSERVABILITY.md) before calling it done. New behavior gets a
   scenario test.
-- Commit at working milestones; the fast tier must pass, the affected
-  tests (heavy ones too) before a push or merge to main.
-  `.githooks/pre-commit` and `pre-push` enforce it, each for what its
-  change can affect (enable per clone: `git config core.hooksPath
-  .githooks`).
+- Commit at working milestones: `.githooks/pre-commit` builds the
+  affected crates' tests and runs the changed crates' fast tier;
+  `pre-push` checks identity and `repo_checks` only (enable per clone:
+  `git config core.hooksPath .githooks`). Push first, test after: run
+  `tools/post-push-tests.sh` right after each push (affected tests, heavy
+  too; one-line result in `.claude/post-push/last.txt`) and fix a FAIL
+  at once.
 - Propose a plan before writing a new mount adapter or loader. Multi-session
   work gets a plan in `docs/plans/active/`, kept updated.
 - When something was hard because a tool, doc or check was missing, add it.

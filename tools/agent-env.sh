@@ -25,7 +25,9 @@
 # holder process (`sleep infinity`) is started once, race-free under flock.
 # Override: AGENT_JOBS (token count), AGENT_JS_DIR (where the FIFO lives),
 # AGENT_NO_SLICE=1 (skip the slice), AGENT_NO_SCCACHE=1 (build without it),
-# SCCACHE_BIN (the sccache to use).
+# SCCACHE_BIN (the sccache to use), AGENT_INCREMENTAL=1|0 (incremental builds
+# on or off; default on in a slot only), AGENT_NO_MOLD=1 (in a slot, link
+# with rustc's default linker instead of mold).
 
 _agent_env_init() {
   # Non-login shells (agent tool sandboxes) often lack these; the user bus needs them.
@@ -80,6 +82,16 @@ _agent_sccache_init() {
   # Unset rather than 1: the profile's default (on for dev and test), as a
   # plain `cargo` in the same checkout gets, so both share one build.
   if [ "$incremental" = 1 ]; then unset CARGO_INCREMENTAL; else export CARGO_INCREMENTAL=0; fi
+  # In a slot, link with mold where it's installed (`brew install mold`):
+  # measured 20-45% faster links of a test binary (docs/performance.md,
+  # "Test cycle"). Only there: changing rustflags rebuilds everything once,
+  # which a running worktree shouldn't pay. AGENT_NO_MOLD=1 turns it off.
+  case "$here" in
+    */.claude/slots/*)
+      if [ -z "${AGENT_NO_MOLD:-}" ] && [ "$(uname -s)" = Linux ] && command -v ld.mold >/dev/null 2>&1; then
+        export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-Clink-arg=-fuse-ld=mold"
+      fi ;;
+  esac
   "$here/sccache-heal.sh"
   # The server must not inherit the agents' jobserver: it uses its own.
   env -u MAKEFLAGS -u CARGO_MAKEFLAGS -u MFLAGS "$bin" --start-server >/dev/null 2>&1

@@ -47,7 +47,9 @@ fi
 git -C "$dir" reset --quiet --hard && git -C "$dir" clean -fdq && git -C "$dir" checkout --quiet --detach "$sha" || exit 2
 cd "$dir" || exit 2
 # shellcheck source=/dev/null
+set +u  # agent-env.sh reads unset variables
 . tools/agent-env.sh
+set -u
 ln -sf "$sha.log" "$out/last.log"
 : >"$log"
 
@@ -102,7 +104,7 @@ fi
 
 # Keep this checkout's build folder in bounds (the oldest artifacts go).
 if command -v cargo-sweep >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/cargo-sweep" ]; then
-    PATH="$HOME/.cargo/bin:$PATH" cargo sweep --maxsize "${AGENT_SLOT_MAX_GB:-40}GB" . >/dev/null 2>&1 || true
+    PATH="$HOME/.cargo/bin:$PATH" cargo sweep --maxsize "${AGENT_SLOT_MAX_GB:-60}GB" . >/dev/null 2>&1 || true
 fi
 
 mins=$(( ($(date +%s) - started + 59) / 60 ))
