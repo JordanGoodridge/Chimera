@@ -18,6 +18,7 @@ mod bot_chat;
 mod bound;
 mod camera;
 mod death_screen;
+mod fire_voices;
 mod frame_cost;
 mod hud;
 mod lobby;

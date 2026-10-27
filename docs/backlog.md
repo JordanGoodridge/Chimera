@@ -55,13 +55,17 @@ the user's go-ahead: no Actions runs unless asked.
   break — shards, the hole, sound — is replicated).
 - **CS:S FAMAS burst plays the single-shot animation.** In 3-round burst
   the view model should play the burst fire animation.
-- **Combat Arms full-auto fire clips (painfully loud).** Holding the
-  trigger on a Combat Arms gun peaks the audio (friend's report). Suspect
-  each shot's sound plays as a new voice summed on top of the still-ringing
-  previous ones (no per-weapon channel that a new shot replaces, as CS:S's
-  weapon channel does, or no voice cap / limiter on the mix); check how CA
-  shot sounds are played, compare peak levels against a CS:S gun at the
-  same fire rate, and add channel stealing or a voice limit.
+- **Combat Arms full-auto fire clips (painfully loud): fixed, confirm by
+  ear.** The fire sound was already one voice per shooter (its fire
+  channel); the pile was every round's impact and casing sound, a new
+  voice each at almost full gain up close (Combat Arms' falloff is nearly
+  flat near the source): 18 voices at once in 3 s of M4A1 fire with
+  second-long stand-ins, where CS:S plays no casing sounds and its
+  impacts fall off faster. Now each gun's impacts and casings replace
+  their previous one (`effects::sounds::CHANNEL_IMPACT`/`CHANNEL_SHELL`),
+  and Chimera's playback limits voices per source (8) and per sourceless
+  entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
+  playtest; if it still peaks, a limiter on the mix is next.
 - **Ultimate Gun Game scoreboard (Tab).** One scoreboard for the whole
   app, the same whatever game's gun or HUD you hold: every player (bots
   too) with kills, deaths, current rung/gun, ping, and **matches won**

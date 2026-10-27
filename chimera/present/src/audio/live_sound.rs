@@ -139,7 +139,8 @@ impl Gains {
     fn send(&self) -> f32 {
         f32::from_bits(self.send.load(Ordering::Relaxed))
     }
-    fn get(&self) -> (f32, f32) {
+    /// The per-ear gains.
+    pub fn get(&self) -> (f32, f32) {
         (
             f32::from_bits(self.left.load(Ordering::Relaxed)),
             f32::from_bits(self.right.load(Ordering::Relaxed)),

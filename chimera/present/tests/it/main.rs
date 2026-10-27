@@ -20,4 +20,5 @@ mod underwater_overlay;
 mod underwater_sky;
 mod view_model_camera;
 mod view_model_without_map;
+mod voice_limits;
 mod wav_playback;
