@@ -123,6 +123,9 @@ range = 100.0
 [damage]
 amount = 10.0
 armor_ratio = 0.5
+
+[sounds]
+fire = "kit.rifle_fire"
 "#;
 
 const SHOTGUN_DOC: &str = r#"

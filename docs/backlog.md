@@ -38,9 +38,6 @@ the user's go-ahead: no Actions runs unless asked.
   finishes, a second reload animation sometimes plays. Intermittent;
   trigger unknown (seen before on Combat Arms; check both games' guns and
   the swap/refill path of `refill_ammo`).
-- **Last shot silent before the swap.** The killing bullet sometimes makes
-  no sound because the ladder swaps the gun in the same tick; the shot's
-  sound should outlive the gun (play it detached from the weapon entity).
 - **Map change at match end is unclear.** The new round starts on the old
   map, then the new map loads and players are moved over with a hitch.
   Want a loading screen (or at least an indicator), and the round to

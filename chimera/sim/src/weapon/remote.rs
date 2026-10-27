@@ -52,7 +52,27 @@ pub struct RemoteAction {
 pub(super) fn plugin(app: &mut App) {
     app.add_message::<RemoteShot>()
         .add_message::<RemoteAction>()
-        .add_systems(Update, (remote_shots, remote_actions).run_if(crate::core::shows_others));
+        .init_resource::<FireSounds>()
+        .add_systems(
+            Update,
+            (remember_fire_sounds, remote_shots, remote_actions)
+                .chain()
+                .run_if(crate::core::shows_others),
+        );
+}
+
+/// The fire sounds of every weapon seen here, by weapon ID: a shooter whose
+/// gun changed since the round left it (the gun game swaps it on the kill)
+/// still has that round's sound played.
+#[derive(Resource, Default)]
+struct FireSounds(Vec<(&'static str, Option<String>, Option<String>)>);
+
+fn remember_fire_sounds(new: Query<(&Weapon, &WeaponSounds), Added<WeaponSounds>>, mut known: ResMut<FireSounds>) {
+    for (w, s) in &new {
+        if !known.0.iter().any(|(id, ..)| *id == w.id) {
+            known.0.push((w.id, s.fire.clone(), s.fire_alt.clone()));
+        }
+    }
 }
 
 /// Make `character` hold weapon `id` (None: nothing) in mode `mode`, its
@@ -114,17 +134,25 @@ fn remote_shots(
     )>,
     mut world: deliver::World,
     clock: Res<SimClock>,
+    known: Res<FireSounds>,
 ) {
     for s in shots.read() {
-        let Some(active) = owners.get(s.shooter).ok().and_then(|i| i.active) else {
+        let held = owners
+            .get(s.shooter)
+            .ok()
+            .and_then(|i| i.active)
+            .and_then(|a| weapons.get(a).ok().map(|w| (a, w)));
+        let Some((active, (_, Some(scan), Some(effect), pen, sounds))) = held.filter(|(_, (w, ..))| w.id == s.weapon)
+        else {
+            // The gun in hand is another now: no trace to draw, but the
+            // shot's sound still plays.
+            let fire = known.0.iter().find(|(id, ..)| *id == s.weapon);
+            let entry = fire.and_then(|(_, f, alt)| if s.mode > 0 && alt.is_some() { alt.clone() } else { f.clone() });
+            if let Some(entry) = entry {
+                world.sound(super::owner_sound(entry, s.shooter, s.origin, super::CHAN_WEAPON));
+            }
             continue;
         };
-        let Ok((w, Some(scan), Some(effect), pen, sounds)) = weapons.get(active) else {
-            continue;
-        };
-        if w.id != s.weapon {
-            continue;
-        }
         let scan = Hitscan {
             spread: s.spread,
             ..scan.clone()
