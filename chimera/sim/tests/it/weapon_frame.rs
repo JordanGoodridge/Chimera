@@ -168,3 +168,35 @@ fn nothing_fires_before_the_draw_ends() {
     // The rifle draws in 1 s: half of it later, nothing yet.
     assert_eq!(shots_for(&mut sim, p, 0.5), 0);
 }
+
+/// A round someone else fired, seen on a client after its shooter's gun
+/// changed (the gun game swaps it on the kill): the shot still sounds.
+#[test]
+fn a_remote_shot_sounds_after_its_shooter_swapped_guns() {
+    use chimera_sim::weapon::remote::{RemoteShot, show_held};
+    use chimera_world::map::PlaySound;
+    let mut sim = testkit::kit_sim();
+    sim.app.insert_resource(chimera_core::core::Playback);
+    let p = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    show_held(sim.app.world_mut(), p, Some(RIFLE), 0, false);
+    sim.ticks(2);
+    // The kill's swap reaches the client before the shot's message does.
+    show_held(sim.app.world_mut(), p, Some(PISTOL), 0, false);
+    sim.app.world_mut().write_message(RemoteShot {
+        shooter: p,
+        weapon: RIFLE,
+        origin: greybox::SPAWNS[0] + Vec3::Y,
+        yaw: 0.0,
+        pitch: 0.0,
+        seed: 1,
+        spread: chimera_sim::weapon::SpreadShape::Template(0.0),
+        mode: 0,
+    });
+    let mut cursor = sim.app.world().resource::<Messages<PlaySound>>().get_cursor_current();
+    sim.ticks(2);
+    let heard: Vec<String> = cursor
+        .read(sim.app.world().resource::<Messages<PlaySound>>())
+        .map(|s| s.entry.clone())
+        .collect();
+    assert_eq!(heard, ["kit.rifle_fire"], "the shot's sound plays though the gun is gone");
+}
