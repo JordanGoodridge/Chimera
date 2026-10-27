@@ -40,7 +40,7 @@ impl Plugin for HudPlugin {
                     character_bodies,
                     show_bodies,
                     (hit_marker, killfeed, draw_hud, draw_crosshair, draw_scope).chain(),
-                    game_scope.run_if(resource_exists_and_changed::<crate::map::hud::ActiveHud>),
+                    game_scope.run_if(resource_changed_or_removed::<crate::map::hud::ActiveHud>),
                     screen_tints,
                 ),
             )
@@ -334,6 +334,10 @@ struct ScopeOverlay;
 /// The scope's square middle (the ring, the lens and cross hairs).
 #[derive(Component)]
 struct ScopeSquare;
+/// The stand-in scope picture, kept on the square to go back to when the
+/// map's HUD look (CS:S's scope textures) is put away.
+#[derive(Component)]
+struct GenericScope(Handle<Image>);
 /// One of the four crosshair lines: its direction from the centre (zero:
 /// the centre dot).
 #[derive(Component)]
@@ -448,6 +452,7 @@ fn spawn_scope(commands: &mut Commands, images: &mut Assets<Image>) {
             bar(),
             (
                 ScopeSquare,
+                GenericScope(image.clone()),
                 Node {
                     height: percent(100.0),
                     aspect_ratio: Some(1.0),
@@ -810,21 +815,31 @@ fn draw_crosshair(
     }
 }
 
-/// The scope overlay while the local player looks through a sniper scope.
-/// With the game's own scope textures (`scope_arc`, `scope_lens` HUD
-/// sprites), draw the ring from four mirrored quarters, the lens tint
-/// under it and thin black cross hairs, instead of our stand-in.
+/// The scope overlay's look follows the HUD look present: CS:S's own
+/// scope textures (`scope_arc`, `scope_lens` HUD sprites) while the map's
+/// HUD look is CS:S's, drawn as the ring from four mirrored quarters, the
+/// lens tint under it and thin black cross hairs; our generic stand-in
+/// when there is none (the look put away while another game's HUD is the
+/// gameplay's, as with a Combat Arms gun: `HudLookOwner`) or it has no
+/// scope textures.
 fn game_scope(
-    hud: Res<crate::map::hud::ActiveHud>,
-    square: Single<Entity, With<ScopeSquare>>,
+    hud: Option<Res<crate::map::hud::ActiveHud>>,
+    square: Single<(Entity, &GenericScope), With<ScopeSquare>>,
     mut commands: Commands,
 ) {
     let sprite = |name: &str| {
+        let hud = hud.as_ref()?;
         let s = hud.0.sprites.get(name)?;
         Some(hud.1.get(&s.texture)?.clone())
     };
-    let Some(arc) = sprite("scope_arc") else { return };
-    let square = *square;
+    let (square, generic) = *square;
+    let Some(arc) = sprite("scope_arc") else {
+        commands
+            .entity(square)
+            .despawn_related::<Children>()
+            .insert(ImageNode::new(generic.0.clone()));
+        return;
+    };
     let mut e = commands.entity(square);
     e.remove::<ImageNode>().despawn_related::<Children>();
     let abs = |left: f32, top: f32, w: f32, h: f32| Node {
@@ -1056,6 +1071,48 @@ mod tests {
         inv.active = Some(Entity::from_raw_u32(7).unwrap());
         assert_eq!(crosshair_kind(Some(&inv), false, false), CrosshairKind::Weapon);
         assert_eq!(crosshair_kind(Some(&inv), false, true), CrosshairKind::Hidden);
+    }
+
+    /// The scope overlay follows the HUD look present: a CS:S AWP's gets
+    /// CS:S's scope textures (a look with `scope_arc`), a Combat Arms
+    /// sniper's (the look put away for Combat Arms' HUD) the generic one,
+    /// and CS:S's again when the look is back.
+    #[test]
+    fn scope_overlay_follows_the_hud_look() {
+        use crate::map::hud::{ActiveHud, GameHud, HudSprite};
+        use std::{collections::HashMap, sync::Arc};
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>();
+        app.add_systems(Update, game_scope.run_if(resource_changed_or_removed::<ActiveHud>));
+        app.world_mut().resource_scope(|w: &mut World, mut images: Mut<Assets<Image>>| {
+            let mut commands = w.commands();
+            spawn_scope(&mut commands, &mut images);
+        });
+        app.world_mut().flush();
+        let look = || {
+            let mut hud = GameHud::default();
+            hud.sprites.insert("scope_arc".into(), HudSprite { texture: 0, rect: [0.0; 4] });
+            ActiveHud(Arc::new(hud), HashMap::from([(0, Handle::default())]))
+        };
+        let state = |app: &mut App| {
+            let w = app.world_mut();
+            let (e, generic) = w.query::<(Entity, &GenericScope)>().single(w).map(|(e, g)| (e, g.0.clone())).unwrap();
+            let kids = w.get::<Children>(e).map_or(0, |c| c.len());
+            let on_generic = w.get::<ImageNode>(e).is_some_and(|i| i.image == generic);
+            (kids, on_generic)
+        };
+        app.update();
+        assert_eq!(state(&mut app), (0, true), "no look: generic");
+        app.insert_resource(look());
+        app.update();
+        let (kids, on_generic) = state(&mut app);
+        assert!(kids >= 4 && !on_generic, "CS:S's scope with its look");
+        app.world_mut().remove_resource::<ActiveHud>();
+        app.update();
+        assert_eq!(state(&mut app), (0, true), "look put away: generic, not CS:S's");
+        app.insert_resource(look());
+        app.update();
+        assert!(state(&mut app).0 >= 4, "CS:S's again");
     }
 
     #[test]
