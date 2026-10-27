@@ -261,6 +261,12 @@ pub fn drop_this(world: &mut World, owner: Entity, weapon: Entity, thrown: bool)
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DeathDrops(pub bool);
 
+/// Set by a rules module that hands out weapons itself (`chimera:ladder`):
+/// nobody can pick guns up there, so nobody drops one at death, whatever
+/// `DeathDrops` or a game's own switch says. Removed when a minigame starts.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct NoDeathDrops;
+
 /// A weapon the dead drop beside their best gun (the data's
 /// `death_drop`): of those carried, the highest rank goes (CS:S's
 /// grenades: HE, else a flashbang, else a smoke; measured,
@@ -272,8 +278,8 @@ pub struct DeathDrop(pub i32);
 /// lowest slot of the droppable weapons without a `DeathDrop`), and the
 /// highest `DeathDrop` they carry (when `DeathDrops`; measured on CS:S,
 /// specs/cs_source/grenades.md Q17).
-pub(super) fn drop_on_death(mut died: MessageReader<Died>, drops: Option<Res<DeathDrops>>, mut commands: Commands) {
-    if !drops.is_some_and(|d| d.0) {
+pub(super) fn drop_on_death(mut died: MessageReader<Died>, drops: Option<Res<DeathDrops>>, none: Option<Res<NoDeathDrops>>, mut commands: Commands) {
+    if none.is_some() || !drops.is_some_and(|d| d.0) {
         died.clear();
         return;
     }

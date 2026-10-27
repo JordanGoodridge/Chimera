@@ -7,6 +7,8 @@
 //! killed by an enemy's melee swing goes a rung down (not below the first):
 //! melee damage, or any damage from a melee weapon (CS:S's knife deals
 //! bullet damage).
+//! The ladder gives the weapons, so nobody drops one at death
+//! (`weapon::drop::NoDeathDrops`).
 //! At the time limit the highest rung wins, then the most kills; a tie is
 //! a draw.
 //!
@@ -149,6 +151,7 @@ fn start(world: &mut World, def: &MinigameDef) {
     let Ok(p) = params(def) else { return };
     let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
     let rungs = p.ladder.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
+    world.insert_resource(crate::weapon::drop::NoDeathDrops);
     world.insert_resource(Ladder {
         rungs,
         demote_on_melee: p.demote_on == Demote::MeleeDeath,
