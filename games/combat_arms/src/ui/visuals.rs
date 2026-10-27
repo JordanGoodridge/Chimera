@@ -3,7 +3,7 @@
 //! gun, a thin light one for a melee weapon) while it has no view model
 //! (`game::view_model`: keyed ones without the V2 key, or one still
 //! loading: `on_demand`, which this plugin turns on);
-//! grenades in flight as small
+//! grenades in flight without their model as small
 //! dark balls (`grenade_balls`) and, without the install's effect file,
 //! smoke clouds as grey balls of the cloud's size (`smoke_balls`; with it
 //! the cloud is the `Smoke_Grenade_01` group's particles, `ui::effects`).
@@ -22,7 +22,10 @@ use bevy::prelude::*;
 use crate::{
     client::FirstPersonCamera,
     core::LocalPlayer,
-    map::{ViewModels, loose::ShownItem},
+    map::{
+        ViewModels,
+        loose::{LooseAssets, ShownItem},
+    },
     weapon::{Hitscan, Inventory, Melee, Weapon, grenade::SmokeCloud},
 };
 
@@ -108,15 +111,18 @@ fn box_gun(
 }
 
 /// A Combat Arms grenade in flight (its `ShownItem`, on the server's world
-/// or a client's) gets a small dark ball.
+/// or a client's) without its model (the projectile record's, `render::
+/// loose` draws it; none without the install's V2 key) gets a small dark
+/// ball.
 fn grenade_balls(
     new: Query<(Entity, &ShownItem), (Added<ShownItem>, Without<Mesh3d>)>,
+    models: Option<Res<LooseAssets>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
     for (e, item) in &new {
-        if !item.0.starts_with(crate::game::GAME) {
+        if !item.0.starts_with(crate::game::GAME) || models.as_ref().is_some_and(|m| m.0.contains_key(&item.0)) {
             continue;
         }
         commands.entity(e).insert((

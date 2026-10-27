@@ -353,9 +353,9 @@ fn unreadable_files_are_reported() {
     let (attrs, problems) =
         read_attributes(|name| Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, name.to_string())));
     assert_eq!(attrs, InstallAttributes::default());
-    // Weapons, server, models, modification, marks, attachments, perk and
-    // set item files.
-    assert_eq!(problems.len(), 8);
+    // Weapons, server, models, modification, marks, attachments, perk, set
+    // item and effect files.
+    assert_eq!(problems.len(), 9);
 }
 
 /// The merge onto our built-in documents as they are: an install with the
@@ -551,6 +551,63 @@ fn models_and_names_from_the_install() {
     assert_eq!((p.muzzle_pos, p.breach_offset), ([1.0, 2.0, 3.0], [1.0; 3]));
     let grenade = set.get("combat_arms:m23f").unwrap();
     assert_eq!(grenade.models.view.as_deref(), Some("guns_m_pv_throwing/pv_throwing_m18smoke_sh.ltb"));
+}
+
+/// A grenade's projectile record (`ProjectileFX#` in `FX.TXT`, linked by
+/// its ammo's `ProjectileFXName`; grenades.md "Data"): its speed, fuse,
+/// drop speed, `CanHitSameKind` and thrown model (`Model`, `ModelScale`,
+/// `Skin0`) reach the grenade hook; a record without a field (the XM84's
+/// `DropVelocity`) leaves ours. Read through `read_attributes` from both
+/// files.
+#[test]
+fn grenade_projectile_records_from_the_install() {
+    use combat_arms::game::grenades::{GrenadeParams, HOOK};
+    let weapons_txt = r#"[Ammo0] Name="M67" ProjectileFXName="G62"
+        [Ammo1] Name="XM-84" ProjectileFXName="FB6"
+        [Weapon0] Name="M67" Guntype=7 AmmoName0="M67"
+        [Weapon1] Name="XM84" Guntype=7 AmmoName0="XM-84""#;
+    let fx_txt = r#"[ProjectileFX0] Name="G62" Class="CGrenade" Velocity=1500 Lifetime=2.25 DropVelocity=450
+          CanHitSameKind=1 Model="GUNS_M_HH\HH_Throwing_Test_SH.ltb" ModelScale=<2.0, 2.0, 2.0>
+          Skin0="GUNS_T_HH\HH_test.dtx" FireOffset=0.0
+        [ProjectileFX1] Name="FB6" Class="CGrenade" Velocity=1550 Lifetime=1.5 CanHitSameKind=0"#;
+    let (attrs, _) = read_attributes(|name| match name {
+        WEAPONS_FILE => Ok(weapons_txt.as_bytes().to_vec()),
+        FX_FILE => Ok(fx_txt.as_bytes().to_vec()),
+        _ => Err(std::io::Error::new(std::io::ErrorKind::NotFound, name.to_string())),
+    });
+    let f = attrs.weapons.unwrap();
+    assert_eq!(f.projectiles.len(), 2);
+    let g62 = f.projectile(&f.ammo[0]).unwrap();
+    assert_eq!((g62.velocity, g62.lifetime, g62.drop_velocity), (Some(1500.0), Some(2.25), Some(450.0)));
+    assert_eq!(g62.model_scale, [2.0; 3]);
+    let docs = merge_weapon_docs(
+        &[
+            ("m67.toml", include_str!("../../data/weapons/m67.toml")),
+            ("xm84.toml", include_str!("../../data/weapons/xm84.toml")),
+        ],
+        &f,
+        meters_per_unit(),
+    )
+    .unwrap();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let set = WeaponSet::parse(&refs, &[]).unwrap();
+    let m67: GrenadeParams = set.get("combat_arms:m67").unwrap().hook(HOOK).unwrap();
+    assert!((m67.speed - 1500.0).abs() < 1e-3 && (m67.fuse - 2.25).abs() < 1e-6, "{m67:?}");
+    assert!((m67.drop_speed - 450.0).abs() < 1e-3 && m67.hits_same_kind);
+    assert_eq!(m67.thrown_model.as_deref(), Some("guns_m_hh/hh_throwing_test_sh.ltb"));
+    assert_eq!(m67.thrown_skins, ["guns_t_hh/hh_test.dtx"]);
+    assert_eq!(m67.thrown_scale, [2.0; 3]);
+    let xm84: GrenadeParams = set.get("combat_arms:xm84").unwrap().hook(HOOK).unwrap();
+    assert!((xm84.fuse - 1.5).abs() < 1e-6 && !xm84.hits_same_kind);
+    assert_eq!(xm84.thrown_model, None, "no model in its record: the placeholder");
+    // Without the effect file, our documents' numbers stand.
+    let bare = weapons(weapons_txt).unwrap();
+    let docs = merge_weapon_docs(&[("m67.toml", include_str!("../../data/weapons/m67.toml"))], &bare, meters_per_unit())
+        .unwrap();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let set = WeaponSet::parse(&refs, &[]).unwrap();
+    let m67: GrenadeParams = set.get("combat_arms:m67").unwrap().hook(HOOK).unwrap();
+    assert_eq!((m67.speed, m67.fuse, m67.thrown_model), (1550.0, 2.5, None));
 }
 
 // ---------------------------------------------------------------------------

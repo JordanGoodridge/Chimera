@@ -16,6 +16,10 @@
 //!   specs/combat_arms/attachments.md): attachment records (`Mod#`, as
 //!   `attachments::ModRecord`) and each weapon's accepted list
 //!   (`Weapon#`, unknown names dropped with their variant index).
+//! - `ProjectileRecord`: the effect file's (`ATTRIBUTES/FX.TXT`)
+//!   projectile records (`ProjectileFX#`: special_weapons.md "Projectile
+//!   record"), kept on `WeaponsFile` and linked by the ammo's
+//!   `ProjectileFXName`.
 //! - `AttachmentsFile`: the character attachments file
 //!   (`ATTACHMENTS.TXT`): goggles and backpacks (`Goggle#`, `Backpack#`:
 //!   socket, model per figure type, skins, render styles).
@@ -46,6 +50,9 @@ pub const SERVER_FILE: &str = "attributes/serverbutes.txt";
 pub const MODELS_FILE: &str = "attributes/modelbutes.txt";
 pub const MOD_FILE: &str = "attributes/mod.txt";
 pub const MARKS_FILE: &str = "attributes/marks.txt";
+/// The effect tables (`FX.TXT`): the projectile records
+/// (special_weapons.md, "Where the numbers live").
+pub const FX_FILE: &str = "attributes/fx.txt";
 pub const ATTACHMENTS_FILE: &str = "attributes/attachments.txt";
 /// The perk and set item files (gear_perks.md).
 pub const PERKS_FILE: &str = "attributes/perkskillinfo.txt";
@@ -174,6 +181,8 @@ pub struct AmmoRecord {
     pub damage_move_penalty: f64,
     pub damage_move_penalty_duration: f64,
     pub health: f64,
+    /// `ProjectileFXName`: the projectile record it fires (`FX.TXT`).
+    pub projectile_fx: String,
 }
 
 impl AmmoRecord {
@@ -214,6 +223,7 @@ impl AmmoRecord {
             damage_move_penalty: s.number("DamageMovePenalty", 0.0),
             damage_move_penalty_duration: s.number("DamageMovePenaltyDuration", -1.0),
             health: s.number("Health", 0.0),
+            projectile_fx: s.string("ProjectileFXName").map(text).unwrap_or_default(),
         }
     }
 }
@@ -528,6 +538,9 @@ pub struct WeaponsFile {
     /// `AutoSwitchWeapon0..` as weapon IDs (unknown names dropped).
     pub auto_switch: Vec<usize>,
     pub perturb: PerturbGlobals,
+    /// The effect file's projectile records (`ProjectileFX#`; empty
+    /// without the file), linked by the ammo's `ProjectileFXName`.
+    pub projectiles: Vec<ProjectileRecord>,
 }
 
 impl WeaponsFile {
@@ -578,6 +591,7 @@ impl WeaponsFile {
             order,
             auto_switch,
             perturb,
+            projectiles: Vec::new(),
         })
     }
 
@@ -610,6 +624,56 @@ impl WeaponsFile {
     /// A weapon's default ammo record.
     pub fn default_ammo(&self, weapon: &WeaponRecord) -> Option<&AmmoRecord> {
         weapon.default_ammo().map(|id| &self.ammo[id])
+    }
+
+    /// The projectile record `ammo` fires (its `ProjectileFXName`, the
+    /// first record of that name).
+    pub fn projectile(&self, ammo: &AmmoRecord) -> Option<&ProjectileRecord> {
+        find_by_name(&self.projectiles, &ammo.projectile_fx, |p| &p.name).map(|(_, p)| p)
+    }
+}
+
+/// `ProjectileFX<N>` in the effect file (special_weapons.md, "Projectile
+/// record"; grenades.md "Data"): the fields a thrown grenade reads. A
+/// field the record lacks is `None` (the spec's data or ours stands).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProjectileRecord {
+    pub name: String,
+    pub class: String,
+    /// `Velocity` (u/s), `Lifetime` (s), `DropVelocity` (u/s).
+    pub velocity: Option<f64>,
+    pub lifetime: Option<f64>,
+    pub drop_velocity: Option<f64>,
+    /// `FireOffset`, u.
+    pub fire_offset: Option<f64>,
+    /// `CanHitSameKind`.
+    pub can_hit_same_kind: Option<bool>,
+    /// `Model`: the world model it is drawn with; `ModelScale` (default
+    /// 1 per axis); `Skin0..`.
+    pub model: String,
+    pub model_scale: [f64; 3],
+    pub skins: Vec<String>,
+}
+
+impl ProjectileRecord {
+    pub fn read(s: &Section) -> Self {
+        Self {
+            name: name_of(s),
+            class: s.string("Class").map(text).unwrap_or_default(),
+            velocity: s.number_opt("Velocity"),
+            lifetime: s.number_opt("Lifetime"),
+            drop_velocity: s.number_opt("DropVelocity"),
+            fire_offset: s.number_opt("FireOffset"),
+            can_hit_same_kind: s.number_opt("CanHitSameKind").map(|v| v != 0.0),
+            model: s.string("Model").map(text).unwrap_or_default(),
+            model_scale: s.vector("ModelScale").unwrap_or([1.0; 3]),
+            skins: s.string_list("Skin").iter().map(|b| text(b)).collect(),
+        }
+    }
+
+    /// Every `ProjectileFX#` record of the effect file.
+    pub fn read_all(doc: &Document) -> Vec<Self> {
+        doc.records("ProjectileFX").into_iter().map(Self::read).collect()
     }
 }
 

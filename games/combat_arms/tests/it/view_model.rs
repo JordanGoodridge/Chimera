@@ -1290,6 +1290,54 @@ fn grenade_re_ready_after_a_throw() {
     assert_eq!(sim.app.world().get::<Throwable>(w).unwrap().count, 1);
 }
 
+/// The keys a throw's view model sends.
+#[derive(Resource, Default)]
+struct Keys(Vec<(String, ViewKey)>);
+
+/// A throw in play plays the grenade's view-model sequence, the pin pull
+/// (`prefire`, its `sound_key 10` pin sound), the throw (`fire_0`, its
+/// `THROW_KEY`) and the release (`postfire`, its `FIRE_KEY`), in that
+/// order, each key once for a tap (grenades.md 3; view_models.md 8).
+#[test]
+fn a_throw_plays_pin_pull_throw_and_release() {
+    let mut sim = sim();
+    sim.app.init_resource::<Keys>().add_systems(
+        Update,
+        |mut r: MessageReader<CaViewKey>, mut k: ResMut<Keys>, vms: Query<&CaViewModel>| {
+            for m in r.read() {
+                let at = vms.get(m.owner).ok().and_then(|v| v.machine.as_ref()?.playing().map(str::to_string));
+                k.0.push((at.unwrap_or_default(), m.key.clone()));
+            }
+        },
+    );
+    let p = player(&mut sim);
+    drawn(&mut sim, p, M67);
+    sim.app.world_mut().resource_mut::<Keys>().0.clear();
+    sim.intent(p).fire = true;
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    let mut seen: Vec<String> = Vec::new();
+    for _ in 0..150 {
+        if let Some(n) = playing(&sim, p)
+            && seen.last() != Some(&n)
+        {
+            seen.push(n);
+        }
+        if seen.iter().any(|n| n == "postfire") && seen.last().is_some_and(|n| n != "postfire") {
+            break;
+        }
+        sim.ticks(1);
+    }
+    let at = |name: &str| seen.iter().position(|n| n == name).unwrap_or_else(|| panic!("{name} in {seen:?}"));
+    assert!(at("prefire") < at("fire_0") && at("fire_0") < at("postfire"), "{seen:?}");
+    let keys: Vec<ViewKey> = sim.app.world().resource::<Keys>().0.iter().map(|(_, k)| k.clone()).collect();
+    let pos = |k: ViewKey| keys.iter().position(|x| *x == k).unwrap_or_else(|| panic!("{k:?} in {keys:?}"));
+    assert!(pos(ViewKey::Sound(10)) < pos(ViewKey::Throw) && pos(ViewKey::Throw) < pos(ViewKey::Fire), "{keys:?}");
+    for k in [ViewKey::Sound(10), ViewKey::Throw, ViewKey::Fire] {
+        assert_eq!(keys.iter().filter(|x| **x == k).count(), 1, "{k:?} once: {keys:?}");
+    }
+}
+
 /// 9: no first-person flash with the camera in a liquid volume (the
 /// M92FS has no `UseUWMuzzleFX`).
 #[test]

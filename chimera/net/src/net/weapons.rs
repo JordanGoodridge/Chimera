@@ -186,16 +186,20 @@ fn write_items(
             &Transform,
             Option<&LooseItem>,
             Option<&Projectile>,
+            Option<&ShownItem>,
             Option<&mut NetItem>,
         ),
         Or<(With<LooseItem>, With<Projectile>)>,
     >,
     mut commands: Commands,
 ) {
-    for (e, t, loose, projectile, have) in &mut q {
-        let model = match (loose, projectile) {
-            (Some(l), _) => l.0.clone(),
-            (None, Some(p)) => p.weapon.to_string(),
+    for (e, t, loose, projectile, shown, have) in &mut q {
+        // A projectile is drawn as the server shows it (its `ShownItem`:
+        // a game's own thrown model), else as its weapon.
+        let model = match (loose, projectile, shown) {
+            (Some(l), ..) => l.0.clone(),
+            (None, Some(_), Some(s)) => s.0.clone(),
+            (None, Some(p), None) => p.weapon.to_string(),
             _ => continue,
         };
         // On the network's grid (`quant`): an item shaking below it sends

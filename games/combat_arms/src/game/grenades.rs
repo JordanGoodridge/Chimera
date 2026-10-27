@@ -21,7 +21,13 @@
 //! the thrower's velocity (4), started `FireOffset` along the throw when that
 //! segment is clear (`fire_offset`, Corrections 1). It is a Chimera `Projectile` marked
 //! `GameFlown` with this game's state (`CaGrenade`), so the network draws
-//! it (`NetItem`) and `Detonated` tells the presentation and clients; it
+//! it (`NetItem`, with its `ShownItem`: `thrown_key`, the projectile
+//! record's model in its `World` pose at `ModelScale`, loaded by
+//! `characters::models` when the install has it) and `Detonated` tells
+//! the presentation and clients; its `Transform` is drawn between the
+//! server frames below (`draw_between_frames`: on the line from the frame
+//! before to the last, one frame behind, so the arc doesn't hop 50 ms at
+//! a time); it
 //! and its smoke cloud `SurvivesRestart`: a new round leaves grenades in
 //! flight to go off on their fuse (15).
 //!
@@ -125,8 +131,15 @@
 //!   grenade going off while one is on would be removed without effect);
 //!   a new round still ends a flash (Chimera's restart clears `Blinded`);
 //!   the M67's knock-back is the infection mode's (Q14).
-//! - Placeholder looks (L10 not lifted): a ball in flight, a grey ball for
-//!   the smoke (`ui::visuals`), no explosion or flash models.
+//! - Placeholder looks (L10 not lifted): a ball in flight without the
+//!   install's model, a grey ball for the smoke (`ui::visuals`), no
+//!   explosion or flash models. In flight the model holds its `World`
+//!   pose from the throw (the `Hand` animation before it isn't drawn) and
+//!   starts unturned (the spec turns it to face its direction).
+//! - No pin or throw sound: the pin pull's `sound_key 10` (the weapon's
+//!   misc sound 1, view_models.md 8) names no attribute field in the specs
+//!   and the install's grenade records have no misc, `FireSnd` or
+//!   `PreFireSnd` field, so nothing plays (the bounce and the blast do).
 
 use std::collections::HashMap;
 
@@ -147,7 +160,7 @@ use crate::{
         Blinded, Damage, DamageKind, DamageRules, Damageable, Died, Health, Hitgroup, Intent, MapWater,
         MovementState, Predict, PropSurface, SOLID_LAYERS, SimClock, SimSet,
     },
-    map::PropEntity,
+    map::{PropEntity, loose::ShownItem},
     weapon::{
         Inventory, Weapon, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
@@ -325,6 +338,28 @@ pub struct GrenadeParams {
     /// 23's).
     #[serde(default)]
     pub fire_offset: f32,
+    /// The projectile record's `Model` (an archive path of the install):
+    /// the grenade as drawn in flight, in its `World` pose; None: the front
+    /// end's placeholder. `ModelScale` (stock 2 per axis; the box above is
+    /// the model's first animation's times it) and `Skin#` (archive paths
+    /// by texture index).
+    #[serde(default)]
+    pub thrown_model: Option<String>,
+    #[serde(default = "stock_model_scale")]
+    pub thrown_scale: [f32; 3],
+    #[serde(default)]
+    pub thrown_skins: Vec<String>,
+}
+
+/// The stock grenades' `ModelScale` (grenades.md, Data).
+fn stock_model_scale() -> [f32; 3] {
+    [2.0; 3]
+}
+
+/// The key of weapon `id`'s grenade as drawn in flight (its `ShownItem`
+/// and held-model key; the thrown model, `GrenadeParams::thrown_model`).
+pub fn thrown_key(id: &str) -> String {
+    format!("{id}#thrown")
 }
 
 /// Weapon part: a Combat Arms grenade's numbers, and its document's units
@@ -560,6 +595,10 @@ pub struct CaGrenade {
     /// u, u/s.
     pub pos: Vec3,
     pub velocity: Vec3,
+    /// Where it was at the server frame before (u): it is drawn on the
+    /// line from there to `pos` over the frame that follows
+    /// (`draw_between_frames`), one server frame behind.
+    pub drawn_from: Vec3,
     /// The server frame its start time is (the one before the first it is
     /// stepped in; None until then).
     pub created: Option<u64>,
@@ -967,6 +1006,8 @@ pub fn spawn_grenade(
         GameFlown,
         // A new round leaves it (15).
         SurvivesRestart,
+        // Drawn with its projectile record's model (`thrown_key`).
+        ShownItem(thrown_key(id)),
         CaGrenade {
             weapon: id,
             params: data.params.clone(),
@@ -974,6 +1015,7 @@ pub fn spawn_grenade(
             hp: data.hp,
             thrower,
             pos: at / data.unit,
+            drawn_from: at / data.unit,
             velocity: velocity / data.unit,
             created: None,
             steps: 0,
@@ -1336,7 +1378,7 @@ impl Out<'_, '_> {
     }
 }
 
-type Grenades<'w, 's> = Query<'w, 's, (Entity, &'static mut CaGrenade, &'static mut Transform, &'static mut Projectile)>;
+pub(crate) type Grenades<'w, 's> = Query<'w, 's, (Entity, &'static mut CaGrenade, &'static mut Transform, &'static mut Projectile)>;
 
 /// Run the server frames due by this tick.
 #[allow(clippy::too_many_arguments)]
@@ -1355,9 +1397,28 @@ pub(crate) fn server_frames(
         let mut f = Frame::new(frames.frame, frames.time(), clock.now, frames.interval as f32);
         run_frame(&mut f, &mut grenades, &mut spheres, &world, &mut out);
     }
+    draw_between_frames(&frames, clock.now, &mut grenades);
     for (e, s) in &smokes {
         if clock.now >= s.until {
             out.commands.entity(e).try_despawn();
+        }
+    }
+}
+
+/// Where a grenade is drawn (its `Transform`, what the network and the
+/// presentation show) between server frames: on the line from its place
+/// at the frame before (`drawn_from`) to its place now, by how far the
+/// clock is into the server frame after this one. A grenade moves only on
+/// the server's 20 frames a second (its `pos`, which everything in the
+/// game reads); drawn at those frames it hopped 50 ms at a time at every
+/// rendered frame between, so the arc looked wrong. The look is one
+/// server frame behind, as a client between two server updates.
+pub(crate) fn draw_between_frames(frames: &CaServerFrames, now: f64, grenades: &mut Grenades) {
+    let a = (((now - frames.time()) / frames.interval) as f32).clamp(0.0, 1.0);
+    for (_, g, mut transform, _) in grenades.iter_mut() {
+        let at = g.drawn_from.lerp(g.pos, a) * g.unit;
+        if transform.translation != at {
+            transform.translation = at;
         }
     }
 }
@@ -1392,8 +1453,10 @@ fn run_frame(
             };
             // New: its start time is the frame before; stepped in this one.
             let created = *g.created.get_or_insert(f.frame - 1);
+            g.drawn_from = g.pos;
             if let Some(n) = g.nudge.take() {
                 g.pos += n;
+                g.drawn_from = g.pos;
                 transform.translation = g.pos * g.unit;
             }
             let elapsed = (f.frame - created) as f64 * f.dt as f64;
@@ -1417,7 +1480,6 @@ fn run_frame(
                 out.commands.entity(e).try_despawn();
                 continue;
             };
-            transform.translation = g.pos * g.unit;
             let spin = g.spin * f.dt;
             transform.rotation *= Quat::from_euler(EulerRot::YXZ, spin.y, spin.x, spin.z);
             projectile.velocity = g.velocity * g.unit;
