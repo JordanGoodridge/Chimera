@@ -57,10 +57,6 @@ the user's go-ahead: no Actions runs unless asked.
   and Chimera's playback limits voices per source (8) and per sourceless
   entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
   playtest; if it still peaks, a limiter on the mix is next.
-- **Check: is your own killing shot still silent?** Fixed 2026-10-27 for
-  other players' shots seen on a client (`remote_shots` keeps the old
-  gun's fire sound after the ladder swap); the shooter's own predicted
-  last shot before the swap was not checked.
 
 ### Decisions 2026-10-13 (user)
 

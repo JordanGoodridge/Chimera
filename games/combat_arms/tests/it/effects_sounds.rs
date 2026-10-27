@@ -1701,6 +1701,7 @@ fn corrections_10_pellets_repeat_the_muzzle_group() {
         owner: me,
         weapon: w,
         kind: WeaponEventKind::Fired {
+            id: "combat_arms:m4a1",
             origin: cam,
             yaw: 0.0,
             pitch: 0.0,

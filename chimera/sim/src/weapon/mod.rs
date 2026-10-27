@@ -1337,8 +1337,11 @@ pub enum WeaponEventKind {
     /// one `Shot` per pellet): from `origin` along `aim_of(yaw, pitch)`
     /// with spread seed `seed` and this spread, in `AltModes` mode `mode`.
     /// Enough to draw the same shot again elsewhere (`pellet_dirs`): a
-    /// network server sends it to the other clients.
+    /// network server sends it to the other clients. `id`: the weapon's ID,
+    /// kept here because the gun game swaps the gun on the kill, and its
+    /// entity is gone when the event is read.
     Fired {
+        id: &'static str,
         origin: Vec3,
         yaw: f32,
         pitch: f32,
@@ -1576,6 +1579,7 @@ impl WeaponPartsItem<'_, '_> {
             if let Some(scan) = self.hitscan {
                 ctx.seed = ctx.seed.wrapping_add(i);
                 let fired = WeaponEventKind::Fired {
+                    id: self.weapon.id,
                     origin: ctx.eye,
                     yaw: ctx.yaw,
                     pitch: ctx.pitch,

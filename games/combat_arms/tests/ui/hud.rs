@@ -275,6 +275,7 @@ fn t06_just_fired() {
         owner: me,
         weapon: w,
         kind: WeaponEventKind::Fired {
+            id: RIFLE,
             origin: Vec3::ZERO,
             yaw: 0.0,
             pitch: 0.0,
