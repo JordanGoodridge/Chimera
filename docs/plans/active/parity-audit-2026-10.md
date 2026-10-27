@@ -21,7 +21,8 @@ done or moved.
   Ultimate Gun Game) take each game's parts piecemeal.
 - Checked identity gating: which systems of one game run on characters
   whose `GameIdentity` is the other's (`chimera_sim::identity` switches
-  movement, body, animation and HUD; nothing else).
+  movement, body, animation and HUD; nothing else at the time: the
+  games' per-character sounds have followed it since).
 
 ## Checked and matching (no unlisted gap)
 
@@ -44,7 +45,7 @@ in the code.
 
 ## All gaps found
 
-High and medium: the backlog section (nine items). Low:
+High and medium: the backlog section (nine items; the two sound items since fixed). Low:
 
 - **Grenade water splash sounds (CS:S, L, S).** grenades.md 4 step 8:
   entering water plays `BaseEntity.EnterWater`, leaving

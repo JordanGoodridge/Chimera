@@ -35,7 +35,10 @@ use super::{
     rules,
     sounds::{CHANNEL_DASH, CHANNEL_IDLE, CHANNEL_KILL, CaSound},
 };
-use crate::core::{Died, Health, Hitgroup, Intent, LocalPlayer, MovementState};
+use crate::{
+    core::{Died, Health, Hitgroup, Intent, LocalPlayer, MovementState},
+    slots::GameIdentity,
+};
 
 /// The idle timer (s).
 pub const IDLE_AFTER: f32 = 5.0;
@@ -126,7 +129,10 @@ fn length_of(lengths: &CaSoundLengths, file: &str) -> f32 {
 pub fn voices(
     time: Res<Time>,
     mut died: MessageReader<Died>,
-    mut me: Query<(Entity, &Intent, Option<&MovementState>, Option<&Health>, Option<&mut Voices>), With<LocalPlayer>>,
+    mut me: Query<
+        (Entity, &Intent, Option<&MovementState>, Option<&Health>, Option<&mut Voices>, Option<&GameIdentity>),
+        With<LocalPlayer>,
+    >,
     tables: Res<CaFxTables>,
     lengths: Res<CaSoundLengths>,
     mut sounds: MessageWriter<CaSound>,
@@ -140,14 +146,17 @@ pub fn voices(
         .map(|d| d.damage.hitgroup)
         .collect();
     let (dt, now) = (time.delta_secs(), time.elapsed_secs_f64());
-    let Ok((e, intent, state, health, v)) = me.single_mut() else { return };
+    let Ok((e, intent, state, health, v, identity)) = me.single_mut() else { return };
     let Some(mut v) = v else {
         commands.entity(e).insert(Voices::default());
         return;
     };
-    let alive = health.is_none_or(|h| h.current > 0.0);
+    // Another game's identity (the party apps' `identity = "weapon"`)
+    // speaks as that game's: none of ours (a playing idle sound stops).
+    let ours = GameIdentity::allows(identity, crate::game::GAME);
+    let alive = ours && health.is_none_or(|h| h.current > 0.0);
     let s = &tables.sounds;
-    for zone in kills {
+    for zone in kills.into_iter().filter(|_| ours) {
         if let Some(f) = rules::draw_any(&s.kill, rolls.next())
             && v.kill(zone, now, length_of(&lengths, f))
         {

@@ -50,6 +50,9 @@
 //!   (`footstep_sound`); your jump voice.
 //! - **Your voices** (`voice`): the kill voice, the sprint and idle sounds
 //!   (and the HUD's heartbeat), local (Corrections 2026-10-22, 8).
+//! - Hurt sounds, footsteps and voices are only our characters': one
+//!   whose `slots::GameIdentity` is another game's (the party apps,
+//!   `chimera_sim::identity`) sounds as that game's.
 //! - **Liquids** (`volumes::in_liquid`, 5, 8, 11): an impact whose point
 //!   plus normal is in a liquid volume (`submerge`) plays its sound at half
 //!   volume and the surface's under-water group in place of its burst
@@ -142,6 +145,7 @@ use crate::{
         SurfaceNames,
         sound::SurfaceGrid,
     },
+    slots::GameIdentity,
     weapon::{
         Inventory, Weapon, WeaponEvent, WeaponEventKind, aim_of, data::WeaponDataAppExt, grenade::Detonated,
         remote::RemoteShot,
@@ -1324,7 +1328,7 @@ pub const HURT_DEFAULT_LENGTH: f32 = 1.0;
 #[allow(clippy::too_many_arguments)]
 fn hurt_sounds(
     mut damage: MessageReader<Damage>,
-    players: Query<&Transform, (With<Intent>, With<Health>)>,
+    players: Query<(&Transform, Option<&GameIdentity>), (With<Intent>, With<Health>)>,
     tables: Res<CaFxTables>,
     lengths: Res<CaSoundLengths>,
     mut limiter: ResMut<HurtLimiter>,
@@ -1334,8 +1338,10 @@ fn hurt_sounds(
 ) {
     let now = time.elapsed_secs_f64();
     for d in damage.read() {
-        let Ok(victim) = players.get(d.target) else { continue };
-        if d.amount <= 0.0 {
+        let Ok((victim, identity)) = players.get(d.target) else { continue };
+        // Only our characters groan: another game's identity (the party
+        // apps' `identity = "weapon"`) sounds as that game's.
+        if d.amount <= 0.0 || !GameIdentity::allows(identity, super::GAME) {
             continue;
         }
         let gas = d.weapon.is_some_and(|w| w.ends_with("g7a"));
@@ -1369,7 +1375,7 @@ fn footsteps(
         Has<LocalPlayer>,
         Option<&mut OwnSteps>,
         Option<&mut OthersSteps>,
-        (Option<&super::perks::CaPerkEffects>, Option<&Team>, Option<&Selection>),
+        (Option<&super::perks::CaPerkEffects>, Option<&Team>, Option<&Selection>, Option<&GameIdentity>),
     )>,
     listener: Query<(&super::perks::CaPerkEffects, Option<&Team>), With<LocalPlayer>>,
     ca: Option<Res<super::data::CaData>>,
@@ -1387,10 +1393,15 @@ fn footsteps(
     }
     // What the listener's Awareness does to enemy steps (gear_perks.md 14).
     let listener = listener.single().ok().filter(|(fx, _)| fx.awareness).map(|(fx, t)| (*fx, t.map(|t| t.0)));
-    for (e, t, ms, intent, health, local, own, others, (perk, team, look)) in &mut players {
+    for (e, t, ms, intent, health, local, own, others, (perk, team, look, identity)) in &mut players {
         let Some(ms) = ms else { continue };
         let alive = health.is_none_or(|h| h.current > 0.0);
         let (before, was_ground) = last.insert(e, (t.translation, ms.on_ground)).unwrap_or((t.translation, ms.on_ground));
+        // Only our characters' steps: another game's identity (the party
+        // apps' `identity = "weapon"`) steps as that game's.
+        if !GameIdentity::allows(identity, super::GAME) {
+            continue;
+        }
         let moved = t.translation.with_y(0.0).distance(before.with_y(0.0)) / UNIT;
         let landed = ms.on_ground && !was_ground;
         let jumped = !ms.on_ground && was_ground && intent.is_some_and(|i| i.jump);

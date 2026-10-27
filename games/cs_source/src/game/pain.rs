@@ -37,6 +37,12 @@
 //! seen (`core::Died`, which a network client gets from the server's
 //! kill), so they are not sent again.
 //!
+//! Only CS:S characters sound so: one whose `slots::GameIdentity` is
+//! another game's (the party apps, `chimera_sim::identity`) gets that
+//! game's hurt and death sounds, none of these; and the flesh impact is
+//! only a CS:S weapon's (or map damage's): another game's gun makes its
+//! own impact on characters.
+//!
 //! Known shortcuts (docs/tech-debt.md): Fall damage feedback beyond the specs:
 //! the `Player.FallDamage` sound (the server's, on any landing whose damage
 //! is taken: not under god mode or a map's fall-damage filter,
@@ -83,7 +89,8 @@ use crate::{
     core::{Damage, DamageKind, DamageRules, Died, Health, Hitgroup, Intent, MapWater, SimSet, Team},
     map::{GameSound, PlaySound, sound::SoundBank},
     objectives::hostages::Hostage,
-    weapon::Armor,
+    slots::GameIdentity,
+    weapon::{Armor, Inventory, Weapon, impact::weapon_game},
 };
 
 pub const DAMAGE_KEVLAR: &str = "Player.DamageKevlar";
@@ -166,7 +173,9 @@ pub fn death_sound(kind: DamageKind, group: Hitgroup) -> &'static str {
 fn hurt_sounds(
     mut damage: MessageReader<Damage>,
     before: Res<ArmorBeforeShots>,
-    victims: Query<(&Health, &Transform, Has<Team>), (With<Intent>, Without<Hostage>)>,
+    victims: Query<(&Health, &Transform, Has<Team>, Option<&GameIdentity>), (With<Intent>, Without<Hostage>)>,
+    holders: Query<&Inventory>,
+    weapons: Query<&Weapon>,
     rules: DamageRules,
     bank: Option<Res<SoundBank>>,
     water: Option<Res<MapWater>>,
@@ -179,7 +188,7 @@ fn hurt_sounds(
     // Health left as this tick's hits land (several can hit one victim).
     let mut left: HashMap<Entity, f32> = HashMap::new();
     for d in damage.read() {
-        let Ok((health, at, team)) = victims.get(d.target) else {
+        let Ok((health, at, team, identity)) = victims.get(d.target) else {
             continue;
         };
         let h = left.entry(d.target).or_insert(health.current);
@@ -191,7 +200,11 @@ fn hurt_sounds(
         }
         let hurt = if team {
             *h -= d.amount;
+            // Only a CS:S character's voice and body: another game's
+            // identity (the party apps' `identity = "weapon"`) sounds as
+            // that game's.
             hurt_sound(d.kind, d.hitgroup, before.0.get(&d.target).copied())
+                .filter(|_| GameIdentity::allows(identity, super::GAME))
         } else {
             None
         };
@@ -201,6 +214,7 @@ fn hurt_sounds(
                 ..PlaySound::at(entry, at.translation)
             }));
         } else if matches!(d.kind, DamageKind::Bullet | DamageKind::Blast)
+            && dealt_by_ours(d, &holders, &weapons)
             && let Some(entry) = &flesh
             && !under_water(d.point, water.as_deref())
         {
@@ -215,6 +229,16 @@ fn hurt_sounds(
     }
 }
 
+/// Whether `d` was dealt by a CS:S weapon (or one of no game: map
+/// damage): another game's gun makes its own impact on characters.
+fn dealt_by_ours(d: &Damage, holders: &Query<&Inventory>, weapons: &Query<&Weapon>) -> bool {
+    let id = d.weapon.or_else(|| {
+        let held = holders.get(d.attacker?).ok()?.active?;
+        Some(weapons.get(held).ok()?.id)
+    });
+    id.and_then(weapon_game).is_none_or(|g| g.eq_ignore_ascii_case(super::GAME))
+}
+
 /// A hit in water makes no impact sound (as `impacts::bullet_impacts`).
 fn under_water(point: Vec3, water: Option<&MapWater>) -> bool {
     water
@@ -223,11 +247,14 @@ fn under_water(point: Vec3, water: Option<&MapWater>) -> bool {
 
 fn death_sounds(
     mut died: MessageReader<Died>,
-    victims: Query<&GlobalTransform, (With<Team>, Without<Hostage>)>,
+    victims: Query<(&GlobalTransform, Option<&GameIdentity>), (With<Team>, Without<Hostage>)>,
     mut play: MessageWriter<PlaySound>,
 ) {
     for d in died.read() {
-        let Ok(at) = victims.get(d.entity) else { continue };
+        let Ok((at, identity)) = victims.get(d.entity) else { continue };
+        if !GameIdentity::allows(identity, super::GAME) {
+            continue;
+        }
         play.write(PlaySound {
             source: Some(d.entity),
             ..PlaySound::at(death_sound(d.damage.kind, d.damage.hitgroup), at.translation())
