@@ -64,6 +64,12 @@ the user's go-ahead: no Actions runs unless asked.
   and Chimera's playback limits voices per source (8) and per sourceless
   entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
   playtest; if it still peaks, a limiter on the mix is next.
+- **Combat Arms grenades don't behave like Combat Arms'** (user,
+  2026-10-27): the physics is wrong (throw speed/arc, bounce, roll,
+  fuse), the model is wrong (thrown and held/view model), and there's no
+  throw animation and no sound (pin, throw, bounce, explosion). Match
+  specs/combat_arms (grenade sections, effects_sounds.md §10 grenade
+  bounces) in plain Combat Arms and in the party apps.
 
 ### Gaps vs the originals (audit 2026-10-27)
 
