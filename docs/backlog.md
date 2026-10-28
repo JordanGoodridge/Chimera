@@ -27,6 +27,12 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Frame rate drops after a few map changes.** de_dust2 started at about
+  240 fps and fell after several map changes in one session; more bots
+  may also cost more. Suspect something that outlives a map (entities,
+  meshes, materials, sounds, observers or systems added per load). Find
+  what grows per change (entity and asset counts, frame time after N
+  changes on one map) and free it; measure per bot too.
 - **Match end: everyone stops: fixed, confirm in a playtest.** From the
   winning kill every player's and bot's input keeps only the look (server
   side, `core::FreezeTime` for prediction and bots); the win callout
