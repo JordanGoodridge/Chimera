@@ -5,6 +5,7 @@
 //! where tests go: docs/OBSERVABILITY.md, section 1.
 
 mod announcer;
+mod bodies_drawn;
 mod controls;
 mod cross_game;
 mod cross_glass;
