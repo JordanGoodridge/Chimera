@@ -229,7 +229,7 @@ x = \lfloor (512-64)\,x_r \rfloor,\; y = \lfloor (384-64)\,y_r \rfloor,\; w = \l
   - Range_eff = Range + trunc(Range * Σ attachment range %), with Range from the weapon data.
 - **Placement:** right-aligned at (490, 400) ref, 20-point HUD font. It scales with x_r and y_r. Precisely (Corrections 15): the font is the font list's entry `SysFont13` asked for at height 20 px (at 1024 x 768); (490, 400) is the text's right end and its top, not a box centre.
 - A hit closer than 1 unit (distance truncates to 0) shows an empty text.
-- It is drawn whether or not the scope overlay is up.
+- It is drawn whether or not the scope overlay is up. It is a HUD item and stretches with the screen like one; the scope picture does not (it scales by the screen height only, `weapon_classes.md` 7.10), so at wide aspects the two drift apart (test cases 42–44 there).
 
 ### A10. Hit indicator (you hit someone)
 

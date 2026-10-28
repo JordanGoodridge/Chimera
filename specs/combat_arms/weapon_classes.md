@@ -3,7 +3,7 @@
 Source basis: the client's weapon logic (fire, reload and per-round reload state machine, spread and the multi-ray path), the client's player manager (zoom levels, field of view, scope sway, mouse scaling while zoomed, automatic zoom-out), the client's interface overlay code (scope overlay), the shared weapon and modification attribute managers, the server's player object (reload bookkeeping per class), plus the shipped attribute data (weapons file, modifications file, projectile effects file) and the first-person view-model animation files, all from a reference client build (US data set). Numbers for typical weapons are that build's data; the Steam build may differ (see Open questions).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; How the data marks a class; Typical weapons; Behavior (1 assault rifles, 2 SMGs, 3 machine guns, 4 pistols, 5 shotguns, 6 sniper rifles, 7 zoom and scope, 8 launchers and other classes); Per-tick order; Edge cases; Quirks; Corrections (2026-10-19); Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; How the data marks a class; Typical weapons; Behavior (1 assault rifles, 2 SMGs, 3 machine guns, 4 pistols, 5 shotguns, 6 sniper rifles, 7 zoom and scope, 8 launchers and other classes); Per-tick order; Edge cases; Quirks; Corrections (2026-10-19); Corrections (2026-10-28); Test cases; Open questions.
 
 This spec builds on `weapon_firing.md` (one rifle, the M4A1) and says only what differs. Terms used without definition here (spread fraction $p$, firing meter $F$, movement meter $M$, cone $n$, fire cycle, view kick $J$) are defined there.
 
@@ -385,16 +385,32 @@ v_{in} = \frac{\texttt{FovX} - \phi_{L}}{\texttt{ZoomTime}}, \qquad v_{out} = \f
 - While $Z$ holds, the speed limit is walk speed (70 u/s) with the normal carry penalty, even when running or sprinting (`movement.md`). L96A1 with the reference vest: 46.2 u/s.
 - `ZoomedMovePenalty` is read but never used.
 
-#### 7.10 Scope overlay (layout by role)
+#### 7.10 Scope overlay
 
-- One full-screen picture, the scope's `ZoomSpriteName`, drawn in front of the world with no depth test, no fog and no lighting, centred on the view, scaled by `ZoomSpriteScale`. The picture itself holds the reticle and the opaque surround. There is no separate drawn reticle.
+- One picture, the scope's `ZoomSpriteName`, drawn in front of the world with no depth test, no fog and no lighting, centred on the view. The picture itself holds the reticle and the surround. There is no separate drawn reticle.
 - By role:
-  - opaque mask outside the lens;
+  - the surround (black, opaque) around the lens;
   - the reticle, centred exactly on the aim (the ray's unperturbed direction);
-  - for scopes with a range readout, the number at the HUD position of `hud_crosshair.md` A9.
-- While the overlay is up: the view model is hidden and the HUD crosshair is not drawn (`hud_crosshair.md`). The rest of the HUD (health, ammo, kill feed) stays.
-- Lifetime: from the press that leaves level 0 until the zoom-out transition completes (or an instant reset). Stepping between levels keeps it.
+  - for scopes with a range readout, the number at the HUD position of `hud_crosshair.md` A9 (not part of the picture; see "Range readout" below).
+- While the overlay is up: the view model is hidden and the HUD crosshair is not drawn (`hud_crosshair.md`). The rest of the HUD (health, ammo, kill feed) stays and draws over the picture.
+- Lifetime: from the press that leaves level 0 until the zoom-out transition completes (or an instant reset). Stepping between levels keeps it, at the same size (the size does not depend on the zoom FOV).
 - Model level of detail is raised as the FOV narrows (offset $-5 \times (\texttt{FovX} - \phi)/(\texttt{FovX} - 2^\circ)$), presentation only.
+
+**Size and placement at any resolution (2026-10-28).** The picture is not a 2D HUD image in the 1024 x 768 frame of `ui_system.md`. It is a flat square-pixelled card drawn by the view-model camera (`view_models.md`: vertical FOV `PVModelFOV` 50°, aspect = the screen's width / height). So it keeps its own proportions at every aspect ratio and its size follows the screen **height** only:
+
+- The picture file: `ZoomSpriteName` names a sprite file whose (first) frame is a texture of w_t x h_t texels (its full-size level). Stock scope and dot-sight pictures are 1024 x 1024.
+- The scale: s = `ZoomSpriteScale` (the attribute reader's default is 0.001 when the key is missing).
+- The card sits 1 unit straight ahead of the eye and spans ±w_t·s horizontally and ±h_t·s vertically. Projected through the 50° vertical FOV, on a W x H screen its size in pixels is
+
+```math
+w_{px} = \frac{w_t\, s}{\tan 25^\circ}\, H, \qquad h_{px} = \frac{h_t\, s}{\tan 25^\circ}\, H
+```
+
+  with tan 25° = 0.466308, centred on (W/2, H/2): left = W/2 − w_px/2, top = H/2 − h_px/2. One texel is s·H / tan 25° pixels in **both** axes. W does not enter the size: there is no reference resolution and no stretch to the screen's width.
+- With the stock 1024 x 1024 picture and s = 0.001: the card is 2.19598·H pixels square, more than twice the screen height. Only its middle shows: the texel rows from 278.8 to 745.2 at every resolution, and the columns 512 ± 227.7·(W/H) (201.1 to 822.9 at 4:3; 97.5 to 926.5 at 16:9). Everything outside the screen is simply cut off.
+- **Nothing fills the margins.** Where the picture's alpha is low (outside its opaque surround) or where the card does not reach, the world shows. There are no black bars and no stretched fill. In the stock sniper picture (for example `SR_Scope_Style_A`) the opaque black ring reaches out to texel column 173 on the left and 856 on the right of the 1024, and the lens opening runs about from 294 to 733 along the centre row. With s = 0.001 that ring covers the full width at 4:3 (its outer edge lands at x ≈ −46 and 1080 on 1024 x 768) but **not** at 16:9 or 16:10: at 1920 x 1080 the ring ends at x ≈ 175 and 1759, so a strip of world about 175 px wide shows on each side (Open question 4).
+- **Focus blur** (only with the game's post-processing shaders on): after the world and the overlay are drawn, while zoomed, the whole frame is mixed with a blurred copy of itself through the scope's `FocusTex` picture. That picture is mapped once over the **whole screen** (stretched to W x H, so at 16:9 it is wider than it is drawn at 4:3); where its alpha is 1 the sharp frame shows, where it is 0 the blurred one. Stock focus pictures are 512 x 512 (some 256 x 256). The HUD is drawn after it, unblurred. The blur kernel itself is not specified here.
+- **Range readout**: the HUD text of `hud_crosshair.md` A9, placed in the 1024 x 768 frame and stretched like every HUD item (x by W/1024, y by H/768). It does not move with the picture, which scales by H only. So at wide aspects the readout drifts left of the reticle relative to the picture: its right end is 22 px left of the centre at 1024 x 768 (22 px = 13.4 texels at s = 0.001), 41.25 px (17.8 texels) at 1920 x 1080 and 55 px (17.8 texels) at 2560 x 1440.
 
 ### 8. Launchers and other classes
 
@@ -467,6 +483,15 @@ From a second pass over the reference's server shot handling, its reload bookkee
    - Ours: the trigger fires on the press tick (`classes.rs:278-282` for the minigun waits only for the spin-up time).
    - Why it matters: pump shotguns answer one frame faster than rifles and pistols. A pistol tap fires 50 ms after the press at 60 fps.
 
+## Corrections (2026-10-28)
+
+From the reference's overlay creation, the engine's sprite drawing for objects in the view-model ("really close") pass, the post-processing pass and the install's scope pictures (dimensions and alpha only), after a playtest report that our scopes do not fill the screen.
+
+4. **The scope overlay scales with the screen height, keeps its proportions, and has no black fill.**
+   - Reference: see the corrected 7.10. The picture is a card 1 unit ahead in the view-model projection (50° vertical FOV, screen aspect), half-size `ZoomSpriteScale` x texture size, so it is H·w_t·s / tan 25° pixels wide and H·h_t·s / tan 25° tall, centred, cropped by the screen; the world shows wherever the picture is transparent or absent.
+   - Ours: `games/combat_arms/src/ui/scope.rs` hands the picture to the shell's overlay, which draws it centred at its own aspect, filling the view's height, between black bars; `ZoomSpriteScale` is not applied.
+   - Why it matters: with the stock picture and s = 0.001 the game's lens fills about 94 % of the screen height and the black ring reaches past the screen's top, bottom and (at 4:3) sides; ours shows the whole picture, ring and all, at less than half that size, with black bars instead of the world at the sides.
+
 ## Test cases
 
 Data as in "Typical weapons". Reference character for speeds. "Exact time" means the fire cycle, transitions and spread run on exact time (`weapon_firing.md` Q2 recommendation); frame-quantised cases say so. Unarmoured male victim, damage roll 1.0, unless stated.
@@ -513,12 +538,18 @@ Data as in "Typical weapons". Reference character for speeds. "Exact time" means
 40. **Latency by class (Corrections 3)**: 60 fps, press seen on update 0. M92FS → round on update 3 (50.0 ms). Remington_870 → update 2 (33.3 ms). Minigun_Special → spin-up started on update 1, seen done on the first update at or after 1300 ms of it, `fire_0` started on that update, first round on the next.
 41. **Pump re-press (Corrections 3)**: Remington_870 held → the second round comes on the update after the one that sees the 600 ms `fire_0` done (no extra state update inside a held loop).
 
+42. **Scope overlay size, 1024 x 768** (Corrections 4): stock 1024 x 1024 picture, `ZoomSpriteScale` 0.001 → card 1686.5 x 1686.5 px at (−331.3, −459.3); 1.6470 px per texel; visible texels x 201.1–822.9, y 278.8–745.2; the black ring covers both side edges (its outer edge at x ≈ −46.3 and 1080.2); no world strip; the range readout's right end at (490, 400), font height 20.
+43. **Scope overlay size, 1920 x 1080**: same scope → card 2371.7 x 2371.7 px at (−225.8, −645.8); 2.3161 px per texel; visible texels x 97.5–926.5, y 278.8–745.2; the ring's outer edge at x ≈ 174.9 and 1759.0, world visible (not black) for x < 175 and x > 1759; the lens opening about x 455 to 1474; readout right end (918.75, 562.5), font height 28.125.
+44. **Scope overlay size, 2560 x 1440**: card 3162.2 x 3162.2 px at (−301.1, −861.1); 3.0881 px per texel; visible texels as at 1920 x 1080; ring edge at x ≈ 233.1 and 2345.4, world visible outside; readout right end (1225, 750), font height 37.5.
+45. **Scale and zoom independence**: the same scope with `ZoomSpriteScale` 0.002 at 1920 x 1080 → card 4743.3 px square (twice 43). Stepping the Barrett from 30° to 10° → card size unchanged. A 512 x 256 picture at s = 0.001, 1024 x 768 → 843.3 x 421.6 px, centred (texels stay square: no stretch at any aspect).
+46. **No fill outside the picture**: a test picture 256 x 256, opaque, s = 0.001, 1920 x 1080 → card 592.9 px square centred at (960, 540); every pixel outside it shows the world (with the focus blur's mix where that pass is on), none is black from the overlay.
+
 ## Open questions
 
 1. **Which build's data?** All numbers are the US reference data and view models; the Steam build may differ. Re-read the eight typical weapons and the scope records once the attribute reader works.
 2. **Animation per weapon**: the view-model animation file was matched to each weapon by name (model table mapping not re-traced here). Confirm the M60, Minimi, R870, L96A1 and M92FS lengths in game: rounds per minute, pump and bolt time, shell reload time.
 3. **Minigun loop keys**: the 170 ms loop has fire keys at both 0 and 170 ms. Whether a loop restart fires one round or two at the seam decides 5 or 6 rounds per loop (1765 or 2118 per minute). Count rounds spent in 10 s of holding.
-4. **Scope overlay layout**: the overlay is one picture per scope. Its contents (lens size, reticle shape, whether the mask leaves the HUD visible) were not inspected. They belong with the textures spec. Also whether the picture is stretched to wide screens.
+4. **Scope overlay layout.** **Answered (2026-10-28)** from the reference: size, placement and margins are in 7.10 (scales with the screen height, square texels, centred, no fill). Still open: (a) the stock scopes' `ZoomSpriteScale` values were not re-read (the attribute file is keyed and this pass did not decrypt it); 0.001 is the reader's default and makes the stock sniper lens about 94 % of the screen height, which fits the art, but confirm per scope. (b) The user remembers the Steam build's scope "filling the screen, a bit stretched". The reference says it is not stretched and, at s = 0.001, leaves a world strip about 175 px wide each side at 1920 x 1080. Either the stock scale is at least 0.00123 (enough for the ring to reach the 16:9 edges), or the Steam build differs, or the memory is of the full-screen focus blur (which *is* stretched to the screen) or of 4:3 play. Check: a screenshot at 1920 x 1080 zoomed with the L96A1 (`Sniper Scope`): measure the lens width in pixels (≈ 1019 px wide at s = 0.001) and look at the side edges.
 5. **Hold-breath command**: a hold-breath command exists in code with no binding or menu entry here. Check whether the Steam build exposes it.
 6. **Pellet carry-over in the live game**: is `AllowMultipleVectorsPerRoundBug` still 1 in the Steam client, and does the live server still accept the repeated reports? Test: one pellet clipping a bot's edge at 500 units should do far more than 9.
 7. **Two-level bolt zoom-out** (Q3): confirm on the ASW338LM that the scope steps to level 2 before leaving.
