@@ -11,10 +11,12 @@
 //! - A map of another game is the world only: what its game brings to
 //!   every map (`MapData::kit`, a `GameKit`: bodies, held and view models,
 //!   HUD, radio, bot names and navigation, round sounds, muzzle flash,
-//!   shells, decals) is not even read: `load_with` gives the loader
+//!   shells) is not even read: `load_with` gives the loader
 //!   `MapLoadOptions::kit` = `KitLoad::Only(kept)`, so the kit's textures
 //!   and materials aren't loaded with the map's (only the kept weapons'
-//!   models are), and `dress` replaces what is left (`GameKit::stay`: a
+//!   models and the impact decals are: the map's game's impacts are
+//!   still drawn on it, `MapData::impacts`), and `dress` replaces what is
+//!   left (`GameKit::stay`: a
 //!   field added to the kit needs no line here, a loader that ignores the
 //!   option is still stripped). Its spawn points' teams become the
 //!   gameplay's (`SpawnTeams`; unlisted teams: any team), and the
@@ -100,8 +102,9 @@ pub enum KitLoad {
 
 impl KitLoad {
     /// Whether the kit's parts that aren't weapon models (character
-    /// bodies, HUD, radio, bot names, round sounds, decals, muzzle flash,
-    /// shells, navigation) are loaded.
+    /// bodies, HUD, radio, bot names, round sounds, spray logos, muzzle
+    /// flash, shells, navigation) are loaded. A loader reads the impact
+    /// decals with any kit (they are the map's impact looks', which stay).
     pub fn parts(&self) -> bool {
         matches!(self, Self::All)
     }
@@ -468,11 +471,13 @@ mod tests {
         let mut map = a_map("x", &MapLoadOptions::default()).unwrap();
         map.kit.round_sounds.draw = Some("a:draw".into());
         map.kit.muzzle_flash = Some(default());
+        map.kit.decals.groups.insert("impact.concrete".into(), vec![(1.0, 0)]);
         map.source_fx_mut().detail_props = None;
         SOURCES.dress("a", &mut map);
         let kit = &map.kit;
         assert!(kit.round_sounds.draw.is_none() && kit.muzzle_flash.is_none());
         assert_eq!(kit.held.len(), 1, "the kept prefix stays");
+        assert!(kit.decals.groups.contains_key("impact.concrete"), "its impact decals stay, with its impact looks");
         assert!(!map.extras.is_empty(), "the map's own extensions are not the kit");
     }
 

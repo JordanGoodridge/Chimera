@@ -72,6 +72,14 @@ the user's go-ahead: no Actions runs unless asked.
 - **Combat Arms scopes don't fill the screen**: the overlay is centred
   but not scaled, so the sides are black; Combat Arms stretches it to
   the screen (spec first: how it scales).
+- **CS:S guns left no bullet holes on CS:S maps** (de_dust2; Combat
+  Arms guns' did): the party loads CS:S's maps for Combat Arms'
+  gameplay, so their kit was stripped (`GameKit::stay`) and its impact
+  decals never loaded (`KitLoad::Only`/`Players`), while the impacts
+  stayed CS:S's to draw (`MapData::impacts`): nothing drew them. Combat
+  Arms maps had them as a guest's (`dress_guest`), hence "after a map
+  change". Now the impact decals load with any kit and stay with the
+  map. Fixed, confirm in a playtest.
 - **A Combat Arms character can't break glass by running into it**
   (cs_office windows); a CS:S character can.
 - **A bot stays invisible**, as either game's character. Repro wanted

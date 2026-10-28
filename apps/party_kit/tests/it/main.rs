@@ -26,5 +26,6 @@ mod startup;
 mod switches;
 
 mod heavy {
+    mod cs_decals;
     mod impacts;
 }

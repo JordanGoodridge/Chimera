@@ -14,7 +14,8 @@
 //! decals, round sounds, held and view models, muzzle flash, shells, the
 //! navigation mesh) is read as far as `MapLoadOptions::kit` says: all of it
 //! by default, and for a mashup's map (`map::KitLoad::Only`) none but the
-//! kept guns' models, so its textures and materials aren't loaded
+//! kept guns' models and the impact decals (CS:S's impacts are drawn on its
+//! maps whoever's the gameplay), so its textures and materials aren't loaded
 //! (`KitLoad::Players`: the players' bodies and the HUD look too). On a map of
 //! another game the same parts are read from the install without a map
 //! (`dress_guest`, `map::MapSources::guests`).
@@ -341,6 +342,12 @@ pub fn load_level_bytes_with(
             .read("botprofile.db")
             .map(|b| crate::map::bot_profiles::BotProfiles::parse(&String::from_utf8_lossy(&b)))
             .filter(|p| !p.0.is_empty());
+    } else {
+        // A mashup's map: its impacts' decals still (they go with the
+        // impact looks below, which every load claims, and `GameKit::stay`
+        // keeps them); without them a CS:S gun drew no bullet holes on
+        // CS:S's own maps in the party apps.
+        data.kit.decals = super::decals::impact_decals(&mut materials);
     }
     // A mashup's map for players of CS:S (`KitLoad::Players`): its HUD
     // look too (a whole kit read it above, in its usual order).
@@ -349,8 +356,8 @@ pub fn load_level_bytes_with(
     }
     data.overview = super::hud::overview(&mut materials, name);
     data.particles = super::impact_effects::load_materials(&mut materials);
-    // Its impacts' looks (effect materials; decals with a whole kit, else
-    // `dress_guest`'s): CS:S's impacts can be drawn on it.
+    // Its impacts' looks (effect materials; the impact decals, with any
+    // kit): CS:S's impacts can be drawn on it.
     data.impacts.add(super::GAME);
     super::trails::add_trails_and_stacks(&bsp, &mut materials, &mut data);
     super::beams::add_strikes(&bsp, &mut materials, &mut data);
