@@ -3,7 +3,7 @@
 Source basis: the client's radar HUD panel, its full-screen ("tactical") map panel and the per-mode icon legend data, the server's per-round mission message that carries the map data, the mission files' map fields, the scanner items (heartbeat sensors, satellite scanner, Hunted's system scan) on client and server, the HUD layouts of both panels and the HUD layout attributes that name their icons; checked against the Steam install's archives (Steam build 25595979; see Test cases).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Behavior (R1 to R12: radar; F1 to F6: full-screen map; S1 to S3: scanners; N: network); Per-frame order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Behavior (R1 to R12: radar; F1 to F6: full-screen map; S1 to S3: scanners; N: network); Per-frame order; Edge cases; Quirks; Test cases; Open questions; Corrections (2026-10-22); Corrections (2026-10-28).
 
 ---
 
@@ -37,7 +37,7 @@ Sections: Summary; Units and conventions; Constants; Behavior (R1 to R12: radar;
 | radar scale k | 186 / 1500 = 0.124 | ref px per u | M's width / S, at zoom 1 |
 | radar map quad | (725, -88), 372 x 372 | ref px | layout `Map`, twice M, same centre; alpha 190 |
 | view wedge ("guide") | (653, -161), 512 x 512 | ref px | layout `guide`, centre (909, 95) (2 and 3 px off C, quirk) |
-| radar frame | (782, -30), 227 x 226 | ref px | layout `bg`, drawn over everything |
+| radar frame | (782, -30), 227 x 226 | ref px | layout `bg`, drawn over everything. The 256 x 256 `bg.dtx` is **not** stretched into this rect: the rect shows the texture's top-left 227 x 226 texels at one texel per ref px (Corrections (2026-10-28) 1) |
 | zoom bar track | (1004, 4), 16 x 192 | ref px | layout `magnification` |
 | zoom bar knob | x 1004, 16 x 10, y 18 to 168 | ref px | layout `ScaleBar`; travel 150 |
 | zoom z range | 0.5 to 2.0 | | default 1.0 |
@@ -129,7 +129,7 @@ u_0 = \frac{P_x - W_r + O_x - LT_x}{|LT_x - RB_x|},\quad v_0 = \frac{LT_z - (P_z
 ```
 
   Corners: top-left (u0, v0), top-right (u0 + uw, v0), bottom-right (u0 + uw, v0 + vh), bottom-left (u0, v0 + vh).
-- Texture coordinates outside [0, 1] occur near the map's edge; how they are addressed was not traced (Open question 3).
+- Texture coordinates outside [0, 1] occur near the map's edge. They are **clamped**: the sampler repeats the image's outermost texel row or column (Corrections (2026-10-28) 2). Almost every image has a fully transparent margin, so near any edge the window simply shows no picture.
 - **Fixed north:** the quad is its layout rect (725, −88) 372 x 372, scaled.
 - **Rotating radar:** the quad is turned about (911, 98) by −ψ (counter-clockwise by ψ), using the corner formula of R7 with angle π − ψ and size 372 x 372, so the facing direction is up.
 - The quad is drawn at alpha 190 and clipped to M (in screen px: M scaled by x_r, y_r).
@@ -445,7 +445,7 @@ All at 1024 x 768 (x_r = y_r = 1) unless stated. "rel" = object position minus p
 
 1. **Build match:** the panel code and the default key bindings were read from reference material; the layouts, attributes and mission files were read from the Steam build. Check that M opens the map, `-`/`=` zoom and the radar sits top right at 1024 x 768 in the Steam client.
 2. **Where icons fall at a screenshot level:** check test 1 against the live game by standing a teammate 300 u east and 400 u north (e.g. measured with positions from a demo or the console).
-3. **Texture addressing** of the radar's map window outside [0, 1] near the map's edge (wrap, clamp or border); compare a screenshot at a map corner.
+3. **Texture addressing** of the radar's map window outside [0, 1] near the map's edge (wrap, clamp or border). **Answered (2026-10-28):** clamp, and the images' transparent margins make the area outside the picture empty (R5; Corrections (2026-10-28) 2). Only a screenshot check at a map corner is left.
 4. **world_dat.md contradiction:** it says the world offset is kept only for texture-animation scripts and "gameplay uses file positions as they are". The radar's map window and the full map's icon positions also add it (R5, F3). world_dat.md should mention this use.
 5. **Player positions sent to clients:** whether the server sends every player's position always, or culls by visibility. If it culls, revealed enemies (flag carriers, scans) may freeze on the radar. Not traced.
 6. **Team ids in free-for-all modes** (hud_crosshair.md Open question 15): the server picks round winners by team id, which suggests per-player ids, so other players are enemies and stay hidden. Check in One Man Army that nobody shows on the radar.
@@ -562,3 +562,90 @@ Could not determine here: whether the install's layout attributes carry
 the misspelt key of correction 5; whether the HUD (and so the map's
 per-frame check) keeps updating during every kind of round-end screen
 (the scoreboard shown at a match's end may sit over it).
+
+## Corrections (2026-10-28)
+
+From a pass over the reference's UI image drawing, the HUD manager's
+render states and the radar panel, checked against the unkeyed radar art
+and map-image archives of the Steam install (decoded in memory). The
+HUD layout file itself (`xml/hud_main.xml`) is in a keyed archive and was
+not re-read here; the layout rects above come from the first pass.
+
+1. **The radar frame is drawn at one texel per ref px, cropped, not
+   stretched** (Constants "radar frame"; R6 draw order).
+   - Rule (ui_system.md W1): an image control without custom UVs shows
+     the **top-left w x h texels** of its texture, u from 0 to w / T_w and
+     v from 0 to h / T_h, stretched only by the screen scale (x_r, y_r).
+     So the frame control (782, −30) 227 x 226 over the 256 x 256
+     `bg.dtx` shows texels 0..226 x 0..225 at their own size, u 0 to
+     227/256 = 0.88671875, v 0 to 226/256 = 0.8828125. Columns 227..255
+     and rows 226..255 are not drawn.
+   - The art (Steam install, 32-bit, one mip): `bg.dtx` is transparent
+     except a one-texel black outline at alpha 128 whose columns are
+     texels 35 and 221 and whose rows are 34 and 220 (a 187 x 187 square,
+     both ends included). It is **not** centred in the texture: 35 texels
+     from the left, 34 from the right, 34 from the top, 35 from the
+     bottom. Everything outside the 227 x 226 crop is transparent, so the
+     crop changes nothing visible.
+   - On screen at 1024 x 768 (the drawing subtracts half a pixel, so
+     texel i lands exactly on pixel x + i): the outline's left and right
+     columns are pixels **817 and 1003**, its top and bottom rows **4 and
+     190**. With the window M = (818, 5) 186 x 186 (pixels 818..1003,
+     5..190), the left and top lines sit one pixel **outside** M and the
+     right and bottom lines lie **on** M's last column and row. The frame
+     is drawn after the clipped window content and is not clipped.
+   - Why the numbers looked wrong: the table gave the control rect but not
+     the texturing rule. Stretching the 256 x 256 texture into 227 x 226
+     shrinks the outline to about 165 x 164 px, which does not fit the
+     window. The layout numbers were right. Ours
+     (`games/combat_arms/src/ui/hud/radar.rs:71`, `FRAME_AT`) draws the
+     whole texture at (783, −30) 256 x 256. That puts the outline at
+     columns 818 and 1004, **one pixel right** of the stock frame, and its
+     rows at 4 and 190 (right). Fix: (782, −30) and a 227 x 226 quad with
+     UVs (0, 0)..(227/256, 226/256). Drawing the whole texture at
+     (782, −30) 256 x 256 gives the same picture, because the cropped part
+     is transparent.
+   - The same rule holds for the other radar images: the zoom bar's track
+     (`magnification_bg.dtx`, 16 x 256, with art in rows 0..186) shows its
+     top 192 rows in its 16 x 192 rect. The knob (16 x 16 art, 16 x 10
+     rect) shows its top 10 rows. `guide.dtx` (512 x 512 in a 512 x 512
+     rect) and the 64 x 32 icons show whole. The map quad sets its UVs
+     itself (R5).
+
+2. **Texture addressing of the map window: clamp** (R5; Open question 3).
+   - Reference: before the HUD panels draw, the HUD manager sets the draw
+     primitive's addressing to clamp, along with its other states, and the
+     radar panel does not change it. Panels that switch to wrap for a
+     moment (the recording overlay, the gun-smith screen) set clamp again
+     afterwards. Wrap is the primitive's own default and the menus' mode
+     (ui_system.md Open question 5). The HUD panels never draw with it.
+   - Effect: a window texel coordinate below 0 or above 1 reads the
+     image's outermost texel column or row (with the usual bilinear
+     filtering inside the image). It is neither wrapped to the opposite
+     side nor a border colour.
+   - Why Warehouse's top shows no picture: the images are padded. In the
+     Steam install 73 of the 78 map images have a fully transparent
+     outermost row and column (alpha 0, colour 0). Clamping therefore
+     reads transparent texels outside [0, 1]. Each picture also sits inside
+     a wide transparent margin. `Map_Showdown.dtx` (Warehouse) has non-zero
+     alpha only in texels x 216..797, y 161..897, so well before the
+     window reaches the image's edge it shows the transparent margin, at
+     alpha 190 × 0, so nothing of the map is drawn there. Five images
+     have opaque or partly opaque edges (`map_overdose`, `map_lastvegas`,
+     `map_deathdesert`, `map_gravedigger`, `map_darkforest`). Beyond their
+     edges, clamping smears the edge texels outward in streaks.
+   - Ours should sample with clamp-to-edge. A transparent clear colour, or
+     discarding samples outside [0, 1], matches the 73 padded images but
+     not the five opaque-edged ones.
+
+Test cases added by these corrections (1024 x 768 unless stated):
+
+| # | Setup | Expected |
+|---|---|---|
+| 53 | radar frame drawn | quad (782, −30) 227 x 226, UVs (0, 0) to (0.88671875, 0.8828125) of `bg.dtx`. Outline pixels: columns 817 and 1003 (rows 4 to 190), rows 4 and 190 (columns 817 to 1003), black at alpha 128. Nothing else drawn by the frame |
+| 54 | as 53 at 1920 x 1080 | quad x 1466.25, y −42.1875, w 425.625, h 317.8125, same UVs |
+| 55 | frame vs window | outline column 817 = M's left edge − 1, row 4 = M's top − 1; column 1003 and row 190 are M's last column and row |
+| 56 | zoom track drawn | `magnification_bg.dtx` texels rows 0..191 in (1004, 4) 16 x 192, v 0 to 0.75; not stretched |
+| 57 | Warehouse (Showdown data, O_z = 1216), z = 1, fixed north, player at file (0, y, 1000) | window top edge samples v = (2902.112 − 2966) / 4784.897 = −0.01335 (clamped to row 0, transparent). The picture's first opaque row (texel 161, file z 933.80) is at screen y = 5 + (1750 − 933.80) · 0.124 ≈ 106.2. The window above that row shows no map picture. Only its top ≈ 7.9 px (screen y 5 to 12.9) is outside [0, 1] |
+| 58 | a map whose image has an opaque edge (e.g. `map_lastvegas`), player near that edge | outside [0, 1] the window repeats the edge texel's colour outward (clamp), not the opposite side of the image (wrap) and not empty |
+| 59 | any padded image, texel coordinate (−0.3, 0.5) | reads texel column 0 of row 512: transparent, nothing drawn |
