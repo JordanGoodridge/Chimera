@@ -18,6 +18,8 @@
 //!   fading while the main copy shakes, hold, blow-out; scaled about the
 //!   layout rectangle's centre (`rect_on_screen`), each axis stretched
 //!   from the pack's reference screen.
+//! - `chimera_announce <count> [first] [head|groin] [revenge] [female]`
+//!   shows a kill's callouts at once (a test, for screenshots).
 //! - `AnnouncerView` is the state, headless too (tests read it); drawing
 //!   (Bevy UI images, `<game>://` install files through the asset
 //!   server) and the voices (`SoundAsset`s as local interface sounds) run
@@ -50,6 +52,12 @@ impl Plugin for AnnouncerPlugin {
             .init_resource::<AnnouncerPacks>()
             .add_message::<KillAnnounced>()
             .add_systems(Update, announce);
+        crate::console::ConsoleAppExt::console_command(
+            app,
+            "chimera_announce",
+            "Announce a kill of yours as the server's pack would (a test): chimera_announce <multi-kill count> [first] [head|groin] [revenge] [female].",
+            test_announce,
+        );
         if app.world().contains_resource::<AssetServer>() {
             app.init_resource::<AnnouncerAssets>()
                 .add_systems(
@@ -258,6 +266,44 @@ fn announce(
     if let Some(pack) = view.pack.clone() {
         view.player.update(now, &pack.timing);
     }
+}
+
+/// `chimera_announce`: a kill of the local player's with these facts,
+/// in the server's pack (else the first registered).
+fn test_announce(world: &mut World, args: &[String]) -> Result<Option<String>, String> {
+    let me = world
+        .query_filtered::<Entity, With<LocalPlayer>>()
+        .iter(world)
+        .next()
+        .ok_or("no local player")?;
+    let pack = world
+        .get_resource::<chimera_core::announcer::ActiveAnnouncer>()
+        .and_then(|a| a.0.clone())
+        .or_else(|| world.get_resource::<AnnouncerPacks>()?.0.first().cloned())
+        .ok_or("no announcer pack")?;
+    let multi = args.first().and_then(|a| a.parse().ok()).unwrap_or(1u8).max(1);
+    let has = |w: &str| args.iter().any(|a| a.eq_ignore_ascii_case(w));
+    let facts = KillFacts {
+        pack: pack.id.clone(),
+        multi,
+        first: has("first"),
+        shot: if has("head") {
+            SpecialShot::Head
+        } else if has("groin") {
+            SpecialShot::Groin
+        } else {
+            SpecialShot::None
+        },
+        revenge: has("revenge"),
+        victim_female: has("female"),
+    };
+    world.write_message(KillAnnounced {
+        victim: me,
+        killer: me,
+        weapon: None,
+        facts,
+    });
+    Ok(None)
 }
 
 /// The pack's files as assets (loaded ahead, kept while it is shown), the
