@@ -37,7 +37,7 @@ use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 use crate::gun_game::held;
 
 /// A CS:S HUD look with health and armour panels, as a CS:S map's.
-fn cs_look() -> ActiveHud {
+pub(crate) fn cs_look() -> ActiveHud {
     let mut hud = GameHud::default();
     for (name, x) in [("HudHealth", 16.0), ("HudArmor", 148.0)] {
         hud.panels.insert(

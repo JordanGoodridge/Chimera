@@ -13,6 +13,7 @@ mod gun_game;
 mod hud;
 mod identity;
 mod identity_sounds;
+mod kill_icons;
 mod net_gun_game;
 mod persist;
 mod net_party;
