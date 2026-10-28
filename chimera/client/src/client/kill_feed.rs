@@ -18,8 +18,8 @@
 //! - **The widget** (`KillFeedPlugin`, part of `ClientPlugins`): drawn
 //!   only while the app asks for it (`SharedKillFeed`), at the screen's
 //!   top right, one row per entry, newest at the bottom: killer, the gun's
-//!   own game's icon (`weapon_icons::WeaponIcons`, else its display name,
-//!   `minigame_scoreboard::gun_name`), a headshot mark (the weapon's
+//!   own game's icon (`weapon_icons::WeaponIcons`, else its display name
+//!   in plain grey, `minigame_scoreboard::gun_name`: `fallback_word`), a headshot mark (the weapon's
 //!   game's, `WeaponIcons::mark`, else "HS"), victim; names in team
 //!   colours (a teammate's death green), the local player's in gold and
 //!   its rows outlined; a row
@@ -349,16 +349,8 @@ fn draw(
                         spawn_weapon_icon(r, &icon, icon_scale, line * 0.9, None);
                     }
                     None => {
-                        let what = match (e.weapon, e.kind) {
-                            (Some(w), _) => gun_name(w, names.as_deref(), catalog.as_deref()),
-                            (None, DamageKind::Fall) => "fell".into(),
-                            (None, DamageKind::Blast) => "blast".into(),
-                            (None, DamageKind::Burn) => "burned".into(),
-                            (None, DamageKind::Drown) => "drowned".into(),
-                            (None, _) if e.suicide => "died".into(),
-                            (None, _) => "killed".into(),
-                        };
-                        text(r, format!("[{what}]"), Color::srgb(0.8, 0.8, 0.8));
+                        let what = fallback_word(e, |w| gun_name(w, names.as_deref(), catalog.as_deref()));
+                        text(r, what, Color::srgb(0.78, 0.78, 0.8));
                     }
                 }
                 if e.headshot {
@@ -375,5 +367,57 @@ fn draw(
     });
 }
 
+/// The words in a row's icon place when the gun has no icon: the gun's
+/// display name (`name`), else how the victim died; plain, no brackets.
+pub fn fallback_word(e: &KillEntry, name: impl Fn(&str) -> String) -> String {
+    match (e.weapon, e.kind) {
+        (Some(w), _) => name(w),
+        (None, DamageKind::Fall) => "fell".into(),
+        (None, DamageKind::Blast) => "blast".into(),
+        (None, DamageKind::Burn) => "burned".into(),
+        (None, DamageKind::Drown) => "drowned".into(),
+        (None, _) if e.suicide => "died".into(),
+        (None, _) => "killed".into(),
+    }
+}
+
 /// The headshot mark's name in `WeaponIcons::mark`.
 pub const HEADSHOT: &str = "headshot";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(weapon: Option<&'static str>, kind: DamageKind, suicide: bool) -> KillEntry {
+        let side = FeedName {
+            entity: Entity::PLACEHOLDER,
+            name: "A".into(),
+            team: None,
+            local: false,
+        };
+        KillEntry {
+            id: 0,
+            killer: (!suicide).then(|| side.clone()),
+            victim: side,
+            weapon,
+            kind,
+            headshot: false,
+            suicide,
+            team_kill: false,
+            at: 0.0,
+        }
+    }
+
+    /// A gun without an icon: its clean name in the icon's place (no
+    /// brackets, seen as "[Ironwood M1866 lv.4]" in a capture); a death
+    /// without a gun: how.
+    #[test]
+    fn the_text_fallback_is_a_plain_name() {
+        let name = |w: &str| if w == "combat_arms:ironwood_m1866_lv.4" { "Ironwood M1866 lv.4".to_string() } else { w.to_string() };
+        let gun = entry(Some("combat_arms:ironwood_m1866_lv.4"), DamageKind::Bullet, false);
+        assert_eq!(fallback_word(&gun, name), "Ironwood M1866 lv.4");
+        assert_eq!(fallback_word(&entry(None, DamageKind::Fall, true), name), "fell");
+        assert_eq!(fallback_word(&entry(None, DamageKind::Bullet, true), name), "died");
+        assert_eq!(fallback_word(&entry(None, DamageKind::Bullet, false), name), "killed");
+    }
+}

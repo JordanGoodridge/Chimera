@@ -35,6 +35,7 @@ mod heavy {
     mod bot_chat_install;
     mod death_screen;
     mod install_ui;
+    mod kill_icons;
     mod options;
     mod strings;
     mod view_model;

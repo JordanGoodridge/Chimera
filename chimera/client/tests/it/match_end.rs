@@ -4,11 +4,12 @@
 //! standings in the scoreboard's columns with the local player's row
 //! marked, the next map and a countdown to the change, and the winner
 //! sound asked for once (the HUD's game's file first), the games' panels
-//! told to leave the results to it; gone with the results.
+//! told to step aside; gone with the results. Sized by the window's
+//! height.
 
 use bevy::prelude::*;
 use chimera_client::client::{
-    match_end::{MatchEndPart, MatchEndPlugin, MatchEndRoot, MatchEndRow, MatchEndView, next_line, sound_candidates},
+    match_end::{MatchEndPart, MatchEndPlugin, MatchEndRoot, MatchEndRow, MatchEndView, WIDTHS, layout_height, next_line, scale, sound_candidates},
     minigame_scoreboard::GunNames,
 };
 use chimera_core::{
@@ -207,4 +208,66 @@ fn the_huds_game_sound_comes_first_and_the_countdown_words() {
     assert_eq!(next_line(&next, 0.4), "Next map: greybox in 1");
     assert_eq!(next_line(&next, -0.1), "Changing map to greybox");
     assert_eq!(next_line(&NextMatch { map: None, at: 0.0 }, 0.0), "Next match starting");
+}
+
+/// The screen scales with the window's height as the kill feed does
+/// (sized for 720 lines, smaller when the rows wouldn't fit): at 1080 the winner and the standings' cells are
+/// half as big again, and again when the window changes.
+#[test]
+fn the_screen_scales_with_the_windows_height() {
+    use bevy::window::{PrimaryWindow, WindowResolution};
+    assert_eq!(scale(720.0, 2), 1.0);
+    assert_eq!(scale(1080.0, 2), 1.5);
+    assert_eq!(scale(100.0, 2), scale(240.0, 2), "never under a third");
+    // A full server's standings: smaller, to fit the window.
+    assert!(scale(1080.0, 16) < 1.5 && scale(1080.0, 16) * layout_height(16) <= 1080.0);
+    assert!(layout_height(6) <= 720.0, "six rows fit at full size");
+    assert!(scale(1080.0, 10) < 1.5, "ten at 1080 lines: a little smaller (the countdown was on the edge)");
+    let mut sim = Sim::new(SimBasePlugins, (GreyboxMapPlugin, MatchEndPlugin));
+    let window = sim
+        .app
+        .world_mut()
+        .spawn((Window { resolution: WindowResolution::from((1920u32, 1080u32)), ..default() }, PrimaryWindow))
+        .id();
+    sim.ticks(2);
+    let row = ResultRow {
+        name: "Ann".into(),
+        kills: 3,
+        winner: true,
+        ..Default::default()
+    };
+    sim.app.insert_resource(MinigameHud {
+        title: "Gun game".into(),
+        results: Some(MatchResults { title: "Gun game".into(), rungs: 3, rows: vec![row] }),
+        ..default()
+    });
+    sim.app.insert_resource(NextMatch { map: None, at: now(&sim) + 5.0 });
+    sim.ticks(3);
+    assert!(shown(&mut sim));
+    let sizes = |sim: &mut Sim| {
+        let w = sim.app.world_mut();
+        let winner = w
+            .query::<(&MatchEndPart, &TextFont)>()
+            .iter(w)
+            .find(|(p, _)| **p == MatchEndPart::Winner)
+            .map(|(_, f)| f.font_size)
+            .unwrap();
+        // A standings cell: a text with a fixed width (the name column's).
+        let cell = w
+            .query::<(&Text, &TextFont, &Node)>()
+            .iter(w)
+            .find(|(t, _, n)| t.0 == "Ann" && n.width != Val::Auto)
+            .map(|(_, f, n)| (f.font_size, n.width))
+            .expect("Ann's row");
+        (winner, cell)
+    };
+    let (winner, (cell, width)) = sizes(&mut sim);
+    assert_eq!(winner, FontSize::Px(96.0), "64 at 720 lines");
+    assert_eq!(cell, FontSize::Px(30.0), "20 at 720 lines");
+    assert_eq!(width, Val::Px(WIDTHS[1] * 1.5));
+    // A smaller window: smaller again.
+    sim.app.world_mut().get_mut::<Window>(window).unwrap().resolution = WindowResolution::from((1280u32, 720u32));
+    sim.ticks(2);
+    let (winner, (cell, _)) = sizes(&mut sim);
+    assert_eq!((winner, cell), (FontSize::Px(64.0), FontSize::Px(20.0)));
 }

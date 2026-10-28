@@ -2207,11 +2207,14 @@ fn t102_minigame_state_on_the_hud() {
     assert_eq!(m.results[0], "Remote wins the match");
     assert_eq!(m.results[1], "1. Remote  rung 10/10  4 kills  1 deaths");
     assert_eq!(m.results[2], "2. AI_Bravo_7  rung 10/10  4 kills  1 deaths", "a local character by the HUD's name");
-    // The shell's match-end screen up: the panel leaves the results to it.
+    // The shell's match-end screen up: the whole panel steps aside (its
+    // title and status lines drew into the screen's winner).
     sim.app.world_mut().resource_mut::<MinigameHud>().results_shown = true;
     sim.ticks(1);
-    let m = hud(&sim).minigame.expect("still shown");
-    assert!(m.results.is_empty() && m.notices.is_empty(), "{m:?}");
+    assert_eq!(hud(&sim).minigame, None, "nothing over the match-end screen");
+    sim.app.world_mut().resource_mut::<MinigameHud>().results_shown = false;
+    sim.ticks(1);
+    assert!(hud(&sim).minigame.is_some(), "back once the screen goes");
     sim.app.world_mut().insert_resource(MinigameHud::default());
     sim.ticks(1);
     assert_eq!(hud(&sim).minigame, None);
