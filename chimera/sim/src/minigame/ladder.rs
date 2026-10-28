@@ -22,12 +22,24 @@
 //! win = { kind = "ladder_end" }    # the only one so far
 //! ```
 //!
-//! Events: `rung_up` and `rung_down` (`MinigameEvent`, the new rung).
+//! Events (`MinigameEvent`): `rung_up` and `rung_down` (the new rung),
+//! `last_rung` (a player reached the last rung), and the lead (the
+//! highest rung, then the most kills; nobody leads before a kill):
+//! `lead_taken` (alone in it), `lead_lost` (no longer in it),
+//! `lead_tied` (newly sharing it, or a sole leader caught up), each with
+//! the player's rung. The viewer's callouts (`callout`):
+//! "Level up: <gun>", "Knifed! Level down", "Last level!", "<name> is on
+//! the last level!", "You took the lead", "You lost the lead", "Tied for
+//! the lead"; the HUD's notices (`notice`) stay the small text.
 
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::{ActiveMinigame, MinigameDef, MinigameEvent, RulesModule, hud::HudLine, runtime};
+use super::{
+    ActiveMinigame, MinigameDef, MinigameEvent, RulesModule,
+    hud::{Callout, HudLine},
+    runtime,
+};
 use crate::{
     core::{DamageKind, Died, Score, Team},
     mode::{Death, DeathKind, Hooks, Match, Mode, NO_HOOKS, Teams},
@@ -45,6 +57,7 @@ pub const RULES: RulesModule = RulesModule {
     loadout,
     status,
     notice,
+    callout,
 };
 
 /// The mode on the runtime.
@@ -64,7 +77,7 @@ pub static MODE: Mode = Mode {
     hooks: Hooks {
         died,
         before_spawns,
-        update: refill,
+        update,
         ..NO_HOOKS
     },
 };
@@ -166,6 +179,69 @@ fn loadout(world: &World, e: Entity) -> Vec<&'static str> {
     ladder.rungs.get(rung.min(ladder.rungs.len().saturating_sub(1))).copied().into_iter().collect()
 }
 
+/// The ladder's tick: the guns refilled, the lead followed.
+fn update(world: &mut World) {
+    refill(world);
+    follow_lead(world);
+}
+
+/// Who leads (the players at the highest rung, then most kills), as last
+/// told: `lead_taken`, `lead_lost`, `lead_tied` when it changes.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct Leaders(pub Vec<Entity>);
+
+/// The players in the lead now (none before anyone has a rung or a kill).
+pub fn leaders(world: &mut World) -> Vec<Entity> {
+    let keyed: Vec<((usize, i32), Entity)> = runtime::players(world)
+        .into_iter()
+        .map(|(e, _)| ((world.get::<Rung>(e).map_or(0, |r| r.0), world.get::<Score>(e).map_or(0, |s| s.kills)), e))
+        .collect();
+    let Some(best) = keyed.iter().map(|(k, _)| *k).max() else { return Vec::new() };
+    if best <= (0, 0) {
+        return Vec::new();
+    }
+    let mut out: Vec<Entity> = keyed.into_iter().filter(|(k, _)| *k == best).map(|(_, e)| e).collect();
+    out.sort();
+    out
+}
+
+/// The lead's events from what changed since `Leaders`.
+fn follow_lead(world: &mut World) {
+    if !world.resource::<Match>().counting() {
+        return;
+    }
+    let now = leaders(world);
+    let before = world.get_resource::<Leaders>().map(|l| l.0.clone()).unwrap_or_default();
+    if now == before {
+        return;
+    }
+    let rung = |w: &World, e: Entity| w.get::<Rung>(e).map_or(0, |r| r.0) as i32;
+    let mut events = Vec::new();
+    for e in before.iter().filter(|e| !now.contains(e)) {
+        events.push(("lead_lost", *e));
+    }
+    match now.as_slice() {
+        [] => {}
+        [one] => events.push(("lead_taken", *one)),
+        many => {
+            // The newcomers, and a sole leader now sharing.
+            let alone = before.len() == 1;
+            for e in many.iter().filter(|e| !before.contains(e) || alone) {
+                events.push(("lead_tied", *e));
+            }
+        }
+    }
+    for (name, e) in events {
+        let value = rung(world, e);
+        world.write_message(MinigameEvent {
+            name,
+            player: Some(e),
+            value,
+        });
+    }
+    world.insert_resource(Leaders(now));
+}
+
 /// With `refill_ammo`, a held rung gun's reserve is topped up every tick:
 /// the ladder gives each gun once, and a 200-round machine gun used up
 /// (misses count) would otherwise end the climb.
@@ -188,6 +264,7 @@ fn before_spawns(world: &mut World) {
     for (e, _) in runtime::players(world) {
         world.entity_mut(e).insert(Rung(0));
     }
+    world.insert_resource(Leaders::default());
 }
 
 /// An enemy kill: the killer a rung up (its weapon swapped), or the match
@@ -211,6 +288,13 @@ fn on_death(world: &mut World, d: &Death) {
         player: Some(k),
         value: rung as i32,
     });
+    if rung + 1 == ladder.rungs.len() {
+        world.write_message(MinigameEvent {
+            name: "last_rung",
+            player: Some(k),
+            value: rung as i32,
+        });
+    }
 }
 
 /// A melee death at an enemy's hands: a rung down.
@@ -401,4 +485,37 @@ fn notice(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<HudLin
         _ => return None,
     };
     Some(HudLine::new(text).weapon(weapon))
+}
+
+/// The viewer's big callouts (`hud::Callout`): its own rung changes, the
+/// last rung (its own and others'), its lead.
+fn callout(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<Callout> {
+    let ladder = world.get_resource::<Ladder>()?;
+    let total = ladder.rungs.len();
+    let rung = usize::try_from(event.value).ok()?;
+    let weapon = ladder.rungs.get(rung).copied();
+    let own = event.player == Some(viewer);
+    let level_line = || HudLine::new(format!("Level {}/{total}", rung + 1));
+    let gun = |text: &str| {
+        let line = HudLine::new(text);
+        match weapon {
+            Some(w) => line.weapon(w),
+            None => line,
+        }
+    };
+    Some(match (event.name, own) {
+        // The last rung's own callout says it.
+        ("rung_up", true) if rung + 1 < total => Callout::new(2, "rung_up", vec![gun("Level up: {weapon}"), level_line()]),
+        ("rung_down", true) => Callout::new(3, "rung_down", vec![gun("Knifed! Level down: {weapon}"), level_line()]),
+        ("last_rung", true) => Callout::new(4, "last_rung", vec![HudLine::new("Last level!"), gun("{weapon}: a kill wins")]),
+        ("last_rung", false) => Callout::new(
+            4,
+            "last_rung_other",
+            vec![HudLine::new("{player} is on the last level!").player(event.player?)],
+        ),
+        ("lead_taken", true) => Callout::new(1, "lead_taken", vec![HudLine::new("You took the lead")]),
+        ("lead_lost", true) => Callout::new(1, "lead_lost", vec![HudLine::new("You lost the lead")]),
+        ("lead_tied", true) => Callout::new(1, "lead_tied", vec![HudLine::new("Tied for the lead")]),
+        _ => return None,
+    })
 }

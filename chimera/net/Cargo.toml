@@ -38,7 +38,8 @@ bzip2.workspace = true
 workspace-hack.workspace = true
 
 # The integration tests (tests/it/): prediction and replication on `NetSim`
-# with the engine's base alone, nothing of a game.
+# with the engine's base alone, nothing of a game (a minigame's on the
+# test kit's guns: the dev-dependency below).
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
@@ -54,3 +55,5 @@ dev = ["chimera_core/dev", "chimera_world/dev", "chimera_sim/dev"]
 # the clients' builds of Bevy instead of building its own (hakari.toml).
 bevy = { workspace = true, features = ["default", "wav"] }
 avian3d = { workspace = true, features = ["debug-plugin", "bevy_picking", "bevy_scene"] }
+# The minigame test runs on the test kit (`chimera_sim::testkit`).
+chimera_sim = { workspace = true, features = ["testkit"] }

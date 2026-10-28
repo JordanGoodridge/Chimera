@@ -84,3 +84,16 @@ fn lists_maps_from_the_bsp_layout() {
     assert_eq!((cs_source::INFO.map_names)(&mount), ["cs_office", "de_dust2"]);
     assert_eq!((cs_source::INFO.map_file)("de_dust2").as_deref(), Some("maps/de_dust2.bsp"));
 }
+
+/// Every file of CS:S's minigame cue pack (data/cues.toml) is a stock
+/// sound of the install.
+#[test]
+fn the_cue_packs_files_are_in_the_install() {
+    let Some(install) = install() else { return };
+    let mount = cs_source::mount::open(&install).unwrap();
+    let pack = chimera_core::cues::CuePack::parse(cs_source::parts::CUES).unwrap();
+    assert_eq!(pack.game, cs_source::GAME);
+    for (cue, file) in &pack.sounds {
+        assert!(mount.read(file).is_ok(), "{cue}: {file} not in the install");
+    }
+}

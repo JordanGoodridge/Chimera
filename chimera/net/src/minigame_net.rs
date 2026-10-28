@@ -16,8 +16,9 @@
 //! - **The players**: `InMinigame` and the rules module's own state
 //!   (`ladder::Rung`, `wins::MatchesWon`) replicate on the characters, so the HUD finds who
 //!   plays and who leads; kills and deaths are `NetScore`'s.
-//! - **Events** (`MinigameNews`): rung ups, a match won, for the HUD's
-//!   notices, as the index in `minigame::EVENT_NAMES`.
+//! - **Events** (`MinigameNews`): rung ups and downs, the last rung, the
+//!   lead, a match won, for the HUD's notices and callouts, as the index
+//!   in `minigame::EVENT_NAMES`.
 //!
 //! - **The manifest** (`net::manifest`): the server's hook adds the
 //!   minigame (its id, its definition's SHA-256 and text), the games it

@@ -399,3 +399,105 @@ fn the_dead_local_player_knows_when_it_respawns() {
     assert!(sim.app.world().get::<Dead>(b).is_some());
     assert_eq!(due(&sim), None, "no countdown after the match");
 }
+
+/// The callout the local player's HUD data holds: its lines' texts, the
+/// first line's player and weapon, its cue.
+fn callout(sim: &Sim) -> Option<(Vec<String>, Option<Entity>, Option<&'static str>, Option<&'static str>)> {
+    let hud = sim.app.world().resource::<chimera_sim::minigame::hud::MinigameHud>();
+    let c = &hud.callout.as_ref()?.callout;
+    Some((c.lines.iter().map(|l| l.text.clone()).collect(), c.lines[0].player, c.lines[0].weapon, c.cue))
+}
+
+#[test]
+fn the_viewer_gets_callouts_for_its_rungs_the_lead_others_last_rung_and_the_win() {
+    use chimera_core::core::LocalPlayer;
+    use chimera_sim::minigame::{hud::CALLOUT_SECONDS, ladder::Leaders};
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
+    settle(&mut sim);
+    assert_eq!(callout(&sim), None, "nothing yet");
+
+    // a's kill: a level up (its new gun), and the lead.
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    let (lines, _, weapon, cue) = callout(&sim).expect("a callout");
+    assert_eq!(lines[0], "Level up: {weapon}");
+    assert_eq!(lines[1], "Level 2/3");
+    assert_eq!((weapon, cue), (Some(RIFLE), Some("rung_up")));
+    assert_eq!(sim.app.world().resource::<Leaders>().0, vec![a]);
+
+    // b catches up: both tied.
+    settle(&mut sim);
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    sim.ticks(2);
+    let (lines, _, _, cue) = callout(&sim).expect("a callout");
+    assert_eq!((lines[0].as_str(), cue), ("Tied for the lead", Some("lead_tied")));
+    let mut both = vec![a, b];
+    both.sort();
+    assert_eq!(sim.app.world().resource::<Leaders>().0, both);
+
+    // Seen by b: a on the last rung, then a's win.
+    sim.app.world_mut().entity_mut(a).remove::<LocalPlayer>();
+    sim.app.world_mut().entity_mut(b).insert(LocalPlayer);
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    let (lines, who, _, cue) = callout(&sim).expect("a callout");
+    assert_eq!(lines[0], "{player} is on the last level!");
+    assert_eq!((who, cue), (Some(a), Some("last_rung_other")));
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    let (lines, who, _, cue) = callout(&sim).expect("a callout");
+    assert_eq!((lines[0].as_str(), who, cue), ("{player} wins!", Some(a), Some("match_lost")));
+    sim.seconds(CALLOUT_SECONDS + 0.5);
+    assert_eq!(callout(&sim), None, "gone after its seconds");
+}
+
+#[test]
+fn the_viewers_own_last_rung_says_so_and_a_frames_callouts_merge() {
+    use chimera_core::core::LocalPlayer;
+    use chimera_sim::minigame::hud::{Callout, HudLine, merge};
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    let (lines, _, _, cue) = callout(&sim).expect("a callout");
+    assert_eq!(lines[0], "Last level!", "{lines:?}");
+    assert_eq!(lines[1], "{weapon}: a kill wins");
+    assert_eq!(cue, Some("last_rung"));
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    let (lines, _, _, cue) = callout(&sim).expect("a callout");
+    assert_eq!((lines[0].as_str(), cue), ("You win!", Some("match_won")));
+
+    // The highest level first, the others' first lines after it.
+    let up = Callout::new(2, "rung_up", vec![HudLine::new("Level up"), HudLine::new("Level 2/3")]);
+    let lead = Callout::new(1, "lead_taken", vec![HudLine::new("You took the lead")]);
+    let m = merge(vec![lead.clone(), up]).unwrap();
+    assert_eq!(m.cue, Some("rung_up"));
+    let texts: Vec<_> = m.lines.iter().map(|l| l.text.as_str()).collect();
+    assert_eq!(texts, ["Level up", "Level 2/3", "You took the lead"]);
+    assert_eq!(merge(vec![]), None);
+}
+
+#[test]
+fn a_definitions_cue_pack_must_be_registered() {
+    use chimera_core::cues::CueAppExt;
+    let mut sim = sim_with(DEF);
+    sim.app.register_cues("id = \"kit\"\nname = \"Kit\"\ngame = \"kit\"\n");
+    let with = |cues: &str| DEF.replace("time_limit", &format!("cues = \"{cues}\"\ntime_limit"));
+    for ok in ["kit", "none", "default"] {
+        minigame::add(sim.app.world_mut(), "ok.toml", &with(ok)).unwrap_or_else(|e| panic!("{ok}: {e}"));
+    }
+    let err = minigame::add(sim.app.world_mut(), "bad.toml", &with("nobody")).unwrap_err();
+    assert!(err.contains("no cue pack `nobody`"), "{err}");
+}

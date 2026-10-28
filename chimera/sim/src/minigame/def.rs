@@ -10,6 +10,8 @@
 //! teams = "free_for_all"                                  # or "two", "one_team"
 //! time_limit = "10m"                                      # "90s", "1.5s", "500ms", or seconds
 //! rotate = true                                           # default: after the match, the pool's next map
+//! cues = "cs_source"          # the cue pack its callouts sound (`chimera_core::cues`); "none";
+//!                             # default: the first a game registered
 //!
 //! [slots]                     # the gameplay's slots by game id (`chimera_core::gameplay`)
 //! hud = "combat_arms"         # the HUD drawn
@@ -66,6 +68,11 @@ pub struct MinigameDef {
     /// server; the default), else this map again.
     #[serde(default = "yes")]
     pub rotate: bool,
+    /// The cue pack its callouts sound (`chimera_core::cues::CuePacks::
+    /// choose`): a pack's id, `none`, or None (`default`) the first
+    /// registered.
+    #[serde(default)]
+    pub cues: Option<String>,
     #[serde(default)]
     pub slots: Slots,
     #[serde(default)]

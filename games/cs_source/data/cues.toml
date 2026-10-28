@@ -1,0 +1,25 @@
+# Counter-Strike: Source's minigame cue pack (chimera_core::cues): the
+# sounds a gun game plays at its moments, chosen from stock sounds of the
+# player's own CS:S install (cstrike's and the shared hl2 sound packs),
+# loaded at run time. CS:S has no gun game of its own: these are our
+# choices, not its behaviour. A test checks that each file is in the
+# install (tests/it/mount_cs_source.rs).
+id = "cs_source"
+name = "Counter-Strike: Source"
+game = "cs_source"
+
+[sounds]
+# A rung up: the new gun picked up.
+rung_up = "sound/items/itempickup.wav"
+# Knifed down a rung: the denied buzz.
+rung_down = "sound/buttons/button10.wav"
+# Your last rung, and another player's.
+last_rung = "sound/buttons/bell1.wav"
+last_rung_other = "sound/ambient/alarms/warningbell1.wav"
+# The lead taken, lost or tied.
+lead_taken = "sound/buttons/blip1.wav"
+lead_lost = "sound/buttons/button8.wav"
+lead_tied = "sound/buttons/blip2.wav"
+# The match won by you, or by someone else.
+match_won = "sound/ui/achievement_earned.wav"
+match_lost = "sound/buttons/button10.wav"

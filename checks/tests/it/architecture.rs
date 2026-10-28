@@ -32,10 +32,12 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // the sets that gate a game's systems by it.
     ("gameplay", &["core", "game_registry"]),
     // What each game lends a game made of several (plain data), its
-    // announcer pack among them.
-    ("game_parts", &["announcer"]),
+    // announcer pack and minigame cue pack among them.
+    ("game_parts", &["announcer", "cues"]),
     // Announcers' packs, the server's choice and kill facts (plain data).
     ("announcer", &[]),
+    // Minigame cue packs: sounds by cue key (plain data).
+    ("cues", &[]),
     ("slots", &["core"]),
     ("character", &["core", "slots"]),
     ("movement", &["core", "slots", "character"]),

@@ -191,6 +191,20 @@ sections above already list.
   others. Fix: a gun-game announcer pack (Chimera's announcer is data,
   DESIGN.md "Announcers") or Arms Race's cues, which our Arms Race keeps
   but doesn't show (`rules/arms_race.rs`).
+  *Fixed, confirm in a playtest (2026-10-28):* the ladder also sends
+  `last_rung` and the lead's `lead_taken`, `lead_lost`, `lead_tied`
+  (`minigame::ladder`, replicated like the others); every client's HUD
+  data turns the local player's moments into a centre-screen callout
+  ("Level up: <gun>", "Knifed! Level down", "Last level!", "<name> is on
+  the last level!", "You took the lead", "You lost the lead", "Tied for
+  the lead", "You win!", "<name> wins!"), which the shell draws on every
+  HUD (`client::callouts`) with a sound from a cue pack (`core::cues`,
+  data; CS:S lends stock install sounds, `cs_source/data/cues.toml`; a
+  definition's `cues` picks one or `none`). Arms Race's own last-stage
+  cue is plain Combat Arms' (its interface sound already plays,
+  `music::director`; its text and the files of Combat Arms' level-up and
+  result sounds aren't known: music_ambience.md Open question 1), so
+  Combat Arms lends no cue pack yet and plain Combat Arms is unchanged.
 - **Gun game: the death view fights the 2 s respawn, and there is no
   countdown.** The dead player gets their identity's death camera: CS:S's
   2 s death cam, 0.7 s travel and 5 s freeze (`client::spectate`,

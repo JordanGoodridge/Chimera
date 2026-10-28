@@ -34,6 +34,10 @@ pub static PARTS: GameParts = GameParts {
     hud: Some(super::GAME),
     maps: &["combat_arms:warehouse"],
     announcer: Some(ANNOUNCER),
+    // No cue pack yet: its interface sounds' files (the level-up, last
+    // stage and result sounds) are in keyed attribute files we don't read
+    // (music_ambience.md, Open question 1).
+    cues: None,
 };
 
 /// Combat Arms' announcer pack (specs/combat_arms/kill_streaks.md Part B;
