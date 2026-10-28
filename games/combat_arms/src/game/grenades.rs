@@ -118,7 +118,9 @@
 //!   reload is not queued: fire must be held when it ends. The throw
 //!   perk is Pitcher's (`perks::throw_force`).
 //! - The hit-box object's box is the hit spheres' bounds (its own dims
-//!   aren't in a spec). A character touch snaps the grenade to where the
+//!   aren't in a spec). A character wearing another game's body (its
+//!   identity's) is that body's hitboxes (`weapons::their_shapes`; a box
+//!   as its bounding sphere), its box widened to hold them. A character touch snaps the grenade to where the
 //!   step enters a hit sphere (the "short trace"), else leaves it at the
 //!   step's end. Grenade-on-grenade touches don't move either. M-23F and
 //!   G7A boxes are the M67's (PLACEHOLDER: not in the spec). Bounce
@@ -1130,6 +1132,7 @@ pub(crate) struct GrenadeWorld<'w, 's> {
             Option<&'static HitSpheres>,
             &'static Health,
             Option<&'static CaFlashProtection>,
+            (Option<&'static crate::slots::GameIdentity>, Option<&'static crate::core::Hitboxes>),
         ),
         Without<CaGrenade>,
     >,
@@ -1232,7 +1235,7 @@ impl GrenadeWorld<'_, '_> {
     /// The living characters, in no particular order.
     pub(crate) fn bodies(&self) -> Vec<Body> {
         let mut out = Vec::new();
-        for (entity, t, intent, state, aabb, spheres, health, flash) in &self.characters {
+        for (entity, t, intent, state, aabb, spheres, health, flash, (identity, boxes)) in &self.characters {
             if health.current <= 0.0 {
                 continue;
             }
@@ -1240,6 +1243,37 @@ impl GrenadeWorld<'_, '_> {
             let Some((min, max, spheres)) = body_geometry(t, intent, state, aabb, data) else {
                 continue;
             };
+            // Another game's body: its own shapes (a box as its bounding
+            // sphere, as our rules take it), the box holding them.
+            if let Some(shapes) = super::weapons::their_shapes(t, intent, aabb, identity, boxes) {
+                let (min, max) = super::weapons::box_holding(min, max, &shapes);
+                let head_top = shapes
+                    .0
+                    .iter()
+                    .filter(|h| h.region.part() == crate::core::BodyPart::Head)
+                    .map(|h| h.bounds().1.y)
+                    .fold(f32::MIN, f32::max);
+                out.push(Body {
+                    entity,
+                    min,
+                    max,
+                    centre: (min + max) / 2.0,
+                    zones: shapes
+                        .0
+                        .iter()
+                        .map(|h| {
+                            let zone = h.scale.unwrap_or_else(|| super::weapons::zone_factor(h.region));
+                            (super::weapons::location_of(h.region), zone)
+                        })
+                        .collect(),
+                    spheres: shapes.0.iter().map(|h| (h.center, h.reach())).collect(),
+                    head_top: if head_top == f32::MIN { max.y } else { head_top },
+                    facing: intent.yaw_rotation() * Vec3::NEG_Z,
+                    health: health.current,
+                    flash_protection: flash.map_or(0.0, |f| f.0),
+                });
+                continue;
+            }
             let head_top = data
                 .iter()
                 .zip(&spheres)

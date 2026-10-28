@@ -18,7 +18,7 @@ use combat_arms::game::weapons::CaKick;
 
 use crate::gun_game::{held, party, place, soldier};
 
-fn set_rung(sim: &mut Sim, e: Entity, r: usize) {
+pub(crate) fn set_rung(sim: &mut Sim, e: Entity, r: usize) {
     let w = sim.app.world_mut();
     let l = w.resource::<Ladder>().clone();
     ladder::set_rung(w, e, r, &l);
@@ -152,9 +152,9 @@ fn both_games_bullets_push_a_physics_object() {
 
 /// Every hit a weapon dealt: (target, hitgroup).
 #[derive(Resource, Default)]
-struct Hits(Vec<(Entity, chimera_core::core::Hitgroup)>);
+pub(crate) struct Hits(Vec<(Entity, chimera_core::core::Hitgroup)>);
 
-fn collect_hits(mut events: MessageReader<chimera_sim::weapon::WeaponEvent>, mut out: ResMut<Hits>) {
+pub(crate) fn collect_hits(mut events: MessageReader<chimera_sim::weapon::WeaponEvent>, mut out: ResMut<Hits>) {
     for e in events.read() {
         if let chimera_sim::weapon::WeaponEventKind::Hit { target, hitgroup, .. } = e.kind
             && !e.replay
@@ -214,7 +214,7 @@ pub(crate) fn shape_at(sim: &Sim, b: Entity, region: chimera_core::core::BodyReg
 }
 
 /// One round from `a` at `point`; the hitgroups `b` was hit in.
-fn shot_at(sim: &mut Sim, a: Entity, b: Entity, point: Vec3) -> Vec<chimera_core::core::Hitgroup> {
+pub(crate) fn shot_at(sim: &mut Sim, a: Entity, b: Entity, point: Vec3) -> Vec<chimera_core::core::Hitgroup> {
     sim.app.world_mut().resource_mut::<Hits>().0.clear();
     testkit::aim_at(sim, a, point);
     sim.ticks(1);
@@ -250,6 +250,21 @@ fn a_cs_source_gun_hits_a_combat_arms_body_where_it_is_drawn() {
 /// own skeleton has its chest, so only its own boxes give a head shot.
 fn short_cs_body(app: &mut App) {
     use chimera_core::core::{BodyRegion as R, Hitbox};
+    let cube = |y: f32, x: f32, region| Hitbox::cuboid(Vec3::new(x, y, 0.0), Vec3::splat(0.12), Quat::IDENTITY, region);
+    cs_body(app, vec![cube(1.0, 0.0, R::Head), cube(0.7, 0.0, R::Chest), cube(0.25, 0.12, R::RightShin)]);
+}
+
+/// The map's bodies with a tall CS:S stand-in: its head box 1.95 m up,
+/// mostly above the hull (as a real CS:S model's head pokes out of a
+/// shorter hull), a neck box under it.
+fn tall_cs_body(app: &mut App) {
+    use chimera_core::core::{BodyRegion as R, Hitbox};
+    let cube = |y: f32, half: f32, region| Hitbox::cuboid(Vec3::new(0.0, y, 0.0), Vec3::splat(half), Quat::IDENTITY, region);
+    cs_body(app, vec![cube(1.95, 0.12, R::Head), cube(1.68, 0.06, R::Neck), cube(1.3, 0.2, R::Chest)]);
+}
+
+/// The map's bodies: Combat Arms' and a CS:S stand-in with `boxes`.
+fn cs_body(app: &mut App, boxes: Vec<chimera_core::core::Hitbox>) {
     use chimera_world::map::{CharacterModels, MapCharacterModel};
     let body = |game, hitboxes| MapCharacterModel {
         game: Some(game),
@@ -264,8 +279,6 @@ fn short_cs_body(app: &mut App) {
         boxes: Vec::new(),
         ragdoll: None,
     };
-    let cube = |y: f32, x: f32, region| Hitbox::cuboid(Vec3::new(x, y, 0.0), Vec3::splat(0.12), Quat::IDENTITY, region);
-    let boxes = vec![cube(1.0, 0.0, R::Head), cube(0.7, 0.0, R::Chest), cube(0.25, 0.12, R::RightShin)];
     app.insert_resource(CharacterModels(std::sync::Arc::new(vec![
         body("combat_arms", Vec::new()),
         body("cs_source", boxes),
@@ -288,13 +301,110 @@ fn a_combat_arms_gun_hits_a_cs_source_body_where_it_is_drawn() {
     assert_eq!(shot_at(&mut sim, a, b, shin), vec![G::RightLeg]);
 }
 
+/// Playtest 2026-10-28: Combat Arms' rounds never reached a CS:S head
+/// poking out of the hull (they tested the hull before the shapes), so a
+/// shot at the drawn head did nothing and only the neck box counted.
+#[test]
+fn a_combat_arms_round_reaches_a_cs_source_head_above_the_hull() {
+    use chimera_core::core::{BodyRegion as R, Hitgroup as G};
+    let (mut sim, a, b) = duel(7, 6, Some(tall_cs_body));
+    let w = sim.app.world();
+    let top = w.get::<avian3d::prelude::ColliderAabb>(b).unwrap().max.y;
+    let head = shape_at(&sim, b, R::Head);
+    assert!(head.y > top, "the stand-in's head centre ({}) is above the hull's top ({top})", head.y);
+    let (h0, _) = health_and_armour(&sim, b);
+    assert_eq!(shot_at(&mut sim, a, b, head), vec![G::Head]);
+    let (h1, _) = health_and_armour(&sim, b);
+    assert!(h0 - h1 > 30.0, "head damage: {}", h0 - h1);
+    let neck = shape_at(&sim, b, R::Neck);
+    assert_eq!(shot_at(&mut sim, a, b, neck), vec![G::Chest], "the neck is the neck");
+}
+
+/// The same body under a CS:S round: Source's rule, boxes poking out
+/// count (it never had the bug; the two games agree).
+#[test]
+fn a_cs_source_round_reaches_the_same_head() {
+    use chimera_core::core::{BodyRegion as R, Hitgroup as G};
+    let (mut sim, a, b) = duel(6, 6, Some(tall_cs_body));
+    let head = shape_at(&sim, b, R::Head);
+    assert_eq!(shot_at(&mut sim, a, b, head), vec![G::Head]);
+}
+
+/// Every region a knife hit reported: (target, region).
+#[derive(Resource, Default)]
+struct Regions(Vec<(Entity, chimera_core::core::BodyRegion)>);
+
+fn collect_regions(mut hits: MessageReader<chimera_core::core::RegionHit>, mut out: ResMut<Regions>) {
+    out.0.extend(hits.read().map(|h| (h.target, h.region)));
+}
+
+/// Combat Arms' knife on a CS:S body: that body's boxes, not Combat
+/// Arms' skeleton spheres hidden inside it (the short stand-in's head is
+/// at the height of that skeleton's chest).
+#[test]
+fn a_combat_arms_knife_hits_a_cs_source_body_by_its_boxes() {
+    use chimera_core::core::BodyRegion as R;
+    let (mut sim, a, b) = duel(7, 6, Some(short_cs_body));
+    sim.app.init_resource::<Regions>().add_systems(PostUpdate, collect_regions);
+    // Up close, the knife (class key 3).
+    let (pa, pb) = (sim.position(a), sim.position(b));
+    place(&mut sim, b, Vec3::new(pa.x, pb.y, pa.z - 0.9));
+    sim.intent(a).select = Some(2);
+    sim.ticks(1);
+    sim.intent(a).select = None;
+    sim.seconds(1.0);
+    assert_eq!(held(&sim, a), Some(combat_arms::game::inventory::KNIFE));
+    let head = shape_at(&sim, b, R::Head);
+    testkit::aim_at(&mut sim, a, head);
+    sim.ticks(1);
+    let (h0, _) = health_and_armour(&sim, b);
+    sim.intent(a).fire = true;
+    sim.ticks(1);
+    sim.intent(a).fire = false;
+    sim.seconds(1.0);
+    let (h1, _) = health_and_armour(&sim, b);
+    assert!(h1 < h0, "the knife hit");
+    let regions: Vec<R> = sim.app.world().resource::<Regions>().0.iter().filter(|(t, _)| *t == b).map(|(_, r)| *r).collect();
+    assert_eq!(regions.first(), Some(&R::Head), "{regions:?}");
+}
+
+/// A swap back and forth leaves exactly the current identity's hitboxes:
+/// CS:S's boxes, Combat Arms' spheres, CS:S's boxes again.
+#[test]
+fn a_swap_leaves_only_the_current_identitys_hitboxes() {
+    let (mut sim, _a, b) = duel(7, 6, Some(tall_cs_body));
+    let shapes = |sim: &Sim| {
+        let h = sim.app.world().get::<chimera_core::core::Hitboxes>(b).expect("hitboxes");
+        (h.0.iter().all(|s| s.radius.is_none()), h.0.iter().all(|s| s.radius.is_some()))
+    };
+    assert_eq!(shapes(&sim), (true, false), "CS:S's boxes");
+    for _ in 0..2 {
+        set_rung(&mut sim, b, 7);
+        sim.ticks(3);
+        assert_eq!(shapes(&sim), (false, true), "Combat Arms' spheres");
+        set_rung(&mut sim, b, 6);
+        sim.ticks(3);
+        assert_eq!(shapes(&sim), (true, false), "CS:S's boxes again");
+    }
+    // A swap and back within one tick.
+    set_rung(&mut sim, b, 7);
+    set_rung(&mut sim, b, 6);
+    sim.ticks(3);
+    assert_eq!(shapes(&sim), (true, false), "CS:S's boxes after a quick swap");
+    set_rung(&mut sim, b, 7);
+    sim.ticks(1);
+    set_rung(&mut sim, b, 6);
+    sim.ticks(3);
+    assert_eq!(shapes(&sim), (true, false), "CS:S's boxes after a one-tick swap");
+}
+
 // ---------------------------------------------------------------------------
 // Armour across games: one `weapon::Armor` per character, covering by its
 // identity's game (CS:S's kevlar; Combat Arms' gear as `ArmorPieces`),
 // every gun through the shared step (`weapon::hits::absorb`).
 
 /// Health (hit points) and armour (points) `b` has.
-fn health_and_armour(sim: &Sim, b: Entity) -> (f32, f32) {
+pub(crate) fn health_and_armour(sim: &Sim, b: Entity) -> (f32, f32) {
     let w = sim.app.world();
     let h = w.get::<chimera_core::core::Health>(b).unwrap().current * 100.0;
     (h, w.get::<chimera_sim::weapon::Armor>(b).map_or(0.0, |a| a.amount * 100.0))

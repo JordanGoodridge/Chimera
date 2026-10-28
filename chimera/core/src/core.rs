@@ -946,6 +946,22 @@ impl Hitbox {
         }
     }
 
+    /// The axis-aligned box around the shape (in its own space: min, max).
+    pub fn bounds(&self) -> (Vec3, Vec3) {
+        let extent = match self.radius {
+            Some(r) => Vec3::splat(r.max(0.0)),
+            None => {
+                let m = Mat3::from_quat(self.rotation);
+                Vec3::new(
+                    m.row(0).abs().dot(self.half),
+                    m.row(1).abs().dot(self.half),
+                    m.row(2).abs().dot(self.half),
+                )
+            }
+        };
+        (self.center - extent, self.center + extent)
+    }
+
     /// |p|^2 - r^2, p its centre from `from` (Combat Arms' client test
     /// takes the smallest of the shapes a segment passes; a box by its
     /// bounding sphere).
@@ -984,6 +1000,15 @@ impl Hitbox {
 pub struct Hitboxes(pub Vec<Hitbox>);
 
 impl Hitboxes {
+    /// The axis-aligned box around every shape (min, max; in their
+    /// space), if there are any. A gun whose rule first tests a body's
+    /// box (Combat Arms') widens that box by these, so shapes poking out
+    /// of the character's hull (another game's taller model's head) still
+    /// count, as in Source.
+    pub fn bounds(&self) -> Option<(Vec3, Vec3)> {
+        self.0.iter().map(Hitbox::bounds).reduce(|(a0, a1), (b0, b1)| (a0.min(b0), a1.max(b1)))
+    }
+
     /// The shape a ray (local space) enters first within `limit`: its
     /// index, where it enters and leaves it (CS:S's rule).
     pub fn nearest(&self, origin: Vec3, dir: Vec3, limit: f32) -> Option<(usize, f32, f32)> {
@@ -2807,5 +2832,26 @@ mod brush_grid_tests {
                 .collect();
             assert_eq!(near, all);
         }
+    }
+}
+
+#[cfg(test)]
+mod hitbox_bounds_tests {
+    use super::*;
+
+    /// The bounds hold every shape: a sphere by its radius, a turned box
+    /// by its corners.
+    #[test]
+    fn bounds_hold_spheres_and_turned_boxes() {
+        let turned = Quat::from_rotation_z(std::f32::consts::FRAC_PI_4);
+        let shapes = Hitboxes(vec![
+            Hitbox::sphere(Vec3::new(0.0, 1.0, 0.0), 0.1, BodyRegion::Chest),
+            Hitbox::cuboid(Vec3::new(0.0, 2.0, 0.0), Vec3::new(0.1, 0.1, 0.1), turned, BodyRegion::Head),
+        ]);
+        let (min, max) = shapes.bounds().unwrap();
+        let r = 0.1 * std::f32::consts::SQRT_2;
+        assert!((max.y - (2.0 + r)).abs() < 1e-5 && (min.y - 0.9).abs() < 1e-5, "{min} {max}");
+        assert!((max.x - r).abs() < 1e-5 && (max.z - 0.1).abs() < 1e-5, "{min} {max}");
+        assert!(Hitboxes::default().bounds().is_none());
     }
 }

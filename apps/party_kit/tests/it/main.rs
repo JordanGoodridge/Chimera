@@ -24,5 +24,6 @@ mod startup;
 mod switches;
 
 mod heavy {
+    mod cross_hits;
     mod impacts;
 }

@@ -881,8 +881,18 @@ struct HudInputs<'w, 's> {
     parents: Query<'w, 's, &'static ChildOf>,
     dropped: Query<'w, 's, &'static Dropped>,
     spatial: SpatialQuery<'w, 's>,
-    /// Name sockets (characters.md 3).
-    poses: Query<'w, 's, (&'static crate::game::characters::CaPose, &'static crate::core::MovementState)>,
+    /// Name sockets (characters.md 3); a character of another game's
+    /// identity wears that game's body (its hitboxes' top).
+    poses: Query<
+        'w,
+        's,
+        (
+            Option<&'static crate::game::characters::CaPose>,
+            &'static crate::core::MovementState,
+            Option<&'static crate::slots::GameIdentity>,
+            Option<&'static crate::core::Hitboxes>,
+        ),
+    >,
     /// Dead players' bodies (their tags float over them) and what players
     /// carry (a tag's flag icon).
     bodies: Query<'w, 's, &'static CaBody>,
@@ -893,6 +903,10 @@ struct HudInputs<'w, 's> {
     /// The weapons this app loaded.
     catalog: Res<'w, crate::weapon::data::WeaponCatalog>,
 }
+
+/// How far over another game's body's head (its hitboxes' top) its name
+/// tag floats, m (ours: the skeleton's name socket).
+const NAME_ABOVE_HEAD: f32 = 0.15;
 
 /// This frame's `CaHud` from the world and the memory.
 fn update(
@@ -1145,15 +1159,26 @@ fn update(
             // A dead player's tag floats over its body (our bodies have no
             // pose: their resting place); a living one's at the skeleton's
             // name socket, without one the character's position, the hull
-            // centre (Open question 10).
+            // centre (Open question 10). Wearing another game's body (its
+            // identity's), over that body's head: its hitboxes' top, not
+            // our skeleton's socket, which it doesn't show.
             let body = (!alive).then(|| bodies.get(&e)).flatten();
+            let aabb = world.characters.get(e).ok().and_then(|c| c.6);
             let anchor = match body {
                 Some(b) => b.at,
                 None => world
                     .poses
                     .get(e)
                     .ok()
-                    .and_then(|(p, s)| Some(p.world(t, s, UNIT, p.name_tag?)))
+                    .and_then(|(p, s, identity, boxes)| {
+                        if !crate::slots::GameIdentity::allows(identity, crate::game::GAME) {
+                            let top = boxes?.bounds()?.1.y;
+                            let feet = aabb.map_or(t.translation.y, |b| b.min.y);
+                            return Some(t.translation.with_y(feet + top + NAME_ABOVE_HEAD));
+                        }
+                        let p = p?;
+                        Some(p.world(t, s, UNIT, p.name_tag?))
+                    })
                     .unwrap_or(t.translation),
             };
             let inputs = TagInputs {
