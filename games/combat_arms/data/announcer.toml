@@ -10,24 +10,27 @@ window_ms = 5000
 revenge_after = 2
 
 # B1: the steps by multi-kill count (the thresholds inferred, Open
-# question 1); level 4, a streak step's (B4).
+# question 1); level 5, a streak step's (B4, corrected 2026-10-28).
 steps = [
-    { count = 2, key = "double_kill", name = "DOUBLE KILL", banner = "UI_HUD_Message/Effect/DoubleKill.dtx", voice = "UI_SND/doublekill.wav", level = 4 },
-    { count = 3, key = "multi_kill", name = "MULTI KILL", banner = "UI_HUD_Message/Effect/MultiKill.dtx", voice = "UI_SND/multikill.wav", level = 4 },
-    { count = 4, key = "ultra_kill", name = "ULTRA KILL", banner = "UI_HUD_Message/Effect/UltraKill.dtx", voice = "UI_SND/ultrakill.wav", level = 4 },
-    { count = 5, key = "fantastic", name = "FANTASTIC", banner = "UI_HUD_Message/Effect/fantastic.dtx", voice = "UI_SND/fantastic.wav", level = 4 },
-    { count = 6, key = "unbelievable", name = "UNBELIEVABLE", banner = "UI_HUD_Message/Effect/Unbelievable.dtx", voice = "UI_SND/Unbelievable.wav", level = 4 },
+    { count = 2, key = "double_kill", name = "DOUBLE KILL", banner = "UI_HUD_Message/Effect/DoubleKill.dtx", voice = "UI_SND/doublekill.wav", level = 5 },
+    { count = 3, key = "multi_kill", name = "MULTI KILL", banner = "UI_HUD_Message/Effect/MultiKill.dtx", voice = "UI_SND/multikill.wav", level = 5 },
+    { count = 4, key = "ultra_kill", name = "ULTRA KILL", banner = "UI_HUD_Message/Effect/UltraKill.dtx", voice = "UI_SND/ultrakill.wav", level = 5 },
+    { count = 5, key = "fantastic", name = "FANTASTIC", banner = "UI_HUD_Message/Effect/fantastic.dtx", voice = "UI_SND/fantastic.wav", level = 5 },
+    { count = 6, key = "unbelievable", name = "UNBELIEVABLE", banner = "UI_HUD_Message/Effect/Unbelievable.dtx", voice = "UI_SND/Unbelievable.wav", level = 5 },
     # Quirk 6: the same voice as Unbelievable.
-    { count = 7, key = "unbelievable_plus", name = "UNBELIEVABLE+", banner = "UI_HUD_Message/Effect/Unbelievable_plus.dtx", voice = "UI_SND/Unbelievable.wav", level = 4 },
+    { count = 7, key = "unbelievable_plus", name = "UNBELIEVABLE+", banner = "UI_HUD_Message/Effect/Unbelievable_plus.dtx", voice = "UI_SND/Unbelievable.wav", level = 5 },
 ]
 
-# B2: the special kills. First kill at a step's level (inferred); head and
-# groin shots at the special shots' (5); revenge 3, with no voice.
-first_kill = { key = "first_kill", name = "FIRST KILL", banner = "UI_HUD_Message/Effect/FirstKill.dtx", voice = "UI_SND/FirstKill.wav", level = 4 }
+# B2 and B4 (corrected 2026-10-28): the event kills (first kill, revenge)
+# at level 6; head and groin shots at the special shots' (5); revenge has
+# no voice (a headshot revenge says the head line, A6). One kill raises
+# one event, with one voice; the skull or nut goes over a step, first kill
+# or revenge, not over a single kill's own headshot or nutshot (A2).
+first_kill = { key = "first_kill", name = "FIRST KILL", banner = "UI_HUD_Message/Effect/FirstKill.dtx", voice = "UI_SND/FirstKill.wav", level = 6 }
 headshot = { key = "headshot", name = "HEADSHOT", banner = "UI_HUD_Message/Effect/HeadShot.dtx", top = "UI_HUD_Message/Effect/Head.dtx", voice = "UI_SND/headshot.wav", level = 5 }
-# The voice by the victim's body (inferred, Open question 10).
+# The voice by the killer's body (Open question 10, answered).
 groin = { key = "nutshot", name = "NUTSHOT", banner = "UI_HUD_Message/Effect/NutShot.dtx", top = "UI_HUD_Message/Effect/Nut.dtx", voice = "UI_SND/NutShot_Male.wav", voice_female = "UI_SND/NutShot_Female.wav", level = 5 }
-revenge = { key = "revenge", name = "REVENGE", banner = "UI_HUD_Message/Effect/Revenge.dtx", level = 3 }
+revenge = { key = "revenge", name = "REVENGE", banner = "UI_HUD_Message/Effect/Revenge.dtx", level = 6 }
 
 # B3: the 1024 x 768 reference screen, each axis stretched.
 [layout]

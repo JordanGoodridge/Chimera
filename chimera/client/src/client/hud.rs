@@ -34,6 +34,7 @@ impl Plugin for HudPlugin {
             .init_resource::<GameDraws>()
             .init_resource::<CrosshairColor>()
             .init_resource::<ScopeOverlayImage>()
+            .init_resource::<ScopeOverlayTexel>()
             .add_systems(Startup, spawn_hud)
             .add_systems(
                 Update,
@@ -334,6 +335,10 @@ struct CenterText;
 /// The sniper scope overlay (shown while the local player is scoped).
 #[derive(Component)]
 struct ScopeOverlay;
+/// A black bar beside the scope's middle (hidden when the game's picture
+/// is sized by `ScopeOverlayTexel`).
+#[derive(Component)]
+struct ScopeBar;
 /// The scope's square middle (the ring, the lens and cross hairs).
 #[derive(Component)]
 struct ScopeSquare;
@@ -348,6 +353,23 @@ struct GenericScope(Handle<Image>);
 /// stand-in.
 #[derive(Resource, Default, Clone, Debug)]
 pub struct ScopeOverlayImage(pub Option<Handle<Image>>);
+/// How big a game's own scope picture is drawn
+/// (`ScopeOverlayImage`): one texel's side as a fraction of the screen's
+/// height, texels square at every aspect, the picture centred and cropped
+/// by the screen, nothing filling what it leaves (Combat Arms:
+/// specs/combat_arms/weapon_classes.md 7.10). None: the picture fills the
+/// view's height at its own aspect between black bars.
+#[derive(Resource, Default, Clone, Copy, Debug, PartialEq)]
+pub struct ScopeOverlayTexel(pub Option<f32>);
+
+/// The scope picture's rectangle in screen pixels (left, top, width,
+/// height) for a `texture` of texels, a `texel` fraction of the screen
+/// height and the `screen`'s size.
+pub fn scope_card(texture: Vec2, texel: f32, screen: Vec2) -> [f32; 4] {
+    let (w, h) = (texture.x * texel * screen.y, texture.y * texel * screen.y);
+    [screen.x / 2.0 - w / 2.0, screen.y / 2.0 - h / 2.0, w, h]
+}
+
 /// One of the four crosshair lines: its direction from the centre (zero:
 /// the centre dot).
 #[derive(Component)]
@@ -445,6 +467,7 @@ fn spawn_scope(commands: &mut Commands, images: &mut Assets<Image>) {
                 ..default()
             },
             BackgroundColor(Color::BLACK),
+            ScopeBar,
         )
     };
     commands.spawn((
@@ -454,6 +477,8 @@ fn spawn_scope(commands: &mut Commands, images: &mut Assets<Image>) {
             width: percent(100.0),
             height: percent(100.0),
             flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
             ..default()
         },
         GlobalZIndex(39),
@@ -894,27 +919,75 @@ fn game_scope(
 fn scope_inputs_changed(
     hud: Option<Res<crate::map::hud::ActiveHud>>,
     own: Option<Res<ScopeOverlayImage>>,
+    texel: Option<Res<ScopeOverlayTexel>>,
     mut had: bevy::ecs::system::Local<bool>,
 ) -> bool {
     let removed = *had && hud.is_none();
     *had = hud.is_some();
-    removed || hud.is_some_and(|h| h.is_changed()) || own.is_some_and(|o| o.is_changed())
+    removed
+        || hud.is_some_and(|h| h.is_changed())
+        || own.is_some_and(|o| o.is_changed())
+        || texel.is_some_and(|t| t.is_changed())
 }
 
-/// The scope's middle takes the game's picture's aspect (square for the
-/// others), so the black bars on its sides fill what the picture leaves.
+/// The scope's middle: with a game's picture and a texel size, the
+/// picture's own size (square texels, scaled by the screen's height,
+/// centred, the bars gone: it is cropped by the screen and the world
+/// shows around and through it); with a picture alone, its aspect at the
+/// view's height between black bars; the others' square.
 fn scope_aspect(
     own: Option<Res<ScopeOverlayImage>>,
+    texel: Option<Res<ScopeOverlayTexel>>,
     images: Res<Assets<Image>>,
     mut square: Single<&mut Node, With<ScopeSquare>>,
+    mut bars: Query<&mut Node, (With<ScopeBar>, Without<ScopeSquare>)>,
 ) {
-    let ratio = own
+    let size = own
         .and_then(|o| o.0.as_ref().and_then(|h| images.get(h)))
         .map(|i| i.size_f32())
-        .filter(|s| s.x > 0.0 && s.y > 0.0)
-        .map_or(1.0, |s| s.x / s.y);
-    if square.aspect_ratio != Some(ratio) {
-        square.aspect_ratio = Some(ratio);
+        .filter(|s| s.x > 0.0 && s.y > 0.0);
+    let ratio = size.map_or(1.0, |s| s.x / s.y);
+    let card = size.zip(texel.and_then(|t| t.0));
+    // The card sits by absolute offsets from the middle: centred whatever
+    // its size, even past the screen's edges.
+    let layout = match card {
+        Some((s, t)) => {
+            let (w, h) = (100.0 * s.x * t, 100.0 * s.y * t);
+            (
+                PositionType::Absolute,
+                [vh(w), vh(h)],
+                None,
+                [percent(50.0), percent(50.0)],
+                UiRect::new(vh(-w / 2.0), Val::ZERO, vh(-h / 2.0), Val::ZERO),
+                Display::None,
+            )
+        }
+        None => (
+            PositionType::Relative,
+            [Val::Auto, percent(100.0)],
+            Some(ratio),
+            [Val::Auto, Val::Auto],
+            UiRect::ZERO,
+            Display::Flex,
+        ),
+    };
+    let (position, [width, height], aspect, [left, top], margin, display) = layout;
+    let node = &mut **square;
+    if (node.position_type, node.width, node.height, node.aspect_ratio, node.left, node.top, node.margin)
+        != (position, width, height, aspect, left, top, margin)
+    {
+        node.position_type = position;
+        node.width = width;
+        node.height = height;
+        node.aspect_ratio = aspect;
+        node.left = left;
+        node.top = top;
+        node.margin = margin;
+    }
+    for mut bar in &mut bars {
+        if bar.display != display {
+            bar.display = display;
+        }
     }
 }
 
@@ -1171,6 +1244,49 @@ mod tests {
         app.insert_resource(ScopeOverlayImage(None));
         app.update();
         assert!(state(&mut app).0 >= 4, "CS:S's again once the picture goes");
+    }
+
+    /// A game's picture with a texel size is a centred card in `vh` units
+    /// with the bars gone; without the size, its aspect between the bars.
+    #[test]
+    fn scope_card_sizes_by_the_screens_height() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>();
+        app.init_resource::<ScopeOverlayImage>().init_resource::<ScopeOverlayTexel>();
+        app.add_systems(Update, scope_aspect);
+        app.world_mut().resource_scope(|w: &mut World, mut images: Mut<Assets<Image>>| {
+            let mut commands = w.commands();
+            spawn_scope(&mut commands, &mut images);
+        });
+        app.world_mut().flush();
+        use bevy::{asset::RenderAssetUsages, render::render_resource::{Extent3d, TextureDimension, TextureFormat}};
+        let own = app.world_mut().resource_mut::<Assets<Image>>().add(Image::new_fill(
+            Extent3d { width: 1024, height: 512, depth_or_array_layers: 1 },
+            TextureDimension::D2,
+            &[0, 0, 0, 0],
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::RENDER_WORLD,
+        ));
+        app.insert_resource(ScopeOverlayImage(Some(own)));
+        let state = |app: &mut App| {
+            let w = app.world_mut();
+            let sq = w.query_filtered::<&Node, With<ScopeSquare>>().single(w).unwrap().clone();
+            let bars: Vec<Display> = w.query_filtered::<&Node, With<ScopeBar>>().iter(w).map(|n| n.display).collect();
+            (sq, bars)
+        };
+        app.update();
+        let (sq, bars) = state(&mut app);
+        assert_eq!((sq.aspect_ratio, bars), (Some(2.0), vec![Display::Flex; 2]), "its aspect between bars");
+        app.insert_resource(ScopeOverlayTexel(Some(0.002)));
+        app.update();
+        let (sq, bars) = state(&mut app);
+        assert_eq!((sq.width, sq.height, sq.aspect_ratio), (vh(204.8), vh(102.4), None));
+        assert_eq!(sq.position_type, PositionType::Absolute);
+        assert_eq!((sq.left, sq.margin.left, sq.top, sq.margin.top), (percent(50.0), vh(-102.4), percent(50.0), vh(-51.2)));
+        assert_eq!(bars, vec![Display::None; 2], "no black fill");
+        app.insert_resource(ScopeOverlayTexel(None));
+        app.update();
+        assert_eq!(state(&mut app).0.aspect_ratio, Some(2.0));
     }
 
     #[test]

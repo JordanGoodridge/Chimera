@@ -1080,6 +1080,7 @@ pub fn read_mod(s: &Section) -> ModRecord {
         zoom_level: i("ZoomLevel"),
         zoom_fov: fov,
         zoom_sprite: s.fixed_string("ZoomSpriteName", ""),
+        zoom_sprite_scale: s.number("ZoomSpriteScale", 0.0) as f32,
         sight_style: i("SightSystemStyle"),
         target_range: i("TargetRange"),
         inst_damage: n("Instdamage"),

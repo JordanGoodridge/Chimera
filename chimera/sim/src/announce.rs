@@ -4,7 +4,7 @@
 //! multi-kill count (enemy kills each less than the pack's window after
 //! the previous), the first kill of the round, the killing hit's special
 //! place (head, groin: the gun's or the knife's `core::RegionHit`, else the damage's
-//! hitgroup; never for blasts or burns), revenge and the victim's body (`core::FemaleBodies`),
+//! hitgroup; never for blasts or burns), revenge and the killer's body (`core::FemaleBodies`),
 //! written as `KillAnnounced` (`AnnounceSet`, before the network sends
 //! the kill with them: `net::Killed::facts`).
 //!
@@ -238,7 +238,7 @@ fn count_kills(
                 first: counted.first,
                 shot: special_shot(d.damage.kind, BodyRegion::from_hitgroup(d.damage.hitgroup), gun_region),
                 revenge: counted.revenge,
-                victim_female: female.as_ref().is_some_and(|f| f.0.contains(&d.entity)),
+                killer_female: female.as_ref().is_some_and(|f| f.0.contains(&killer)),
             },
         });
     }
