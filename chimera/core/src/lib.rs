@@ -6,13 +6,15 @@
 //! their new and old names (`env`), game events and the server log (`game_log`), the games an app plays
 //! (`game_registry`: what a game tells the shell about itself) and the
 //! gameplay (`gameplay`: which game fills each match-wide slot), the parts
-//! each game lends a game made of several (`game_parts`). Code
+//! each game lends a game made of several (`game_parts`), announcers'
+//! packs and kill facts (`announcer`). Code
 //! everything else uses and that changes rarely, in its own crate so an
 //! edit higher up doesn't recompile it.
 //!
 //! The game crate re-exports each module at its old path (`mashup::core`,
 //! `mashup::console`, ...); `mashup::core` adds the build's `VERSION`.
 
+pub mod announcer;
 pub mod character;
 pub mod console;
 pub mod core;

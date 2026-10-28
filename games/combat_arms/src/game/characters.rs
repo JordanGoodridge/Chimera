@@ -581,11 +581,27 @@ fn wear_looks(
 fn setup(
     data: Res<CaData>,
     characters: Query<(Entity, Option<&Selection>, Option<&CaAnim>), (With<Intent>, With<MovementState>)>,
+    females: Option<ResMut<crate::core::FemaleBodies>>,
     mut commands: Commands,
 ) {
+    // The bodies' sex, for what is gendered (the announcer's groin-shot
+    // voice): kept only where something reads it.
+    let mut females = females;
+    if let Some(f) = females.as_mut() {
+        f.0.retain(|e| characters.contains(*e));
+    }
     for (e, look, anim) in &characters {
         let look = look.copied().unwrap_or_default();
         let (body, skeleton, rig) = body_of(&data, &look);
+        if let Some(f) = females.as_mut()
+            && f.0.contains(&e) != (skeleton == 1)
+        {
+            if skeleton == 1 {
+                f.0.insert(e);
+            } else {
+                f.0.remove(&e);
+            }
+        }
         let same = anim.is_some_and(|a| a.body == body && a.rig.as_ref().map(Arc::as_ptr) == rig.as_ref().map(Arc::as_ptr));
         if !same {
             let table = if skeleton == 1 { *FEMALE } else { *MALE };

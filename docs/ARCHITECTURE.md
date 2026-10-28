@@ -36,12 +36,12 @@ cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ i
   |    chimera_net (chimera/net/)   net: transport, replication, prediction; harness::NetSim
   |    |
 chimera_present (chimera/present/)   render, audio, MapPlugin, assets (installs as asset sources)
-  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module, mode, minigame, identity, spawning; SimBasePlugins; testkit (feature)
+  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module, mode, minigame, identity, spawning, announce; SimBasePlugins; testkit (feature)
   |    |
 chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; music; greybox, harness::Sim
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay, game_parts
+ (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay, game_parts, announcer
                       chimera_vfs (chimera/vfs/)   the neutral VFS (`FileSource`, `Mount`) under both format crates and `mount`
                       lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```

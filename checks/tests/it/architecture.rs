@@ -31,8 +31,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Which game fills each match-wide slot (rules, HUD, binds, tick) and
     // the sets that gate a game's systems by it.
     ("gameplay", &["core", "game_registry"]),
-    // What each game lends a game made of several (plain data).
-    ("game_parts", &[]),
+    // What each game lends a game made of several (plain data), its
+    // announcer pack among them.
+    ("game_parts", &["announcer"]),
+    // Announcers' packs, the server's choice and kill facts (plain data).
+    ("announcer", &[]),
     ("slots", &["core"]),
     ("character", &["core", "slots"]),
     ("movement", &["core", "slots", "character"]),
@@ -78,6 +81,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Every game's respawn (chimera/sim): the dead held, a character
     // revived at a place (out of a toggled noclip).
     ("spawning", &["core", "movement"]),
+    // The announcer's counting of kills (chimera/sim): from deaths and the
+    // guns' hit regions, the server's `sv_announcer`.
+    ("announce", &["core", "console", "map", "weapon"]),
     // The test kit (chimera/sim, feature `testkit`): a weapon set as data
     // and the base on the greybox, for tests; nothing outside the crate's
     // frameworks.

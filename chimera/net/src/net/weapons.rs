@@ -82,7 +82,13 @@ pub(super) fn plugin(app: &mut App) {
         )
         .add_systems(
             PostUpdate,
-            (send_weapon_events, send_detonations, send_senses, send_hurts, send_deaths)
+            (
+                send_weapon_events,
+                send_detonations,
+                send_senses,
+                send_hurts,
+                send_deaths.after(chimera_core::announcer::AnnounceSet),
+            )
                 .before(ServerSystems::Send)
                 .run_if(server()),
         )
@@ -475,18 +481,25 @@ fn receive_hurts(
     }
 }
 
-/// Deaths, to every client (kill feed, ragdolls).
+/// Deaths, to every client (kill feed, ragdolls), with the announcer's
+/// facts of each enemy kill.
 fn send_deaths(
     mut died: MessageReader<Died>,
     replicated: Query<(), With<Replicated>>,
     registry: Res<WeaponRegistry>,
+    mut announced: MessageReader<chimera_core::announcer::KillAnnounced>,
     mut out: MessageWriter<ToClients<Killed>>,
 ) {
+    let announced: Vec<_> = announced.read().collect();
     for d in died.read() {
         if !replicated.contains(d.entity) {
             continue;
         }
         let damage = &d.damage;
+        let facts = announced
+            .iter()
+            .find(|a| a.victim == d.entity && Some(a.killer) == d.attacker && replicated.contains(a.killer))
+            .map(|a| a.facts.clone());
         out.write(ToClients {
             targets: SendTargets::CLIENTS_ONLY,
             message: Killed {
@@ -498,6 +511,7 @@ fn send_deaths(
                 point: damage.point.to_array(),
                 dir: damage.dir.to_array(),
                 force: damage.force.to_array(),
+                facts,
             },
         });
     }
@@ -560,6 +574,15 @@ fn receive_deaths(mut killed: MessageReader<Killed>, mut commands: Commands) {
                     force: Vec3::from_array(k.force),
                 },
             });
+            // The announcer's facts (`announcer::KillAnnounced`).
+            if let (Some(facts), Some(killer)) = (k.facts, k.attacker) {
+                w.write_message(chimera_core::announcer::KillAnnounced {
+                    victim: k.victim,
+                    killer,
+                    weapon,
+                    facts,
+                });
+            }
         });
     }
 }

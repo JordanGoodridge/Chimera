@@ -514,3 +514,53 @@ fn a_clients_own_killing_shot_sounds_once() {
     assert_eq!(mine.heard, mine.rounds, "the shooter hears each of its own rounds once, the killing one too");
     assert_eq!(theirs.heard, served.rounds, "the other client hears each round the server fired once");
 }
+
+/// The announcer over the network (specs/combat_arms/kill_streaks.md A1,
+/// A3): the server counts client 0's head kill of client 1 and sends its
+/// facts with the kill; client 0 (the killer) shows the server's pack's
+/// FIRST KILL and HEADSHOT (the higher level shows) and plays both
+/// voices; client 1 (the victim) neither.
+#[test]
+fn the_killers_client_announces_the_servers_facts() {
+    use chimera_client::client::announcer::{AnnouncerPlugin, AnnouncerView};
+    let mut sim = NetSim::new(
+        CaSim,
+        LinkConditions {
+            latency: Duration::from_millis(20),
+            jitter: Duration::ZERO,
+            loss: 0.0,
+        },
+        7,
+        2,
+        |app| {
+            setup(app);
+            app.add_plugins(AnnouncerPlugin);
+        },
+    );
+    sim.set_frame(TICK_INTERVAL);
+    minigame::start(sim.server.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+    sim.until_joined(900);
+    sim.ticks(300);
+    let (a, b) = (sim.character_of(0).unwrap(), sim.character_of(1).unwrap());
+    assert!(sim.until(600, |s| server_alive(s, b) && s.server.app.world().get::<God>(b).is_none()));
+    let at = sim.server.position(b);
+    sim.server.app.world_mut().write_message(chimera_core::core::Damage {
+        target: b,
+        attacker: Some(a),
+        amount: 5.0,
+        point: at,
+        dir: Vec3::NEG_Z,
+        hitgroup: chimera_core::core::Hitgroup::Head,
+        kind: chimera_core::core::DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.ticks(20);
+    let view = sim.clients[0].app.world().resource::<AnnouncerView>();
+    assert_eq!(view.voices, ["UI_SND/FirstKill.wav", "UI_SND/headshot.wav"]);
+    let shown = view.player.shown.as_ref().expect("a banner on the killer's client");
+    assert_eq!(shown.request.image, "UI_HUD_Message/Effect/HeadShot.dtx");
+    assert_eq!(shown.request.top.as_deref(), Some("UI_HUD_Message/Effect/Head.dtx"));
+    let victim = sim.clients[1].app.world().resource::<AnnouncerView>();
+    assert!(victim.voices.is_empty() && victim.player.shown.is_none(), "not on the victim's client");
+}

@@ -321,6 +321,37 @@ numbers (pinned by `parity_pin_*` tests in each game).
   and nobody carries armour their HUD doesn't show. (Combat Arms puts on
   its default gear at a switch, not a loadout's.)
 
+### Announcers
+
+Kill-streak and special-kill callouts (Combat Arms' DOUBLE KILL ...
+UNBELIEVABLE+, FIRST KILL, HEADSHOT, NUTSHOT, REVENGE) are Chimera's, not
+a game's HUD's (specs/combat_arms/kill_streaks.md: Part A the rules,
+Part B Combat Arms' pack).
+
+- **Counting is the server's, for any gun on any body**
+  (`chimera_sim::announce`): from every enemy kill, the killer's
+  multi-kill count (the pack's window), the round's first kill, the
+  killing hit's place (head; groin, from the gun's full `BodyRegion`,
+  `core::RegionHit`, since `Damage`'s hitgroup reads a groin as the
+  stomach), revenge and the victim's body (`core::FemaleBodies`). These
+  `KillFacts` travel with the kill (`net::Killed`); every client decides
+  what to show from them.
+- **An announcer pack is data** (`chimera_core::announcer::AnnouncerPack`,
+  a TOML document): step names and thresholds, art and voice files (paths
+  in the pack's game's install, loaded at run time), layout on its
+  reference screen, the banner animation's timings, priority levels,
+  weapon skins. A game contributes its pack as one of its parts
+  (`GameParts::announcer`; Combat Arms' is `data/announcer.toml`).
+- **The shell draws it** (`chimera_client::client::announcer`), above
+  whichever HUD is up, so in the party apps a CS:S-identity player gets
+  the same banner and voice as a Combat Arms one.
+- **The server picks the pack**: `sv_announcer` (replicated) is
+  `default` (the first registered: Combat Arms' wherever Combat Arms is
+  composed, so the party apps and plain Combat Arms; none in plain CS:S,
+  which has no pack), `none`, `random` (one per map) or a pack's id. More
+  packs (a Quake-style one) are more data files; a minigame could set the
+  cvar.
+
 ## Multiplayer
 
 Same principles as the main game: the server owns the loadout, rules and

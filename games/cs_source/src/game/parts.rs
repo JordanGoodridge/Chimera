@@ -46,4 +46,6 @@ pub static PARTS: GameParts = GameParts {
     characters: Some("cs_source:players"),
     hud: Some(super::GAME),
     maps: &["cs_source:de_dust2", "cs_source:cs_office"],
+    // No announcer of its own (CS:S has none).
+    announcer: None,
 };

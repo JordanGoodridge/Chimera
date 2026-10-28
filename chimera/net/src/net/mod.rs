@@ -939,7 +939,8 @@ pub struct Senses {
 /// Server -> clients: a character died (`core::Died`): who, by whom, and
 /// the killing hit (its weapon's registry index when it isn't what the
 /// killer holds, hitgroup and kind as `net::weapons` numbers them, where
-/// and which way), for the kill feed and the client's ragdoll.
+/// and which way), for the kill feed and the client's ragdoll; with the
+/// announcer's facts.
 #[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq, bevy::ecs::entity::MapEntities)]
 pub struct Killed {
     #[entities]
@@ -952,6 +953,10 @@ pub struct Killed {
     pub point: [f32; 3],
     pub dir: [f32; 3],
     pub force: [f32; 3],
+    /// An enemy kill's facts for the announcer (multi-kill count, first
+    /// kill, head or groin shot, revenge: `announcer::KillFacts`), when the
+    /// server announces (specs/combat_arms/kill_streaks.md A1).
+    pub facts: Option<chimera_core::announcer::KillFacts>,
 }
 
 /// Server -> the shooter's client: its shot hit (the server's

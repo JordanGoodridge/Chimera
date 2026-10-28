@@ -4,6 +4,7 @@
 //! user's installs. `cargo test -p party_kit --features dev --test it`;
 //! where tests go: docs/OBSERVABILITY.md, section 1.
 
+mod announcer;
 mod controls;
 mod cross_game;
 mod cross_water_ladders;

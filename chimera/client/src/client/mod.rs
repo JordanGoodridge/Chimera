@@ -11,6 +11,7 @@
 //! `<map>NNNN.png`) console commands (`capture.rs`), remote protocol.
 
 pub mod aim;
+pub mod announcer;
 pub mod canvas;
 pub mod app;
 pub mod audio;
@@ -398,6 +399,7 @@ impl PluginGroup for ClientPlugins {
             .add(console::ConsoleUiPlugin)
             .add(net_graph::NetGraphPlugin)
             .add(hud::HudPlugin)
+            .add(announcer::AnnouncerPlugin)
             .add(game_text::GameTextPlugin)
             .add(effects::ShotEffectsPlugin)
             .add(effects::GenericImpactsPlugin)

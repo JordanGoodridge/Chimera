@@ -2,8 +2,13 @@
 //! (`chimera_core::game_parts`; docs/plans/active/ultimate-gun-game.md):
 //! its guns by class and its knife (`weapons`, data/weapons/), its
 //! movement (`movement::ID`), its soldiers (`characters`), its HUD
-//! (`ui`, the composing app's) and its maps. The app registers it
+//! (`ui`, the composing app's), its maps and its announcer pack
+//! (data/announcer.toml). The app registers it
 //! (`register_parts(&PARTS)`).
+//!
+//! Known shortcuts: the announcer pack has no weapon skins yet (which
+//! weapon wears which, `HUDEffectOverride` in the install's weapon list,
+//! isn't read: kill_streaks.md B7).
 
 use chimera_core::game_parts::{GameParts, GunClass, GunPart};
 
@@ -28,4 +33,10 @@ pub static PARTS: GameParts = GameParts {
     characters: Some("combat_arms:soldier"),
     hud: Some(super::GAME),
     maps: &["combat_arms:warehouse"],
+    announcer: Some(ANNOUNCER),
 };
+
+/// Combat Arms' announcer pack (specs/combat_arms/kill_streaks.md Part B;
+/// `chimera_core::announcer`): its streak steps, special kills, banner
+/// layout and timings, the files' paths in the install.
+pub const ANNOUNCER: &str = include_str!("../../data/announcer.toml");

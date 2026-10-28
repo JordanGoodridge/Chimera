@@ -19,6 +19,7 @@ mod stack;
 #[allow(unused_imports)]
 use common::{load_map, load_map_level};
 
+mod announcer;
 mod console_commands;
 mod cs_guns;
 mod debug_ui;
