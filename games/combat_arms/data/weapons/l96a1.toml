@@ -15,6 +15,9 @@ units = { length = 0.018, damage = 0.01 }
 slot = 0
 # [TW: Draw] 1100 ms.
 draw = 1.1
+# Its class in an automatic gun game (docs/weapon-data.md); install
+# weapons copied from this document keep it.
+class = "sniper"
 
 # [TW: Clip / total] 5 / 20.
 [ammo."combat_arms:7.62mm_l96a1"]

@@ -44,12 +44,21 @@ part too.
   the app) and installed by every player (`chimera_net::minigame_net::
   installed_by_all`: each remote mount report, plus `LocalMounts`; a game
   a report doesn't list counts as there).
-- Ladder: N rungs (`RUNGS` = 12), SplitMix64 from a seed; games taken in
-  turn from a seeded start (a game gives a rung each turn while it has
-  guns: spread), each rung's class the nearest to its place in the climb,
-  no gun twice, sorted by class (stable).
-- Pool: every installed game's maps, the games in turn (rotation
-  alternates); none, the greybox.
+- Ladder: N rungs (`RUNGS` = 12), SplitMix64 from a seed; guns drawn
+  from every playable game's guns (claimed, plus its weapons whose data
+  names a `class`: Combat Arms' launchers, crossbow and install
+  weapons), each game at least once, a game's guns weighted by one over
+  the square root of its count, a class at most a third, no gun twice,
+  sorted by class; then one or two grenade rungs (class `grenade`) in
+  the top third, never last, the grenade given back once thrown.
+- Seeds: the apps take a fresh one at launch (printed), each rotation
+  the next (`next_seed`) for a new ladder (`NextMatchHooks`); `ugg_new
+  <seed>` replays one.
+- Pool: every installed game's maps (claimed, plus installed ones its
+  `map_patterns` match: CS:S's `de_*`/`cs_*`; Combat Arms' lobby maps
+  but HGOILRIG, claimed); none, the greybox. Rotation at random
+  (`rotation = "random"`), skipping the last 10 played
+  (`minigame::rotation::MapHistory`, the host's for its lifetime).
 - The definition is text (`MinigameDef`), so the network carries it as it
   carries any minigame's (L3's manifest: id, hash, text); `identity =
   "weapon"`, `chimera:ladder`, the base game's binds/tick/bots, the kit
@@ -57,8 +66,9 @@ part too.
 - The app: `apps/ultimate_gun_game` (`UltimateGunGamePlugin` on
   `party_kit::client_app`) and `apps/ultimate_gun_game_server`
   (`party_kit::server::run`). Made at `Plugin::finish`, again at
-  `PostStartup` with this machine's installs, and on `ugg_new [seed]
-  [rungs] [map]` for the players connected.
+  `PostStartup` with this machine's installs, at each rotation for the
+  players then connected, and on `ugg_new [seed] [rungs] [map]` for the
+  players connected.
 - Network (Chimera, generic): a definition made again under the same id
   is announced (`write_minigame` compares the definition, not only the
   id) and a client replays it (`apply_minigame`), so a new ladder reaches
@@ -77,8 +87,9 @@ part too.
    these two. A game-agnostic composer needs each game to export a
    bundle (its sim parts plugin, map loader, guest dressing, HUD plugins)
    behind one interface; `GameParts` describes, it doesn't build.
-3. Gun classes are a hand list per game; weapon data has no class (`slot`
-   numbers differ per game). Data-driven: a `class` key in the weapon TOML.
+3. (Partly done: a `class` key in the weapon TOML.) Gun classes are a
+   hand list per game plus the data's `class` (Combat Arms' other guns
+   and its install's copies); CS:S's are still the hand list only.
 4. (Done after merging the per-game kit, `def::Kit::ByGame`.) The kit is
    only a knife: grenades or a class's sidearm per game aren't parts yet.
 5. (Done in the shell: `client::hud_minimal::MinimalHudPlugin`, added by the
@@ -90,8 +101,8 @@ part too.
    display-name registry in the shell).
 6. Body fallback is the capsule only; "another game's body" needs
    `CharacterModels::for_identity` to take a fallback game.
-7. Install filtering ignores the server's own installs and isn't re-run at
-   rotation or when a player joins (only `ugg_new`); the client still
+7. Install filtering ignores the server's own installs and isn't re-run
+   when a player joins (at rotation and `ugg_new` only); the client still
    stops without CS:S (`party_kit::requirements`), the pool's first map
    being CS:S's.
 8. Whether a claimed map really loads isn't checked (only that its game
@@ -100,8 +111,8 @@ part too.
 
 ## Next
 
-- Rebuild the ladder at each rotation for the players then connected
-  (gap 7).
-- Weapon class in data (gap 3); display names in the minimal HUD.
+- (Done: `NextMatchHooks`.) Rebuild the ladder at each rotation for the
+  players then connected (gap 7).
+- CS:S's classes in its data too (gap 3); display names in the minimal HUD.
 - The party kit crate and a per-game bundle (gaps 1-2) when a third game
   arrives.

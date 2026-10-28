@@ -12,30 +12,41 @@
 //! a fork of it: this crate adds only `UltimateGunGamePlugin`, which makes
 //! the definition `MINIGAME` from the registered games' parts once the app
 //! is built (`Plugin::finish`: the weapon catalogue and movements are
-//! there), and again with the players' installs at the first frame and on
-//! `ugg_new [seed] [rungs] [map]` (a new ladder for the players connected,
-//! played at once: `minigame_net::change_match`). Its ladder has
-//! `RUNGS` rungs spread across the games' guns (seeded, `SEED` unless
-//! `ugg_new` names one), filtered to the games every connected player has
-//! (`minigame_net::installed_by_all`, L3's mount reports); its pool every
-//! game's maps; its kit each gun's game's knife (the base game's, `BASE`,
-//! for a game without one). `parts` (console)
-//! prints each game's capability report.
+//! there), again with the players' installs at the first frame, at every
+//! rotation (`minigame_net::NextMatchHooks`: a new ladder from the next
+//! seed, `next_seed`, for the players then connected) and on `ugg_new
+//! [seed] [rungs] [map]` (a new ladder for the players connected, played
+//! at once: `minigame_net::change_match`). The apps (client and dedicated
+//! server, apps/ultimate_gun_game_server: `UltimateGunGamePlugin::launch`) take a fresh seed at launch
+//! (`random_seed`), said on the console and in the log with each ladder;
+//! `ugg_new <seed>` replays one; the default plugin (tests) keeps `SEED`.
+//! Its ladder has `RUNGS` rungs drawn from every gun of the games every
+//! connected player has (`minigame_net::installed_by_all`, L3's mount
+//! reports; their install's weapons too), with grenade rungs near the top
+//! (`auto::ladder`); its pool every game's maps, their installs' too
+//! (`auto::find_installed_maps`, the apps only), rotated at random but the
+//! last `AVOID_RECENT` played (`minigame::rotation`, seeded by the launch
+//! seed); its kit each gun's game's knife (the base game's, `BASE`, for a
+//! game without one). `parts` (console) prints each game's capability
+//! report.
 //!
-//! Known shortcuts: the ladder is made again only by `ugg_new` (not at
-//! each rotation or when a player without a game joins); with no CS:S install the
-//! client still stops (`party_kit::requirements`), its pool's first map
-//! being CS:S's.
+//! Known shortcuts: the ladder isn't made again when a player without a
+//! game joins mid-match; with no CS:S install the client still stops
+//! (`party_kit::requirements`), its pool's first map (the launch's)
+//! being CS:S's; the installs' maps are the host's (a client lacking one
+//! gets it as any server map: CS:S's by download).
 
 use bevy::prelude::*;
 use chimera_core::{
-    console::{Console, ConsoleAppExt},
+    console::{Console, ConsoleAppExt, Level},
     game_parts::PartsRegistry,
 };
+use chimera_net::minigame_net::NextMatchHooks;
 use chimera_sim::{
     minigame::{
         self, MinigameDef,
-        auto::{self, AutoOptions, Capabilities},
+        auto::{self, AutoOptions, Capabilities, Rng},
+        rotation::MapHistory,
     },
     weapon::data::WeaponCatalog,
 };
@@ -46,8 +57,15 @@ pub const MINIGAME: &str = "ultimate_gun_game:auto";
 /// Rungs in a ladder.
 pub const RUNGS: usize = 12;
 
-/// The seed without `ugg_new <seed>`.
+/// The seed of `UltimateGunGamePlugin::default()` (the tests'); the apps
+/// take a fresh one at launch (`random_seed`).
 pub const SEED: u64 = 1;
+
+/// Seeds are below this (short enough to type: `ugg_new <seed>`).
+pub const SEEDS: u64 = 1_000_000;
+
+/// The maps a rotation skips: the last this many played.
+pub const AVOID_RECENT: usize = 10;
 
 /// The base game: binds, tick and bots, the knife and HUD of a game that
 /// lends none, the HUD before a gun's game takes it (Combat Arms', as
@@ -63,7 +81,22 @@ pub fn options(seed: u64, rungs: usize) -> AutoOptions {
         seed,
         base: BASE,
         time_limit: 600.0,
+        avoid_recent: Some(AVOID_RECENT),
     }
+}
+
+/// A fresh seed (the clock's, mixed): a launch's.
+pub fn random_seed() -> u64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos() as u64);
+    Rng::new(nanos ^ ((std::process::id() as u64) << 32)).next() % SEEDS
+}
+
+/// The seed after `seed`: the next match's ladder (a launch's seed
+/// decides every ladder after it).
+pub fn next_seed(seed: u64) -> u64 {
+    Rng::new(seed ^ 0x5EED).next() % SEEDS
 }
 
 /// The games' claimed parts as reports without the app (the maps are
@@ -100,17 +133,67 @@ pub struct AutoLadder {
     pub rungs: usize,
 }
 
+/// The ladder of `l` made and said on the console and in the log.
+fn make(world: &mut World, l: AutoLadder, why: &str) -> Result<&'static MinigameDef, String> {
+    world.insert_resource(l);
+    let made = generate(world, l.seed, l.rungs);
+    let text = match &made {
+        Ok(def) => {
+            let ladder = def.rules.params.get("ladder").and_then(|v| v.as_array()).map_or(0, Vec::len);
+            format!("Ultimate Gun Game: {why}: seed {} ({ladder} rungs; `ugg_new {}` replays it)", l.seed, l.seed)
+        }
+        Err(e) => format!("Ultimate Gun Game: {why}: seed {}: {e}", l.seed),
+    };
+    info!("{text}");
+    let level = if made.is_ok() { Level::Info } else { Level::Error };
+    world.resource_mut::<Console>().print(level, text);
+    made
+}
+
+/// A rotation (`NextMatchHooks`): the next match's ladder from the next
+/// seed, for the players then connected.
+fn next_ladder(world: &mut World, id: &str, map: &str) {
+    if id != MINIGAME {
+        return;
+    }
+    let last = *world.resource::<AutoLadder>();
+    let l = AutoLadder {
+        seed: next_seed(last.seed),
+        rungs: last.rungs,
+    };
+    let _ = make(world, l, &format!("a new ladder for {map}"));
+}
+
 /// The automatic gun game made from the composed games' parts, the
-/// fallback HUD for a game without one (the base game's), and its console
-/// commands (`ugg_new`, `parts`).
+/// fallback HUD for a game without one (the base game's), a new ladder at
+/// each rotation (`NextMatchHooks`), and its console commands (`ugg_new`,
+/// `parts`).
 pub struct UltimateGunGamePlugin {
     pub seed: u64,
     pub rungs: usize,
+    /// Look for the maps the installs hold (`auto::find_installed_maps`)
+    /// for the pool: the apps do; tests (default) keep the claimed maps.
+    pub find_maps: bool,
 }
 
 impl Default for UltimateGunGamePlugin {
     fn default() -> Self {
-        Self { seed: SEED, rungs: RUNGS }
+        Self {
+            seed: SEED,
+            rungs: RUNGS,
+            find_maps: false,
+        }
+    }
+}
+
+impl UltimateGunGamePlugin {
+    /// The apps': a fresh seed (`random_seed`), the installs' maps.
+    pub fn launch() -> Self {
+        Self {
+            seed: random_seed(),
+            rungs: RUNGS,
+            find_maps: true,
+        }
     }
 }
 
@@ -120,6 +203,8 @@ impl Plugin for UltimateGunGamePlugin {
             seed: self.seed,
             rungs: self.rungs,
         })
+        // The rotation's random picks follow the launch's seed too.
+        .insert_resource(MapHistory::seeded(self.seed))
         .console_command(
             "ugg_new",
             "ugg_new [seed] [rungs] [map]: a new Ultimate Gun Game ladder for the players connected, played at once \
@@ -129,11 +214,10 @@ impl Plugin for UltimateGunGamePlugin {
                 let seed = a.first().map(|s| s.parse().map_err(|_| format!("not a seed: {s}"))).transpose()?;
                 let rungs = a.get(1).map(|s| s.parse().map_err(|_| format!("not a count: {s}"))).transpose()?;
                 let ladder = AutoLadder {
-                    seed: seed.unwrap_or(last.seed.wrapping_add(1)),
+                    seed: seed.unwrap_or_else(|| next_seed(last.seed)),
                     rungs: rungs.unwrap_or(last.rungs),
                 };
-                w.insert_resource(ladder);
-                generate(w, ladder.seed, ladder.rungs)?;
+                make(w, ladder, "ugg_new")?;
                 chimera_net::minigame_net::change_match(w, MINIGAME, a.get(2).map(String::as_str)).map(Some)
             },
         )
@@ -141,15 +225,18 @@ impl Plugin for UltimateGunGamePlugin {
             Ok(Some(auto::report(w).iter().map(Capabilities::line).collect::<Vec<_>>().join("\n")))
         })
         .add_systems(PostStartup, with_installs);
+        app.world_mut().get_resource_or_init::<NextMatchHooks>().0.push(next_ladder);
     }
 
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
         // A game without a HUD of its own shows the base game's.
         world.get_resource_or_init::<PartsRegistry>().fallback_hud = BASE;
-        if let Err(e) = generate(world, self.seed, self.rungs) {
-            world.resource_mut::<Console>().print(chimera_core::console::Level::Error, e);
+        if self.find_maps {
+            auto::find_installed_maps(world);
         }
+        let l = *world.resource::<AutoLadder>();
+        let _ = make(world, l, "the ladder");
     }
 }
 
@@ -162,7 +249,7 @@ fn with_installs(world: &mut World) {
     }
     let l = *world.resource::<AutoLadder>();
     if let Err(e) = generate(world, l.seed, l.rungs) {
-        world.resource_mut::<Console>().print(chimera_core::console::Level::Error, e);
+        world.resource_mut::<Console>().print(Level::Error, e);
     }
 }
 

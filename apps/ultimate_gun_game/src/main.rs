@@ -1,6 +1,7 @@
 //! The Ultimate Gun Game binary (`ultimate_gun_game`): Lucker Party's
 //! client app (`party_kit::client_app`) with the Ultimate Gun Game's
-//! parts (`UltimateGunGamePlugin`), playing the automatic gun game on its
+//! parts (`UltimateGunGamePlugin::launch`: a fresh seed at every launch,
+//! printed; a new ladder and a random map at every rotation), playing the automatic gun game on its
 //! pool's first map (`--map` picks another, `+minigame` another
 //! minigame). The options are the shell's (`--help`).
 
@@ -27,7 +28,7 @@ fn main() {
     }
     let mut app = party_kit::client_app(args, "Ultimate Gun Game");
     app.add_plugins((
-        ultimate_gun_game::UltimateGunGamePlugin::default(),
+        ultimate_gun_game::UltimateGunGamePlugin::launch(),
         chimera_client::client::hud_minimal::MinimalHudPlugin,
     ));
     chimera_client::client::app::run(app);

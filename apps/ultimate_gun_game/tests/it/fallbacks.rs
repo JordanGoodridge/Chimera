@@ -47,7 +47,7 @@ fn with_stand_in() -> Sim {
             MapSimPlugin::empty(),
             PartyPartsPlugin,
             StandIn,
-            UltimateGunGamePlugin { seed: 3, rungs: ALL },
+            UltimateGunGamePlugin { seed: 3, rungs: ALL, ..Default::default() },
         ),
     );
     // The map's bodies: one of Combat Arms' (0), one of CS:S's (1).

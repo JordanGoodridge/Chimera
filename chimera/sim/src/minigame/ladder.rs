@@ -1,7 +1,8 @@
 //! `chimera:ladder`, the weapon ladder (Gun Game; Combat Arms' Arms Race
 //! is its first user in shape, architecture-review.md D2): every player a
-//! team of their own, each on a rung of the definition's ladder of weapons,
-//! holding that rung's weapon (with the definition's kit). An enemy kill
+//! team of their own, each on a rung of the definition's ladder of weapons
+//! (guns, or a grenade), holding that rung's weapon (with the definition's
+//! kit). An enemy kill (any weapon's, the grenade's blast too)
 //! moves the killer a rung up, its weapon swapped at once; a kill on the
 //! last rung wins the match. With `demote_on = "melee_death"` a player
 //! killed by an enemy's melee swing goes a rung down (not below the first):
@@ -18,7 +19,8 @@
 //! ladder = ["cs_source:weapon_glock", "combat_arms:m4a1"]   # the rungs, in order
 //! advance_on = "kill"              # the only one so far
 //! demote_on = "melee_death"        # or "none" (the default)
-//! refill_ammo = true               # a rung's gun never runs dry (default: false)
+//! refill_ammo = true               # a rung's gun never runs dry, its grenade comes
+//!                                  # back once thrown (default: false)
 //! win = { kind = "ladder_end" }    # the only one so far
 //! ```
 //!
@@ -43,7 +45,12 @@ use super::{
 use crate::{
     core::{DamageKind, Died, Score, Team},
     mode::{Death, DeathKind, Hooks, Match, Mode, NO_HOOKS, Teams},
-    weapon::{Inventory, Magazine, Weapon, data::WeaponCatalog, give},
+    weapon::{
+        Inventory, Magazine, Weapon,
+        data::WeaponCatalog,
+        give,
+        grenade::{KeepSpent, Throwable},
+    },
 };
 
 /// The module's name.
@@ -244,7 +251,8 @@ fn follow_lead(world: &mut World) {
 
 /// With `refill_ammo`, a held rung gun's reserve is topped up every tick:
 /// the ladder gives each gun once, and a 200-round machine gun used up
-/// (misses count) would otherwise end the climb.
+/// (misses count) would otherwise end the climb; a rung's grenade is
+/// given back once thrown.
 fn refill(world: &mut World) {
     let Some(ladder) = world.get_resource::<Ladder>() else { return };
     if !ladder.refill_ammo {
@@ -255,6 +263,21 @@ fn refill(world: &mut World) {
     for (w, mut m) in guns.iter_mut(world) {
         if w.owner.is_some() && m.reserve < m.reserve_max && rungs.contains(&w.id) {
             m.reserve = m.reserve_max;
+        }
+    }
+    // A grenade rung's grenade comes back once thrown (kept in the hand
+    // meanwhile: `KeepSpent`), so a player throws until a kill.
+    let mut thrown = world.query_filtered::<(Entity, &Weapon, &mut Throwable), Without<KeepSpent>>();
+    let keep: Vec<Entity> =
+        thrown.iter(world).filter(|(_, w, _)| w.owner.is_some() && rungs.contains(&w.id)).map(|(e, ..)| e).collect();
+    for e in keep {
+        world.entity_mut(e).insert(KeepSpent);
+    }
+    let mut grenades = world.query::<(&Weapon, &mut Throwable)>();
+    for (w, mut t) in grenades.iter_mut(world) {
+        let full = t.max.max(1);
+        if w.owner.is_some() && t.count < full && rungs.contains(&w.id) {
+            t.count = full;
         }
     }
 }

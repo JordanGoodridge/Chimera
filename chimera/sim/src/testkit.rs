@@ -197,6 +197,7 @@ pub static STAND_IN: GameParts = GameParts {
     characters: None,
     hud: None,
     maps: &[],
+    map_patterns: &[],
     announcer: None,
     match_won_sound: None,
     cues: None,

@@ -51,7 +51,9 @@
 //!   the match-end hold (`results::NextMatch`, the shell's match-end
 //!   screen counts it down); after `runtime::RESULTS_HOLD` s of it a
 //!   definition with `rotate = true` (the default) moves on to the next
-//!   map of its pool (`chimera_net::minigame_net`).
+//!   map of its pool (`chimera_net::minigame_net`): in turn, or at random
+//!   skipping the maps played lately (`rotation`: `rotation = "random"`,
+//!   `MapHistory`).
 //! - Matches won: `wins::MatchWins` counts a decided match for its winner
 //!   by name for as long as the process runs (kept over `restart`, a
 //!   rotation and `change_match`), `wins::MatchesWon` carries it on each
@@ -79,6 +81,7 @@ pub mod def;
 pub mod hud;
 pub mod ladder;
 pub mod results;
+pub mod rotation;
 pub mod runtime;
 pub mod spawns;
 pub mod wins;

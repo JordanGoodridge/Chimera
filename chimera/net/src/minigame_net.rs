@@ -42,12 +42,14 @@
 //!   where the server is. The manifest names the coming minigame
 //!   meanwhile. A server rotates through it by itself once a match has
 //!   been over for `RESULTS_HOLD` s (`serve_minigame`,
-//!   `MinigameDef::rotate`) and puts the results up meanwhile
-//!   (`NetMinigame::results`, each row's character mapped to the client's
-//!   entity) with the match-end hold (`minigame::NextMatch`: the map
-//!   picked for the next match as soon as the match is decided, and when the
-//!   change comes; `NetMinigame::next`), which the shell's match-end
-//!   screen shows.
+//!   `MinigameDef::rotate`: the pool's next map, or a random one but the
+//!   last played, `minigame::rotation::MapHistory`, which the host keeps
+//!   for its lifetime; `NextMatchHooks` let the app act first) and puts
+//!   the results up meanwhile (`NetMinigame::results`, each row's
+//!   character mapped to the client's entity) with the match-end hold
+//!   (`minigame::NextMatch`: the map picked for the next match as soon as
+//!   the match is decided, and when the change comes; `NetMinigame::next`),
+//!   which the shell's match-end screen shows.
 //! - **The playable set** (`playable`, `PartyOffer`, console
 //!   `party_offer`): each registered minigame on its pool's first map
 //!   against the players' mount doctor reports (their userinfo); the
@@ -70,7 +72,7 @@ use crate::{
         maps::sha256,
         ordered::OrderedAppExt,
     },
-    minigame::{self, ActiveMinigame, MatchResults, NextMatch, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame, wins::MatchesWon},
+    minigame::{self, ActiveMinigame, MatchResults, NextMatch, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, rotation::MapHistory, runtime::InMinigame, wins::MatchesWon},
     mode::{Match, Phase},
 };
 use chimera_core::game_registry::Games;
@@ -427,6 +429,8 @@ pub fn change_match(world: &mut World, id: &str, map: Option<&str>) -> Result<St
     }
     if target != here {
         minigame::check(world, def)?;
+        // The map left was played (a rotation's random pick skips it).
+        world.get_resource_or_init::<MapHistory>().record(&here);
         // Nothing starts on the map being left: the match is held until
         // the new one is in everywhere (`follow_map_change`).
         let began = world.get_resource::<SimClock>().map_or(0.0, |c| c.now);
@@ -739,11 +743,11 @@ fn serve_minigame(world: &mut World) {
 
 /// A server (or a standalone game): the match is decided and its results
 /// up (`minigame::NextMatch`, the hold `results::record` began): the next
-/// map of the pool that every player can play (`MinigameDef::rotate`;
-/// else the same map anew) is picked at once for the match-end screen,
-/// and once the match has been over `RESULTS_HOLD` s the server moves there by
-/// `change_match` (the map picked again if a player who joined meanwhile
-/// can't play it).
+/// map (`next_map`: in turn, or at random but the maps played lately) is
+/// picked at once for the match-end screen, and once the match has been
+/// over `RESULTS_HOLD` s the server moves there (`go_to`: the app's
+/// `NextMatchHooks`, then `change_match`; the map picked again if a player
+/// who joined meanwhile can't play it).
 fn rotate(world: &mut World) {
     if world.contains_resource::<MapChange>() {
         return;
@@ -765,23 +769,53 @@ fn rotate(world: &mut World) {
         return;
     }
     let target = if playable_on(world, def, Some(&target)).ok() { target } else { next_map(world, def) };
+    go_to(world, def, &target);
+}
+
+/// The playing minigame's next match now (a host), without the hold: the
+/// map `next_map` picks, then `go_to` it. Returns the map.
+pub fn next_match(world: &mut World) -> Option<String> {
+    let def = world.get_resource::<ActiveMinigame>()?.def;
+    let target = next_map(world, def);
+    go_to(world, def, &target);
+    Some(target)
+}
+
+/// The next match of `def` on `target`: the app's `NextMatchHooks` told
+/// (a new automatic ladder), then `change_match`.
+fn go_to(world: &mut World, def: &'static MinigameDef, target: &str) {
     info!("{} is over: next, {} on {target}", def.id, def.name);
-    if let Err(e) = change_match(world, &def.id, Some(&target)) {
+    let hooks = world.get_resource::<NextMatchHooks>().map(|h| h.0.clone()).unwrap_or_default();
+    for hook in hooks {
+        hook(world, &def.id, target);
+    }
+    if let Err(e) = change_match(world, &def.id, Some(target)) {
         warn!("rotating {}: {e}", def.id);
     }
 }
 
-/// The map `def`'s next match plays on: the pool's next map in turn that
-/// every player can play, this one last (with `rotate = false`, this one).
+/// What an app does as a rotation moves a minigame on (called with its id
+/// and the next map, before the match changes): Ultimate Gun Game makes a
+/// new ladder. Host only.
+#[derive(Resource, Clone, Default)]
+pub struct NextMatchHooks(pub Vec<fn(&mut World, &str, &str)>);
+
+/// The map `def`'s next match plays on, among those every player can
+/// play (`minigame::rotation::MapHistory::next`: the pool's next in turn,
+/// or with `rotation = "random"` a random one but the last played, the
+/// host's history kept); with `rotate = false`, or none playable, this
+/// one.
 fn next_map(world: &mut World, def: &'static MinigameDef) -> String {
     let here = crate::net::current_map(world);
     if !def.rotate {
         return here;
     }
     let pool: Vec<String> = def.maps.iter().map(|m| crate::net::normalize_map(m)).collect();
-    let start = pool.iter().position(|m| *m == here).map_or(0, |i| i + 1);
-    let candidates = (0..pool.len()).map(|i| pool[(start + i) % pool.len()].clone());
-    candidates.into_iter().find(|m| playable_on(world, def, Some(m)).ok()).unwrap_or(here)
+    let ok: Vec<String> = pool.iter().filter(|m| playable_on(world, def, Some(m)).ok()).cloned().collect();
+    let mut history = world.remove_resource::<MapHistory>().unwrap_or_default();
+    let chosen = history.next(def, &pool, &here, &|m| ok.iter().any(|o| o == m));
+    world.insert_resource(history);
+    chosen.unwrap_or(here)
 }
 
 /// The server's events back into `MinigameEvent`s (the HUD's notices).

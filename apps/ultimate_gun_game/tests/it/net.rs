@@ -96,7 +96,11 @@ fn two_clients_play_the_servers_ladder_made_for_what_they_have() {
         sim.server.app.world().resource::<Console>().output.iter().map(|l| l.text.clone()).collect();
     assert!(!ca.is_empty() && of(&ca, "combat_arms") == ca.len(), "{ca:?} {out:?}");
     let def = sim.server.app.world().resource::<Minigames>().get(MINIGAME).unwrap();
-    assert_eq!(def.maps, ["combat_arms:warehouse"]);
+    assert_eq!(
+        def.maps,
+        ["combat_arms:warehouse", "combat_arms:junkflea", "combat_arms:darkhills", "combat_arms:bloodmoney"],
+        "Combat Arms' maps only"
+    );
     assert_clients_play_the_servers(&sim, &[full, partial]);
     // That player gone: both games again.
     sim.remove_client(partial);

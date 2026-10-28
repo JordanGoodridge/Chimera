@@ -374,6 +374,33 @@ Part B Combat Arms' pack).
   registered). Plain CS:S and Combat Arms play no minigame, so neither
   changes.
 
+### Automatic gun games (variety)
+
+Ultimate Gun Game's ladder and maps are made, not written
+(`chimera_sim::minigame::auto`, docs/plans/active/ultimate-gun-game.md):
+
+- **Every gun a game has**: a game lends its claimed guns
+  (`GameParts::guns`) plus every weapon of its own whose data names a
+  class (`class = "rifle"` in the weapon TOML, docs/weapon-data.md), so
+  an install's extra weapons (Combat Arms' copies of our documents)
+  join without a hand list. A ladder draws from all of them (each game
+  at least once, a game's guns weighted by one over the square root of
+  its count, a class at most a third), climbs by class, and puts one or
+  two grenade rungs (class `grenade`: thrown and lethal, CS:S's HE,
+  Combat Arms' M67) in its top third, never last; the ladder gives a
+  thrown rung grenade back (`chimera:ladder`'s `refill_ammo`).
+- **A fresh seed every launch, a new ladder every match**: the apps take
+  a random seed at launch and say it; each rotation makes the next
+  match's ladder from the next seed (`NextMatchHooks`); `ugg_new <seed>`
+  replays one. Tests keep a fixed seed.
+- **A random map, not a recent one**: a definition may rotate at random
+  (`rotation = "random"`, `avoid_recent`): the host (never a client)
+  keeps the maps played for its lifetime (`minigame::rotation::
+  MapHistory`) and skips the last min(10, candidates - 1). The pool is
+  every game's claimed maps plus the installed ones its
+  `GameParts::map_patterns` match (CS:S's `de_*`, `cs_*`). Lucker Party's
+  hand-made minigames keep the default, in turn.
+
 ## Multiplayer
 
 Same principles as the main game: the server owns the loadout, rules and

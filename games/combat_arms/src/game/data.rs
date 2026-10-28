@@ -46,7 +46,9 @@
 //!   weapons that match none of ours are new documents, copied from our
 //!   matched document of the same `Guntype` (its parts and hooks) with
 //!   their own numbers, after ours in install order (ours keep their
-//!   registry indices);
+//!   registry indices); a copy keeps its template's `class` (an
+//!   automatic gun game's) but a grenade's (a smoke copied from a frag
+//!   doesn't kill);
 //! - movement (`merge_movement`): the body type `FigureType0` replaces
 //!   `character.figure` (`StiffDuration` with it);
 //! - attachments (`attachment_table`): the modification file's `Mod#`
@@ -882,6 +884,12 @@ pub fn merge_weapon_docs_with_mods(
         let mut t = template.clone();
         t.insert("id".into(), Value::String(id.clone()));
         t.remove("ammo");
+        // A gun keeps its template's class (an automatic gun game's); a
+        // thrown one doesn't: a smoke or flash copied from a frag isn't
+        // a grenade that kills.
+        if t.get("class").and_then(Value::as_str) == Some("grenade") {
+            t.remove("class");
+        }
         let ammo_id = format!("{NS}{}", slug(&ammo.name));
         if ammo_ids.insert(ammo_id.clone()) {
             let mut table = Table::new();

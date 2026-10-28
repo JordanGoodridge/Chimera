@@ -31,19 +31,26 @@ the user's go-ahead: no Actions runs unless asked.
   winning kill every player's and bot's input keeps only the look (server
   side, `core::FreezeTime` for prediction and bots); the win callout
   shows for ~5 s, then the match-end screen (second pass item 4).
-- **A new, random ladder on every map**: Ultimate Gun Game's ladder
+- **A new, random ladder on every map: fixed, confirm in a playtest**: Ultimate Gun Game's ladder
   comes from a fixed seed (`SEED`), so every launch plays the same guns,
   and it is made again only by `ugg_new`. Pick a fresh seed at start
   and a new ladder at every map change (show the seed; `ugg_new <seed>`
   replays one); draw from every gun the players' games have (all of
   Combat Arms' weapons too, not a short list); mix in grenade rungs at
-  the higher tiers, with enough grenades to get a kill.
-- **A random map every match, from a broad pool**: the next map is
+  the higher tiers, with enough grenades to get a kill. Done: a fresh
+  seed at every launch (said on the console), the next seed's ladder at every rotation, guns
+  from every gun each game has (Combat Arms' launchers, crossbow and its
+  install's weapons by the `class` in their data), one or two grenade
+  rungs (HE, M67) in the top third, the grenade back after each throw
+  (`minigame::auto`, `ladder`).
+- **A random map every match, from a broad pool: fixed, confirm in a playtest**: the next map is
   picked at random from every installed map gun game can run on (CS:S
   and Combat Arms maps with enough spawns), skipping the last 10 played
   (as many as the pool allows; never the same map twice in a row); the
   host keeps the history for the server's lifetime. Goes with the
-  random ladder above.
+  random ladder above. Done: `rotation = "random"` skipping the last min(10, pool - 1) (`minigame::rotation::MapHistory`); the
+  pool adds CS:S's installed `de_*`/`cs_*` maps and Combat Arms' lobby
+  maps (Junk Flea, Dark Hills, Blood Money; not Oil Rig).
 - **Combat Arms characters can't climb a ladder from the front** (cs_office;
   other maps untested): climbing works from the ladder's left and right
   sides, not head-on. Check the Source ladder's facing/normal as Combat

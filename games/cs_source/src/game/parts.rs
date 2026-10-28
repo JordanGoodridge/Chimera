@@ -41,12 +41,18 @@ pub static PARTS: GameParts = GameParts {
         gun("cs_source:weapon_awp", GunClass::Sniper),
         gun("cs_source:weapon_sg550", GunClass::Sniper),
         gun("cs_source:weapon_g3sg1", GunClass::Sniper),
+        gun("cs_source:weapon_hegrenade", GunClass::Grenade),
     ],
     knife: Some("cs_source:weapon_knife"),
     movement: Some(super::movement::ID),
     characters: Some("cs_source:players"),
     hud: Some(super::GAME),
     maps: &["cs_source:de_dust2", "cs_source:cs_office"],
+    // Every installed bomb and hostage map (the stock ones and any the
+    // install holds): their spawn points are many, and a deathmatch's
+    // spawning needs only one (`minigame::spawns`). Not the test,
+    // background or one-off maps.
+    map_patterns: &["de_*", "cs_*"],
     // No announcer of its own (CS:S has none).
     announcer: None,
     // No win music of its own: a bot's cheer for a party match's winner.

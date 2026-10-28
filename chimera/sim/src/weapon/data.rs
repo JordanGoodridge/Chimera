@@ -26,7 +26,7 @@
 //! A document holds one weapon (top-level `id`), ammo types (`[ammo.<id>]`)
 //! or both. `base` merges the named entry's tables under this one's
 //! (recursively; `abstract = true` entries are templates only, never
-//! registered); it and `ammo` may name entries of sets loaded before
+//! registered; `abstract` and `class` aren't inherited); it and `ammo` may name entries of sets loaded before
 //! (`WeaponCatalog`). Lengths and damage are in the document's `units`
 //! (`length`: metres per unit, `damage`: health per point; both default
 //! 1). Unknown keys, unknown bases, ammo or hooks, and hook parameters the
@@ -112,6 +112,10 @@ pub struct WeaponData {
     /// Auto-switch priority (`SwitchWeight`).
     #[serde(default)]
     pub weight: Option<i32>,
+    /// Its class in an automatic gun game (`minigame::auto`: its game
+    /// lends it to a ladder); None: not in one.
+    #[serde(default)]
+    pub class: Option<chimera_core::game_parts::GunClass>,
     #[serde(default)]
     pub undroppable: bool,
     /// The drop key leaves it in hand; it still drops at death
@@ -613,7 +617,8 @@ impl WeaponSet {
     }
 }
 
-/// `id`'s table merged over its bases' (`abstract` isn't inherited).
+/// `id`'s table merged over its bases' (`abstract` and `class` aren't
+/// inherited: a launcher's stun variant isn't a gun of a ladder).
 fn merged(
     id: &str,
     raw: &[(String, toml::Table)],
@@ -640,6 +645,7 @@ fn merged(
             let mut t = merged(base, raw, known, done, stack).map_err(|e| format!("{id}: {e}"))?;
             stack.pop();
             t.remove("abstract");
+            t.remove("class");
             deep_merge(&mut t, own);
             t
         }

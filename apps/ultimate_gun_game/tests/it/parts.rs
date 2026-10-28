@@ -6,7 +6,10 @@
 //! gun's game).
 
 use bevy::prelude::*;
-use chimera_core::slots::{GameIdentity, MovementSlot};
+use chimera_core::{
+    game_parts::GunClass,
+    slots::{GameIdentity, MovementSlot},
+};
 use chimera_sim::{
     minigame::{self, Minigames, auto, ladder::Ladder},
     testkit,
@@ -47,12 +50,18 @@ fn each_game_reports_what_it_lends() {
         assert!(c.knife.is_some() && c.hud.is_some() && c.characters.is_some(), "{}", c.line());
         assert!(!c.maps.is_empty(), "{}", c.line());
     }
-    assert_eq!(report[0].guns.len(), cs_source_guns(), "every CS:S gun");
+    let claimed_guns = |i: usize| party_kit::GAME_PARTS[i].guns.iter().filter(|g| g.class != GunClass::Grenade).count();
+    assert_eq!(report[0].guns.len(), claimed_guns(0), "every CS:S gun");
+    assert_eq!(report[0].grenades, ["cs_source:weapon_hegrenade"]);
     assert_eq!(report[1].movement, Some(movement::ID));
-}
-
-fn cs_source_guns() -> usize {
-    party_kit::GAME_PARTS[0].guns.len()
+    // Combat Arms' guns: the claimed ones and those its data gives a
+    // class (its launchers, the crossbow; with an install, its weapons).
+    assert!(report[1].guns.len() > claimed_guns(1), "{}", report[1].line());
+    for id in ["combat_arms:rpg-7", "combat_arms:law", "combat_arms:m79", "combat_arms:assassin_bowgun_nor"] {
+        assert!(report[1].guns.iter().any(|g| g.id == id), "{id}: {}", report[1].line());
+    }
+    assert!(!report[1].guns.iter().any(|g| g.id == "combat_arms:m136_at4"), "no damage: not a gun of the ladder");
+    assert_eq!(report[1].grenades, ["combat_arms:m67"]);
 }
 
 #[test]
@@ -60,9 +69,21 @@ fn the_ladder_spreads_across_both_games_and_keeps_its_seed() {
     let mut sim = ugg();
     let first = rungs(sim.app.world());
     assert_eq!(first.len(), RUNGS);
-    assert_eq!((of(&first, "cs_source"), of(&first, "combat_arms")), (RUNGS / 2, RUNGS / 2), "{first:?}");
+    assert!(of(&first, "cs_source") > 0 && of(&first, "combat_arms") > 0, "{first:?}");
     let def = sim.app.world().resource::<Minigames>().get(MINIGAME).unwrap();
-    assert_eq!(def.maps, ["cs_source:de_dust2", "combat_arms:warehouse", "cs_source:cs_office"], "every game's maps, in turn");
+    assert_eq!(
+        def.maps,
+        [
+            "cs_source:de_dust2",
+            "combat_arms:warehouse",
+            "cs_source:cs_office",
+            "combat_arms:junkflea",
+            "combat_arms:darkhills",
+            "combat_arms:bloodmoney"
+        ],
+        "every game's maps, in turn"
+    );
+    assert_eq!(def.rotation, minigame::def::Rotation::Random, "a random map, not one of the last ten");
     assert_eq!(def.spawn.kit.for_game(Some("cs_source")), ["cs_source:weapon_knife"], "each gun's game's knife");
     assert_eq!(def.spawn.kit.for_game(Some("combat_arms")), ["combat_arms:m9_knife"]);
     // The same seed: the same ladder; another, another.

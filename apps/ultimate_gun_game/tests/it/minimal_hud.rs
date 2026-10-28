@@ -53,7 +53,7 @@ fn the_minimal_hud_shows_for_a_game_without_one_and_goes_down_for_the_others() {
             MapSimPlugin::empty(),
             PartyPartsPlugin,
             StandIn,
-            UltimateGunGamePlugin { seed: 3, rungs: 64 },
+            UltimateGunGamePlugin { seed: 3, rungs: 64, ..Default::default() },
             MinimalHudPlugin,
         ),
     );

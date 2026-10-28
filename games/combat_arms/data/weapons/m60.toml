@@ -13,6 +13,9 @@ units = { length = 0.018, damage = 0.01 }
 slot = 0
 # [TW: Draw] 1500 ms.
 draw = 1.5
+# Its class in an automatic gun game (docs/weapon-data.md); install
+# weapons copied from this document keep it.
+class = "heavy"
 
 # [TW: Clip / total] 100 / 200.
 [ammo."combat_arms:7.62mm_m60"]

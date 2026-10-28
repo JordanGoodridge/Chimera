@@ -10,6 +10,9 @@
 //! teams = "free_for_all"                                  # or "two", "one_team"
 //! time_limit = "10m"                                      # "90s", "1.5s", "500ms", or seconds
 //! rotate = true                                           # default: after the match, the pool's next map
+//! rotation = "random"        # or "in_turn" (the default): the next map at random from the pool,
+//! avoid_recent = 10          #   not one of the last this many played (at most the pool's size
+//!                            #   less one: never the same map twice); the host's `MapHistory`
 //! cues = "cs_source"          # the cue pack its callouts sound (`chimera_core::cues`); "none";
 //!                             # default: the first a game registered
 //!
@@ -68,6 +71,13 @@ pub struct MinigameDef {
     /// server; the default), else this map again.
     #[serde(default = "yes")]
     pub rotate: bool,
+    /// How `rotate` picks the next map.
+    #[serde(default)]
+    pub rotation: Rotation,
+    /// `Rotation::Random`: the last this many maps played are skipped
+    /// (as many as the pool allows).
+    #[serde(default = "ten")]
+    pub avoid_recent: usize,
     /// The cue pack its callouts sound (`chimera_core::cues::CuePacks::
     /// choose`): a pack's id, `none`, or None (`default`) the first
     /// registered.
@@ -85,6 +95,22 @@ pub struct MinigameDef {
 
 fn yes() -> bool {
     true
+}
+
+fn ten() -> usize {
+    10
+}
+
+/// How a rotating minigame picks its next map.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Rotation {
+    /// The pool's next map after this one.
+    #[default]
+    InTurn,
+    /// A random map of the pool, not one played lately
+    /// (`MinigameDef::avoid_recent`).
+    Random,
 }
 
 /// How many players a match takes: it waits for `min`.

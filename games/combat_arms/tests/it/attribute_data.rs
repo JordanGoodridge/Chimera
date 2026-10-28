@@ -682,3 +682,36 @@ fn case_36_server_settings() {
     });
     assert_eq!(attrs.time_weight.map(|t| t.reload_check_time), Some(0.5));
 }
+
+/// An install weapon copied from ours keeps our document's gun class (so
+/// an automatic gun game's ladder takes it: `class` in the data), but a
+/// thrown one copied from our frag doesn't: an install smoke isn't a
+/// grenade that kills.
+#[test]
+fn install_copies_keep_a_guns_class_not_a_grenades() {
+    use chimera_core::game_parts::GunClass;
+    let install = weapons(
+        r#"[Ammo0] Name="556" [Ammo1] Name="frag" [Ammo2] Name="smoke"
+        [Weapon0] Name="M4A1" Guntype=4 AmmoName0="556"
+        [Weapon1] Name="AK-47" Guntype=4 AmmoName0="556"
+        [Weapon2] Name="M67" Guntype=7 AmmoName0="frag"
+        [Weapon3] Name="Smoke X" Guntype=7 AmmoName0="smoke""#,
+    )
+    .unwrap();
+    let docs = merge_weapon_docs(
+        &[
+            ("m4a1.toml", include_str!("../../data/weapons/m4a1.toml")),
+            ("m67.toml", include_str!("../../data/weapons/m67.toml")),
+        ],
+        &install,
+        meters_per_unit(),
+    )
+    .unwrap();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let set = WeaponSet::parse(&refs, &[]).unwrap();
+    let class = |id: &str| set.get(id).unwrap_or_else(|| panic!("{id}")).class;
+    assert_eq!(class("combat_arms:m4a1"), Some(GunClass::Rifle));
+    assert_eq!(class("combat_arms:ak-47"), Some(GunClass::Rifle), "a copy keeps a gun's class");
+    assert_eq!(class("combat_arms:m67"), Some(GunClass::Grenade));
+    assert_eq!(class("combat_arms:smoke_x"), None, "a thrown copy isn't a lethal grenade");
+}

@@ -1,6 +1,8 @@
 //! What Combat Arms lends a game made of several
 //! (`chimera_core::game_parts`; docs/plans/active/ultimate-gun-game.md):
-//! its guns by class and its knife (`weapons`, data/weapons/), its
+//! its guns by class and its knife (`weapons`, data/weapons/; the
+//! others, its launchers and its install's weapons, by the `class` in
+//! their data), its
 //! movement (`movement::ID`), its soldiers (`characters`), its HUD
 //! (`ui`, the composing app's), its maps and its announcer pack
 //! (data/announcer.toml). The app registers it
@@ -27,12 +29,18 @@ pub static PARTS: GameParts = GameParts {
         gun("combat_arms:m60", GunClass::Heavy),
         gun("combat_arms:dragunov_svd", GunClass::Sniper),
         gun("combat_arms:l96a1", GunClass::Sniper),
+        gun("combat_arms:m67", GunClass::Grenade),
     ],
     knife: Some("combat_arms:m9_knife"),
     movement: Some(super::movement::ID),
     characters: Some("combat_arms:soldier"),
     hud: Some(super::GAME),
-    maps: &["combat_arms:warehouse"],
+    // The lobby's maps (data/lobby.toml; `key` is the install's world)
+    // with spawns for a free-for-all, but HGOILRIG (our conversion has no
+    // decks under its spawns: combat-arms.md). Not every installed world
+    // (missions, training, the lobby's own): none by pattern.
+    maps: &["combat_arms:warehouse", "combat_arms:junkflea", "combat_arms:darkhills", "combat_arms:bloodmoney"],
+    map_patterns: &[],
     announcer: Some(ANNOUNCER),
     // Its result screen's win sound (`ResultWinSound`, music_ambience.md
     // section 4) is a file the spec doesn't name: none yet.

@@ -202,7 +202,8 @@ pub fn add_view_model_fovs(app: &mut App) {
 /// logic, CS:S's guns, the minigame runtime and the original minigames;
 /// Combat Arms' modes off (`ca_mode none`: its rules leave the players
 /// to the minigame, a joiner comes in at a free spawn point) and its bots
-/// given CS:S's guns' types (`BOT_GUN_TYPES`).
+/// given CS:S's guns' types (`BOT_GUN_TYPES`) and, by their data's class,
+/// those of the other guns a ladder may hand out (`bot_gun_type_of`).
 pub struct PartyPartsPlugin;
 
 impl Plugin for PartyPartsPlugin {
@@ -266,6 +267,37 @@ impl Plugin for PartyPartsPlugin {
         if let Some(mut bots) = app.world_mut().get_resource_mut::<combat_arms::game::bots::BotData>() {
             bots.gun_types.extend(bot_gun_types());
         }
+    }
+
+    fn finish(&self, app: &mut App) {
+        // The guns a ladder may hand out that the table doesn't name (Combat
+        // Arms' launchers, its install's weapons): their AI row by class.
+        let classed: Vec<(String, chimera_core::game_parts::GunClass)> = app
+            .world()
+            .get_resource::<chimera_sim::weapon::data::WeaponCatalog>()
+            .map(|c| c.sets.iter().flat_map(|s| &s.weapons).filter_map(|w| Some((w.id.clone(), w.class?))).collect())
+            .unwrap_or_default();
+        if let Some(mut bots) = app.world_mut().get_resource_mut::<combat_arms::game::bots::BotData>() {
+            for (id, class) in classed {
+                if let Some(row) = bot_gun_type_of(class) {
+                    bots.gun_types.entry(id).or_insert_with(|| row.to_string());
+                }
+            }
+        }
+    }
+}
+
+/// Combat Arms' bots' AI row for a gun of `class` (None: a grenade, which
+/// they don't throw; they knife on its rung).
+pub fn bot_gun_type_of(class: chimera_core::game_parts::GunClass) -> Option<&'static str> {
+    use chimera_core::game_parts::GunClass::*;
+    match class {
+        Pistol => Some("Pistol"),
+        Smg | Rifle => Some("Default"),
+        Shotgun => Some("SG"),
+        Heavy => Some("MG"),
+        Sniper => Some("SR"),
+        Grenade => None,
     }
 }
 

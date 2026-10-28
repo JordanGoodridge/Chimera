@@ -1,10 +1,11 @@
 //! Ultimate Gun Game's dedicated server (apps/ultimate_gun_game_server,
 //! binary `ultimate_gun_game_server`): the party's server
 //! (`party_kit::server::run`) with the Ultimate Gun Game's parts
-//! (`ultimate_gun_game::UltimateGunGamePlugin`), playing the automatic
-//! gun game (`+minigame` names another) on its pool's first map unless
-//! `+map` names one. `ugg_new [seed] [rungs]` on the console makes a new
-//! ladder for the players connected; `parts` lists what each game lends.
+//! (`ultimate_gun_game::UltimateGunGamePlugin::launch`: a fresh seed,
+//! printed, and a new ladder and a random map at every rotation), playing
+//! the automatic gun game (`+minigame` names another) on its pool's first
+//! map unless `+map` names one. `ugg_new [seed] [rungs]` on the console
+//! makes a new ladder for the players connected (a seed replays one); `parts` lists what each game lends.
 //! The options are the kit server's (`--help`).
 
 use party_kit::server::{Parsed, USAGE};
@@ -23,6 +24,6 @@ fn main() {
         }
     };
     party_kit::server::run(&options, |app| {
-        app.add_plugins(ultimate_gun_game::UltimateGunGamePlugin::default());
+        app.add_plugins(ultimate_gun_game::UltimateGunGamePlugin::launch());
     });
 }

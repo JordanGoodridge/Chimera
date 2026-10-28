@@ -13,12 +13,20 @@
 //! may take part in. Required for a game to be in an automatic ladder:
 //! guns and movement; optional, with fallbacks (`PartsRegistry::
 //! fallback_hud`, the shell's capsule body, other games' maps): its
-//! characters, HUD and maps.
+//! characters, HUD and maps. A game's guns are its claimed ones plus every
+//! weapon of its own in the catalogue whose data names a `class`
+//! (`GunClass`; its install's weapons too), its maps the claimed ones plus
+//! its installed maps matching `map_patterns`.
 
 use bevy::prelude::*;
 
-/// A gun's class: the order an automatic ladder climbs (weakest first).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A gun's class: the order an automatic ladder climbs (weakest first),
+/// and `Grenade`, a thrown weapon that kills (an automatic ladder mixes
+/// those in near its top). A weapon's data can name it (`class =
+/// "rifle"`, `chimera_sim::weapon::data`), so a game's weapons from its
+/// install join a ladder without a hand list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GunClass {
     Pistol,
     Smg,
@@ -26,10 +34,11 @@ pub enum GunClass {
     Rifle,
     Heavy,
     Sniper,
+    Grenade,
 }
 
 impl GunClass {
-    /// Every class, in climbing order.
+    /// Every gun class, in climbing order (not `Grenade`: not a gun).
     pub const ALL: [GunClass; 6] = [
         GunClass::Pistol,
         GunClass::Smg,
@@ -66,6 +75,11 @@ pub struct GameParts {
     pub hud: Option<&'static str>,
     /// Its maps by id (`game:map`) that load in a composed app.
     pub maps: &'static [&'static str],
+    /// More of its maps: the installed ones (`GameInfo::map_names`) whose
+    /// name matches one of these (`de_*`: a prefix; else the whole name),
+    /// found by the app that has the install
+    /// (`chimera_sim::minigame::auto::InstalledMaps`).
+    pub map_patterns: &'static [&'static str],
     /// Its announcer pack, a TOML document (`announcer::AnnouncerPack`),
     /// registered with its parts.
     pub announcer: Option<&'static str>,
@@ -84,6 +98,19 @@ impl GameParts {
     /// Guns and movement: what a game needs to be in a ladder.
     pub fn playable(&self) -> bool {
         !self.guns.is_empty() && self.movement.is_some()
+    }
+
+    /// Whether installed map `name` (no `game:`) matches `map_patterns`
+    /// (case-insensitive).
+    pub fn wants_map(&self, name: &str) -> bool {
+        let name = name.to_ascii_lowercase();
+        self.map_patterns.iter().any(|p| {
+            let p = p.to_ascii_lowercase();
+            match p.strip_suffix('*') {
+                Some(prefix) => name.starts_with(prefix),
+                None => name == p,
+            }
+        })
     }
 }
 
@@ -167,6 +194,7 @@ mod tests {
         characters: None,
         hud: None,
         maps: &[],
+        map_patterns: &[],
         announcer: None,
         match_won_sound: None,
         cues: None,
@@ -183,5 +211,15 @@ mod tests {
         assert_eq!(r.hud_of("nobody"), None);
         r.register(&GUNS_ONLY);
         assert_eq!(r.all().count(), 1, "registered again: replaced");
+    }
+
+    #[test]
+    fn map_patterns_are_prefixes_or_names() {
+        let p = GameParts {
+            map_patterns: &["de_*", "cs_office"],
+            ..GUNS_ONLY
+        };
+        assert!(p.wants_map("de_nuke") && p.wants_map("DE_Train") && p.wants_map("cs_office"));
+        assert!(!p.wants_map("cs_italy") && !p.wants_map("test_hardware") && !GUNS_ONLY.wants_map("de_nuke"));
     }
 }
