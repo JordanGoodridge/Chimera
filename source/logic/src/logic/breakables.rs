@@ -25,7 +25,7 @@
 //! volume U(0.85, 1) + |health|/100; a window's own break plays its physics
 //! break sound as scripted, without the break-sound queue's merging; one pane
 //! damage sound per window per tick; pane shard counts/speeds are ours (one
-//! shard per shard-size square of a burst, at most 48). Broken looks (spec Q8,
+//! shard per shard-size square of a burst, at most 160: CS:S's `MAX_PANE_SHARDS`). Broken looks (spec Q8,
 //! the client's pane drawing is not specced): the face's `$crackmaterial`
 //! (ShatteredGlass drawn as a translucent LightmappedGeneric with its crack
 //! texture on the face's own texture coordinates, its lighting

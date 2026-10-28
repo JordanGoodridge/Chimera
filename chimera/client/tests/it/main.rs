@@ -6,6 +6,7 @@
 //! docs/OBSERVABILITY.md, section 1.
 
 mod match_end;
+mod callouts;
 mod metrics;
 mod minigame_scoreboard;
 mod respawn_countdown;

@@ -351,6 +351,19 @@ Part B Combat Arms' pack).
   which has no pack), `none`, `random` (one per map) or a pack's id. More
   packs (a Quake-style one) are more data files; a minigame could set the
   cvar.
+- **A minigame's moments are callouts too**: the gun game's rung up or
+  down, the last rung (yours, and another player's to everyone), the
+  lead taken, lost or tied, and the win are `MinigameEvent`s the server
+  sends; each client's minigame HUD data turns the local player's into a
+  `Callout` (`chimera_sim::minigame::hud`; text from the rules module,
+  `RulesModule::callout`), which the shell draws centre screen on every
+  HUD (`chimera_client::client::callouts`) with a cue's sound. The
+  sounds are a **cue pack** (`chimera_core::cues::CuePack`, TOML: cue
+  key to a file in a game's install, loaded at run time), a game's part
+  (`GameParts::cues`; CS:S's is stock sounds, data/cues.toml); a
+  definition picks one (`cues = "<id>"`, `none`; default: the first
+  registered). Plain CS:S and Combat Arms play no minigame, so neither
+  changes.
 
 ## Multiplayer
 

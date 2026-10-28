@@ -25,7 +25,75 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
+### Gun game playtest, 2026-10-28 (user)
+
+- **Combat Arms guns can't headshot CS:S players** (Dragunov and
+  others; hitbox drawing on): shots on a CS:S body's drawn head box do
+  nothing, only its neck box counts as the head. Every gun's rounds
+  must use the target body's real hitboxes through the one hit path
+  (DESIGN.md "Hits across games"). In progress.
+- **Match end: everyone stops**: when the last player wins, all players
+  and bots freeze for the end hold and the scoreboard comes up. In
+  progress with the match-end screen (second pass item 4).
+- **A new, random ladder on every map**: Ultimate Gun Game's ladder
+  comes from a fixed seed (`SEED`), so every launch plays the same guns,
+  and it is made again only by `ugg_new`. Pick a fresh seed at start
+  and a new ladder at every map change (show the seed; `ugg_new <seed>`
+  replays one); draw from every gun the players' games have (all of
+  Combat Arms' weapons too, not a short list); mix in grenade rungs at
+  the higher tiers, with enough grenades to get a kill.
+- **A random map every match, from a broad pool**: the next map is
+  picked at random from every installed map gun game can run on (CS:S
+  and Combat Arms maps with enough spawns), skipping the last 10 played
+  (as many as the pool allows; never the same map twice in a row); the
+  host keeps the history for the server's lifetime. Goes with the
+  random ladder above.
+- **Combat Arms characters can't climb a ladder from the front** (cs_office;
+  other maps untested): climbing works from the ladder's left and right
+  sides, not head-on. Check the Source ladder's facing/normal as Combat
+  Arms' movement uses it (`core::LadderZone`).
+- **One generic kill feed in the party apps**: a kill made just before a
+  rung swap shows only in the previous game's feed, and the two games'
+  feeds sit on opposite sides. Keep the feed's entries in Chimera
+  (authoritative, not in any game's HUD) and draw one generic feed in
+  one place in the party apps, with each gun's own icon (the
+  `WeaponIcons` registry); plain CS:S and Combat Arms keep theirs.
+- **Hide the radars in the party apps** (setting to bring them back):
+  Combat Arms' radar over a CS:S map's overview doesn't match either
+  style, and many maps have no overview.
+- **Combat Arms' radar draws as two boxes**: the radar and its
+  background are drawn apart instead of over each other (plain Combat
+  Arms too).
+- **Headshot on a kill streak plays two voices**: a headshot double
+  kill shows HEADSHOT but the announcer says "headshot" and "double
+  kill" together. The spec's "every voice plays" is inferred
+  (kill_streaks.md Open question 5): a spec session should settle what
+  Combat Arms does, then match it.
+- **Combat Arms scopes don't fill the screen**: the overlay is centred
+  but not scaled, so the sides are black; Combat Arms stretches it to
+  the screen (spec first: how it scales).
+- **A Combat Arms character can't break glass by running into it**
+  (cs_office windows); a CS:S character can.
+- **A bot stays invisible**, as either game's character. Repro wanted
+  (map, bot, what happened before).
+
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
+
+- **HE grenade on a window, black blobs: fixed, confirm in a playtest**
+  (promo capture 2026-10-28, cs_office, Ultimate Gun Game). Three causes,
+  none in the glass's material: (1) the party apps never drew CS:S's
+  grenade looks (only CS:S's own game added them), so the HE blew the
+  panes out with no fireball or smoke; `PartyPartsPlugin` now adds
+  `cs_source::game::grenades::GrenadeLooksPlugin` (CS:S's and no game's
+  blasts; `grenade_looks::*`). (2) The "black blobs with red specks" were
+  the blood burst's goop and chunks, made by blast damage at the
+  thrower's own centre, in front of his eyes; blood now comes from bullet
+  and knife hits only, as impact_effects.md 10 says
+  (`impact_effects::blasts_do_not_bleed_bullet_hits_do`). (3) A blast's
+  whole-window shard burst was capped at 48 specks; now
+  `MAX_PANE_SHARDS` = 160 (`a_blasted_window_throws_a_full_burst_of_glass_shards`).
+  The panes going in one tick is the spec's blast rule. Plain CS:S
+  showed (2) and (3) as well.
 
 - **Combat Arms grenade throw visuals: fixed, confirm in a playtest**
   (promo captures 2026-10-27, M67 on de_dust2). The red arc and red edges
@@ -72,6 +140,20 @@ the user's go-ahead: no Actions runs unless asked.
   and Chimera's playback limits voices per source (8) and per sourceless
   entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
   playtest; if it still peaks, a limiter on the mix is next.
+- **Your killing shot with a Combat Arms gun is silent: fixed, confirm
+  in a playtest** (user, 2026-10-28, Ultimate Gun Game). The ladder swaps
+  the gun on the kill's tick (`minigame::runtime::take_weapon` despawns
+  it), and Combat Arms plays fire sounds (and impacts, tracers, casings)
+  in `Update` from the round's events by looking up the named gun, so
+  where the match runs (single player, listen server) the killing round
+  found no gun and drew nothing; the earlier fix (Chimera's `FireSounds`,
+  `Fired` carrying the weapon ID) covered CS:S's sounds and the network
+  only. Now Combat Arms' effects keep what each gun was past its despawn
+  (`effects::KnownWeapons`, by entity and, for others' rounds a client
+  hears after their gun changed, by ID). Tests: `party_kit last_shot::`
+  (host, victim, network clients), `combat_arms effects_sounds::
+  a_round_whose_gun_was_swapped_still_sounds`; CS:S's guns:
+  `chimera_sim minigame::the_shooters_own_killing_shot_sounds_once`.
 - **Combat Arms grenades: fixed, confirm in a playtest** (user,
   2026-10-27; nothing left). The flight matched grenades.md (arc, bounce,
   rest, fuse: `grenades::t01`-`t49`) but was drawn at the server's 20
@@ -121,6 +203,20 @@ sections above already list.
   others. Fix: a gun-game announcer pack (Chimera's announcer is data,
   DESIGN.md "Announcers") or Arms Race's cues, which our Arms Race keeps
   but doesn't show (`rules/arms_race.rs`).
+  *Fixed, confirm in a playtest (2026-10-28):* the ladder also sends
+  `last_rung` and the lead's `lead_taken`, `lead_lost`, `lead_tied`
+  (`minigame::ladder`, replicated like the others); every client's HUD
+  data turns the local player's moments into a centre-screen callout
+  ("Level up: <gun>", "Knifed! Level down", "Last level!", "<name> is on
+  the last level!", "You took the lead", "You lost the lead", "Tied for
+  the lead", "You win!", "<name> wins!"), which the shell draws on every
+  HUD (`client::callouts`) with a sound from a cue pack (`core::cues`,
+  data; CS:S lends stock install sounds, `cs_source/data/cues.toml`; a
+  definition's `cues` picks one or `none`). Arms Race's own last-stage
+  cue is plain Combat Arms' (its interface sound already plays,
+  `music::director`; its text and the files of Combat Arms' level-up and
+  result sounds aren't known: music_ambience.md Open question 1), so
+  Combat Arms lends no cue pack yet and plain Combat Arms is unchanged.
 - **Gun game: the death view fights the 2 s respawn, and there is no
   countdown.** The dead player gets their identity's death camera: CS:S's
   2 s death cam, 0.7 s travel and 5 s freeze (`client::spectate`,

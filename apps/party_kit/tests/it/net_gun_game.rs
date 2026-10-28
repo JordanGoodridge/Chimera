@@ -35,7 +35,7 @@ fn setup(app: &mut App) {
 
 /// A server playing the gun game and two clients that came in with no
 /// minigame of their own.
-fn joined() -> NetSim {
+pub(crate) fn joined() -> NetSim {
     let mut sim = NetSim::new(
         CaSim,
         LinkConditions {
@@ -59,19 +59,19 @@ fn hud_lines(sim: &NetSim, i: usize) -> Vec<String> {
     hud.lines.iter().map(|l| l.text.clone()).collect()
 }
 
-fn held(sim: &mut NetSim, i: usize) -> Option<&'static str> {
+pub(crate) fn held(sim: &mut NetSim, i: usize) -> Option<&'static str> {
     let me = sim.local_player(i)?;
     testkit::active_id(sim.clients[i].app.world(), me)
 }
 
 /// Client `i`'s own rounds in the clip of the gun in hand.
-fn clip(sim: &mut NetSim, i: usize) -> Option<u32> {
+pub(crate) fn clip(sim: &mut NetSim, i: usize) -> Option<u32> {
     let me = sim.local_player(i)?;
     let w = sim.clients[i].app.world();
     w.get::<Magazine>(testkit::active(w, me)?).map(|m| m.clip)
 }
 
-fn server_alive(sim: &NetSim, e: Entity) -> bool {
+pub(crate) fn server_alive(sim: &NetSim, e: Entity) -> bool {
     sim.server.app.world().get::<Dead>(e).is_none()
 }
 
@@ -123,7 +123,7 @@ fn a_client_cant_start_or_restart_the_minigame_itself() {
 
 /// Client 0 (character `a`) shoots client 1 (`b`) dead with rung `kill`'s
 /// gun, which each client sees in its owner's hand with rounds in it.
-fn kill_once(sim: &mut NetSim, kill: usize, a: Entity, b: Entity, ladder: &[&'static str]) {
+pub(crate) fn kill_once(sim: &mut NetSim, kill: usize, a: Entity, b: Entity, ladder: &[&'static str]) {
     assert_eq!(held(sim, 0), Some(ladder[kill]), "rung {kill}'s gun in client 0's hand");
     assert!(clip(sim, 0).is_some_and(|c| c > 0), "rung {kill}: {} has rounds on its client", ladder[kill]);
     // The victim back in play and unprotected, 4 m in front of the shooter.

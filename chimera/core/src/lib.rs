@@ -7,7 +7,7 @@
 //! (`game_registry`: what a game tells the shell about itself) and the
 //! gameplay (`gameplay`: which game fills each match-wide slot), the parts
 //! each game lends a game made of several (`game_parts`), announcers'
-//! packs and kill facts (`announcer`). Code
+//! packs and kill facts (`announcer`), minigame cue packs (`cues`). Code
 //! everything else uses and that changes rarely, in its own crate so an
 //! edit higher up doesn't recompile it.
 //!
@@ -18,6 +18,7 @@ pub mod announcer;
 pub mod character;
 pub mod console;
 pub mod core;
+pub mod cues;
 pub mod env;
 pub mod game_log;
 pub mod game_parts;

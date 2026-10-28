@@ -2,8 +2,9 @@
 //! (`chimera_core::game_parts`; docs/plans/active/ultimate-gun-game.md):
 //! its guns by class and its knife (`weapons`), its movement
 //! (`movement::ID`), its player models (as a guest on other games' maps
-//! too: `game::dress_guest`), its HUD (`ui`, the composing app's) and the
-//! stock maps a composed app loads. The app registers it
+//! too: `game::dress_guest`), its HUD (`ui`, the composing app's), the
+//! stock maps a composed app loads and a minigame cue pack of stock
+//! sounds (data/cues.toml). The app registers it
 //! (`register_parts(&PARTS)`).
 
 use chimera_core::game_parts::{GameParts, GunClass, GunPart};
@@ -50,8 +51,14 @@ pub static PARTS: GameParts = GameParts {
     announcer: None,
     // No win music of its own: a bot's cheer for a party match's winner.
     match_won_sound: Some(MATCH_WON_SOUND),
+    cues: Some(CUES),
 };
 
 /// The party match-end screen's winner sound (`GameParts::
 /// match_won_sound`), from the install.
 pub const MATCH_WON_SOUND: &str = "sound/bot/yea_baby.wav";
+
+/// CS:S's minigame cue pack (data/cues.toml; `chimera_core::cues`): stock
+/// sounds of the install for a gun game's rung ups, last rung, lead and
+/// win.
+pub const CUES: &str = include_str!("../../data/cues.toml");

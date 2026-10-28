@@ -46,6 +46,7 @@ fails when this file is stale; never edit the generated lines).
 - `checks/src/docs_index.rs`: A sentence ends at the first full stop and space outside backticks and parentheses that does not follow a short abbreviation (e.g, vs); a doc...
 - `chimera/client/src/client/announcer.rs`: the phases start on their exact times (not a frame late, Quirk 1); no digits (co-op's "N KILLS"), side log (A7), lucky shot or the "+N Points" line
 - `chimera/client/src/client/binds.rs`: a named action is only a held button: it has no console `+throw` typed-hold (`console::HeldActions` keeps Chimera's own) and no wheel notch
+- `chimera/client/src/client/callouts.rs`: plain text on a dark band, no animation; the files load on first use (the first cue of each kind may come up to a load late, given up after 3 s)
 - `chimera/client/src/client/hud_minimal.rs`: the weapon is called by its id (no display-name registry in the shell); no hit marker, kill feed or scoreboard
 - `chimera/client/src/client/match_end.rs`: no map vote (the server's rotation picks the next map); plain text and colours, no game's look or art; no music pause
 - `chimera/client/src/client/minigame_scoreboard.rs`: plain text, no team colours

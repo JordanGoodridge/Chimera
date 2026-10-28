@@ -336,6 +336,13 @@ fn every_client_shows_the_match_end_screen_with_its_own_row_and_the_next_map() {
         assert!(moved < 0.01, "client {i} stands in its prediction: moved {moved}");
     }
     assert_eq!(fired(&sim), before, "no shot fired");
+    // The win's callout has the frozen window to itself: up on both
+    // clients, the match-end screen not yet.
+    for i in 0..2 {
+        let w = sim.clients[i].app.world();
+        assert!(w.resource::<MinigameHud>().callout.is_some(), "client {i}: the win's callout shows");
+        assert!(!w.resource::<MatchEndView>().shown, "client {i}: the screen comes after it");
+    }
     // The screen with the results, at the round's end (after the win's
     // own moment).
     let ok = sim.until(1500, |s| s.clients.iter().all(|c| c.app.world().get_resource::<MatchResults>().is_some()));
@@ -346,6 +353,9 @@ fn every_client_shows_the_match_end_screen_with_its_own_row_and_the_next_map() {
             && s.clients.iter().all(|c| c.app.world().resource::<MatchEndView>().shown)
     });
     assert!(ok, "the screen on every client");
+    for i in 0..2 {
+        assert!(sim.clients[i].app.world().resource::<MinigameHud>().callout.is_none(), "client {i}: the callout over");
+    }
     let server = sim.server.app.world().resource::<MatchResults>().clone();
     let guns: Vec<(Option<&str>, u32)> = server.rows.iter().map(|r| (r.gun.as_deref(), r.wins)).collect();
     assert_eq!(guns, [(Some("cs_source:weapon_ak47"), 1), (Some("cs_source:weapon_deagle"), 0)]);
