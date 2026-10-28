@@ -80,6 +80,28 @@ fn a_cs_soldiers_double_kill_gets_combat_arms_announcer() {
     assert_eq!(shown(&sim).0, None);
 }
 
+/// kill_streaks.md B2a: after the first kill, a body kill more than 5 s
+/// later is a plain kill: "KILLS" with the server's match kill total (2)
+/// carried over the facts, level 1, silent in the stock pack.
+#[test]
+fn a_plain_kill_shows_kills_with_the_total() {
+    let (mut sim, me, other) = party_with_huds_and(|app| {
+        app.add_plugins(AnnouncerPlugin);
+    });
+    let third = sim.spawn_character(Vec3::new(-3.0, 1.0, 0.0), combat_arms::game::movement::ID);
+    sim.seconds(1.5);
+    kill(&mut sim, me, other);
+    assert_eq!(shown(&sim).0.as_deref(), Some("UI_HUD_Message/Effect/FirstKill.dtx"));
+    sim.seconds(6.0);
+    swap_to(&mut sim, me, 0);
+    kill(&mut sim, me, third);
+    let view = sim.app.world().resource::<AnnouncerView>();
+    let s = view.player.shown.as_ref().expect("a banner");
+    assert_eq!(s.request.image, "UI_HUD_Message/Effect/Kills.dtx");
+    assert_eq!((s.request.number, s.request.level), (Some(2), 1));
+    assert_eq!(view.voices, ["UI_SND/FirstKill.wav"], "no voice for the plain kill");
+}
+
 #[test]
 fn no_announcer_when_the_server_says_none() {
     let (mut sim, me, other) = party_with_huds_and(|app| {

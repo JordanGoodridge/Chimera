@@ -14,10 +14,13 @@
 //! nothing is counted or announced.
 //!
 //! - Teammates' kills and suicides neither count nor reset (A1).
+//! - The killer's kill total (`KillFacts::total`) runs for the map.
 //! - The first kill and the counts start again with each round
 //!   (`core::RoundRestarts`) and map.
 //!
-//! Known shortcuts: whether the killer's own death resets the count is
+//! Known shortcuts: the kill total (`KillFacts::total`) is this counter's
+//! enemy kills per killer for the map, not a scoreboard entry (no
+//! training-round or Bounty Hunter exceptions); whether the killer's own death resets the count is
 //! open (kill_streaks.md Open question 2: the spec found nothing and
 //! gives no reason to think it does, so it doesn't here; tested); a
 //! knife's groin kill counts as a nutshot though the spec names no
@@ -79,6 +82,7 @@ impl Plugin for AnnouncePlugin {
 pub struct KillCounter<K: Ord + Copy + Send + Sync + 'static> {
     streaks: BTreeMap<K, (f64, u8)>,
     first_done: bool,
+    totals: BTreeMap<K, u32>,
     unanswered: BTreeMap<(K, K), u32>,
 }
 
@@ -87,6 +91,7 @@ impl<K: Ord + Copy + Send + Sync + 'static> Default for KillCounter<K> {
         Self {
             streaks: BTreeMap::new(),
             first_done: false,
+            totals: BTreeMap::new(),
             unanswered: BTreeMap::new(),
         }
     }
@@ -98,6 +103,9 @@ pub struct Counted {
     pub multi: u8,
     pub first: bool,
     pub revenge: bool,
+    /// The killer's enemy kills since the map began, this one included
+    /// (rounds don't reset it: the plain-kill banner's number).
+    pub total: u32,
 }
 
 impl<K: Ord + Copy + Send + Sync + 'static> KillCounter<K> {
@@ -115,7 +123,9 @@ impl<K: Ord + Copy + Send + Sync + 'static> KillCounter<K> {
         let owed = self.unanswered.remove(&(victim, killer)).unwrap_or(0);
         let revenge = revenge_after > 0 && owed >= revenge_after;
         *self.unanswered.entry((killer, victim)).or_insert(0) += 1;
-        Counted { multi, first, revenge }
+        let total = self.totals.entry(killer).or_insert(0);
+        *total += 1;
+        Counted { multi, first, revenge, total: *total }
     }
 
     /// A new round: the first kill again, counts from nothing.
@@ -238,6 +248,7 @@ fn count_kills(
                 first: counted.first,
                 shot: special_shot(d.damage.kind, BodyRegion::from_hitgroup(d.damage.hitgroup), gun_region),
                 revenge: counted.revenge,
+                total: counted.total,
                 killer_female: female.as_ref().is_some_and(|f| f.0.contains(&killer)),
             },
         });
@@ -272,6 +283,20 @@ mod tests {
         let mut c = KillCounter::default();
         kill(&mut c, 0.0);
         assert_eq!(kill(&mut c, 4.999).multi, 2);
+    }
+
+    /// kill_streaks.md B2a: the total counts the killer's enemy kills for
+    /// the map, through rounds and out of the window.
+    #[test]
+    fn the_total_runs_for_the_map() {
+        let mut c = KillCounter::default();
+        assert_eq!(kill(&mut c, 0.0).total, 1);
+        assert_eq!(kill(&mut c, 20.0).total, 2, "outside the window: count 1, total 2");
+        c.new_round();
+        assert_eq!(kill(&mut c, 40.0).total, 3, "a round doesn't reset it");
+        assert_eq!(c.enemy_kill(3, 2, 41.0, W, 2).total, 1, "per killer");
+        c.reset();
+        assert_eq!(kill(&mut c, 50.0).total, 1, "a map does");
     }
 
     /// Case 7: the first enemy kill of the round is the first kill; a new

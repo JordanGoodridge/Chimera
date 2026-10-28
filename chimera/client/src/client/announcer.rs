@@ -12,7 +12,14 @@
 //!   banner unless the shot is the event itself; at most one voice: the
 //!   event's own, else the headshot's, else the groin shot's by the
 //!   killer's body. A weapon skin's art and voices replace the pack's by
-//!   key.
+//!   key. Failing all of those, a plain kill (`plain_kill`, B2a: count 1,
+//!   no flags) is the "KILL" / "KILLS" banner by the killer's match kill
+//!   total (`KillFacts::total`), level 1, no top image, `one`'s voice only.
+//! - **Digits** (`digit_slots`, B2a): a request's number N in up to three
+//!   fixed slots (ones always, tens and hundreds as needed, thousands
+//!   dropped), one image per digit; each slot is scaled about its own
+//!   centre with its copy's scale and alpha, and shakes with the main
+//!   copy. N = 0 draws none.
 //! - **One banner** (`BannerPlayer`, A4): a request is dropped while a
 //!   banner with a higher level shows; otherwise it replaces it at once.
 //!   No queue. Every callout's voice plays whether its banner showed or
@@ -22,18 +29,19 @@
 //!   fading while the main copy shakes, hold, blow-out; scaled about the
 //!   layout rectangle's centre (`rect_on_screen`), each axis stretched
 //!   from the pack's reference screen.
-//! - `chimera_announce <count> [first] [head|groin] [revenge] [female]`
+//! - `chimera_announce <count> [first] [head|groin] [revenge] [female] [total=<n>]`
 //!   shows a kill's callouts at once (a test, for screenshots).
 //! - `AnnouncerView` is the state, headless too (tests read it); drawing
 //!   (Bevy UI images, `<game>://` install files through the asset
 //!   server) and the voices (`SoundAsset`s as local interface sounds) run
 //!   where there is an asset server. A new map hides the banner.
 //!
-//! Known shortcuts: no plain-kill "KILL" / "N KILLS" banner (the client
-//! doesn't know the local player's kill total, the pack data has no art
-//! or digits for it); no VIP kill or ice crush events; the phases start on their exact times (not a frame
-//! late, Quirk 1); no digits (co-op's "N KILLS"), side log (A7), lucky
-//! shot or the "+N Points" line. The voice is an interface sound at the
+//! Known shortcuts: the plain kill's number is the server's count of the
+//! killer's enemy kills for the map (`KillFacts::total`), not a scoreboard
+//! entry (no training-round or Bounty Hunter exceptions, no scoreboard
+//! updates); no VIP kill or ice crush events; the phases start on their
+//! exact times (not a frame late, Quirk 1); no co-op digits ("N KILLS",
+//! "COMBO"), side log (A7), lucky shot or the "+N Points" line. The voice is an interface sound at the
 //! effects volume times 1 (A6): the mixer's master (`GlobalVolume`, which
 //! each game's sound options set) with gains of 1, as the spec says.
 
@@ -62,7 +70,7 @@ impl Plugin for AnnouncerPlugin {
         crate::console::ConsoleAppExt::console_command(
             app,
             "chimera_announce",
-            "Announce a kill of yours as the server's pack would (a test): chimera_announce <multi-kill count> [first] [head|groin] [revenge] [female].",
+            "Announce a kill of yours as the server's pack would (a test): chimera_announce <multi-kill count> [first] [head|groin] [revenge] [female] [total=<kills>].",
             test_announce,
         );
         if app.world().contains_resource::<AssetServer>() {
@@ -88,6 +96,8 @@ pub struct Request {
     pub top: Option<String>,
     pub voice: Option<String>,
     pub level: i32,
+    /// A number drawn in digits (the plain kill's total; None: none).
+    pub number: Option<u32>,
 }
 
 /// A callout as requested, with a skin's replacements.
@@ -108,7 +118,27 @@ fn request(c: &Callout, female: bool, skin: Option<&chimera_core::announcer::Ski
         top: image(&format!("{}_top", c.key), c.top.as_ref()),
         voice: skin.and_then(|s| s.voices.get(&voice_key)).or(voice_default).cloned(),
         level: c.level,
+        number: None,
     }
+}
+
+/// The digit slots a number shows (B2a), as (slot, digit): slot 0 the ones
+/// (shown for any N > 0), 1 the tens (when the tens or hundreds digit is
+/// not 0), 2 the hundreds (when not 0); thousands are dropped. N = 0
+/// shows none.
+pub fn digit_slots(n: u32) -> Vec<(usize, u8)> {
+    let (ones, tens, hundreds) = ((n % 10) as u8, (n / 10 % 10) as u8, (n / 100 % 10) as u8);
+    let mut out = Vec::new();
+    if n > 0 {
+        out.push((0, ones));
+        if tens > 0 || hundreds > 0 {
+            out.push((1, tens));
+        }
+        if hundreds > 0 {
+            out.push((2, hundreds));
+        }
+    }
+    out
 }
 
 /// The one callout of a kill (A2, A6): its single event by priority
@@ -126,13 +156,24 @@ pub fn requests(pack: &AnnouncerPack, facts: &KillFacts, weapon: Option<&str>) -
     let (head, groin) = (facts.shot == SpecialShot::Head, facts.shot == SpecialShot::Groin);
     // Headshot and groin shot are events only on a single, plain kill.
     let single_shot = || if head { pack.headshot.as_ref() } else if groin { pack.groin.as_ref() } else { None };
-    let (event, consumed) = [
+    let found = [
         (facts.first.then_some(pack.first_kill.as_ref()).flatten(), false),
         (facts.revenge.then_some(pack.revenge.as_ref()).flatten(), false),
         (if facts.multi == 1 { single_shot() } else { pack.step(facts.multi) }, facts.multi == 1),
     ]
     .into_iter()
-    .find_map(|(c, consumed)| c.map(|c| (c, consumed)))?;
+    .find_map(|(c, consumed)| c.map(|c| (c, consumed)));
+    let Some((event, consumed)) = found else {
+        // B2a: no event and no flag at all is a plain kill.
+        let plain = pack.plain_kill.as_ref()?;
+        if facts.multi != 1 || facts.first || facts.revenge || head || groin {
+            return None;
+        }
+        let one = facts.total <= 1;
+        let mut r = request(if one { &plain.one } else { &plain.many }, female, skin);
+        r.number = Some(facts.total);
+        return Some(r);
+    };
     let mut r = request(event, female, skin);
     let shot = match facts.shot {
         SpecialShot::Head => pack.headshot.as_ref(),
@@ -309,6 +350,7 @@ fn test_announce(world: &mut World, args: &[String]) -> Result<Option<String>, S
         .ok_or("no announcer pack")?;
     let multi = args.first().and_then(|a| a.parse().ok()).unwrap_or(1u8).max(1);
     let has = |w: &str| args.iter().any(|a| a.eq_ignore_ascii_case(w));
+    let total = args.iter().find_map(|a| a.strip_prefix("total=")?.parse().ok()).unwrap_or(1u32);
     let facts = KillFacts {
         pack: pack.id.clone(),
         multi,
@@ -321,6 +363,7 @@ fn test_announce(world: &mut World, args: &[String]) -> Result<Option<String>, S
             SpecialShot::None
         },
         revenge: has("revenge"),
+        total,
         killer_female: has("female"),
     };
     world.write_message(KillAnnounced {
@@ -362,12 +405,21 @@ impl AnnouncerAssets {
     }
 }
 
-/// One of the banner's images: the echo copy or the main one, the banner
-/// or its top image.
+/// What a banner image shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Part {
+    Banner,
+    Top,
+    /// A digit slot: 0 ones, 1 tens, 2 hundreds.
+    Digit(usize),
+}
+
+/// One of the banner's images: the echo copy or the main one, the banner,
+/// its top image or a digit.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 struct BannerImage {
     echo: bool,
-    top: bool,
+    part: Part,
 }
 
 /// The banner on screen (A5).
@@ -399,9 +451,11 @@ fn draw_banner(
             ))
             .id();
         // Main copy first, the echo on top (A5).
-        for (echo, top) in [(false, false), (false, true), (true, false), (true, true)] {
-            commands.spawn((
-                BannerImage { echo, top },
+        let parts = [Part::Banner, Part::Top, Part::Digit(0), Part::Digit(1), Part::Digit(2)];
+        for echo in [false, true] {
+            for part in parts {
+                commands.spawn((
+                BannerImage { echo, part },
                 Node {
                     position_type: PositionType::Absolute,
                     ..default()
@@ -410,7 +464,8 @@ fn draw_banner(
                 Visibility::Hidden,
                 Pickable::IGNORE,
                 ChildOf(root),
-            ));
+                ));
+            }
         }
         assets.root = Some(root);
         return;
@@ -439,14 +494,32 @@ fn draw_banner(
             continue;
         };
         let t = now - s.since;
-        let file = if part.top { s.request.top.as_ref() } else { Some(&s.request.image) };
-        let handle = file.and_then(|f| assets.images.get(f));
+        let digit_file = |slot: usize| {
+            let digit = digit_slots(s.request.number?).into_iter().find(|(i, _)| *i == slot)?.1;
+            Some(pack.plain_kill.as_ref()?.digit_file(digit))
+        };
+        let file = match part.part {
+            Part::Top => s.request.top.clone(),
+            Part::Banner => Some(s.request.image.clone()),
+            Part::Digit(i) => digit_file(i),
+        };
+        let handle = file.and_then(|f| assets.images.get(&f));
         let (scale, alpha) = if part.echo { echo_copy(t, &pack.timing) } else { main_copy(t, &pack.timing) };
         let (Some(handle), true) = (handle, alpha > 0) else {
             *vis = Visibility::Hidden;
             continue;
         };
-        let rect = if part.top { pack.layout.top } else { pack.layout.banner };
+        let rect = match part.part {
+            Part::Top => pack.layout.top,
+            Part::Banner => pack.layout.banner,
+            Part::Digit(i) => match &pack.plain_kill {
+                Some(p) => p.digits[i],
+                None => {
+                    *vis = Visibility::Hidden;
+                    continue;
+                }
+            },
+        };
         let [x, y, w, h] = rect_on_screen(rect, pack.layout.reference, screen, scale);
         let shift = if !part.echo && in_echo(t, &pack.timing) { offset } else { Vec2::ZERO };
         node.left = px(x as f32 + shift.x);
@@ -511,6 +584,11 @@ first_kill = { key = "first", name = "FIRST KILL", banner = "first.img", voice =
 headshot = { key = "head", name = "HEADSHOT", banner = "head.img", top = "skull.img", voice = "head.snd", level = 5 }
 groin = { key = "groin", name = "NUTSHOT", banner = "groin.img", top = "nut.img", voice = "groin_m.snd", voice_female = "groin_f.snd", level = 5 }
 revenge = { key = "revenge", name = "REVENGE", banner = "revenge.img", level = 6 }
+[plain_kill]
+one = { key = "kill", name = "KILL", banner = "kill.img", voice = "kill.snd", level = 1 }
+many = { key = "kills", name = "KILLS", banner = "kills.img", level = 1 }
+digit_prefix = "num_"
+digits = [[425.0, 175.0, 64.0, 128.0], [385.0, 175.0, 64.0, 128.0], [345.0, 175.0, 64.0, 128.0]]
 [layout]
 reference = [1024.0, 768.0]
 banner = [256.0, 76.0, 512.0, 256.0]
@@ -529,7 +607,7 @@ shake = 5
 [[skins]]
 name = "psy"
 weapons = ["kit:psy_gun"]
-images = { double = "double_psy.img", revenge = "revenge_psy.img" }
+images = { double = "double_psy.img", revenge = "revenge_psy.img", kill = "kill_psy.img" }
 voices = { revenge = "revenge_psy.snd" }
 [[skins]]
 name = "robo"
@@ -554,6 +632,92 @@ images = { head = "head_phantom.img" }
         }
     }
 
+    fn plain(total: u32) -> KillFacts {
+        KillFacts { total, ..facts(1) }
+    }
+
+    /// B2a, cases 1, 42-47, 53, 54: the plain kill is "KILL" / "KILLS" by
+    /// the total at level 1 with the number, no top image; its voice only
+    /// for "KILL" and only if the pack names one.
+    #[test]
+    fn the_plain_kill() {
+        let p = pack();
+        let r = requests(&p, &plain(1), None).unwrap();
+        assert_eq!((r.name.as_str(), r.level, r.number, r.top.as_deref(), r.voice.as_deref()), ("KILL", 1, Some(1), None, Some("kill.snd")));
+        let r = requests(&p, &plain(2), None).unwrap();
+        assert_eq!((r.name.as_str(), r.number, r.voice.as_deref()), ("KILLS", Some(2), None));
+        let r = requests(&p, &plain(0), None).unwrap();
+        assert_eq!((r.name.as_str(), r.number), ("KILL", Some(0)), "N = 0: KILL, no digits");
+        assert!(digit_slots(0).is_empty());
+        // Not a plain kill: a flag or a step.
+        for f in [
+            KillFacts { first: true, ..plain(1) },
+            KillFacts { revenge: true, ..plain(1) },
+            KillFacts { shot: SpecialShot::Head, ..plain(1) },
+            facts(2),
+        ] {
+            assert!(requests(&p, &f, None).is_none_or(|r| r.number.is_none()), "{f:?}");
+        }
+        // The head kill is HEADSHOT, no digits.
+        assert_eq!(requests(&p, &KillFacts { shot: SpecialShot::Head, ..plain(1) }, None).unwrap().name, "HEADSHOT");
+        // A skin replaces the image; the digits stay.
+        let r = requests(&p, &plain(1), Some("kit:psy_gun")).unwrap();
+        assert_eq!((r.image.as_str(), r.number), ("kill_psy.img", Some(1)));
+        // A pack without the banner announces no plain kills.
+        let mut bare = pack();
+        bare.plain_kill = None;
+        assert!(requests(&bare, &plain(1), None).is_none());
+    }
+
+    /// Cases 26-28, 42-46: the digit slots.
+    #[test]
+    fn digit_slots_by_number() {
+        assert_eq!(digit_slots(1), [(0, 1)]);
+        assert_eq!(digit_slots(5), [(0, 5)]);
+        assert_eq!(digit_slots(7), [(0, 7)]);
+        assert_eq!(digit_slots(12), [(0, 2), (1, 1)]);
+        assert_eq!(digit_slots(120), [(0, 0), (1, 2), (2, 1)]);
+        assert_eq!(digit_slots(105), [(0, 5), (1, 0), (2, 1)]);
+        assert_eq!(digit_slots(1234), [(0, 4), (1, 3), (2, 2)]);
+        assert_eq!(digit_slots(1005), [(0, 5)], "hundreds and tens are both 0");
+        assert_eq!(digit_slots(10), [(0, 0), (1, 1)]);
+    }
+
+    /// Case 49: at t = 0.05 the digit is scaled about its own slot's
+    /// centre, not the banner's: the ones digit is a 304 x 608 rect
+    /// centred on (457, 239); alpha 15 like the banner's.
+    #[test]
+    fn a_digit_scales_about_its_slot() {
+        let p = pack();
+        let tm = p.timing;
+        let (s, a) = main_copy(0.05, &tm);
+        let slot = p.plain_kill.as_ref().unwrap().digits[0];
+        let [x, y, w, h] = rect_on_screen(slot, p.layout.reference, Vec2::new(1024.0, 768.0), s);
+        assert!((w - 304.0).abs() < 1e-3 && (h - 608.0).abs() < 1e-3, "{w} {h}");
+        assert!((x + w / 2.0 - 457.0).abs() < 1e-3 && (y + h / 2.0 - 239.0).abs() < 1e-3);
+        assert_eq!(a, 15);
+    }
+
+    /// Case 51, 52: level 1 yields to a showing FIRST KILL and is replaced
+    /// by a lucky shot; it replaces a level 0 pickup.
+    #[test]
+    fn the_plain_kill_is_level_one() {
+        let mut b = BannerPlayer::default();
+        b.request(req("FIRST KILL", 6), 0.0);
+        assert!(!b.request(req("KILL", 1), 0.5));
+        let mut b = BannerPlayer::default();
+        b.request(req("HISEC", 0), 0.0);
+        assert!(b.request(req("KILL", 1), 0.1));
+        assert!(b.request(req("LUCKY", 11), 0.2));
+    }
+
+    #[test]
+    fn pack_files_include_the_digits() {
+        let (images, _) = pack().files();
+        assert!(images.contains(&"num_0.dtx".to_string()) && images.contains(&"num_9.dtx".to_string()));
+        assert!(images.contains(&"kill.img".to_string()) && images.contains(&"kills.img".to_string()));
+    }
+
     fn names(r: &[Request]) -> Vec<&str> {
         r.iter().map(|r| r.name.as_str()).collect()
     }
@@ -563,7 +727,7 @@ images = { head = "head_phantom.img" }
     #[test]
     fn steps_and_voices_by_count() {
         let p = pack();
-        assert!(requests(&p, &facts(1), None).is_none());
+        assert!(requests(&p, &facts(1), None).is_some_and(|r| r.level == 1), "count 1 is the plain kill, not a step");
         let got: Vec<(String, Option<String>)> = (2..=8)
             .map(|n| {
                 let r = requests(&p, &facts(n), None).unwrap();
@@ -658,6 +822,7 @@ images = { head = "head_phantom.img" }
             top: None,
             voice: None,
             level,
+            number: None,
         }
     }
 
