@@ -128,8 +128,26 @@ the user's go-ahead: no Actions runs unless asked.
   Left: break-on-touch glass reads this tick's velocity for the spec's
   "smoothed speed", so a CS:S player (velocity clipped at the glass)
   doesn't break it; a Combat Arms one does (no such glass on cs_office).
-- **A bot stays invisible**, as either game's character. Repro wanted
-  (map, bot, what happened before).
+- **A bot stays invisible, as either game's character: fixed, confirm in
+  a playtest.** A player dead at a map change (in the gun game, always the
+  victim of the winning kill, since that shot ends the match and the next
+  map loads) lost its ragdoll with the old map (ragdolls are map parts;
+  characters stay) but kept `Ragdolled`. With that mark set,
+  `render::bodies::attach_bodies` never gave it a body again, for either
+  identity, and it never left a ragdoll again either. `remove_ragdolls`
+  (`chimera_world::map::ragdoll`) now clears the mark from a living owner
+  that has no ragdoll left. Tests: cs_source's `drawn_parts::
+  a_character_dead_at_a_map_change_is_drawn_again`, and party_kit's
+  `bodies_drawn::every_living_player_stays_drawn_through_swaps_deaths_and_map_changes`.
+  That one runs ten players through random kills, identity swaps,
+  ragdolls, respawns and six map changes, checking every tick that each
+  living player has one mesh-drawn body of its identity's game, with
+  nothing above it hidden, on the main layer, and no leftover mark. It
+  failed at the first map change before the fix. Ruled out by reading
+  the code: CA's hide-while-dead (`object_visibility`, it shows the
+  object again regardless of identity), the spectator's in-eye hiding (it
+  shows the old target again when the target changes), the local body's
+  hiding (`LocalPlayer` only), and PVS culling (characters aren't culled).
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
