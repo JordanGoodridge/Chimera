@@ -323,6 +323,52 @@ fn blood_stains_the_wall_behind_unless_team_rules_refuse_the_hit() {
     }
 }
 
+/// Spec section 10: blood comes from bullet and knife hits only. A blast
+/// (an HE, the thrower's own included) carries the victim's centre as its
+/// point: a burst there drew the goop's dark sprites over the player's own
+/// view (black blobs flying from a grenade blast, gun game playtest).
+#[test]
+fn blasts_do_not_bleed_bullet_hits_do() {
+    use crate::stack::{
+        core::{Damage, DamageKind, Hitgroup},
+        map::{DecalGroup, PlaceDecal},
+    };
+    for (kind, bleeds) in [(DamageKind::Blast, false), (DamageKind::Bullet, true)] {
+        let mut sim = sim();
+        let target = sim.spawn_character(Vec3::new(0.0, 1.0, greybox::NORTH_WALL_Z + 2.0), placeholder::ID);
+        let thrower = sim.spawn_character(Vec3::new(0.0, 1.0, greybox::NORTH_WALL_Z + 10.0), placeholder::ID);
+        sim.seconds(1.1);
+        sim.app.world_mut().resource_mut::<Particles>().groups.clear();
+        let point = sim.position(target) + Vec3::Y * 0.4;
+        sim.app.world_mut().write_message(Damage {
+            target,
+            attacker: Some(thrower),
+            amount: 20.0,
+            point,
+            dir: Vec3::NEG_Z,
+            hitgroup: Hitgroup::Generic,
+            kind,
+            weapon: None,
+            force: Vec3::ZERO,
+        });
+        let decals: Vec<PlaceDecal> = collect::<PlaceDecal>(&mut sim, 2)
+            .into_iter()
+            .filter(|d| matches!(&d.group, DecalGroup::Named(n) if n == "Blood"))
+            .collect();
+        let free = {
+            let pool = sim.app.world().resource::<Particles>();
+            pool.count() - pool.capped_count()
+        };
+        if bleeds {
+            assert_eq!(free, BLOOD_COUNTS.iter().sum::<usize>(), "{kind:?}");
+            assert!(!decals.is_empty(), "{kind:?}: blood on the wall behind");
+        } else {
+            assert_eq!(free, 0, "{kind:?} makes no blood burst");
+            assert!(decals.is_empty(), "{kind:?} stains nothing");
+        }
+    }
+}
+
 /// Turn the greybox's water tank into slime.
 fn make_slime(sim: &mut Sim) {
     sim.ticks(2);

@@ -10,6 +10,7 @@ mod cross_game;
 mod cross_water_ladders;
 mod cs_parts;
 mod death_view;
+mod grenade_looks;
 mod gun_game;
 mod hud;
 mod identity;

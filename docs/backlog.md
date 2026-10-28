@@ -27,6 +27,22 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
+- **HE grenade on a window, black blobs: fixed, confirm in a playtest**
+  (promo capture 2026-10-28, cs_office, Ultimate Gun Game). Three causes,
+  none in the glass's material: (1) the party apps never drew CS:S's
+  grenade looks (only CS:S's own game added them), so the HE blew the
+  panes out with no fireball or smoke; `PartyPartsPlugin` now adds
+  `cs_source::game::grenades::GrenadeLooksPlugin` (CS:S's and no game's
+  blasts; `grenade_looks::*`). (2) The "black blobs with red specks" were
+  the blood burst's goop and chunks, made by blast damage at the
+  thrower's own centre, in front of his eyes; blood now comes from bullet
+  and knife hits only, as impact_effects.md 10 says
+  (`impact_effects::blasts_do_not_bleed_bullet_hits_do`). (3) A blast's
+  whole-window shard burst was capped at 48 specks; now
+  `MAX_PANE_SHARDS` = 160 (`a_blasted_window_throws_a_full_burst_of_glass_shards`).
+  The panes going in one tick is the spec's blast rule. Plain CS:S
+  showed (2) and (3) as well.
+
 - **Combat Arms grenade throw visuals: fixed, confirm in a playtest**
   (promo captures 2026-10-27, M67 on de_dust2). The red arc and red edges
   were the damage overlay lit by hits that lost no health (the capture

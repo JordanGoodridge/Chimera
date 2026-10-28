@@ -19,7 +19,7 @@
 //!   names), then `PartyPartsPlugin`: CS:S registered as a second game,
 //!   Source's map logic, CS:S's guns and their impacts (sounds, decals,
 //!   debris, blood, tracers; `weapon::impact` routes each impact to one
-//!   game; props' collision and scrape sounds; the hit slowdown and view
+//!   game; its grenades' explosion and smoke looks; props' collision and scrape sounds; the hit slowdown and view
 //!   flinch of a CS:S-identity player), the minigame runtime
 //!   (`MinigamePlugin`), its part of the network (`chimera_net::
 //!   minigame_net`) and the original minigames (`OriginalsPlugin`).
@@ -241,6 +241,9 @@ impl Plugin for PartyPartsPlugin {
             // (weapons.md M18), on CS:S-identity characters only.
             cs_source::game::hit_reaction::HitReactionPlugin,
             cs_source::game::impact_effects::ImpactEffectsPlugin,
+            // CS:S's grenades' looks: the HE's explosion and the smoke
+            // cloud (Combat Arms draws only its own grenades').
+            cs_source::game::grenades::GrenadeLooksPlugin,
             // CS:S's movement, for a player holding a CS:S gun (the gun
             // game's `identity = "weapon"`), and a network server's
             // per-tick animation of CS:S's bodies (their hitboxes).
