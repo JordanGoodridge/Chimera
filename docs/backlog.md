@@ -513,8 +513,10 @@ sections above already list.
 - **Balance across identities is unmeasured.** Speeds, sprint, hull
   height, jump, head size and one-shot ranges change with the rung's
   game; nobody has looked at whether one game's rungs are easier to win
-  on. A playtest table (time on each rung by game), then minigame
-  options if needed.
+  on.
+  *Not wanted (user, 2026-10-28):* the games stay unbalanced against each
+  other. Everyone gets every gun in turn, and a really bad or really good
+  draw, and finding a way to get the kill with it, is part of the fun.
 
 ### Decisions 2026-10-13 (user)
 
