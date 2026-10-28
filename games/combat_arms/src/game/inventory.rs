@@ -100,7 +100,9 @@
 //!   skeleton (`characters::CaPose`: a body model's, else the spec's
 //!   "stand" pose, characters.md test case 27), the hull's bottom centre
 //!   only for a character without one; the swap's jitter +-0.5 x the
-//!   hull's half-extents; the knife's zones are `weapons`' hit spheres.
+//!   hull's half-extents; the knife's zones are `weapons`' hit spheres,
+//!   on a character wearing another game's body (its identity's) that
+//!   body's own hitboxes by the same rule (`weapons::their_shapes`).
 //! - Pickup: an item's box is its body's, else 10 units each way (the
 //!   reference's is its world model's extents: Open question 13, to be
 //!   measured); no dead-body interactions (the fallback's only use). The
@@ -960,7 +962,14 @@ fn swing_knives(
     targets: Query<(Option<&Intent>, Has<Health>, Option<&Inventory>)>,
     spreads: Query<&super::weapons::CaSpread>,
     ai: super::weapons::AiHits,
-    bodies: Query<(&Transform, &Intent, &MovementState, Option<&ColliderAabb>, Option<&HitSpheres>)>,
+    bodies: Query<(
+        &Transform,
+        &Intent,
+        &MovementState,
+        Option<&ColliderAabb>,
+        Option<&HitSpheres>,
+        (Option<&crate::slots::GameIdentity>, Option<&core::Hitboxes>),
+    )>,
     mut armour: Query<(&mut crate::weapon::Armor, Option<&crate::weapon::ArmorPieces>)>,
     infected: Query<(), With<CaInfected>>,
     colliders: Query<&ColliderOf>,
@@ -1071,13 +1080,31 @@ fn swing_knives(
                     // The body part the ray passes on through the target
                     // (8.4: melee uses the zones), then the armour step
                     // (no stock gear covers melee).
-                    let sphere = bodies.get(target).ok().and_then(|(t, i, s, aabb, spheres)| {
-                        let data = spheres.map_or(*MALE, |h| h.0);
-                        let (_, _, world) = body_geometry(t, i, s, aabb, data)?;
-                        let through = end + dir * range;
-                        pick_sphere(&world, eye, through).map(|k| data[k])
+                    // Another game's body: its own shapes, by the same
+                    // rule (docs/DESIGN.md "Hits across games"), not our
+                    // skeleton's spheres hidden inside it.
+                    let through = end + dir * range;
+                    let theirs = bodies.get(target).ok().and_then(|(t, i, _, aabb, _, (identity, boxes))| {
+                        let shapes = super::weapons::their_shapes(t, i, aabb, identity, boxes)?;
+                        Some(shapes.by_power(eye, through).map(|k| shapes.0[k]))
                     });
-                    let (location, zone) = sphere.map_or((Location::Torso, 1.0), |s| (s.location, s.factor));
+                    let sphere = match theirs {
+                        Some(_) => None,
+                        None => bodies.get(target).ok().and_then(|(t, i, s, aabb, spheres, _)| {
+                            let data = spheres.map_or(*MALE, |h| h.0);
+                            let (_, _, world) = body_geometry(t, i, s, aabb, data)?;
+                            pick_sphere(&world, eye, through).map(|k| data[k])
+                        }),
+                    };
+                    let shape = theirs.flatten();
+                    let (location, zone) = match (shape, sphere) {
+                        (Some(h), _) => (
+                            super::weapons::location_of(h.region),
+                            h.scale.unwrap_or_else(|| super::weapons::zone_factor(h.region)),
+                        ),
+                        (None, Some(s)) => (s.location, s.factor),
+                        (None, None) => (Location::Torso, 1.0),
+                    };
                     let hit = ArmourHit {
                         damage_type: MELEE_DAMAGE,
                         location,
@@ -1094,6 +1121,7 @@ fn swing_knives(
 
                     let side = |l, r| if sphere.is_some_and(|s| s.at.x < 0.0) { l } else { r };
                     let hitgroup = match sphere.map(|s| s.location) {
+                        _ if shape.is_some() => shape.map_or(Hitgroup::Generic, |h| h.region.hitgroup()),
                         None => Hitgroup::Generic,
                         Some(Location::Head) => Hitgroup::Head,
                         Some(Location::Torso) => Hitgroup::Chest,
@@ -1119,6 +1147,7 @@ fn swing_knives(
                         regions.write(core::RegionHit {
                             target,
                             region: match sphere.map(|s| s.location) {
+                                _ if shape.is_some() => shape.map_or(core::BodyRegion::Generic, |h| h.region),
                                 None => core::BodyRegion::Generic,
                                 Some(Location::Head) => core::BodyRegion::Head,
                                 Some(Location::Torso) => core::BodyRegion::Chest,

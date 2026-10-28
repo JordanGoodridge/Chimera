@@ -136,7 +136,10 @@
 //! factor) and the tests above are the shapes' own (`Hitboxes::by_power`,
 //! `by_priority`), so the same rules hit another game's body through its
 //! `core::Hitboxes` (a character of another identity that has them,
-//! rewound with lag compensation: `body_shapes`; a CS:S body's boxes), its
+//! rewound with lag compensation: `body_shapes`, `their_shapes`; a CS:S
+//! body's boxes, the character's box widened to hold them, `box_holding`,
+//! since a taller model's head pokes out of the hull, where the box tests
+//! would never reach it), its
 //! zone factor by region then (`zone_factor`, the male skeleton's) and its
 //! armour location by part (`location_of`;
 //! docs/DESIGN.md "Hits across games").
@@ -2010,19 +2013,15 @@ impl Delivery<'_, '_> {
                 let rewound = rewound.iter().find(|r| r.entity == entity);
                 // Another game's body with its own hitboxes (then, when
                 // rewound): those, as its game made them.
-                let theirs = if crate::slots::GameIdentity::allows(identity, super::GAME) {
-                    None
-                } else {
-                    match rewound {
-                        Some(r) => r.hitboxes.as_ref().map(|h| {
+                let theirs = match rewound {
+                    Some(r) if !crate::slots::GameIdentity::allows(identity, super::GAME) => {
+                        r.hitboxes.as_ref().map(|h| {
                             let (feet, _) = r.frame();
                             body_shapes(&h[..], feet, Quat::from_rotation_y(r.yaw))
-                        }),
-                        None => boxes.map(|h| {
-                            let feet = aabb.map_or(t.translation, |b| t.translation.with_y(b.min.y));
-                            body_shapes(&h.0, feet, intent.yaw_rotation())
-                        }),
+                        })
                     }
+                    Some(_) => None,
+                    None => their_shapes(t, intent, aabb, identity, boxes),
                 };
                 // The body's twist from its view (the legs lag the mouse).
                 let twist = yaws.get(&entity).map_or(0.0, |b| wrap_angle(b - intent.yaw));
@@ -2047,6 +2046,9 @@ impl Delivery<'_, '_> {
                     }
                 };
                 let turn = Quat::from_rotation_y(body);
+                // Another game's shapes may poke out of the hull (a taller
+                // model's head): the box holds them, so they're reached.
+                let (min, max) = theirs.as_ref().map_or((min, max), |s| box_holding(min, max, s));
                 Some(Body {
                     entity,
                     origin,
@@ -2139,6 +2141,32 @@ pub fn body_shapes(local: &[crate::core::Hitbox], feet: Vec3, turn: Quat) -> cra
             })
             .collect(),
     )
+}
+
+/// A character's hit shapes in the world when its body is another game's
+/// (its identity isn't Combat Arms' and that game's body gave it
+/// `core::Hitboxes`): those, its feet at its box's bottom, turned by its
+/// look's yaw (as every game places them). None: a body of ours, whose
+/// shapes are our skeleton's spheres.
+pub fn their_shapes(
+    t: &Transform,
+    intent: &Intent,
+    aabb: Option<&ColliderAabb>,
+    identity: Option<&crate::slots::GameIdentity>,
+    hitboxes: Option<&crate::core::Hitboxes>,
+) -> Option<crate::core::Hitboxes> {
+    if crate::slots::GameIdentity::allows(identity, super::GAME) {
+        return None;
+    }
+    let feet = aabb.map_or(t.translation, |b| t.translation.with_y(b.min.y));
+    hitboxes.map(|h| body_shapes(&h.0, feet, intent.yaw_rotation()))
+}
+
+/// A body's box (world min, max) widened to hold its hit shapes (world),
+/// so a shape poking out of the hull (another game's taller model's head)
+/// is still reached through the box tests.
+pub fn box_holding(min: Vec3, max: Vec3, shapes: &crate::core::Hitboxes) -> (Vec3, Vec3) {
+    shapes.bounds().map_or((min, max), |(a, b)| (min.min(a), max.max(b)))
 }
 
 /// Combat Arms' zone factor for a region of a body that gives none of its

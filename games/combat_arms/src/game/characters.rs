@@ -47,8 +47,10 @@
 //!
 //! A character whose identity is another game's (`slots::GameIdentity`:
 //! Lucker Party's players follow their weapon's game) keeps its trackers,
-//! pose and hit spheres (our guns hit it so while it has no hitboxes of
-//! its own game's; with them, `weapons` hits those) but wears no look of
+//! pose and hit spheres (our guns, knives and grenades hit it so while it
+//! has no hitboxes of its own game's; with them, those: `weapons::
+//! their_shapes`; its name tag floats over that body's hitboxes, not our
+//! hidden skeleton's socket) but wears no look of
 //! ours (`dress` takes `BodyName`, `BodyNumber` and `BodySkin` off, `drive`
 //! leaves its `Animator` and visibility alone) and leaves no body of ours
 //! when it dies.

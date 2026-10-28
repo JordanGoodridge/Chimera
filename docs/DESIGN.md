@@ -291,7 +291,12 @@ numbers (pinned by `parity_pin_*` tests in each game).
   (`weapon::lagcomp::HitHistory`). A gun's rule (CS:S's nearest box
   entered, Combat Arms' client test and server walk) asks only shape
   queries (`ray_span`, `segment_passes`/`power`, `line_passes`), so it
-  works on any body.
+  works on any body. A rule that tests the character's box first
+  (Combat Arms') widens it to hold the body's shapes
+  (`Hitboxes::bounds`): a taller model's head poking out of the hull
+  still counts, as in Source. A game that keeps posing its own skeleton
+  under another identity's body (Combat Arms) hits that body's shapes
+  with everything (rounds, knife, grenades), never its hidden skeleton.
 - **Damage per region, from the gun's game.** A gun's table scales by
   region (CS:S's five hitgroup multipliers; Combat Arms' zone factor, the
   body's own scale where its shape has one, else its male skeleton's).

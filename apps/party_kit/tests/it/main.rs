@@ -27,5 +27,6 @@ mod switches;
 
 mod heavy {
     mod cs_decals;
+    mod cross_hits;
     mod impacts;
 }

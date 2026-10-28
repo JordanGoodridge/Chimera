@@ -27,11 +27,6 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
-- **Combat Arms guns can't headshot CS:S players** (Dragunov and
-  others; hitbox drawing on): shots on a CS:S body's drawn head box do
-  nothing, only its neck box counts as the head. Every gun's rounds
-  must use the target body's real hitboxes through the one hit path
-  (DESIGN.md "Hits across games"). In progress.
 - **Match end: everyone stops**: when the last player wins, all players
   and bots freeze for the end hold and the scoreboard comes up. In
   progress with the match-end screen (second pass item 4).
@@ -102,6 +97,24 @@ the user's go-ahead: no Actions runs unless asked.
   `MAX_PANE_SHARDS` = 160 (`a_blasted_window_throws_a_full_burst_of_glass_shards`).
   The panes going in one tick is the spec's blast rule. Plain CS:S
   showed (2) and (3) as well.
+- **Combat Arms guns can't headshot a CS:S player (2026-10-28): fixed,
+  confirm in a playtest.** A Dragunov round on the drawn head box did no
+  damage; only the neck box (CS:S's head group) counted. Cause: Combat
+  Arms' rounds test a character's box (its movement hull) before its
+  hit shapes, as its spec does for its own bodies, whose spheres sit
+  inside it; a CS:S model's head box is centred at the hull's top (on
+  de_dust2 4 mm above it), so a round at the head missed the box and
+  never reached the shapes. Now the box holds another game's shapes
+  (`Hitboxes::bounds`, `weapons::box_holding`). The Combat Arms knife
+  (and grenades) also tested Combat Arms' own skeleton, which keeps
+  being posed out of sight under a CS:S body (why its name tag flinched
+  on a knife hit); they now test the worn body's hitboxes
+  (`weapons::their_shapes`), and Combat Arms' name tag floats over that
+  body's head. Tests: `cross_game::a_combat_arms_round_reaches_a_cs_source_
+  head_above_the_hull`, `..._knife_hits_a_cs_source_body_by_its_boxes`,
+  `a_swap_leaves_only_the_current_identitys_hitboxes`, and on the real
+  models `heavy::cross_hits`. Not changed: the CS:S model plays no flinch
+  on a hit (our CS:S bodies have none, for any gun).
 
 - **Combat Arms grenade throw visuals: fixed, confirm in a playtest**
   (promo captures 2026-10-27, M67 on de_dust2). The red arc and red edges
