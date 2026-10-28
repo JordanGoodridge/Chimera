@@ -12,6 +12,7 @@
 
 pub mod aim;
 pub mod announcer;
+pub mod callouts;
 pub mod canvas;
 pub mod app;
 pub mod audio;
@@ -410,6 +411,7 @@ impl PluginGroup for ClientPlugins {
             .add(senses::SensesPlugin)
             .add(spectate::SpectatePlugin)
             .add(respawn_countdown::RespawnCountdownPlugin)
+            .add(callouts::CalloutsPlugin)
             .add(hdr::HdrPlugin)
             .add(video::VideoPlugin)
             .add(hud_text::HudTextPlugin)

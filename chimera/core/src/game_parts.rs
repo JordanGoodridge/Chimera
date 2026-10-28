@@ -1,7 +1,7 @@
 //! What each game can lend a game made of several (docs/plans/active/
 //! ultimate-gun-game.md, "The game parts contract"): a game's own claim
 //! of its parts (`GameParts`: guns with their class and its knife, its
-//! movement, its character kit, its HUD, its maps, its announcer pack), registered by the app
+//! movement, its character kit, its HUD, its maps, its announcer pack, its minigame cue pack), registered by the app
 //! that composes the game (`GamePartsAppExt::register_parts`) into
 //! `PartsRegistry`, in order. Plain data, no game named: a game fills its
 //! own `GameParts` (`cs_source::game::parts::PARTS`,
@@ -69,6 +69,10 @@ pub struct GameParts {
     /// Its announcer pack, a TOML document (`announcer::AnnouncerPack`),
     /// registered with its parts.
     pub announcer: Option<&'static str>,
+    /// Its minigame cue pack, a TOML document (`cues::CuePack`: the
+    /// sounds of a gun game's rung ups, last rung, lead and win),
+    /// registered with its parts.
+    pub cues: Option<&'static str>,
 }
 
 impl GameParts {
@@ -136,6 +140,9 @@ impl GamePartsAppExt for App {
         if let Some(pack) = parts.announcer {
             crate::announcer::AnnouncerAppExt::register_announcer(self, pack);
         }
+        if let Some(pack) = parts.cues {
+            crate::cues::CueAppExt::register_cues(self, pack);
+        }
         self
     }
 }
@@ -156,6 +163,7 @@ mod tests {
         hud: None,
         maps: &[],
         announcer: None,
+        cues: None,
     };
 
     #[test]

@@ -5,6 +5,7 @@
 //! chimera_client --features dev --test it`; where tests go:
 //! docs/OBSERVABILITY.md, section 1.
 
+mod callouts;
 mod metrics;
 mod minigame_scoreboard;
 mod respawn_countdown;

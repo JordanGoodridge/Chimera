@@ -33,11 +33,14 @@
 //!   match over (`minigame_restart` plays it again). `MatchHold` holds
 //!   the match (no joins, respawns or phases) while a server changes map
 //!   for the next one; `start` lifts it.
-//! - `MinigameEvent`: named events (`rung_up`, `rung_down`, `match_won`)
+//! - `MinigameEvent`: named events (`rung_up`, `rung_down`, `match_won`,
+//!   the ladder's `last_rung` and `lead_taken`, `lead_lost`, `lead_tied`)
 //!   for a HUD or an announcer; `hud::MinigameHud` is what the local
 //!   player's HUD shows of the minigame (status lines from the rules
 //!   module, the match's time, notices from the events): data a game's HUD
-//!   draws.
+//!   draws; and its big callouts (`hud::Callout`, from the module's
+//!   `callout`), which the client shell draws and sounds with the
+//!   definition's cue pack (`cues`, `chimera_core::cues`).
 //! - Console: `minigames` (the definitions, the playing one marked),
 //!   `minigame <id>`, `minigame_load <file>`, `minigame_status`,
 //!   `minigame_restart`.
@@ -119,6 +122,9 @@ pub struct RulesModule {
     pub status: fn(&mut World, Entity) -> Vec<hud::HudLine>,
     /// A notice for the viewer from one of the module's events.
     pub notice: fn(&World, Entity, &MinigameEvent) -> Option<hud::HudLine>,
+    /// A big callout for the viewer from one of the module's events
+    /// (`hud::Callout`: centre screen, with a cue's sound).
+    pub callout: fn(&World, Entity, &MinigameEvent) -> Option<hud::Callout>,
 }
 
 /// A modifier a definition turns on by name with a value.
@@ -195,12 +201,20 @@ pub struct ActiveMinigame {
 /// The names `MinigameEvent`s have, in a fixed order: a network server
 /// sends an event's place in it (`chimera_net::minigame_net`). A rules module's own
 /// event names go at the end.
-pub const EVENT_NAMES: &[&str] = &["rung_up", "rung_down", "match_won"];
+pub const EVENT_NAMES: &[&str] = &[
+    "rung_up",
+    "rung_down",
+    "match_won",
+    "last_rung",
+    "lead_taken",
+    "lead_lost",
+    "lead_tied",
+];
 
 /// A named moment of the match, for a HUD or an announcer.
 #[derive(Message, Clone, Debug, PartialEq)]
 pub struct MinigameEvent {
-    /// `rung_up`, `rung_down`, `match_won`, ...
+    /// `rung_up`, `rung_down`, `match_won`, `last_rung`, `lead_taken`, ...
     pub name: &'static str,
     pub player: Option<Entity>,
     /// The event's number (a rung, a score).
@@ -241,6 +255,12 @@ pub fn check(world: &World, def: &MinigameDef) -> Result<(), String> {
                 return Err(fail(format!("slots.{slot}: no game `{g}` registered")));
             }
         }
+    }
+    if let Some(c) = &def.cues
+        && let Some(packs) = world.get_resource::<chimera_core::cues::CuePacks>()
+        && !packs.valid(c)
+    {
+        return Err(fail(format!("cues: no cue pack `{c}` registered (or none, default)")));
     }
     if let Some(m) = &def.slots.movement
         && world.get_resource::<MovementRegistry>().is_some_and(|r| r.get(m).is_none())
