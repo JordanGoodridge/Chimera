@@ -7,7 +7,8 @@
 //!   (not connecting, spectating or an NPC), in the order they joined
 //!   (`JoinOrder`). A new one (`join`) goes on the team the mode makes
 //!   (one with no team first on the first side), comes in at once unless
-//!   the match is over, and is marked `InMinigame`.
+//!   the match is over, and is marked `InMinigame`; the rules module
+//!   hears of it first (`RulesModule::joined`: the ladder's join rung).
 //! - The match waits (`Phase::Waiting`) until `players.min` are in; then
 //!   the runtime starts it (everyone respawned, the module's
 //!   `before_spawns` first), live at once (no setup), for `time_limit`;
@@ -16,7 +17,8 @@
 //! - Spawning (`respawn`): at a spawn point the definition's `points`
 //!   pick (`spawn_point`), revived (`spawning::revive`), the definition's
 //!   movement set, the weapons taken and the life's given (the kit, then
-//!   the rules module's `loadout`, the last drawn; a kit by game is the
+//!   the rules module's `loadout`, the last drawn; no kit when the module
+//!   says so, `RulesModule::no_kit`; a kit by game is the
 //!   loadout's last weapon's game's, `refit_kit` when the rules swap
 //!   that weapon); with `identity =
 //!   "weapon"` the player follows its weapon's game (`slots::
@@ -179,7 +181,8 @@ pub fn respawn(world: &mut World, e: Entity) {
     }
     crate::weapon::equip::strip(world, e);
     let loadout = (active.rules.loadout)(world, e);
-    for id in kit_for(world, def, loadout.last().copied()).into_iter().chain(loadout) {
+    let kit = if (active.rules.no_kit)(world, e) { Vec::new() } else { kit_for(world, def, loadout.last().copied()) };
+    for id in kit.into_iter().chain(loadout) {
         give(world, e, id);
     }
     // Following the weapon: the life starts as the drawn weapon's game.
@@ -347,6 +350,9 @@ fn join(world: &mut World) {
         }
         world.entity_mut(e).insert(InMinigame);
         mode::assign_team(world, e, false);
+        if let Some(rules) = world.get_resource::<ActiveMinigame>().map(|a| a.rules) {
+            (rules.joined)(world, e);
+        }
         if !over {
             respawn(world, e);
         }

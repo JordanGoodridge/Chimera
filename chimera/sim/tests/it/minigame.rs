@@ -528,3 +528,185 @@ fn a_definitions_cue_pack_must_be_registered() {
     let err = minigame::add(sim.app.world_mut(), "bad.toml", &with("nobody")).unwrap_err();
     assert!(err.contains("no cue pack `nobody`"), "{err}");
 }
+
+/// `p`'s own death: a suicide (its own damage, `kill`'s), or a fall (no
+/// killer).
+fn own_death(sim: &mut Sim, p: Entity, fall: bool) {
+    let at = sim.position(p);
+    sim.app.world_mut().entity_mut(p).remove::<God>();
+    sim.app.world_mut().write_message(Damage {
+        target: p,
+        attacker: (!fall).then_some(p),
+        amount: 1000.0,
+        point: at,
+        dir: Vec3::NEG_Y,
+        hitgroup: Hitgroup::Generic,
+        kind: if fall { DamageKind::Fall } else { DamageKind::Generic },
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.ticks(2);
+}
+
+#[test]
+fn a_suicide_or_a_fall_costs_a_rung_but_never_below_the_first() {
+    use chimera_core::core::LocalPlayer;
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    assert_eq!(rung(&sim, a), 1);
+    settle(&mut sim);
+
+    // `kill` (its own damage): a rung down, said big and in the notices;
+    // no kill for anyone, a kill taken from a (the runtime's count).
+    own_death(&mut sim, a, false);
+    assert_eq!(rung(&sim, a), 0, "the suicide cost a rung");
+    let (lines, _, weapon, cue) = callout(&sim).expect("a callout");
+    assert_eq!(lines, ["Suicide! Level down: {weapon}", "Level 1/3"]);
+    assert_eq!((weapon, cue), (Some(PISTOL), Some("rung_down")));
+    let hud = sim.app.world().resource::<chimera_sim::minigame::hud::MinigameHud>();
+    assert!(hud.notices.iter().any(|(n, _)| n.text == "Suicide! Down to 1/3: {weapon}"), "{:?}", hud.notices);
+    assert_eq!(sim.app.world().get::<Score>(a).unwrap().kills, 0);
+    assert_eq!(sim.app.world().get::<Score>(b).unwrap().kills, 0, "nobody's kill");
+    settle(&mut sim);
+    assert_eq!(testkit::active_id(sim.app.world(), a), Some(PISTOL), "back with the lower rung's weapon");
+
+    // On the first rung a fall costs nothing.
+    own_death(&mut sim, a, true);
+    assert_eq!(rung(&sim, a), 0);
+    // A fall from the second rung: down.
+    settle(&mut sim);
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    assert_eq!(rung(&sim, b), 1);
+    settle(&mut sim);
+    own_death(&mut sim, b, true);
+    assert_eq!(rung(&sim, b), 0, "a fall cost a rung");
+
+    // Off: nothing.
+    let mut sim = started(&DEF.replace("demote_on = \"melee_death\"", "demote_on = \"melee_death\"\ndemote_on_suicide = false"));
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    settle(&mut sim);
+    own_death(&mut sim, a, false);
+    assert_eq!(rung(&sim, a), 1, "demote_on_suicide = false");
+}
+
+#[test]
+fn a_late_joiner_starts_on_the_lowest_rung_the_average_or_the_first() {
+    let four = DEF.replace(
+        "ladder = [\"kit:pistol\", \"kit:rifle\", \"kit:shotgun\"]",
+        "ladder = [\"kit:pistol\", \"kit:rifle\", \"kit:shotgun\", \"kit:pistol\"]",
+    );
+    let joiner = |join: &str, rungs: (usize, usize)| {
+        let def = four.replace("demote_on =", &format!("join_rung = \"{join}\"\ndemote_on ="));
+        let mut sim = started(&def);
+        let a = player(&mut sim);
+        let b = player(&mut sim);
+        settle(&mut sim);
+        assert_eq!(phase(&sim), Phase::Live);
+        sim.app.world_mut().entity_mut(a).insert(Rung(rungs.0));
+        sim.app.world_mut().entity_mut(b).insert(Rung(rungs.1));
+        let c = player(&mut sim);
+        settle(&mut sim);
+        (rung(&sim, c), testkit::active_id(sim.app.world(), c))
+    };
+    assert_eq!(joiner("lowest", (2, 1)), (1, Some(RIFLE)), "the others' lowest, its gun in hand");
+    assert_eq!(joiner("lowest", (2, 0)), (0, Some(PISTOL)));
+    assert_eq!(joiner("average", (2, 0)), (1, Some(RIFLE)), "the average, rounded down");
+    assert_eq!(joiner("average", (3, 2)), (2, Some(SHOTGUN)));
+    assert_eq!(joiner("first", (2, 2)), (0, Some(PISTOL)));
+    assert_eq!(joiner("lowest", (3, 3)).0, 2, "never the last rung");
+
+    // Joining while the match waits: the first rung (the start puts
+    // everyone there).
+    let mut sim = started(&four);
+    let a = player(&mut sim);
+    sim.ticks(3);
+    assert_eq!(phase(&sim), Phase::Waiting);
+    assert_eq!(rung(&sim, a), 0);
+}
+
+const KNIFE: &str = r#"
+id = "kit:knife"
+base = "kit:base"
+slot = 2
+draw = 0.5
+
+[melee.primary]
+range = 2.0
+hull = 0.5
+facing_cos = 0.7
+damage = 50.0
+hit_refire = 0.5
+miss_refire = 0.4
+miss_refire_other = 0.5
+force = 0.0
+"#;
+
+fn knife_sim(def: &str) -> Sim {
+    use chimera_sim::weapon::data::WeaponDataAppExt;
+    Sim::with(chimera_sim::SimBasePlugins, |app| {
+        app.add_plugins((greybox::GreyboxMapPlugin, MinigamePlugin));
+        testkit::add_weapons(app);
+        app.add_weapon_data(&[("knife.toml", KNIFE)]).expect("the knife loads");
+        app.add_minigames(&[("kit_gun_game.toml", def)]).expect("the definition reads");
+    })
+}
+
+/// The weapons `p` carries.
+fn carried(sim: &Sim, p: Entity) -> Vec<&'static str> {
+    let w = sim.app.world();
+    let inv = w.get::<chimera_sim::weapon::Inventory>(p).unwrap();
+    inv.weapons.iter().filter_map(|e| w.get::<chimera_sim::weapon::Weapon>(*e).map(|x| x.id)).collect()
+}
+
+#[test]
+fn a_knife_finale_is_a_knife_alone_and_its_kill_wins() {
+    use chimera_core::core::LocalPlayer;
+    let finale = DEF
+        .replace("points = \"map\"", "points = \"map\"\nkit = [\"kit:knife\"]")
+        .replace("demote_on =", "knife_finale = true\ndemote_on =");
+    let mut sim = knife_sim(&finale);
+    minigame::start(sim.app.world_mut(), "kit:gun_game").expect("it starts");
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
+    settle(&mut sim);
+    let ladder = sim.app.world().resource::<minigame::ladder::Ladder>().clone();
+    assert_eq!(ladder.rungs, [PISTOL, RIFLE, SHOTGUN, "kit:knife"], "a rung after the guns");
+    assert_eq!(carried(&sim, a), ["kit:knife", PISTOL], "the kit and the gun below it");
+
+    for _ in 0..3 {
+        kill(&mut sim, b, a, DamageKind::Bullet);
+        settle(&mut sim);
+    }
+    assert_eq!(rung(&sim, a), 3);
+    assert_eq!(carried(&sim, a), ["kit:knife"], "the knife alone");
+    assert_eq!(testkit::active_id(sim.app.world(), a), Some("kit:knife"));
+    // Back from a death on it: still the knife alone.
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    settle(&mut sim);
+    assert_eq!(carried(&sim, a), ["kit:knife"]);
+    assert_eq!(phase(&sim), Phase::Live);
+    kill(&mut sim, b, a, DamageKind::Melee);
+    let team_a = sim.app.world().get::<Team>(a).unwrap().0;
+    assert!(matches!(phase(&sim), Phase::RoundOver { .. }), "{:?}", phase(&sim));
+    assert_eq!(sim.app.world().resource::<Match>().winner, Some(team_a));
+
+    // Checked: a knife the kit lacks, a gun named as one.
+    let mut sim = knife_sim(DEF);
+    for (finale, says) in [("true", "no melee weapon"), ("\"kit:rifle\"", "not a melee weapon")] {
+        let text = DEF.replace("demote_on =", &format!("knife_finale = {finale}\ndemote_on =")).replace("kit:gun_game", "kit:bad");
+        sim.app.add_minigames(&[("bad.toml", &text)]).unwrap();
+        let err = minigame::start(sim.app.world_mut(), "kit:bad").map(|_| ()).unwrap_err();
+        assert!(err.contains(says), "{finale}: {err}");
+    }
+    let named = DEF.replace("demote_on =", "knife_finale = \"kit:knife\"\ndemote_on =").replace("kit:gun_game", "kit:named");
+    sim.app.add_minigames(&[("named.toml", &named)]).unwrap();
+    minigame::start(sim.app.world_mut(), "kit:named").expect("a named knife, no kit");
+}

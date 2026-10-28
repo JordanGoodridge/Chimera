@@ -64,6 +64,7 @@ fn grenade_ladder(first: &'static str) -> Ladder {
         ],
         demote_on_melee: true,
         refill_ammo: true,
+        ..Default::default()
     }
 }
 
