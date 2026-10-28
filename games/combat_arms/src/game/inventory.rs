@@ -967,6 +967,7 @@ fn swing_knives(
     spatial: SpatialQuery,
     mut damage: MessageWriter<Damage>,
     mut events: MessageWriter<WeaponEvent>,
+    mut regions: Option<ResMut<Messages<core::RegionHit>>>,
     (clock, first, role): (Res<SimClock>, Res<FirstTimePredicted>, Option<Res<NetRole>>),
 ) {
     let now = clock.now;
@@ -1111,6 +1112,22 @@ fn swing_knives(
                         weapon: None,
                         force: Vec3::ZERO,
                     });
+                    // The full region beside the damage (a groin reads as
+                    // the stomach there): the announcer's nutshot.
+                    if let Some(regions) = regions.as_mut() {
+                        let left = sphere.is_some_and(|s| s.at.x < 0.0);
+                        regions.write(core::RegionHit {
+                            target,
+                            region: match sphere.map(|s| s.location) {
+                                None => core::BodyRegion::Generic,
+                                Some(Location::Head) => core::BodyRegion::Head,
+                                Some(Location::Torso) => core::BodyRegion::Chest,
+                                Some(Location::Groin) => core::BodyRegion::Groin,
+                                Some(Location::Arm) => if left { core::BodyRegion::LeftUpperArm } else { core::BodyRegion::RightUpperArm },
+                                Some(Location::Leg) => if left { core::BodyRegion::LeftThigh } else { core::BodyRegion::RightThigh },
+                            },
+                        });
+                    }
                 }
                 if t >= attack.length as f64 {
                     knife.state = match request {

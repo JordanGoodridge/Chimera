@@ -27,8 +27,9 @@
 //!
 //! Known shortcuts: the phases start on their exact times (not a frame
 //! late, Quirk 1); no digits (co-op's "N KILLS"), side log (A7), lucky
-//! shot or the "+N Points" line; the voice plays at the master volume
-//! (no separate effects volume).
+//! shot or the "+N Points" line. The voice is an interface sound at the
+//! effects volume times 1 (A6): the mixer's master (`GlobalVolume`, which
+//! each game's sound options set) with gains of 1, as the spec says.
 
 use std::{collections::BTreeMap, sync::Arc};
 

@@ -3,7 +3,7 @@
 //! every death by an enemy's hand, of any gun on any body, the killer's
 //! multi-kill count (enemy kills each less than the pack's window after
 //! the previous), the first kill of the round, the killing hit's special
-//! place (head, groin: the gun's `core::RegionHit`, else the damage's
+//! place (head, groin: the gun's or the knife's `core::RegionHit`, else the damage's
 //! hitgroup; never for blasts or burns), revenge and the victim's body (`core::FemaleBodies`),
 //! written as `KillAnnounced` (`AnnounceSet`, before the network sends
 //! the kill with them: `net::Killed::facts`).
@@ -18,7 +18,14 @@
 //!   (`core::RoundRestarts`) and map.
 //!
 //! Known shortcuts: whether the killer's own death resets the count is
-//! open (kill_streaks.md Open question 2; it doesn't here); first kill per
+//! open (kill_streaks.md Open question 2: the spec found nothing and
+//! gives no reason to think it does, so it doesn't here; tested); a
+//! knife's groin kill counts as a nutshot though the spec names no
+//! knife callout (its hit location is the killing hit's, melee not among
+//! the damage that can't headshot); Combat Arms' female skeleton data has
+//! no groin sphere, so a woman's body can't be hit there (the female
+//! groin voice is only reached by another game's body; Open question
+//! 10 stays open); first kill per
 //! round, not per match (Open question 3); no lucky shot (its rate comes
 //! from a lobby: Open question 6); revenge after the pack's
 //! `revenge_after` unanswered kills (the spec gives no number).
@@ -289,6 +296,17 @@ mod tests {
         assert!(!c.enemy_kill(1, 2, 30.0, W, 2).revenge, "answered");
         c.enemy_kill(2, 1, 40.0, W, 2);
         assert!(!c.enemy_kill(1, 2, 50.0, W, 2).revenge, "one isn't enough");
+    }
+
+    /// Open question 2: the killer's own death doesn't reset the count (a
+    /// death is no kill: the counter hears of enemy kills only).
+    #[test]
+    fn the_killers_death_leaves_the_count() {
+        let mut c = KillCounter::default();
+        kill(&mut c, 0.0);
+        // Killed at 1 s (by 2, a kill of 2's), killing again at 3 s.
+        c.enemy_kill(2, 1, 1.0, W, 2);
+        assert_eq!(kill(&mut c, 3.0).multi, 2);
     }
 
     /// Head and groin from the gun's region; a groin shot's damage reads
