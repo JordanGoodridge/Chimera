@@ -45,8 +45,8 @@
 //!
 //! Known shortcuts:
 //! - The scope's sounds aren't loaded and no sound plays; its overlay
-//!   picture (`Scope::sprite`) is drawn by `ui::scope` (centred at its own
-//!   aspect with black borders; `ZoomSpriteScale` isn't applied), and
+//!   picture (`Scope::sprite`, `Scope::sprite_scale`) is drawn by
+//!   `ui::scope` (a card scaled with the screen's height, 7.10), and
 //!   Chimera's placeholder is drawn while it loads or when the install has
 //!   none (the range readout and gauge are the HUD's, `ui::hud`). `ZoomedMovePenalty` is read and
 //!   unused (Q4).
@@ -135,6 +135,18 @@ pub struct Scope {
     /// `ZoomSpriteName`: the overlay picture (an install path; empty:
     /// none, the shell's stand-in is drawn).
     pub sprite: String,
+    /// `ZoomSpriteScale` (0: missing, `DEFAULT_SPRITE_SCALE`).
+    pub sprite_scale: f32,
+}
+
+/// `ZoomSpriteScale` when the record has none (weapon_classes.md 7.10).
+pub const DEFAULT_SPRITE_SCALE: f32 = 0.001;
+
+impl Scope {
+    /// The overlay picture's scale, the default where the record has none.
+    pub fn sprite_scale(&self) -> f32 {
+        if self.sprite_scale > 0.0 { self.sprite_scale } else { DEFAULT_SPRITE_SCALE }
+    }
 }
 
 /// `combat_arms:zoom`: a weapon's zoom fields (its scope is the fitted
@@ -547,6 +559,7 @@ mod tests {
             name: String::new(),
             fov: fov.to_vec(),
             sprite: String::new(),
+            sprite_scale: 0.0,
         });
         z
     }

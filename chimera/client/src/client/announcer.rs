@@ -6,9 +6,13 @@
 //! announcer to a CS:S soldier with a CS:S gun, and plain CS:S (no pack)
 //! nothing.
 //!
-//! - **Which callouts** (`requests`, A2): the first kill (instead of the
-//!   step), else the step of the multi-kill count; a head or groin shot;
-//!   revenge. A weapon skin's art and voices replace the pack's by key.
+//! - **Which callout** (`requests`, A2, A6): one per kill, by priority:
+//!   first kill, revenge, then at count 1 a headshot or groin shot, else
+//!   the step of the multi-kill count. The skull or nut goes over the
+//!   banner unless the shot is the event itself; at most one voice: the
+//!   event's own, else the headshot's, else the groin shot's by the
+//!   killer's body. A weapon skin's art and voices replace the pack's by
+//!   key.
 //! - **One banner** (`BannerPlayer`, A4): a request is dropped while a
 //!   banner with a higher level shows; otherwise it replaces it at once.
 //!   No queue. Every callout's voice plays whether its banner showed or
@@ -25,7 +29,9 @@
 //!   server) and the voices (`SoundAsset`s as local interface sounds) run
 //!   where there is an asset server. A new map hides the banner.
 //!
-//! Known shortcuts: the phases start on their exact times (not a frame
+//! Known shortcuts: no plain-kill "KILL" / "N KILLS" banner (the client
+//! doesn't know the local player's kill total, the pack data has no art
+//! or digits for it); no VIP kill or ice crush events; the phases start on their exact times (not a frame
 //! late, Quirk 1); no digits (co-op's "N KILLS"), side log (A7), lucky
 //! shot or the "+N Points" line. The voice is an interface sound at the
 //! effects volume times 1 (A6): the mixer's master (`GlobalVolume`, which
@@ -105,25 +111,44 @@ fn request(c: &Callout, female: bool, skin: Option<&chimera_core::announcer::Ski
     }
 }
 
-/// The callouts of a kill, in the order they are raised (A2).
-pub fn requests(pack: &AnnouncerPack, facts: &KillFacts, weapon: Option<&str>) -> Vec<Request> {
+/// The one callout of a kill (A2, A6): its single event by priority
+/// (first kill, revenge, then at count 1 a headshot or groin shot, else
+/// the step of the count; the pack lacking an event's callout passes to
+/// the next), the banner with the skull or nut over it when that flag is
+/// not the event itself (Quirk 7), and at most one voice: the event's
+/// own, else the headshot's, else the groin shot's by the killer's body.
+pub fn requests(pack: &AnnouncerPack, facts: &KillFacts, weapon: Option<&str>) -> Option<Request> {
     if facts.multi == 0 {
-        return Vec::new();
+        return None;
     }
     let skin = weapon.and_then(|w| pack.skin(w));
-    let female = facts.victim_female;
-    let step = if facts.first { pack.first_kill.as_ref() } else { pack.step(facts.multi) };
-    let special = match facts.shot {
+    let female = facts.killer_female;
+    let (head, groin) = (facts.shot == SpecialShot::Head, facts.shot == SpecialShot::Groin);
+    // Headshot and groin shot are events only on a single, plain kill.
+    let single_shot = || if head { pack.headshot.as_ref() } else if groin { pack.groin.as_ref() } else { None };
+    let (event, consumed) = [
+        (facts.first.then_some(pack.first_kill.as_ref()).flatten(), false),
+        (facts.revenge.then_some(pack.revenge.as_ref()).flatten(), false),
+        (if facts.multi == 1 { single_shot() } else { pack.step(facts.multi) }, facts.multi == 1),
+    ]
+    .into_iter()
+    .find_map(|(c, consumed)| c.map(|c| (c, consumed)))?;
+    let mut r = request(event, female, skin);
+    let shot = match facts.shot {
         SpecialShot::Head => pack.headshot.as_ref(),
         SpecialShot::Groin => pack.groin.as_ref(),
         SpecialShot::None => None,
-    };
-    let revenge = pack.revenge.as_ref().filter(|_| facts.revenge);
-    [step, special, revenge]
-        .into_iter()
-        .flatten()
-        .map(|c| request(c, female, skin))
-        .collect()
+    }
+    .map(|c| request(c, female, skin));
+    if consumed {
+        r.top = None;
+    } else {
+        r.top = shot.as_ref().and_then(|s| s.top.clone());
+        if r.voice.is_none() {
+            r.voice = shot.and_then(|s| s.voice);
+        }
+    }
+    Some(r)
 }
 
 /// The banner showing: its request and when it started.
@@ -251,7 +276,7 @@ fn announce(
             continue;
         }
         let Some(pack) = packs.get(&k.facts.pack).cloned() else { continue };
-        for r in requests(&pack, &k.facts, k.weapon) {
+        if let Some(r) = requests(&pack, &k.facts, k.weapon) {
             if let Some(v) = &r.voice {
                 view.voices.push(v.clone());
                 view.to_play.push(v.clone());
@@ -296,7 +321,7 @@ fn test_announce(world: &mut World, args: &[String]) -> Result<Option<String>, S
             SpecialShot::None
         },
         revenge: has("revenge"),
-        victim_female: has("female"),
+        killer_female: has("female"),
     };
     world.write_message(KillAnnounced {
         victim: me,
@@ -475,17 +500,17 @@ game = "stand_in"
 window_ms = 5000
 revenge_after = 2
 steps = [
-    { count = 2, key = "double", name = "DOUBLE", banner = "double.img", voice = "double.snd", level = 4 },
-    { count = 3, key = "multi", name = "MULTI", banner = "multi.img", voice = "multi.snd", level = 4 },
-    { count = 4, key = "ultra", name = "ULTRA", banner = "ultra.img", voice = "ultra.snd", level = 4 },
-    { count = 5, key = "fantastic", name = "FANTASTIC", banner = "fantastic.img", voice = "fantastic.snd", level = 4 },
-    { count = 6, key = "unbelievable", name = "UNBELIEVABLE", banner = "unbel.img", voice = "unbel.snd", level = 4 },
-    { count = 7, key = "unbelievable_plus", name = "UNBELIEVABLE+", banner = "unbel_plus.img", voice = "unbel.snd", level = 4 },
+    { count = 2, key = "double", name = "DOUBLE", banner = "double.img", voice = "double.snd", level = 5 },
+    { count = 3, key = "multi", name = "MULTI", banner = "multi.img", voice = "multi.snd", level = 5 },
+    { count = 4, key = "ultra", name = "ULTRA", banner = "ultra.img", voice = "ultra.snd", level = 5 },
+    { count = 5, key = "fantastic", name = "FANTASTIC", banner = "fantastic.img", voice = "fantastic.snd", level = 5 },
+    { count = 6, key = "unbelievable", name = "UNBELIEVABLE", banner = "unbel.img", voice = "unbel.snd", level = 5 },
+    { count = 7, key = "unbelievable_plus", name = "UNBELIEVABLE+", banner = "unbel_plus.img", voice = "unbel.snd", level = 5 },
 ]
-first_kill = { key = "first", name = "FIRST KILL", banner = "first.img", voice = "first.snd", level = 4 }
+first_kill = { key = "first", name = "FIRST KILL", banner = "first.img", voice = "first.snd", level = 6 }
 headshot = { key = "head", name = "HEADSHOT", banner = "head.img", top = "skull.img", voice = "head.snd", level = 5 }
 groin = { key = "groin", name = "NUTSHOT", banner = "groin.img", top = "nut.img", voice = "groin_m.snd", voice_female = "groin_f.snd", level = 5 }
-revenge = { key = "revenge", name = "REVENGE", banner = "revenge.img", level = 3 }
+revenge = { key = "revenge", name = "REVENGE", banner = "revenge.img", level = 6 }
 [layout]
 reference = [1024.0, 768.0]
 banner = [256.0, 76.0, 512.0, 256.0]
@@ -504,7 +529,8 @@ shake = 5
 [[skins]]
 name = "psy"
 weapons = ["kit:psy_gun"]
-images = { double = "double_psy.img" }
+images = { double = "double_psy.img", revenge = "revenge_psy.img" }
+voices = { revenge = "revenge_psy.snd" }
 [[skins]]
 name = "robo"
 weapons = ["kit:robo_gun"]
@@ -537,10 +563,10 @@ images = { head = "head_phantom.img" }
     #[test]
     fn steps_and_voices_by_count() {
         let p = pack();
-        assert!(requests(&p, &facts(1), None).is_empty());
+        assert!(requests(&p, &facts(1), None).is_none());
         let got: Vec<(String, Option<String>)> = (2..=8)
             .map(|n| {
-                let r = &requests(&p, &facts(n), None)[0];
+                let r = requests(&p, &facts(n), None).unwrap();
                 (r.name.clone(), r.voice.clone())
             })
             .collect();
@@ -554,54 +580,74 @@ images = { head = "head_phantom.img" }
             ("UNBELIEVABLE+", "unbel.snd"),
         ];
         assert_eq!(got, want.map(|(n, v)| (n.to_string(), Some(v.to_string()))));
-        assert!(requests(&p, &KillFacts::default(), None).is_empty(), "not an enemy kill");
+        assert!(requests(&p, &KillFacts::default(), None).is_none(), "not an enemy kill");
     }
 
-    /// Cases 7-9 and the first kill, revenge: the first kill instead of
-    /// the step; head with its skull; groin by the victim's body.
+    fn shot(multi: u8, shot: SpecialShot) -> KillFacts {
+        KillFacts { shot, ..facts(multi) }
+    }
+
+    fn summary(r: Option<Request>) -> (String, Option<String>, Option<String>) {
+        let r = r.expect("a callout");
+        (r.name, r.top, r.voice)
+    }
+
+    fn s(name: &str, top: Option<&str>, voice: Option<&str>) -> (String, Option<String>, Option<String>) {
+        (name.into(), top.map(Into::into), voice.map(Into::into))
+    }
+
+    /// Cases 7-9: first kill, headshot and groin shot on a single kill
+    /// (no top image: Quirk 7), the groin voice by the killer's body.
     #[test]
-    fn special_kills() {
+    fn single_kill_events() {
         let p = pack();
         let first = requests(&p, &KillFacts { first: true, multi: 2, ..facts(2) }, None);
-        assert_eq!(names(&first), ["FIRST KILL"], "the step ignored");
-        assert_eq!(first[0].voice.as_deref(), Some("first.snd"));
-        let head = requests(&p, &KillFacts { shot: SpecialShot::Head, ..facts(1) }, None);
-        assert_eq!(names(&head), ["HEADSHOT"]);
-        assert_eq!(head[0].top.as_deref(), Some("skull.img"));
-        assert_eq!(head[0].voice.as_deref(), Some("head.snd"));
-        let groin = |female| requests(&p, &KillFacts { shot: SpecialShot::Groin, victim_female: female, ..facts(1) }, None);
-        assert_eq!(groin(true)[0].voice.as_deref(), Some("groin_f.snd"));
-        assert_eq!(groin(false)[0].voice.as_deref(), Some("groin_m.snd"));
-        assert_eq!(groin(true)[0].top.as_deref(), Some("nut.img"));
-        let both = requests(&p, &KillFacts { shot: SpecialShot::Head, revenge: true, ..facts(2) }, None);
-        assert_eq!(names(&both), ["DOUBLE", "HEADSHOT", "REVENGE"]);
-        assert_eq!(both[2].voice, None, "revenge is silent");
-        // A headshot double kill shows HEADSHOT (its level is higher).
-        let mut b = BannerPlayer::default();
-        for r in both.into_iter().take(2) {
-            b.request(r, 0.0);
-        }
-        assert_eq!(b.shown.unwrap().request.name, "HEADSHOT");
+        assert_eq!(summary(first), s("FIRST KILL", None, Some("first.snd")), "the step ignored");
+        assert_eq!(summary(requests(&p, &shot(1, SpecialShot::Head), None)), s("HEADSHOT", None, Some("head.snd")));
+        let groin = |female| requests(&p, &KillFacts { killer_female: female, ..shot(1, SpecialShot::Groin) }, None);
+        assert_eq!(summary(groin(true)), s("NUTSHOT", None, Some("groin_f.snd")));
+        assert_eq!(summary(groin(false)), s("NUTSHOT", None, Some("groin_m.snd")));
     }
 
-    /// Cases 29-31: a skin's art and voices by key, the pack's for the
-    /// keys it lacks.
+    /// Cases 35-39: one event and at most one voice per kill; the skull
+    /// or nut over a step, first kill or revenge; revenge falls back to
+    /// the head voice.
+    #[test]
+    fn one_event_and_one_voice() {
+        let p = pack();
+        let head2 = requests(&p, &shot(2, SpecialShot::Head), None);
+        assert_eq!(summary(head2), s("DOUBLE", Some("skull.img"), Some("double.snd")), "case 35");
+        let first_head = KillFacts { first: true, ..shot(3, SpecialShot::Head) };
+        assert_eq!(summary(requests(&p, &first_head, None)), s("FIRST KILL", Some("skull.img"), Some("first.snd")), "case 36");
+        let revenge_head = KillFacts { revenge: true, ..shot(2, SpecialShot::Head) };
+        let r = requests(&p, &revenge_head, None).unwrap();
+        assert_eq!((r.name.as_str(), r.top.as_deref(), r.voice.as_deref(), r.level), ("REVENGE", Some("skull.img"), Some("head.snd"), 6), "case 37");
+        let revenge = KillFacts { revenge: true, ..facts(1) };
+        assert_eq!(summary(requests(&p, &revenge, None)), s("REVENGE", None, None), "case 38");
+        let nut3 = requests(&p, &shot(3, SpecialShot::Groin), None);
+        assert_eq!(summary(nut3), s("MULTI", Some("nut.img"), Some("multi.snd")), "case 39");
+        // Revenge beats first kill? No: first kill comes first.
+        let both = KillFacts { first: true, revenge: true, ..facts(1) };
+        assert_eq!(requests(&p, &both, None).unwrap().name, "FIRST KILL");
+    }
+
+    /// Cases 8, 9, 29-31, 41: a skin's art and voices by key, the pack's
+    /// for the keys it lacks; a skin's skull only over a step.
     #[test]
     fn skins() {
         let p = pack();
-        let r = &requests(&p, &facts(2), Some("kit:psy_gun"))[0];
+        let r = requests(&p, &facts(2), Some("kit:psy_gun")).unwrap();
         assert_eq!((r.image.as_str(), r.voice.as_deref()), ("double_psy.img", Some("double.snd")));
-        let head = KillFacts { shot: SpecialShot::Head, ..facts(1) };
-        let r = &requests(&p, &head, Some("kit:robo_gun"))[0];
-        assert_eq!(
-            (r.image.as_str(), r.top.as_deref(), r.voice.as_deref()),
-            ("head_robo.img", Some("skull_robo.img"), Some("head_robo.snd"))
-        );
-        let r = &requests(&p, &head, Some("kit:phantom_gun"))[0];
-        assert_eq!(
-            (r.image.as_str(), r.top.as_deref(), r.voice.as_deref()),
-            ("head_phantom.img", Some("skull.img"), Some("head.snd"))
-        );
+        let r = requests(&p, &shot(1, SpecialShot::Head), Some("kit:robo_gun")).unwrap();
+        assert_eq!((r.image.as_str(), r.top.as_deref(), r.voice.as_deref()), ("head_robo.img", None, Some("head_robo.snd")));
+        let r = requests(&p, &shot(2, SpecialShot::Head), Some("kit:robo_gun")).unwrap();
+        assert_eq!((r.image.as_str(), r.top.as_deref(), r.voice.as_deref()), ("double.img", Some("skull_robo.img"), Some("double.snd")));
+        let r = requests(&p, &shot(1, SpecialShot::Head), Some("kit:phantom_gun")).unwrap();
+        assert_eq!((r.image.as_str(), r.top.as_deref(), r.voice.as_deref()), ("head_phantom.img", None, Some("head.snd")));
+        let r = requests(&p, &shot(2, SpecialShot::Head), Some("kit:phantom_gun")).unwrap();
+        assert_eq!((r.image.as_str(), r.top.as_deref(), r.voice.as_deref()), ("double.img", Some("skull.img"), Some("double.snd")));
+        let r = requests(&p, &KillFacts { revenge: true, ..facts(1) }, Some("kit:psy_gun")).unwrap();
+        assert_eq!((r.image.as_str(), r.voice.as_deref()), ("revenge_psy.img", Some("revenge_psy.snd")), "case 41");
     }
 
     fn req(name: &str, level: i32) -> Request {
@@ -615,33 +661,36 @@ images = { head = "head_phantom.img" }
         }
     }
 
-    /// Cases 10, 17-21: shown for 1.4 s; a lower level dropped, equal or
-    /// higher replace at once; the last of a frame's requests shows.
+    /// Cases 10, 17-21, 40: shown for 1.4 s; a lower level dropped, equal
+    /// or higher replace at once; the last of a frame's requests shows.
     #[test]
     fn one_banner_by_level() {
         let tm = pack().timing;
         let mut b = BannerPlayer::default();
-        assert!(b.request(req("DOUBLE", 4), 0.0));
+        assert!(b.request(req("DOUBLE", 5), 0.0));
         b.update(1.399, &tm);
         assert!(b.shown.is_some());
         b.update(1.4, &tm);
         assert!(b.shown.is_none(), "hidden at T");
-        b.request(req("HEADSHOT", 5), 0.0);
-        assert!(!b.request(req("DOUBLE", 4), 0.5), "dropped under a higher level");
-        assert_eq!(b.shown.as_ref().unwrap().request.name, "HEADSHOT");
+        b.request(req("FIRST KILL", 6), 0.0);
+        assert!(!b.request(req("DOUBLE", 5), 0.5), "dropped under a higher level");
+        assert_eq!(b.shown.as_ref().unwrap().request.name, "FIRST KILL");
         b.update(1.39, &tm);
-        assert!(b.shown.is_some(), "HEADSHOT plays on");
+        assert!(b.shown.is_some(), "FIRST KILL plays on");
         let mut b = BannerPlayer::default();
-        b.request(req("DOUBLE", 4), 0.0);
-        assert!(b.request(req("MULTI", 4), 0.6));
+        b.request(req("DOUBLE", 5), 0.0);
+        assert!(b.request(req("MULTI", 5), 0.6));
         assert_eq!(b.t(0.6), Some(0.0), "restarted");
         let mut b = BannerPlayer::default();
-        b.request(req("REVENGE", 3), 0.0);
-        assert!(b.request(req("DOUBLE", 4), 0.2));
+        b.request(req("REVENGE", 6), 0.0);
+        assert!(!b.request(req("DOUBLE", 5), 0.2), "case 19");
         assert!(b.request(req("LUCKY", 11), 0.3));
         let mut b = BannerPlayer::default();
-        b.request(req("DOUBLE", 4), 0.0);
-        b.request(req("MULTI", 4), 0.0);
+        b.request(req("HEADSHOT", 5), 0.0);
+        assert!(b.request(req("DOUBLE", 5), 0.4), "case 40: equal levels replace");
+        let mut b = BannerPlayer::default();
+        b.request(req("DOUBLE", 5), 0.0);
+        b.request(req("MULTI", 5), 0.0);
         assert_eq!(b.shown.unwrap().request.name, "MULTI");
     }
 

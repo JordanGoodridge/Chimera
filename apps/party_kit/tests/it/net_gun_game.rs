@@ -518,8 +518,9 @@ fn a_clients_own_killing_shot_sounds_once() {
 /// The announcer over the network (specs/combat_arms/kill_streaks.md A1,
 /// A3): the server counts client 0's head kill of client 1 and sends its
 /// facts with the kill; client 0 (the killer) shows the server's pack's
-/// FIRST KILL and HEADSHOT (the higher level shows) and plays both
-/// voices; client 1 (the victim) neither.
+/// FIRST KILL with the skull over it and plays that one voice only (one
+/// event and one voice per kill: kill_streaks.md case 36); client 1 (the
+/// victim) neither.
 #[test]
 fn the_killers_client_announces_the_servers_facts() {
     use chimera_client::client::announcer::{AnnouncerPlugin, AnnouncerView};
@@ -557,9 +558,9 @@ fn the_killers_client_announces_the_servers_facts() {
     });
     sim.ticks(20);
     let view = sim.clients[0].app.world().resource::<AnnouncerView>();
-    assert_eq!(view.voices, ["UI_SND/FirstKill.wav", "UI_SND/headshot.wav"]);
+    assert_eq!(view.voices, ["UI_SND/FirstKill.wav"]);
     let shown = view.player.shown.as_ref().expect("a banner on the killer's client");
-    assert_eq!(shown.request.image, "UI_HUD_Message/Effect/HeadShot.dtx");
+    assert_eq!(shown.request.image, "UI_HUD_Message/Effect/FirstKill.dtx");
     assert_eq!(shown.request.top.as_deref(), Some("UI_HUD_Message/Effect/Head.dtx"));
     let victim = sim.clients[1].app.world().resource::<AnnouncerView>();
     assert!(victim.voices.is_empty() && victim.player.shown.is_none(), "not on the victim's client");

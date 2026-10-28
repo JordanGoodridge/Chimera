@@ -5,7 +5,7 @@
 //! HUD) gets Combat Arms' FIRST KILL, then DOUBLE KILL with its voice;
 //! with `sv_announcer none`, nothing. A real groin hit (one round from a
 //! CS:S gun through the shared hit code, one from a Combat Arms gun) that
-//! kills is a nutshot, with the female voice on a woman's body. Headless, on the party's simulation
+//! kills is a nutshot, with the female voice when the killer's body is a woman's. Headless, on the party's simulation
 //! with both HUDs (`hud::party_with_huds`).
 
 use bevy::prelude::*;
@@ -71,7 +71,9 @@ fn a_cs_soldiers_double_kill_gets_combat_arms_announcer() {
     let [one, two] = double_kill(&mut sim, me, other, third);
     assert_eq!(one.0.as_deref(), Some("UI_HUD_Message/Effect/FirstKill.dtx"), "the match's first kill");
     assert_eq!(one.1, ["UI_SND/FirstKill.wav"]);
-    assert_eq!(two.0.as_deref(), Some("UI_HUD_Message/Effect/DoubleKill.dtx"));
+    // FIRST KILL (level 6) still shows: the double kill's banner (5) is
+    // dropped, its voice plays all the same (kill_streaks.md case 17).
+    assert_eq!(two.0.as_deref(), Some("UI_HUD_Message/Effect/FirstKill.dtx"));
     assert_eq!(two.1, ["UI_SND/FirstKill.wav", "UI_SND/doublekill.wav"]);
     // Gone after its 1.4 s.
     sim.seconds(1.5);
@@ -131,7 +133,7 @@ fn note(mut kills: MessageReader<chimera_core::announcer::KillAnnounced>, mut ou
 }
 
 /// A party with the announcer, `me` (the local player) at rung `rung`
-/// and `other` a woman's body when `female`.
+/// and `me` a woman's body when `female` (the groin voice goes by the killer's).
 fn groin_party(rung: usize, female: bool) -> (Sim, Entity, Entity) {
     let (mut sim, me, other) = party_with_huds_and(|app| {
         app.add_plugins(AnnouncerPlugin).init_resource::<Announced>().add_systems(Last, note);
@@ -143,7 +145,7 @@ fn groin_party(rung: usize, female: bool) -> (Sim, Entity, Entity) {
     // body follows the gun's game), with its hit spheres as hitboxes.
     swap_to(&mut sim, other, 1);
     if female {
-        sim.app.world_mut().entity_mut(other).insert(combat_arms::game::characters::records::Selection { face: 6, ..default() });
+        sim.app.world_mut().insert_resource(combat_arms::game::characters::CaOwnLook(combat_arms::game::characters::records::Selection { face: 6, ..default() }));
     }
     // Standing on the floor 3 m apart (the spawns are far apart).
     place(&mut sim, me, Vec3::new(0.0, 1.0, 0.0));
@@ -151,19 +153,26 @@ fn groin_party(rung: usize, female: bool) -> (Sim, Entity, Entity) {
     sim.intent(other).yaw = std::f32::consts::PI;
     sim.seconds(1.5);
     let w = sim.app.world();
-    assert_eq!(w.resource::<chimera_core::core::FemaleBodies>().0.contains(&other), female);
+    assert_eq!(w.resource::<chimera_core::core::FemaleBodies>().0.contains(&me), female);
     (sim, me, other)
 }
 
+/// A groin kill, the match's first: one event, FIRST KILL, with the nut
+/// over it and only its voice (kill_streaks.md A2, A6; the groin line is
+/// only the fall-back of an event without a voice).
 fn nutshot(sim: &Sim, kills: &[chimera_core::announcer::KillAnnounced], female: bool) {
     use chimera_core::announcer::SpecialShot;
     assert_eq!(kills.len(), 1, "one kill announced");
     assert_eq!(kills[0].facts.shot, SpecialShot::Groin);
-    assert_eq!(kills[0].facts.victim_female, female);
+    assert_eq!(kills[0].facts.killer_female, female);
     let (banner, voices) = shown(sim);
-    assert_eq!(banner.as_deref(), Some("UI_HUD_Message/Effect/NutShot.dtx"));
-    let voice = if female { "UI_SND/NutShot_Female.wav" } else { "UI_SND/NutShot_Male.wav" };
-    assert!(voices.iter().any(|v| v == voice), "{voice} among {voices:?}");
+    assert_eq!(banner.as_deref(), Some("UI_HUD_Message/Effect/FirstKill.dtx"));
+    assert_eq!(top(sim).as_deref(), Some("UI_HUD_Message/Effect/Nut.dtx"));
+    assert_eq!(voices, ["UI_SND/FirstKill.wav"], "one voice");
+}
+
+fn top(sim: &Sim) -> Option<String> {
+    sim.app.world().resource::<AnnouncerView>().player.shown.as_ref().and_then(|s| s.request.top.clone())
 }
 
 #[test]
@@ -183,23 +192,31 @@ fn a_combat_arms_gun_in_the_groin_is_a_nutshot() {
 }
 
 /// Combat Arms' female skeleton has no groin sphere (its data has none),
-/// so no real hit there is a groin one: a real kill on her body says the
-/// body is a woman's, and the same kill as a groin shot, sent on to the
-/// shell, plays the female line.
+/// so no real hit there is a groin one: a real kill by her says the
+/// body is a woman's, and the same kill as a lone groin shot (not the
+/// match's first), sent on to the shell, plays the female line, and a
+/// man's the male one (the killer's body, not the victim's).
 #[test]
-fn a_kill_on_a_womans_body_plays_the_female_groin_voice() {
+fn a_womans_groin_kill_plays_the_female_voice() {
     use chimera_core::announcer::{KillAnnounced, SpecialShot};
     let (mut sim, me, other) = groin_party(1, true);
     let kills = groin_round(&mut sim, me, other, BodyRegion::Head);
     assert_eq!(kills.len(), 1);
-    assert!(kills[0].facts.victim_female, "her body");
+    assert!(kills[0].facts.killer_female, "her body");
     assert_eq!(kills[0].facts.shot, SpecialShot::Head);
+    sim.seconds(2.0);
     let mut groin: KillAnnounced = kills[0].clone();
     groin.facts.shot = SpecialShot::Groin;
-    sim.app.world_mut().write_message(groin);
+    groin.facts.first = false;
+    groin.facts.multi = 1;
+    sim.app.world_mut().write_message(groin.clone());
     sim.ticks(2);
     let (banner, voices) = shown(&sim);
     assert_eq!(banner.as_deref(), Some("UI_HUD_Message/Effect/NutShot.dtx"));
-    assert!(voices.iter().any(|v| v == "UI_SND/NutShot_Female.wav"), "{voices:?}");
-    assert!(!voices.iter().any(|v| v == "UI_SND/NutShot_Male.wav"), "{voices:?}");
+    assert_eq!(top(&sim), None, "a nutshot has no nut over it");
+    assert_eq!(voices.last().map(String::as_str), Some("UI_SND/NutShot_Female.wav"), "{voices:?}");
+    groin.facts.killer_female = false;
+    sim.app.world_mut().write_message(groin);
+    sim.ticks(2);
+    assert_eq!(shown(&sim).1.last().map(String::as_str), Some("UI_SND/NutShot_Male.wav"));
 }

@@ -18,7 +18,7 @@
 //!   per map; or a pack's id), resolved by the server
 //!   (`AnnouncerSetting::resolve`) into `ActiveAnnouncer`.
 //! - **What a kill was** (`KillFacts`): the killer's multi-kill count,
-//!   first kill, a head or groin shot, revenge, the victim's body: worked
+//!   first kill, a head or groin shot, revenge, the killer's body: worked
 //!   out by the server for an enemy kill and sent with the kill
 //!   (`KillAnnounced`); every client decides from it what to show.
 
@@ -44,7 +44,7 @@ pub struct Callout {
     /// The voice's sound file (None: silent).
     #[serde(default)]
     pub voice: Option<String>,
-    /// The voice when the victim's body is a woman's (`core::FemaleBodies`;
+    /// The voice when the killer's body is a woman's (`core::FemaleBodies`;
     /// None: `voice`).
     #[serde(default)]
     pub voice_female: Option<String>,
@@ -99,7 +99,7 @@ pub struct Timing {
 
 /// A weapon skin: its weapons (ids, `game:name`) draw `images` and play
 /// `voices` in place of the callouts' (by `Callout::key`; a top image by
-/// `<key>_top`, a woman victim's voice by `<key>_female`). A key it lacks
+/// `<key>_top`, a woman killer's voice by `<key>_female`). A key it lacks
 /// falls back to the pack's own (kill_streaks.md A8, Open question 7).
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -266,8 +266,9 @@ pub struct KillFacts {
     pub shot: SpecialShot,
     /// The victim had killed the killer `revenge_after` times since.
     pub revenge: bool,
-    /// The victim's body is a woman's (`core::FemaleBodies`).
-    pub victim_female: bool,
+    /// The killer's body is a woman's (`core::FemaleBodies`): the groin
+    /// shot's voice goes by it (kill_streaks.md Corrections 6).
+    pub killer_female: bool,
 }
 
 /// An enemy kill with its facts (on the server as counted, on a client as

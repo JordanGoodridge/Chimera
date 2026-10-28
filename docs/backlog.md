@@ -64,14 +64,28 @@ the user's go-ahead: no Actions runs unless asked.
 - **Combat Arms' radar draws as two boxes**: the radar and its
   background are drawn apart instead of over each other (plain Combat
   Arms too).
-- **Headshot on a kill streak plays two voices**: a headshot double
-  kill shows HEADSHOT but the announcer says "headshot" and "double
-  kill" together. The spec's "every voice plays" is inferred
-  (kill_streaks.md Open question 5): a spec session should settle what
-  Combat Arms does, then match it.
-- **Combat Arms scopes don't fill the screen**: the overlay is centred
-  but not scaled, so the sides are black; Combat Arms stretches it to
-  the screen (spec first: how it scales).
+- **Headshot on a kill streak plays two voices: fixed, confirm in a
+  playtest** (spec corrections 2026-10-28). One kill raises one event by
+  the spec's priority (first kill, revenge, then at count 1 headshot or
+  groin shot, else the step) with at most one voice (the event's, else
+  headshot, else groin by the killer's body); the skull or nut goes over
+  a step, first kill or revenge, not over a single kill's own HEADSHOT;
+  levels: steps and head/groin 5, first kill and revenge 6; the groin
+  voice follows the killer's body (`KillFacts::killer_female`). Not done:
+  the plain-kill "KILL" / "N KILLS" banner (needs the local kill total,
+  its art names and digits), VIP kill, ice crush, lucky shot, side log.
+- **Combat Arms scopes don't fill the screen: fixed, confirm in a
+  playtest.** Per the spec (weapon_classes.md 7.10) Combat Arms does NOT
+  stretch the picture to the screen: it is a card of `ZoomSpriteScale`
+  (default 0.001) times its texels, scaled by the screen's height through
+  the view-model camera's 50 degree FOV, centred, cropped by the screen,
+  with the world showing where it is transparent (no black bars). The
+  stock 1024 x 1024 lens is about 94 % of the height, and at 1920 x 1080
+  thin world strips (about 175 px) show at the sides. Compare in real
+  Combat Arms with the L96A1 at 1920 x 1080: if its scope really fills
+  the screen there, the stock `ZoomSpriteScale` is larger (the spec
+  session couldn't read it: Open question 4) and the per-scope values
+  want reading. The range readout stays a stretched HUD item.
 - **A Combat Arms character can't break glass by running into it**
   (cs_office windows); a CS:S character can.
 - **A bot stays invisible**, as either game's character. Repro wanted

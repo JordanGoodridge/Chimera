@@ -266,6 +266,8 @@ pub struct ModRecord {
     /// `ZoomSpriteName`: the overlay picture while zoomed (an install path;
     /// empty: none).
     pub zoom_sprite: String,
+    /// `ZoomSpriteScale` (0: missing, the reader's 0.001).
+    pub zoom_sprite_scale: f32,
     /// `SightSystemStyle` (0 normal, 1 range readout, 2 gauge) and
     /// `TargetRange` (units).
     pub sight_style: i32,
@@ -356,6 +358,7 @@ impl ModRecord {
             name: self.name.clone(),
             fov,
             sprite: self.zoom_sprite.clone(),
+            sprite_scale: self.zoom_sprite_scale,
         })
     }
 }

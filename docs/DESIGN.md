@@ -333,9 +333,13 @@ Part B Combat Arms' pack).
   multi-kill count (the pack's window), the round's first kill, the
   killing hit's place (head; groin, from the gun's or knife's full
   `BodyRegion`, `core::RegionHit`, since `Damage`'s hitgroup reads a groin as the
-  stomach), revenge and the victim's body (`core::FemaleBodies`). These
+  stomach), revenge and the killer's body (`core::FemaleBodies`). These
   `KillFacts` travel with the kill (`net::Killed`); every client decides
-  what to show from them.
+  what to show from them: one event per kill by priority (first kill,
+  revenge, then at count 1 a headshot or groin shot, else the step), at
+  most one voice (the event's, else headshot, else groin by the killer's
+  body), the skull or nut over a step, first kill or revenge. Which
+  priority levels, art and voices is the pack's data.
 - **An announcer pack is data** (`chimera_core::announcer::AnnouncerPack`,
   a TOML document): step names and thresholds, art and voice files (paths
   in the pack's game's install, loaded at run time), layout on its
