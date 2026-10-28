@@ -101,6 +101,8 @@ pub fn panel_lines_with(
     let mut out = vec![(PanelLine::Title, m.title.clone())];
     out.extend(m.lines.iter().map(|l| (PanelLine::Status, word(l))));
     match &m.results {
+        // The shell's match-end screen has them.
+        _ if m.results_shown => {}
         Some(r) => out.extend(
             r.lines(|row| row.player.map_or_else(|| row_name(row), &player)).into_iter().map(|t| (PanelLine::Result, t)),
         ),

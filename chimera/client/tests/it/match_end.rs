@@ -3,8 +3,8 @@
 //! callout has the match's end to itself); then the winner big, the final
 //! standings in the scoreboard's columns with the local player's row
 //! marked, the next map and a countdown to the change, and the winner
-//! sound asked for once (the HUD's game's file first); gone with the
-//! results.
+//! sound asked for once (the HUD's game's file first), the games' panels
+//! told to leave the results to it; gone with the results.
 
 use bevy::prelude::*;
 use chimera_client::client::{
@@ -115,6 +115,7 @@ fn the_hold_shows_the_winner_the_standings_and_the_next_map() {
     sim.ticks(2);
     let v = view(&sim);
     assert!(v.shown && shown(&mut sim));
+    assert!(sim.app.world().resource::<MinigameHud>().results_shown, "the games' panels leave the results to it");
     assert_eq!(v.title, "Kit gun game");
     assert_eq!((v.winner.as_deref(), v.you_won), (Some("Ann"), false));
     let want = [
@@ -163,6 +164,7 @@ fn the_hold_shows_the_winner_the_standings_and_the_next_map() {
     sim.app.world_mut().remove_resource::<NextMatch>();
     sim.ticks(2);
     assert!(!view(&sim).shown && !shown(&mut sim));
+    assert!(!sim.app.world().resource::<MinigameHud>().results_shown);
 
     // My win, then a draw (no sound for a draw).
     let mut mine = results.clone();

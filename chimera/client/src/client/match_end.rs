@@ -24,7 +24,9 @@
 //!   in the order registered; the first that loads plays, none if none
 //!   does), an interface sound at the mixer's master.
 //!
-//! `MatchEndView` is the state, headless too (tests read it); drawing is
+//! While it is up the games' panels leave the results and notices out
+//! (`MinigameHud::results_shown`). `MatchEndView` is the state, headless
+//! too (tests read it); drawing is
 //! Bevy UI. Nothing shows without a minigame, so plain CS:S and Combat
 //! Arms are unchanged. Part of `ClientPlugins`.
 //!
@@ -124,7 +126,7 @@ pub fn sound_candidates(parts: &PartsRegistry, first: Option<&str>) -> Vec<(Stri
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn follow(
-    hud: Option<Res<MinigameHud>>,
+    mut hud: Option<ResMut<MinigameHud>>,
     next: Option<Res<NextMatch>>,
     clock: Option<Res<SimClock>>,
     gun_names: Option<Res<GunNames>>,
@@ -136,6 +138,11 @@ fn follow(
     mut view: ResMut<MatchEndView>,
 ) {
     let results = hud.as_ref().filter(|h| h.playing()).and_then(|h| h.results.clone());
+    let shown = results.is_some() && next.is_some();
+    // The games' panels leave the results to this screen while it is up.
+    if let Some(h) = hud.as_mut().filter(|h| h.results_shown != shown) {
+        h.results_shown = shown;
+    }
     let (Some(results), Some(next)) = (results, next) else {
         if view.shown {
             *view = MatchEndView {

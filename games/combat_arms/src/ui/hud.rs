@@ -522,8 +522,9 @@ fn minigame_view(
     hud.minigame = Some(MinigameView {
         title: m.title.clone(),
         lines: m.lines.iter().map(word).collect(),
-        notices: m.notices.iter().map(|(l, _)| word(l)).collect(),
-        results: m.results.as_ref().map_or_else(Vec::new, |r| {
+        // The shell's match-end screen has the results: neither here.
+        notices: if m.results_shown { Vec::new() } else { m.notices.iter().map(|(l, _)| word(l)).collect() },
+        results: m.results.as_ref().filter(|_| !m.results_shown).map_or_else(Vec::new, |r| {
             r.lines(|row| row.player.map_or_else(|| row.name.clone(), |p| name_of(&names, settings.as_deref(), p)))
         }),
     });
