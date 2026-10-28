@@ -38,9 +38,16 @@ the user's go-ahead: no Actions runs unless asked.
   hit; the generic hit regions have `groin`, DESIGN.md "Hits across
   games"), with their banner/icon and voice. First a spec session for
   whatever the specs don't cover yet (streak UI layout, announcer files,
-  queueing/overlap rules), then implement in Combat Arms' HUD; in the
-  party apps show them for kills with Combat Arms guns (or for every kill,
-  as a party option).
+  queueing/overlap rules), then implement.
+- **Make it a generic Chimera announcer** (user, 2026-10-27): streaks and
+  special kills are counted by Chimera from kill events (any gun, any
+  body), and an *announcer pack* (data: step names, thresholds/window,
+  banner art, voice files, timings, contributed by a game as a part) draws
+  and voices them independently of the character's game or HUD. Ultimate
+  Gun Game shows Combat Arms' announcer for every player, CS:S or Combat
+  Arms identity alike. Later: the server picks the pack (a cvar / minigame
+  setting, or random per match), and other games' announcers (e.g.
+  Quake-style) can be added as packs.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
