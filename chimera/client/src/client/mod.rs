@@ -52,6 +52,7 @@ pub mod vgui;
 pub mod video;
 pub mod view;
 pub mod voice;
+pub mod weapon_icons;
 pub mod weapon_menu;
 pub mod widgets;
 

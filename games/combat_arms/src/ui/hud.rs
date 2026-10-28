@@ -22,6 +22,11 @@
 //! `HudDraws`, so in an app that switches HUDs it is up only while it is
 //! the gameplay's.
 //!
+//! The kill feed draws another game's gun (a party app's) with that game's
+//! icon from `client::weapon_icons::WeaponIcons`, else its display name
+//! (`GunNames`); the install's kill icons are registered there for the
+//! other games' feeds.
+//!
 //! Inputs: the viewed player (the local one, or whom it watches in first
 //! person), its `core::Health`, its armour (`weapon::Armor`: Combat
 //! Arms' points, or another game's armour it wears), `Inventory`, `Zoomed`,
@@ -179,7 +184,11 @@ use super::{
     draw::{self, CaFaces},
     layout::{self, Effect, FontList, REFERENCE, TextLook, text},
 };
-use crate::client::canvas::{HAlign, Scale, VAlign};
+use crate::client::{
+    canvas::{HAlign, Scale, VAlign},
+    minigame_scoreboard::{GunNames, gun_name},
+    weapon_icons::{WeaponIcon, WeaponIcons, spawn_weapon_icon},
+};
 
 /// The kill feed's names' font (D5).
 pub const FEED_FONT: &str = "bold 12";
@@ -1235,6 +1244,9 @@ impl Plugin for CaHudPlugin {
         // `GameDraws` is ours while our HUD is the gameplay's (an app with
         // another game's HUD too: the shell's `HudDraws`).
         app.world_mut().get_resource_or_init::<HudDraws>().0.push((crate::game::GAME, DRAWS));
+        // Other games' HUDs draw our guns with the install's art
+        // (`WeaponIcons`), whichever HUD is up.
+        app.init_resource::<WeaponIcons>().add_systems(Update, register_icons);
         app
             .add_systems(
                 Startup,
@@ -1356,7 +1368,10 @@ impl BoundHud {
     /// A kill line's weapon slot texture (D5's replacements).
     pub fn icon(&self, icon: &KillIcon) -> Option<String> {
         let key = match icon {
-            KillIcon::Weapon(Some(id)) => return Some(crate::ui::install::kill_icon(id)),
+            KillIcon::Weapon(Some(id)) if crate::ui::install::is_own_gun(id) => {
+                return Some(crate::ui::install::kill_icon(id));
+            }
+            KillIcon::Weapon(Some(_)) => return None,
             KillIcon::Weapon(None) => return None,
             KillIcon::Suicide => "killsuicideimg",
             KillIcon::Barrel => "killdrumdeathimg",
@@ -1952,14 +1967,18 @@ fn draw_feed(
     params: PenParams,
     art: Option<Res<draw::CaArt>>,
     bound: Res<BoundHud>,
+    (icons, names, catalog): (Res<WeaponIcons>, Option<Res<GunNames>>, Option<Res<crate::weapon::data::WeaponCatalog>>),
     root: Single<Entity, With<FeedRoot>>,
-    mut last: Local<Option<(Vec<FeedLineView>, Screen, bool)>>,
+    mut last: Local<Option<(Vec<FeedLineView>, Screen, bool, bool)>>,
     mut commands: Commands,
 ) {
     let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
-    if !rebuild(&mut last, (hud.feed.clone(), hud.screen, loaded), *root, &mut commands) {
+    if !rebuild(&mut last, (hud.feed.clone(), hud.screen, loaded, icons.is_changed()), *root, &mut commands) {
         return;
     }
+    let foreign = |p: &mut ChildSpawnerCommands, pen: Pen, x: f32, y: f32, id: &str| {
+        foreign_weapon(p, pen, &hud.screen, Vec2::new(x, y), id, &icons, names.as_deref(), catalog.as_deref());
+    };
     // The game's own kill feed panel, bound by name (`bound`).
     if let Some(panel) = &bound.feed {
         let feed_art = bound::FeedArt {
@@ -1969,8 +1988,18 @@ fn draw_feed(
         let layout = panel.build(&hud.feed, &feed_art, scale(hud.screen));
         let ui = &params.0;
         let draws = layout.draw(&ui.ctx());
+        let pen = pen(&params, hud.screen);
         commands.entity(*root).with_children(|c| {
             draw::spawn_draws(c, &draws, &ui.stand_ins, art.as_deref(), params.1.as_deref(), params.2.as_deref());
+            for l in &hud.feed {
+                for item in &l.items {
+                    if let FeedItem::Icon { x, icon } = item
+                        && let Some(id) = foreign_gun(icon)
+                    {
+                        foreign(c, pen, *x, l.y, id);
+                    }
+                }
+            }
         });
         return;
     }
@@ -1984,6 +2013,10 @@ fn draw_feed(
                 match item {
                     FeedItem::Text { x, text, colour } => {
                         hud_text_at(p, pen, Vec2::new(*x, l.y + 3.0), text, FEED_FONT, Effect::Stroke, *colour);
+                    }
+                    // Another game's gun: its own game's icon, else its name.
+                    FeedItem::Icon { x, icon } if foreign_gun(icon).is_some() => {
+                        foreign(p, pen, *x, l.y, foreign_gun(icon).unwrap());
                     }
                     // The install's icons and badges when it has them
                     // (64 x 20 and 32 x 20 ref, D5).
@@ -2023,12 +2056,64 @@ fn draw_feed(
     });
 }
 
-/// A kill line's weapon slot's texture in the install (`ui::install`).
+/// A kill line's weapon slot's texture in the install (`ui::install`);
+/// none for another game's gun (`foreign_gun`).
 fn icon_art(icon: &KillIcon) -> Option<String> {
     match icon {
-        KillIcon::Weapon(Some(id)) => Some(crate::ui::install::kill_icon(id)),
+        KillIcon::Weapon(Some(id)) if foreign_gun(icon).is_none() => Some(crate::ui::install::kill_icon(id)),
         _ => None,
     }
+}
+
+/// The id of a kill line's gun when it is another game's.
+fn foreign_gun(icon: &KillIcon) -> Option<&str> {
+    match icon {
+        KillIcon::Weapon(Some(id)) if !crate::ui::install::is_own_gun(id) => Some(id),
+        _ => None,
+    }
+}
+
+/// Draws another game's gun in a kill line's weapon slot (at `at`, in
+/// reference pixels): that game's icon (`WeaponIcons`), else the gun's
+/// name, cut to the slot.
+#[allow(clippy::too_many_arguments)]
+fn foreign_weapon(
+    p: &mut ChildSpawnerCommands,
+    pen: Pen,
+    screen: &Screen,
+    at: Vec2,
+    id: &str,
+    icons: &WeaponIcons,
+    names: Option<&GunNames>,
+    catalog: Option<&crate::weapon::data::WeaponCatalog>,
+) {
+    let r = screen.rect(at, Vec2::new(FEED_ICON_WIDTH, 20.0));
+    match icons.icon(id) {
+        Some(icon) => {
+            let tall = r.max.y - r.min.y;
+            spawn_weapon_icon(p, &icon, tall / 20.0, tall, Some(Vec2::new(r.min.x, r.min.y)));
+        }
+        None => {
+            let name: String = gun_name(id, names, catalog).chars().take(10).collect();
+            hud_text_at(p, pen, Vec2::new(at.x, at.y + 3.0), &name, FEED_FONT, Effect::Stroke, [200, 200, 200, FEED_TEXT_ALPHA]);
+        }
+    }
+}
+
+/// Registers the install's kill icons for other games' HUDs
+/// (`WeaponIcons`), as the art loads.
+fn register_icons(art: Option<Res<draw::CaArt>>, mut icons: ResMut<WeaponIcons>) {
+    let Some(art) = art.filter(|a| a.is_changed() && !a.0.is_empty()) else { return };
+    let kills: HashMap<String, (Handle<Image>, IVec2)> = art
+        .0
+        .iter()
+        .filter(|(k, _)| k.contains("/killdeath/weapon/"))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    icons.register(crate::game::GAME, move |id| {
+        let (image, size) = kills.get(&crate::ui::install::texture_key(&crate::ui::install::kill_icon(id)))?;
+        Some(WeaponIcon::Image { image: image.clone(), size: size.as_vec2() })
+    });
 }
 
 /// A badge's texture in the install, where it has one.
@@ -2174,4 +2259,76 @@ fn draw_minigame(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod foreign_gun_tests {
+    use bevy::ecs::world::CommandQueue;
+
+    use super::*;
+
+    /// What `foreign_weapon` spawns under a root for gun `id`, and the
+    /// registry it asks.
+    fn drawn(id: &str, icons: &WeaponIcons) -> (World, Entity) {
+        let mut world = World::new();
+        let root = world.spawn_empty().id();
+        let ui = CaUi::default();
+        let pen = Pen { ui: &ui, fonts: None, faces: None, screen: Screen::default() };
+        let mut queue = CommandQueue::default();
+        let mut commands = Commands::new(&mut queue, &world);
+        commands.entity(root).with_children(|p| {
+            foreign_weapon(p, pen, &pen.screen, Vec2::new(40.0, 10.0), id, icons, None, None);
+        });
+        queue.apply(&mut world);
+        (world, root)
+    }
+
+    fn images(world: &mut World) -> Vec<Node> {
+        world.query_filtered::<&Node, With<ImageNode>>().iter(world).cloned().collect()
+    }
+
+    #[test]
+    fn another_games_gun_is_its_icon_else_its_name() {
+        let mut icons = WeaponIcons::default();
+        icons.register("cs_source", |id| {
+            id.ends_with("m4a1").then(|| WeaponIcon::Image { image: Handle::default(), size: Vec2::new(64.0, 20.0) })
+        });
+        let (mut world, _) = drawn("cs_source:weapon_m4a1", &icons);
+        let nodes = images(&mut world);
+        assert_eq!(nodes.len(), 1, "the icon is one image");
+        assert_eq!(nodes[0].position_type, PositionType::Absolute);
+        assert_eq!(nodes[0].left, px(40.0));
+        // A gun its game has no icon for: the name, no image.
+        let (mut world, root) = drawn("cs_source:weapon_awp", &icons);
+        assert!(images(&mut world).is_empty());
+        assert!(world.get::<Children>(root).is_some_and(|c| !c.is_empty()), "the name's text is up");
+        // A game that registered nothing: the name too.
+        let (mut world, root) = drawn("cs_source:weapon_m4a1", &WeaponIcons::default());
+        assert!(images(&mut world).is_empty());
+        assert!(world.get::<Children>(root).is_some_and(|c| !c.is_empty()));
+    }
+
+    #[test]
+    fn the_install_art_is_for_its_own_guns_only() {
+        let k = |id: &str| KillIcon::Weapon(Some(id.into()));
+        assert_eq!(icon_art(&k("combat_arms:m4a1")), Some(crate::ui::install::kill_icon("combat_arms:m4a1")));
+        assert_eq!(icon_art(&k("cs_source:weapon_m4a1")), None);
+        assert_eq!(foreign_gun(&k("cs_source:weapon_m4a1")), Some("cs_source:weapon_m4a1"));
+        assert_eq!(foreign_gun(&k("combat_arms:m4a1")), None);
+        assert_eq!(foreign_gun(&KillIcon::Suicide), None);
+    }
+
+    #[test]
+    fn the_install_art_registers_for_other_huds() {
+        let mut app = App::new();
+        let mut art = draw::CaArt::default();
+        let key = crate::ui::install::texture_key(&crate::ui::install::kill_icon("combat_arms:m4a1"));
+        art.0.insert(key, (Handle::default(), IVec2::new(64, 20)));
+        app.init_resource::<WeaponIcons>().insert_resource(art).add_systems(Update, register_icons);
+        app.update();
+        let icons = app.world().resource::<WeaponIcons>();
+        assert!(matches!(icons.icon("combat_arms:m4a1"), Some(WeaponIcon::Image { .. })));
+        assert_eq!(icons.icon("combat_arms:no_such_gun"), None);
+        assert_eq!(icons.icon("cs_source:weapon_m4a1"), None, "not our game's id");
+    }
 }

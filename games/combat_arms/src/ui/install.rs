@@ -146,6 +146,12 @@ pub fn kill_icon(id: &str) -> String {
     format!("ui_hud_message/killdeath/weapon/kill_message_{short}.dtx")
 }
 
+/// Whether weapon `id` is Combat Arms' (a plain name is): the others have
+/// no art in the install.
+pub fn is_own_gun(id: &str) -> bool {
+    id.split_once(':').is_none_or(|(game, _)| game.eq_ignore_ascii_case(crate::game::GAME))
+}
+
 /// A decoded texture.
 #[derive(Clone)]
 pub struct Art {

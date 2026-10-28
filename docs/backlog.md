@@ -141,7 +141,11 @@ sections above already list.
   while Combat Arms' HUD is up, so a CS:S-gun death gets CS:S's view.
   Plain CS:S and Combat Arms set no `RespawnDue` and are unchanged.
 - **Kill feed and death screen show no weapon for the other game's
-  guns.** In the party half the kills have an empty weapon slot: CS:S's
+  guns. (Fixed 2026-10-28, confirm in a playtest: each game registers its
+  icons in Chimera's `client::weapon_icons::WeaponIcons`, CS:S's font
+  glyphs and Combat Arms' install textures, and the other HUD's feed
+  draws them, else the gun's name; the Combat Arms death screen shows
+  the name alone, no icon, for a CS:S gun.)** In the party half the kills have an empty weapon slot: CS:S's
   death notices give another game's gun no icon (`ui::game_hud::
   kill_icon` returns none), Combat Arms' feed and death screen look up
   art in its own install by id (`ui::install::kill_icon`), which a CS:S

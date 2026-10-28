@@ -8,7 +8,8 @@
 //! - `KillerInfo`: `CamOn` (name, `hp`, `ap`) when the enemy view is on
 //!   or the killer is a teammate, else `CamOff` (name); `Rank` isn't
 //!   driven (no level data).
-//! - `KillerWeapon`: `name` and `weapon_img`; `DamageWnd`: `Damage` and
+//! - `KillerWeapon`: `name` and `weapon_img` (hidden for another game's
+//!   gun, which has no art in the install: the name alone); `DamageWnd`: `Damage` and
 //!   `Damage_img` (the zone's texture from the layout's own strings:
 //!   `DamagePointIcon<Zone>Tex`); `Target`: `name`, `KillCount` (the
 //!   string `$DeadCamKillCount` with N) and `FreeCam_info` (Hunted);
@@ -116,7 +117,11 @@ impl KillCamPanel {
             let id = find(&l, weapon, "name");
             set_text(&mut l, id, Some(&w.name), None);
             let id = find(&l, weapon, "weapon_img");
-            set_texture(&mut l, id, &crate::ui::install::kill_icon(&w.id));
+            // Another game's gun has no art here: its name alone.
+            match crate::ui::install::is_own_gun(&w.id) {
+                true => set_texture(&mut l, id, &crate::ui::install::kill_icon(&w.id)),
+                false => show(&mut l, id, false),
+            }
         }
         // The last hit.
         let hit = find(&l, root_, "DamageWnd");

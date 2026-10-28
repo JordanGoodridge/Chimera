@@ -11,7 +11,9 @@
 //! three-digit field, icons and digits at the layout's offsets) and drawn with
 //! `hud_text` in the panel colour, added to the screen (health flashes red when
 //! it drops: the game's `HealthTookDamage` animation); death notices with team
-//! colours and weapon/headshot icons; the round's end: the win panel
+//! colours and weapon/headshot icons (another game's gun: its own game's
+//! icon from `client::weapon_icons::WeaponIcons`, else its display name;
+//! CS:S registers its glyphs there for the other games' feeds); the round's end: the win panel
 //! (`win_panel.rs`), or a centre print without its layout.
 //!
 //! Known shortcuts (docs/tech-debt.md): CS:S HUD parity (`client/game_hud.rs`,
@@ -64,6 +66,8 @@ use bevy::prelude::*;
 use crate::client::{
     fonts::UiFonts,
     hud_text::{Align, GlyphFont, HudText, width},
+    minigame_scoreboard::{GunNames, gun_name},
+    weapon_icons::{WeaponIcon, WeaponIcons, spawn_weapon_icon},
 };
 
 use crate::{
@@ -90,6 +94,10 @@ impl Plugin for GameHudPlugin {
         app.add_message::<crate::rules::rounds::RoundEnded>();
         app.init_resource::<DeathNotices>()
             .init_resource::<LastHits>()
+            .init_resource::<WeaponIcons>()
+            // Other games' HUDs draw CS:S's guns with these, whichever HUD
+            // is up.
+            .add_systems(Update, register_icons)
             .add_systems(
                 Update,
                 (
@@ -207,9 +215,19 @@ impl HealthFlash {
 struct Notice {
     attacker: Option<(String, Option<Team>)>,
     victim: (String, Option<Team>),
-    weapon: Option<(String, char)>,
+    weapon: Option<NoticeWeapon>,
     headshot: bool,
     left: f32,
+}
+
+/// What a notice shows for the gun.
+enum NoticeWeapon {
+    /// CS:S's own gun: its HUD icon glyph (font name, character).
+    Glyph(String, char),
+    /// Another game's gun: that game's icon (`client::weapon_icons`), or
+    /// failing that the gun's name.
+    Other(WeaponIcon),
+    Name(String),
 }
 
 /// The notices shown, and a counter bumped whenever they change.
@@ -297,6 +315,11 @@ fn death_notices(
         Option<&crate::net::NetCharacter>,
     )>,
     weapons: Query<&Weapon>,
+    (icons, names, catalog): (
+        Res<WeaponIcons>,
+        Option<Res<GunNames>>,
+        Option<Res<crate::weapon::data::WeaponCatalog>>,
+    ),
     mut notices: ResMut<DeathNotices>,
     settings: Option<Res<crate::net::NetSettings>>,
     time: Res<Time>,
@@ -333,7 +356,20 @@ fn death_notices(
                     .and_then(|w| weapons.get(w).ok())
                     .map(|w| w.id)
             })
-            .and_then(|id| kill_icon(id, &hud.0.icons));
+            .and_then(|id| {
+                // CS:S's gun: its glyph. Another game's: its own game's
+                // icon, else its name.
+                if let Some((font, ch)) = kill_icon(id, &hud.0.icons) {
+                    return Some(NoticeWeapon::Glyph(font, ch));
+                }
+                if is_own(id) {
+                    return None;
+                }
+                Some(match icons.icon(id) {
+                    Some(icon) => NoticeWeapon::Other(icon),
+                    None => NoticeWeapon::Name(gun_name(id, names.as_deref(), catalog.as_deref())),
+                })
+            });
         // (A network client has no damage messages: the killing hit's.)
         let headshot = hits
             .0
@@ -360,6 +396,33 @@ fn death_notices(
     if notices.0.len() != before {
         notices.1 += 1;
     }
+}
+
+/// Whether weapon `id` is CS:S's (a plain name is).
+fn is_own(id: &str) -> bool {
+    id.split_once(':').is_none_or(|(game, _)| game.eq_ignore_ascii_case(crate::game::GAME))
+}
+
+/// Registers CS:S's guns' icons for other games' HUDs (`WeaponIcons`):
+/// the look's glyphs with their fonts resolved, as it and the fonts load.
+fn register_icons(hud: Option<Res<ActiveHud>>, fonts: Res<UiFonts>, mut icons: ResMut<WeaponIcons>) {
+    let Some(hud) = hud else { return };
+    if !(hud.is_changed() || fonts.is_changed()) {
+        return;
+    }
+    let glyphs: HashMap<String, WeaponIcon> = hud
+        .0
+        .icons
+        .iter()
+        .filter_map(|(name, (font, ch))| {
+            let (font, tall) = fonts.game(font)?;
+            Some((name.clone(), WeaponIcon::Glyph { font, ch: *ch, em: tall * 0.5 }))
+        })
+        .collect();
+    if glyphs.is_empty() {
+        return;
+    }
+    icons.register(crate::game::GAME, move |id| kill_icon(id, &glyphs));
 }
 
 /// The kill-feed icon of weapon `id` (the full id, `game:name`): CS:S's
@@ -891,7 +954,7 @@ fn rebuild_notices(
                 ChildOf(root),
             ))
             .id();
-        let mut word = |text: String, color: Color, font: Option<(Handle<Font>, f32)>| {
+        let word = |commands: &mut Commands, text: String, color: Color, font: Option<(Handle<Font>, f32)>| {
             let mut e = commands.spawn((Text::new(text), TextColor(color), ChildOf(row)));
             match font {
                 // Icon fonts draw their glyphs high in the line: lower
@@ -911,19 +974,29 @@ fn rebuild_notices(
             };
         };
         if let Some((name, team)) = &n.attacker {
-            word(name.clone(), team_color(*team), None);
+            word(commands, name.clone(), team_color(*team), None);
         }
         let glyph = |name: &str| hud.icons.get(name).cloned();
-        let weapon = n.weapon.clone().or_else(|| glyph("d_skull_cs"));
-        if let Some((font, ch)) = weapon {
-            word(ch.to_string(), Color::WHITE, fonts.game(&font));
+        match &n.weapon {
+            Some(NoticeWeapon::Glyph(font, ch)) => word(commands, ch.to_string(), Color::WHITE, fonts.game(font)),
+            Some(NoticeWeapon::Other(icon)) => {
+                commands
+                    .entity(row)
+                    .with_children(|p| spawn_weapon_icon(p, icon, scale, NOTICE_LINE * scale * 0.8, None));
+            }
+            Some(NoticeWeapon::Name(name)) => word(commands, name.clone(), Color::WHITE, None),
+            None => {
+                if let Some((font, ch)) = glyph("d_skull_cs") {
+                    word(commands, ch.to_string(), Color::WHITE, fonts.game(&font));
+                }
+            }
         }
         if n.headshot
             && let Some((font, ch)) = glyph("d_headshot")
         {
-            word(ch.to_string(), Color::WHITE, fonts.game(&font));
+            word(commands, ch.to_string(), Color::WHITE, fonts.game(&font));
         }
-        word(n.victim.0.clone(), team_color(n.victim.1), None);
+        word(commands, n.victim.0.clone(), team_color(n.victim.1), None);
     }
 }
 
