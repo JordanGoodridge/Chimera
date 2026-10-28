@@ -1,0 +1,379 @@
+//! One kill feed for an app with several games' HUDs (the party apps:
+//! Ultimate Gun Game, Lucker Party), kept apart from every HUD and drawn
+//! by the shell in one place.
+//!
+//! - **The state** (`KillFeed`, `KillFeedStatePlugin`): every death as
+//!   `core::Died` tells it (a host's and a single player's own, a network
+//!   client's from the server's `net::Killed`), as an entry: the killer
+//!   and the victim (named as the HUD names them, `shown_name`, with
+//!   their team and whether either is the local player), the weapon id
+//!   (the killing hit's, else what the killer held when the hit was
+//!   dealt: `weapon::DamageWeapons`), how it was dealt,
+//!   and the flags: headshot, suicide (no killer, or the victim itself),
+//!   team kill (same non-zero `core::Team`). Entries go after `lifetime`
+//!   seconds, the oldest first past `max`, and all of them on a map
+//!   change (`core::MapLoads`). No game's HUD keeps it, so an entry made
+//!   just before the local player's HUD changes (the gun game's rung swap:
+//!   `chimera_sim::identity`) is still there after.
+//! - **The widget** (`KillFeedPlugin`, part of `ClientPlugins`): drawn
+//!   only while the app asks for it (`SharedKillFeed`), at the screen's
+//!   top right, one row per entry, newest at the bottom: killer, the gun's
+//!   own game's icon (`weapon_icons::WeaponIcons`, else its display name,
+//!   `minigame_scoreboard::gun_name`), a headshot mark (the weapon's
+//!   game's, `WeaponIcons::mark`, else "HS"), victim; names in team
+//!   colours (a teammate's death green), the local player's in gold and
+//!   its rows outlined; a row
+//!   fades over its last second. Sized by the window's height.
+//! - **`SharedKillFeed`**: the app's flag that this feed is the one; the
+//!   games' own feeds (CS:S's death notices, Combat Arms' kill feed) and
+//!   the shell's fallback HUD's leave theirs out while it is in. Plain
+//!   CS:S and Combat Arms never insert it, so theirs are unchanged.
+//!
+//! Known shortcuts: no penetration (wallbang) flag: the killing hit
+//! doesn't say whether it went through something; names are taken at the
+//! kill (a later rename doesn't change a row); the rows sit where a
+//! game's corner radar would (the party apps hide the radars:
+//! `hud::Radars`).
+
+use bevy::{prelude::*, window::PrimaryWindow};
+
+use super::{
+    fonts::UiFonts,
+    minigame_scoreboard::{GunNames, gun_name},
+    weapon_icons::{WeaponIcons, spawn_weapon_icon},
+};
+use crate::{
+    core::{DamageKind, Died, Hitgroup, LocalPlayer, MapLoads, Team},
+    net::{NetCharacter, NetSettings},
+    weapon::{DamageWeapons, Inventory, Weapon},
+};
+
+/// The feed's state, without its drawing (headless: tests and a server).
+pub struct KillFeedStatePlugin;
+
+impl Plugin for KillFeedStatePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<KillFeed>().add_message::<Died>().add_systems(Update, record);
+    }
+}
+
+/// The state and the widget (`SharedKillFeed` turns the widget on).
+pub struct KillFeedPlugin;
+
+impl Plugin for KillFeedPlugin {
+    fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<KillFeedStatePlugin>() {
+            app.add_plugins(KillFeedStatePlugin);
+        }
+        app.add_systems(Startup, spawn_root).add_systems(Update, draw.after(record));
+    }
+}
+
+/// The app draws one kill feed (this module's) for every game's HUD; the
+/// games' own feeds stay out while it is in.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SharedKillFeed;
+
+/// One side of a kill.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FeedName {
+    pub entity: Entity,
+    pub name: String,
+    pub team: Option<u8>,
+    /// The local player (at the kill).
+    pub local: bool,
+}
+
+/// One kill.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KillEntry {
+    /// Counts up from 0 over the app's life.
+    pub id: u64,
+    /// None: the world (a fall, a map's hurt) or the victim itself.
+    pub killer: Option<FeedName>,
+    pub victim: FeedName,
+    /// The weapon id (`game:name`), if known.
+    pub weapon: Option<&'static str>,
+    pub kind: DamageKind,
+    pub headshot: bool,
+    pub suicide: bool,
+    pub team_kill: bool,
+    /// When (`Time` seconds).
+    pub at: f32,
+}
+
+impl KillEntry {
+    /// Whether the local player is in it.
+    pub fn involves_local(&self) -> bool {
+        self.victim.local || self.killer.as_ref().is_some_and(|k| k.local)
+    }
+}
+
+/// The kill feed: its entries, oldest first.
+#[derive(Resource, Clone, Debug)]
+pub struct KillFeed {
+    pub entries: Vec<KillEntry>,
+    /// Seconds an entry stays.
+    pub lifetime: f32,
+    /// The most entries kept.
+    pub max: usize,
+    next: u64,
+    map: Option<u32>,
+}
+
+impl Default for KillFeed {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+            lifetime: LIFETIME,
+            max: MAX_LINES,
+            next: 0,
+            map: None,
+        }
+    }
+}
+
+/// Seconds an entry stays, and the last of them it fades over.
+pub const LIFETIME: f32 = 6.0;
+pub const FADE: f32 = 1.0;
+pub const MAX_LINES: usize = 5;
+
+#[allow(clippy::type_complexity)]
+fn record(
+    mut died: MessageReader<Died>,
+    who: Query<(Option<&Name>, Option<&Team>, Has<LocalPlayer>, Option<&NetCharacter>, Option<&Inventory>)>,
+    weapons: Query<&Weapon>,
+    held: Option<Res<DamageWeapons>>,
+    settings: Option<Res<NetSettings>>,
+    loads: Option<Res<MapLoads>>,
+    time: Res<Time>,
+    mut feed: ResMut<KillFeed>,
+) {
+    let now = time.elapsed_secs();
+    // A new map: the last one's kills go.
+    let map = loads.map(|l| l.0);
+    if feed.map != map {
+        feed.map = map;
+        if !feed.entries.is_empty() {
+            feed.entries.clear();
+        }
+    }
+    let side = |e: Entity| match who.get(e) {
+        Ok((name, team, local, net, _)) => FeedName {
+            entity: e,
+            name: super::shown_name(e, local, net, name, settings.as_deref()),
+            team: team.map(|t| t.0),
+            local,
+        },
+        Err(_) => FeedName {
+            entity: e,
+            name: e.to_string(),
+            team: None,
+            local: false,
+        },
+    };
+    for d in died.read() {
+        let killer = d.attacker.filter(|a| *a != d.entity);
+        // A thrown grenade names itself; otherwise what the killer held
+        // when its hit was dealt (`DamageWeapons`; a network client's
+        // `Died` has it from the server), else holds now.
+        let weapon = held.as_deref().map_or(d.damage.weapon, |h| h.of(&d.damage));
+        let weapon = weapon.filter(|_| killer.is_some()).or_else(|| {
+            let k = killer?;
+            let w = who.get(k).ok()?.4?.active?;
+            Some(weapons.get(w).ok()?.id)
+        });
+        let victim = side(d.entity);
+        let killer = killer.map(side);
+        let team_kill = killer
+            .as_ref()
+            .is_some_and(|k| k.team.is_some_and(|t| t != 0 && Some(t) == victim.team));
+        let id = feed.next;
+        feed.next += 1;
+        feed.entries.push(KillEntry {
+            id,
+            suicide: killer.is_none(),
+            killer,
+            victim,
+            weapon,
+            kind: d.damage.kind,
+            headshot: d.damage.hitgroup == Hitgroup::Head,
+            team_kill,
+            at: now,
+        });
+    }
+    let (lifetime, max) = (feed.lifetime, feed.max);
+    if feed.entries.iter().any(|e| now - e.at >= lifetime) {
+        feed.entries.retain(|e| now - e.at < lifetime);
+    }
+    if feed.entries.len() > max {
+        let extra = feed.entries.len() - max;
+        feed.entries.drain(..extra);
+    }
+}
+
+/// The widget's root (top right).
+#[derive(Component)]
+pub struct KillFeedRoot;
+
+/// A drawn row: its entry's id.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KillFeedRow(pub u64);
+
+fn spawn_root(mut commands: Commands) {
+    commands.spawn((
+        KillFeedRoot,
+        Visibility::Hidden,
+        GlobalZIndex(45),
+        Node {
+            position_type: PositionType::Absolute,
+            right: px(0.0),
+            top: px(0.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::FlexEnd,
+            ..default()
+        },
+    ));
+}
+
+const TEXT: Color = Color::srgb(0.92, 0.92, 0.92);
+const GOLD: Color = Color::srgb(1.0, 0.82, 0.25);
+const RED: Color = Color::srgb(0.95, 0.45, 0.35);
+const BLUE: Color = Color::srgb(0.55, 0.75, 1.0);
+/// A teammate killed by its own side.
+const MATE: Color = Color::srgb(0.6, 0.9, 0.5);
+
+/// A name's colour: the local player's gold, else by team (1: Terrorists,
+/// Alpha; 2: Counter-Terrorists, Bravo), else plain.
+fn name_colour(n: &FeedName) -> Color {
+    match (n.local, n.team) {
+        (true, _) => GOLD,
+        (_, Some(1)) => RED,
+        (_, Some(2)) => BLUE,
+        _ => TEXT,
+    }
+}
+
+fn with_alpha(c: Color, a: f32) -> Color {
+    let alpha = c.alpha();
+    c.with_alpha(alpha * a)
+}
+
+/// How opaque entry `e` is at `now` (1, then down to 0 over `FADE`),
+/// in tenths so the rows are rebuilt only as it steps.
+fn opacity(e: &KillEntry, now: f32, lifetime: f32) -> u8 {
+    let left = (lifetime - (now - e.at)).max(0.0);
+    ((left / FADE).min(1.0) * 10.0).ceil() as u8
+}
+
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn draw(
+    shared: Option<Res<SharedKillFeed>>,
+    feed: Res<KillFeed>,
+    time: Res<Time>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    (icons, names, catalog, fonts): (
+        Option<Res<WeaponIcons>>,
+        Option<Res<GunNames>>,
+        Option<Res<crate::weapon::data::WeaponCatalog>>,
+        Option<Res<UiFonts>>,
+    ),
+    mut root: Single<(Entity, &mut Visibility, &mut Node), With<KillFeedRoot>>,
+    mut last: Local<Option<(Vec<(u64, u8)>, u32, bool)>>,
+    mut commands: Commands,
+) {
+    let (root_e, vis, node) = &mut *root;
+    if shared.is_none() {
+        vis.set_if_neq(Visibility::Hidden);
+        return;
+    }
+    vis.set_if_neq(Visibility::Inherited);
+    let now = time.elapsed_secs();
+    let height = window.iter().next().map_or(720.0, |w| w.height()).max(240.0);
+    let shown: Vec<(u64, u8)> = feed.entries.iter().map(|e| (e.id, opacity(e, now, feed.lifetime))).collect();
+    let icons_changed = icons.as_ref().is_some_and(|i| i.is_changed());
+    let key = (shown, height as u32, icons_changed);
+    if last.as_ref() == Some(&key) {
+        return;
+    }
+    *last = Some(key);
+    commands.entity(*root_e).despawn_related::<Children>();
+    // Sized for a 720-line screen.
+    let s = height / 720.0;
+    node.right = px(14.0 * s);
+    node.top = px(12.0 * s);
+    node.row_gap = px(3.0 * s);
+    let font = |size: f32| {
+        fonts
+            .as_ref()
+            .map(|f| f.em("Verdana", true, size))
+            .unwrap_or(TextFont {
+                font_size: FontSize::Px(size),
+                ..default()
+            })
+    };
+    let size = 15.0 * s;
+    let line = 22.0 * s;
+    let icon_scale = height / 480.0;
+    commands.entity(*root_e).with_children(|rows| {
+        for e in &feed.entries {
+            let a = opacity(e, now, feed.lifetime) as f32 / 10.0;
+            if a <= 0.0 {
+                continue;
+            }
+            let local = e.involves_local();
+            rows.spawn((
+                KillFeedRow(e.id),
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: px(6.0 * s),
+                    padding: UiRect::axes(px(7.0 * s), px(2.0 * s)),
+                    min_height: px(line),
+                    border: UiRect::all(px(if local { (1.5 * s).max(1.0) } else { 0.0 })),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5 * a)),
+                BorderColor::all(with_alpha(Color::srgba(1.0, 0.82, 0.25, 0.85), a)),
+            ))
+            .with_children(|r| {
+                let text = |r: &mut ChildSpawnerCommands, t: String, c: Color| {
+                    r.spawn((Text::new(t), font(size), TextColor(with_alpha(c, a))));
+                };
+                if let Some(k) = &e.killer {
+                    text(r, k.name.clone(), name_colour(k));
+                }
+                let game = e.weapon.and_then(|w| w.split_once(':')).map(|(g, _)| g);
+                match e.weapon.and_then(|w| icons.as_ref()?.icon(w)) {
+                    Some(icon) => {
+                        spawn_weapon_icon(r, &icon, icon_scale, line * 0.9, None);
+                    }
+                    None => {
+                        let what = match (e.weapon, e.kind) {
+                            (Some(w), _) => gun_name(w, names.as_deref(), catalog.as_deref()),
+                            (None, DamageKind::Fall) => "fell".into(),
+                            (None, DamageKind::Blast) => "blast".into(),
+                            (None, DamageKind::Burn) => "burned".into(),
+                            (None, DamageKind::Drown) => "drowned".into(),
+                            (None, _) if e.suicide => "died".into(),
+                            (None, _) => "killed".into(),
+                        };
+                        text(r, format!("[{what}]"), Color::srgb(0.8, 0.8, 0.8));
+                    }
+                }
+                if e.headshot {
+                    match game.and_then(|g| icons.as_ref()?.mark(g, HEADSHOT)) {
+                        Some(mark) => spawn_weapon_icon(r, &mark, icon_scale, line * 0.8, None),
+                        None => text(r, "HS".into(), Color::srgb(1.0, 0.35, 0.3)),
+                    }
+                }
+                // A teammate killed: its name in the team-kill colour.
+                let c = if e.team_kill && !e.victim.local { MATE } else { name_colour(&e.victim) };
+                text(r, e.victim.name.clone(), c);
+            });
+        }
+    });
+}
+
+/// The headshot mark's name in `WeaponIcons::mark`.
+pub const HEADSHOT: &str = "headshot";

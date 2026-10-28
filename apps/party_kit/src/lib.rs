@@ -44,7 +44,9 @@
 //!   Gun Game's, apps/ultimate_gun_game) and `with_defaults` (the command
 //!   line as the app plays it; `with_defaults_for` another app's minigame).
 //! - CS:S's radar, target ID, freeze cam and voice HUD (`client::with_huds`)
-//!   draw only while CS:S's HUD is the gameplay's (a CS:S gun in hand).
+//!   draw only while CS:S's HUD is the gameplay's (a CS:S gun in hand);
+//!   the radars (CS:S's and Combat Arms') only with `hud_radar 1`, and
+//!   one kill feed, the shell's, for both HUDs (`PartyHudPlugin`).
 //! - The Tab scoreboard (`chimera_client::client::minigame_scoreboard`):
 //!   one for every minigame, whatever game's HUD is up.
 //! - Both games' parts registered (`chimera_core::game_parts`, each game's
@@ -480,7 +482,7 @@ pub mod controls;
 #[cfg(feature = "present")]
 mod client;
 #[cfg(feature = "present")]
-pub use client::{ClientPlugin, PartyMousePlugin, client_app, client_hooks, joins_server, with_defaults, with_defaults_for, with_huds};
+pub use client::{ClientPlugin, PartyHudPlugin, PartyMousePlugin, client_app, client_hooks, joins_server, with_defaults, with_defaults_for, with_huds};
 
 #[cfg(test)]
 mod tests {

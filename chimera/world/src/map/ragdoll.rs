@@ -42,7 +42,8 @@
 //! of ragdolls on it (a blast's names its ragdoll and pushes by its length);
 //! separation repair puts joints held apart back; the owner (`Ragdolled`) hands
 //! its drawn body over (`render::bodies`), whose joints then follow the bodies; forced sleep after
-//! `ragdoll_sleepaftertime`; removed when the owner lives again or is gone.
+//! `ragdoll_sleepaftertime`; removed when the owner lives again or is gone (a
+//! living owner whose ragdoll went with the map loses `Ragdolled` as well).
 //!
 //! Known shortcuts (docs/tech-debt.md): Ragdolls (specs/cs_source/ragdolls.md):
 //! the killing push is a fixed 2400 kg·in/s along the hit (the template's .50
@@ -912,14 +913,27 @@ pub fn spawn_body(
 
 /// Ragdolls go at a round restart (spec 6.4) and when their owner is
 /// alive again or gone; their drawn body goes with them and the owner
-/// gets a fresh one.
+/// gets a fresh one. A living owner whose ragdoll went some other way
+/// (the map unloaded under it: ragdolls are map parts, characters stay)
+/// loses `Ragdolled` too, or it never got a body again (a bot killed by
+/// the gun game's winning shot stayed invisible on the next map).
 fn remove_ragdolls(
     ragdolls: Query<(Entity, &Ragdoll)>,
     owners: Query<Option<&Health>>,
+    marked: Query<Entity, With<Ragdolled>>,
     restarts: Option<Res<crate::core::RoundRestarts>>,
     mut commands: Commands,
 ) {
     let restart = restarts.is_some_and(|r| r.is_changed() && !r.is_added());
+    let alive = |owner: Entity| match owners.get(owner) {
+        Ok(h) => h.is_none_or(|h| h.current > 0.0),
+        Err(_) => true,
+    };
+    for owner in &marked {
+        if alive(owner) && !ragdolls.iter().any(|(_, r)| r.owner == owner && !r.placed) {
+            commands.entity(owner).remove::<Ragdolled>();
+        }
+    }
     for (e, r) in &ragdolls {
         if r.placed {
             continue;
@@ -928,11 +942,7 @@ fn remove_ragdolls(
             despawn_ragdoll(&mut commands, e, r);
             continue;
         }
-        let alive = match owners.get(r.owner) {
-            Ok(h) => h.is_none_or(|h| h.current > 0.0),
-            Err(_) => true,
-        };
-        if !alive {
+        if !alive(r.owner) {
             continue;
         }
         despawn_ragdoll(&mut commands, e, r);

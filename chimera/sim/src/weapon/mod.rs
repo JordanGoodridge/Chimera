@@ -24,7 +24,8 @@
 //! `WeaponSounds`, attack2 modes (`AltModes`, with `Zoom` (owner gets `Zoomed`,
 //! max speed; a game zooming its own way marks the weapon `OwnZoom` and sets
 //! `Zoomed` itself, with its own mouse scale) and `Burst`); `Inventory`, `WeaponState` timers,
-//! `WeaponRegistry`/`StartingWeapons` (per team; a character's own `OwnKit`
+//! `DamageWeapons` (the gun each attacker's damage came from, for kill
+//! notices), `WeaponRegistry`/`StartingWeapons` (per team; a character's own `OwnKit`
 //! instead), `give`; selection (or a
 //! game's own slot-key rules: `OwnSelection`) and deploy before movement, the Source-style weapon frame in `SimSet::Weapons` (spec
 //! weapons.md 3–4; both in `core::Predict` schedules, timed by
@@ -91,6 +92,24 @@ use crate::{
     map::{PlaySound, interp::NetDrawn},
 };
 
+/// The weapon each attacker held when its latest damage was dealt (a hit
+/// whose `Damage::weapon` is None: the held one's), noted before the
+/// tick's damage lands (by `map_damage_armor`): a kill can change what
+/// the killer holds in the same tick (the gun game's next rung), so a
+/// kill notice or the network's `Killed` asks this, not the hand, which
+/// gun killed (`of`).
+#[derive(Resource, Default, Debug)]
+pub struct DamageWeapons(pub bevy::platform::collections::HashMap<Entity, &'static str>);
+
+impl DamageWeapons {
+    /// The weapon that dealt `d` (a kill's hit): its own, else what its
+    /// attacker held then.
+    pub fn of(&self, d: &crate::core::Damage) -> Option<&'static str> {
+        d.weapon.or_else(|| self.0.get(&d.attacker?).copied())
+    }
+}
+
+
 /// Source's weapon sound channel: a new shot cuts off the last one's tail.
 pub const CHAN_WEAPON: u8 = 1;
 /// Reload part sounds and other item noises.
@@ -152,6 +171,7 @@ impl Plugin for WeaponPlugin {
             .add_message::<crate::map::PredictedSound>()
             .add_systems(FixedLast, crate::map::sound::relay_game_sounds)
             .insert_resource(crate::core::MapDamageArmor)
+            .init_resource::<DamageWeapons>()
             .add_systems(
                 FixedUpdate,
                 map_damage_armor
@@ -1263,11 +1283,24 @@ impl HitArmor<'_, '_> {
 /// measured on trigger_hurt: 20 a pass on 100 armour takes 10 health and
 /// 5 armour, 2.5 takes 1 and 1, 20 on 1 armour takes 18 and 1), when the
 /// kind allows it; health takes whole points.
+///
+/// It also notes, from the tick's weapon damage so far, the gun each
+/// attacker held (`DamageWeapons`): it runs where that damage is all in
+/// and hasn't landed yet (a system of its own there reordered the
+/// schedule's unordered pairs between server and client).
 pub fn map_damage_armor(
     mut map: MessageReader<crate::core::MapDamage>,
     mut armor: HitArmor,
-    mut out: MessageWriter<crate::core::Damage>,
+    mut out: ResMut<Messages<crate::core::Damage>>,
+    mut cursor: Local<bevy::ecs::message::MessageCursor<crate::core::Damage>>,
+    (inventories, weapons, mut noted): (Query<&Inventory>, Query<&Weapon>, ResMut<DamageWeapons>),
 ) {
+    for d in cursor.read(&out) {
+        let Some(a) = d.attacker.filter(|_| d.weapon.is_none()) else { continue };
+        if let Some(w) = inventories.get(a).ok().and_then(|i| i.active).and_then(|w| weapons.get(w).ok()) {
+            noted.0.insert(a, w.id);
+        }
+    }
     for m in map.read() {
         let mut d = m.damage.clone();
         let raw = d.amount;
@@ -1279,6 +1312,8 @@ pub fn map_damage_armor(
             out.write(d);
         }
     }
+    // Ours aren't weapons'.
+    cursor.clear(&out);
 }
 
 /// Damage multiplier per hitgroup.

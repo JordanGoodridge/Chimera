@@ -937,8 +937,8 @@ pub struct Senses {
 }
 
 /// Server -> clients: a character died (`core::Died`): who, by whom, and
-/// the killing hit (its weapon's registry index when it isn't what the
-/// killer holds, hitgroup and kind as `net::weapons` numbers them, where
+/// the killing hit (its weapon's registry index: the gun that killed,
+/// thrown or held, `weapon::DamageWeapons`; hitgroup and kind as `net::weapons` numbers them, where
 /// and which way), for the kill feed and the client's ragdoll; with the
 /// announcer's facts.
 #[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq, bevy::ecs::entity::MapEntities)]

@@ -8,11 +8,12 @@
 
 use bevy::prelude::*;
 use crate::stack::{
-    core::Hitgroup,
+    core::{Health, Hitgroup},
     harness::{CsSim, Sim},
     map::{
         Held, MapData, MapDebugView, MapHeldModel, MapMesh, MapModel, MapPart, MapPlugin, MapSimPlugin, PlaySound,
         Ragdoll, SoundControl, SpawnGibs,
+        ragdoll::Ragdolled,
         breakables::{GibPiece, MapGibSet},
         change_map,
         loose::{LooseItem, ShownItem},
@@ -163,6 +164,30 @@ fn play_time_parts_are_drawn_from_their_requests() {
     assert!(world.get::<CharacterBody>(body).is_some());
     assert!(world.get::<ChildOf>(body).is_none(), "out of the character");
     assert_eq!(drawn_under(&mut sim, body), 1);
+}
+
+/// A character dead at a map change (the gun game's last victim: the
+/// winning shot ends the match and the next map loads) lost its drawn
+/// body to its ragdoll, which went with the old map; alive again on the
+/// new one it gets a body. It used to keep `Ragdolled` with no ragdoll
+/// left to clear it, and so no body ever again ("a bot stays invisible",
+/// as either game's character).
+#[test]
+fn a_character_dead_at_a_map_change_is_drawn_again() {
+    let (mut sim, p) = sim(true);
+    kill(&mut sim, p, Hitgroup::Chest, Vec3::new(0.0, 1.2, 0.0), Vec3::X);
+    sim.ticks(2);
+    assert!(sim.app.world().get::<Ragdolled>(p).is_some(), "ragdolled");
+    assert_eq!(drawn_under(&mut sim, p), 0, "its body is the ragdoll's");
+    change_map(sim.app.world_mut(), map(), MapDebugView::Normal);
+    sim.ticks(2);
+    let world = sim.app.world_mut();
+    assert_eq!(world.query::<&Ragdoll>().iter(world).count(), 0, "the ragdoll went with the map");
+    assert_eq!(drawn_under(&mut sim, p), 0, "still dead: no body yet");
+    sim.app.world_mut().get_mut::<Health>(p).unwrap().current = 100.0;
+    sim.ticks(2);
+    assert!(sim.app.world().get::<Ragdolled>(p).is_none(), "no ragdoll mark left");
+    assert_eq!(drawn_under(&mut sim, p), 1, "the body's mesh again");
 }
 
 #[test]

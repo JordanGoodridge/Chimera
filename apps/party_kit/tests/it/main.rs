@@ -5,6 +5,7 @@
 //! where tests go: docs/OBSERVABILITY.md, section 1.
 
 mod announcer;
+mod bodies_drawn;
 mod controls;
 mod cross_game;
 mod cross_glass;
@@ -16,6 +17,7 @@ mod gun_game;
 mod hud;
 mod identity;
 mod identity_sounds;
+mod kill_feed;
 mod kill_icons;
 mod last_shot;
 mod net_gun_game;
