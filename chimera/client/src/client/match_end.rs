@@ -24,18 +24,20 @@
 //!   in the order registered; the first that loads plays, none if none
 //!   does), an interface sound at the mixer's master.
 //!
-//! While it is up the games' panels leave the results and notices out
-//! (`MinigameHud::results_shown`). `MatchEndView` is the state, headless
-//! too (tests read it); drawing is
-//! Bevy UI. Nothing shows without a minigame, so plain CS:S and Combat
-//! Arms are unchanged. Part of `ClientPlugins`.
+//! While it is up the games' minigame panels draw nothing
+//! (`MinigameHud::results_shown`): their title and status lines sat over
+//! the winner's name. Sized by the window's height (`scale`: for a
+//! 720-line screen, as the kill feed; smaller when the standings have
+//! too many rows to fit). `MatchEndView` is the state,
+//! headless too (tests read it); drawing is Bevy UI. Nothing shows
+//! without a minigame, so plain CS:S and Combat Arms are unchanged. Part of `ClientPlugins`.
 //!
 //! Known shortcuts: no map vote (the server's rotation picks the next
 //! map); plain text and colours, no game's look or art; no music pause.
 
 use std::sync::Arc;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, window::PrimaryWindow};
 use chimera_core::game_parts::PartsRegistry;
 use chimera_sim::{
     minigame::{NextMatch, hud::MinigameHud},
@@ -210,21 +212,59 @@ pub enum MatchEndPart {
     Next,
 }
 
+impl MatchEndPart {
+    /// A text part's font size on a 720-line screen.
+    pub fn size(self) -> f32 {
+        match self {
+            MatchEndPart::Title => 22.0,
+            MatchEndPart::Winner => 64.0,
+            MatchEndPart::Subtitle => 26.0,
+            MatchEndPart::Standings => CELL,
+            MatchEndPart::Next => 28.0,
+        }
+    }
+}
+
 const TEXT: Color = Color::srgb(0.95, 0.95, 0.95);
 const DIM: Color = Color::srgb(0.7, 0.7, 0.72);
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.25);
 const LOCAL: Color = Color::srgb(1.0, 0.85, 0.3);
 const LOCAL_BG: Color = Color::srgba(1.0, 0.8, 0.2, 0.18);
-/// Place, Name, Kills, Deaths, Gun, Wins.
+/// Place, Name, Kills, Deaths, Gun, Wins (on a 720-line screen).
 pub const WIDTHS: [f32; 6] = [50.0, 240.0, 80.0, 90.0, 260.0, 80.0];
 const GAP: f32 = 10.0;
+/// A standings cell's font size on a 720-line screen.
+const CELL: f32 = 20.0;
 
-fn text(part: MatchEndPart, size: f32, color: Color) -> impl Bundle {
+/// The screen's scale at a window `height` pixels tall with `rows`
+/// standings rows: sized for a 720-line screen (as the kill feed), less
+/// when that many rows wouldn't fit (`layout_height`), never under a
+/// third of it.
+pub fn scale(height: f32, rows: usize) -> f32 {
+    height.max(240.0) / 720f32.max(layout_height(rows))
+}
+
+/// The screen's height at scale 1 with `rows` standings rows (and the
+/// header), a little over: the top padding (8 % of 720), the three lines
+/// and the countdown at their line heights, the gaps, the board's
+/// margins and padding, a row each, and room under it (seen at 1080
+/// lines: ten rows at full size put the countdown on the screen's edge).
+pub fn layout_height(rows: usize) -> f32 {
+    const LINE: f32 = 1.3;
+    let lines: f32 = [MatchEndPart::Title, MatchEndPart::Winner, MatchEndPart::Subtitle, MatchEndPart::Next]
+        .iter()
+        .map(|p| p.size() * LINE)
+        .sum();
+    let row = CELL * LINE + 4.0 + 4.0;
+    57.6 + lines + 4.0 * 10.0 + 2.0 * 18.0 + 2.0 * 12.0 + row * (rows + 1) as f32 + 60.0
+}
+
+fn text(part: MatchEndPart, color: Color) -> impl Bundle {
     (
         part,
         Text::new(""),
         TextFont {
-            font_size: FontSize::Px(size),
+            font_size: FontSize::Px(part.size()),
             ..default()
         },
         TextColor(color),
@@ -253,9 +293,9 @@ fn spawn(mut commands: Commands) {
             },
         ))
         .with_children(|c| {
-            c.spawn(text(MatchEndPart::Title, 22.0, DIM));
-            c.spawn(text(MatchEndPart::Winner, 64.0, GOLD));
-            c.spawn(text(MatchEndPart::Subtitle, 26.0, TEXT));
+            c.spawn(text(MatchEndPart::Title, DIM));
+            c.spawn(text(MatchEndPart::Winner, GOLD));
+            c.spawn(text(MatchEndPart::Subtitle, TEXT));
             c.spawn((
                 MatchEndPart::Standings,
                 Node {
@@ -267,7 +307,7 @@ fn spawn(mut commands: Commands) {
                 },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)),
             ));
-            c.spawn(text(MatchEndPart::Next, 28.0, TEXT));
+            c.spawn(text(MatchEndPart::Next, TEXT));
         });
 }
 
@@ -275,17 +315,17 @@ fn spawn(mut commands: Commands) {
 #[derive(Component)]
 struct StandingsRow;
 
-fn cell(parent: &mut ChildSpawnerCommands, text: String, width: f32, right: bool, color: Color) {
+fn cell(parent: &mut ChildSpawnerCommands, text: String, width: f32, right: bool, color: Color, s: f32) {
     parent.spawn((
         Text::new(text),
         TextFont {
-            font_size: FontSize::Px(20.0),
+            font_size: FontSize::Px(CELL * s),
             ..default()
         },
         TextColor(color),
         TextLayout::justify(if right { Justify::Right } else { Justify::Left }),
         Node {
-            width: px(width),
+            width: px(width * s),
             flex_shrink: 0.0,
             overflow: Overflow::clip(),
             ..default()
@@ -293,19 +333,31 @@ fn cell(parent: &mut ChildSpawnerCommands, text: String, width: f32, right: bool
     ));
 }
 
+#[allow(clippy::type_complexity)]
 fn draw(
     view: Res<MatchEndView>,
-    mut root: Query<&mut Visibility, With<MatchEndRoot>>,
-    mut parts: Query<(Entity, &MatchEndPart, Option<&mut Text>)>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    mut root: Query<(&mut Visibility, &mut Node), (With<MatchEndRoot>, Without<MatchEndPart>)>,
+    mut parts: Query<(Entity, &MatchEndPart, Option<&mut Text>, Option<&mut TextFont>, &mut Node), Without<MatchEndRoot>>,
     old: Query<Entity, With<StandingsRow>>,
     mut commands: Commands,
-    mut drawn: Local<Option<(Option<String>, Vec<MatchEndRow>)>>,
+    mut drawn: Local<Option<(Option<String>, Vec<MatchEndRow>, u32)>>,
+    mut sized: Local<Option<u32>>,
 ) {
-    if !view.is_changed() {
+    let height = window.iter().next().map_or(720.0, |w| w.height());
+    let s = scale(height, view.rows.len());
+    // The scale as a key: the window's height and the rows' count.
+    let key = (s * 1000.0) as u32;
+    let resized = *sized != Some(key);
+    if !view.is_changed() && !resized {
         return;
     }
-    for mut v in &mut root {
+    *sized = Some(key);
+    for (mut v, mut node) in &mut root {
         v.set_if_neq(if view.shown { Visibility::Inherited } else { Visibility::Hidden });
+        if resized {
+            node.row_gap = px(10.0 * s);
+        }
     }
     let (headline, sub) = match (&view.winner, view.you_won) {
         (Some(w), true) => (w.clone(), "You win the match!".to_string()),
@@ -313,7 +365,7 @@ fn draw(
         (None, _) => ("Draw".to_string(), "Nobody wins the match".to_string()),
     };
     let mut standings = None;
-    for (e, part, t) in &mut parts {
+    for (e, part, t, font, mut node) in &mut parts {
         let want = match part {
             MatchEndPart::Title => view.title.clone(),
             MatchEndPart::Winner => headline.clone(),
@@ -321,9 +373,17 @@ fn draw(
             MatchEndPart::Next => view.next.clone(),
             MatchEndPart::Standings => {
                 standings = Some(e);
+                if resized {
+                    node.row_gap = px(4.0 * s);
+                    node.margin = UiRect::vertical(px(18.0 * s));
+                    node.padding = UiRect::all(px(12.0 * s));
+                }
                 continue;
             }
         };
+        if let Some(mut f) = font.filter(|_| resized) {
+            f.font_size = FontSize::Px(part.size() * s);
+        }
         if let Some(mut t) = t
             && t.0 != want
         {
@@ -331,7 +391,7 @@ fn draw(
         }
     }
     // The standings again only when they changed (not each second).
-    let now = (view.shown.then(|| view.title.clone()), view.rows.clone());
+    let now = (view.shown.then(|| view.title.clone()), view.rows.clone(), key);
     if drawn.as_ref() == Some(&now) {
         return;
     }
@@ -342,9 +402,9 @@ fn draw(
     let Some(board) = standings.filter(|_| view.shown) else { return };
     let header = ["#", "Name", "Kills", "Deaths", "Gun", "Wins"];
     commands.entity(board).with_children(|p| {
-        p.spawn((StandingsRow, Node { column_gap: px(GAP), ..default() })).with_children(|r| {
+        p.spawn((StandingsRow, Node { column_gap: px(GAP * s), ..default() })).with_children(|r| {
             for (i, (h, w)) in header.iter().zip(WIDTHS).enumerate() {
-                cell(r, h.to_string(), w, !matches!(i, 1 | 4), DIM);
+                cell(r, h.to_string(), w, !matches!(i, 1 | 4), DIM, s);
             }
         });
         for row in &view.rows {
@@ -360,15 +420,15 @@ fn draw(
             p.spawn((
                 StandingsRow,
                 Node {
-                    column_gap: px(GAP),
-                    padding: UiRect::vertical(px(2.0)),
+                    column_gap: px(GAP * s),
+                    padding: UiRect::vertical(px(2.0 * s)),
                     ..default()
                 },
                 BackgroundColor(if row.local { LOCAL_BG } else { Color::NONE }),
             ))
             .with_children(|r| {
                 for ((text, right), w) in cells.into_iter().zip(WIDTHS) {
-                    cell(r, text, w, right, color);
+                    cell(r, text, w, right, color, s);
                 }
             });
         }

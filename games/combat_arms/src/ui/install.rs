@@ -31,7 +31,9 @@
 //!   the face its name's prefix names (the number its height).
 //! - Art: every texture the two layouts name (buttons' four states), the
 //!   HUD's stance silhouettes and fire-mode icons, the kill feed's
-//!   weapon icons and badges (`EXTRA_ART`, `kill_icon`) and the gauge
+//!   weapon icons (every weapon's, the install's copies too: its
+//!   record's `Weaponkillimage`, `kill_icons`, else by its id,
+//!   `kill_icon`) and badges (`EXTRA_ART`) and the gauge
 //!   sight's images (`GAUGE_SIGHT_PREFIXES` with 0 to 100), decoded to
 //!   RGBA by their names (`texture_key`: lower case, `/`, `.dtx` added).
 //!
@@ -139,11 +141,36 @@ pub fn texture_key(name: &str) -> String {
     k
 }
 
-/// A kill-feed weapon icon's texture for weapon `id` (`combat_arms:m4a1`
-/// -> `kill_message_m4a1.dtx`).
+/// A kill-feed weapon icon's texture for weapon `id` by its name alone
+/// (`combat_arms:m4a1` -> `kill_message_m4a1.dtx`): the fallback when the
+/// install's record names none (`kill_art`).
 pub fn kill_icon(id: &str) -> String {
     let short = id.rsplit(':').next().unwrap_or(id);
     format!("ui_hud_message/killdeath/weapon/kill_message_{short}.dtx")
+}
+
+/// The kill icon of each weapon whose install record names one
+/// (`Weaponkillimage`), as a texture key, by weapon id: the install's
+/// copies (`ironwood_m1866_lv.4`) share their model's art
+/// (`kill_message_M1866.dtx`), and some files are spelled otherwise or
+/// sit elsewhere, so the id's name alone misses them.
+pub fn kill_icons(data: &crate::game::data::CaDataInner) -> HashMap<String, String> {
+    let Some(file) = data.attributes().and_then(|a| a.weapons.as_ref()) else { return HashMap::new() };
+    let records = crate::game::data::install_weapons_by_id(file);
+    data.weapon_set()
+        .weapons
+        .iter()
+        .filter_map(|w| {
+            let r = records.get(w.id.as_str())?;
+            (!r.kill_image.trim().is_empty()).then(|| (w.id.clone(), texture_key(&r.kill_image)))
+        })
+        .collect()
+}
+
+/// Weapon `id`'s kill icon texture key: its record's (`kill_icons`),
+/// else by its name (`kill_icon`).
+pub fn kill_art(icons: &HashMap<String, String>, id: &str) -> String {
+    icons.get(id).cloned().unwrap_or_else(|| texture_key(&kill_icon(id)))
 }
 
 /// Whether weapon `id` is Combat Arms' (a plain name is): the others have
@@ -186,6 +213,8 @@ pub struct InstallUi {
     pub legend: Vec<crate::game::radar::legend::IconList>,
     /// Display names of the install's weapons by our id (`weapon_names`).
     pub weapon_names: Vec<(String, String)>,
+    /// The weapons' kill icons by id (`kill_icons`; `kill_art` reads it).
+    pub kill_icons: Arc<HashMap<String, String>>,
 }
 
 impl std::fmt::Debug for InstallUi {
@@ -535,6 +564,7 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         art,
         legend,
         weapon_names,
+        kill_icons: Arc::default(),
     })
 }
 
@@ -617,8 +647,14 @@ pub fn installed(data: &crate::game::data::CaDataInner) -> Option<Arc<InstallUi>
     }
     UI.get_or_init(|| {
         let mount = crate::game::INFO.mount()?;
-        let icons: Vec<String> = data.builtin_weapon_ids().iter().map(|id| kill_icon(id)).collect();
-        load(&mount, &icons).map(Arc::new)
+        // Every weapon's kill icon: ours and the install's copies.
+        let kills = kill_icons(data);
+        let mut icons: Vec<String> = data.weapon_set().weapons.iter().map(|w| kill_art(&kills, &w.id)).collect();
+        icons.sort();
+        icons.dedup();
+        let mut ui = load(&mount, &icons)?;
+        ui.kill_icons = Arc::new(kills);
+        Some(Arc::new(ui))
     })
     .clone()
 }

@@ -8,7 +8,8 @@
 //! `resource/cstrike_english.txt`, `weapons::display_names`), else the
 //! id's last part in capitals. A finished match's results (`MinigameHud::
 //! results`: the winner, then a line a player) take the notices' place
-//! under the status lines. Its root is a `client::hud::HudRoot`: down
+//! under the status lines; while the shell's match-end screen is up
+//! (`MinigameHud::results_shown`) the panel draws nothing. Its root is a `client::hud::HudRoot`: down
 //! while another game's HUD is the gameplay's.
 //!
 //! Known shortcuts: the panel's place, sizes and colours are ours (CS:S
@@ -85,7 +86,9 @@ pub fn panel_lines_with(
     weapon: impl Fn(&str) -> String,
     row_name: impl Fn(&chimera_sim::minigame::results::ResultRow) -> String,
 ) -> Vec<(PanelLine, String)> {
-    if !m.playing() {
+    // The shell's match-end screen up: it has the results and the
+    // panel would draw into it.
+    if !m.playing() || m.results_shown {
         return Vec::new();
     }
     let word = |l: &HudLine| {
@@ -101,8 +104,6 @@ pub fn panel_lines_with(
     let mut out = vec![(PanelLine::Title, m.title.clone())];
     out.extend(m.lines.iter().map(|l| (PanelLine::Status, word(l))));
     match &m.results {
-        // The shell's match-end screen has them.
-        _ if m.results_shown => {}
         Some(r) => out.extend(
             r.lines(|row| row.player.map_or_else(|| row_name(row), &player)).into_iter().map(|t| (PanelLine::Result, t)),
         ),

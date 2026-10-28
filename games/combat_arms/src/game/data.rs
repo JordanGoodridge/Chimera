@@ -659,6 +659,26 @@ pub fn install_weapon_in<'a>(file: &'a WeaponsFile, id: &str) -> Option<&'a Weap
     file.weapons.iter().find(|w| is_install_name(&w.name, id))
 }
 
+/// Every install weapon record by the id `install_weapon_in` finds it
+/// under (`combat_arms:` and the slug of its `Name`, or our id for an
+/// `INSTALL_NAMES` name; the first record of a name, as there), in one
+/// pass.
+pub fn install_weapons_by_id(file: &WeaponsFile) -> std::collections::BTreeMap<String, &WeaponRecord> {
+    let mut out = std::collections::BTreeMap::new();
+    for w in file.weapons.iter().filter(|w| !w.name.is_empty()) {
+        let slugged = slug(&w.name);
+        // A slug that is one of `INSTALL_NAMES`' ids matches only its
+        // install name.
+        if !INSTALL_NAMES.iter().any(|(ours, _)| *ours == slugged) {
+            out.entry(format!("{NS}{slugged}")).or_insert(w);
+        }
+        for (ours, _) in INSTALL_NAMES.iter().filter(|(_, install)| w.name.eq_ignore_ascii_case(install)) {
+            out.entry(format!("{NS}{ours}")).or_insert(w);
+        }
+    }
+    out
+}
+
 /// Write `s` into `doc` when its rule allows; whether it was written.
 fn apply(doc: &mut Table, s: &Set) -> bool {
     let Some((last, parents)) = s.path.split_last() else {

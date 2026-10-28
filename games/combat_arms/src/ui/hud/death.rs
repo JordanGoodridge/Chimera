@@ -71,13 +71,26 @@ pub use super::model::fill_all;
 pub struct KillCamPanel {
     source: Layout,
     root: WidgetId,
+    /// The weapons' kill icons by id (`install::kill_icons`).
+    kill_icons: std::sync::Arc<HashMap<String, String>>,
 }
 
 impl KillCamPanel {
     /// `KillCam` of the install's kill-cam layout; None without it.
     pub fn new(layout: &Layout) -> Option<Self> {
         let (source, root) = graft_named(layout, ROOT)?;
-        Some(Self { source, root })
+        Some(Self {
+            source,
+            root,
+            kill_icons: Default::default(),
+        })
+    }
+
+    /// With the weapons' kill icons by id (`install::kill_icons`: the
+    /// install's copies by their record's icon).
+    pub fn with_kill_icons(mut self, icons: std::sync::Arc<HashMap<String, String>>) -> Self {
+        self.kill_icons = icons;
+        self
     }
 
     /// The panel showing `screen` at `scale`; `textures` are the layout
@@ -119,7 +132,7 @@ impl KillCamPanel {
             let id = find(&l, weapon, "weapon_img");
             // Another game's gun has no art here: its name alone.
             match crate::ui::install::is_own_gun(&w.id) {
-                true => set_texture(&mut l, id, &crate::ui::install::kill_icon(&w.id)),
+                true => set_texture(&mut l, id, &crate::ui::install::kill_art(&self.kill_icons, &w.id)),
                 false => show(&mut l, id, false),
             }
         }
@@ -295,8 +308,7 @@ fn load_panel(ui: Res<CaUi>, mut state: ResMut<DeathUi>) {
     state.panel = ui
         .install
         .as_ref()
-        .and_then(|i| i.kill_cam.as_ref())
-        .and_then(KillCamPanel::new);
+        .and_then(|i| Some(KillCamPanel::new(i.kill_cam.as_ref()?)?.with_kill_icons(i.kill_icons.clone())));
     if let Some(inst) = ui.install.as_ref() {
         state.textures = crate::ui::install::DEATH_LAYOUT_ART
             .iter()

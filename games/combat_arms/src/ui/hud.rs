@@ -507,7 +507,9 @@ fn minigame_view(
     (names, settings): (Query<NameParts>, Option<Res<NetSettings>>),
     mut hud: ResMut<CaHud>,
 ) {
-    let Some(m) = minigame.filter(|m| m.playing()) else {
+    // The shell's match-end screen up: it has the results, and the panel
+    // would draw into it.
+    let Some(m) = minigame.filter(|m| m.playing() && !m.results_shown) else {
         hud.minigame = None;
         return;
     };
@@ -524,9 +526,8 @@ fn minigame_view(
     hud.minigame = Some(MinigameView {
         title: m.title.clone(),
         lines: m.lines.iter().map(word).collect(),
-        // The shell's match-end screen has the results: neither here.
-        notices: if m.results_shown { Vec::new() } else { m.notices.iter().map(|(l, _)| word(l)).collect() },
-        results: m.results.as_ref().filter(|_| !m.results_shown).map_or_else(Vec::new, |r| {
+        notices: m.notices.iter().map(|(l, _)| word(l)).collect(),
+        results: m.results.as_ref().map_or_else(Vec::new, |r| {
             r.lines(|row| row.player.map_or_else(|| row.name.clone(), |p| name_of(&names, settings.as_deref(), p)))
         }),
     });
@@ -1379,6 +1380,8 @@ pub struct BoundHud {
     pub action: Option<bound::ActionPanel>,
     /// `[HUDLayout0]` texture keys by attribute key (lower case).
     pub textures: HashMap<String, String>,
+    /// The weapons' kill icons by id (`install::kill_icons`).
+    pub kill_icons: std::sync::Arc<HashMap<String, String>>,
 }
 
 impl BoundHud {
@@ -1394,6 +1397,7 @@ impl BoundHud {
                 .iter()
                 .filter_map(|k| Some((k.to_string(), inst.hud_texture(k)?)))
                 .collect(),
+            kill_icons: inst.kill_icons.clone(),
         }
     }
 
@@ -1406,7 +1410,7 @@ impl BoundHud {
     pub fn icon(&self, icon: &KillIcon) -> Option<String> {
         let key = match icon {
             KillIcon::Weapon(Some(id)) if crate::ui::install::is_own_gun(id) => {
-                return Some(crate::ui::install::kill_icon(id));
+                return Some(crate::ui::install::kill_art(&self.kill_icons, id));
             }
             KillIcon::Weapon(Some(_)) => return None,
             KillIcon::Weapon(None) => return None,
@@ -2057,8 +2061,8 @@ fn draw_feed(
                     }
                     // The install's icons and badges when it has them
                     // (64 x 20 and 32 x 20 ref, D5).
-                    FeedItem::Icon { x, icon } if feed_art(icon_art(icon), art.as_deref()).is_some() => {
-                        let (image, size) = feed_art(icon_art(icon), art.as_deref()).unwrap();
+                    FeedItem::Icon { x, icon } if feed_art(icon_art(icon, &bound.kill_icons), art.as_deref()).is_some() => {
+                        let (image, size) = feed_art(icon_art(icon, &bound.kill_icons), art.as_deref()).unwrap();
                         let r = hud.screen.rect(Vec2::new(*x, l.y), Vec2::new(FEED_ICON_WIDTH, 20.0));
                         let rect = Rect::new(0.0, 0.0, (size.x as f32).min(64.0), (size.y as f32).min(20.0));
                         draw::image_part(p, &image, [r.min.x, r.min.y, r.max.x, r.max.y], rect, [255; 4]);
@@ -2093,11 +2097,12 @@ fn draw_feed(
     });
 }
 
-/// A kill line's weapon slot's texture in the install (`ui::install`);
-/// none for another game's gun (`foreign_gun`).
-fn icon_art(icon: &KillIcon) -> Option<String> {
+/// A kill line's weapon slot's texture in the install (`ui::install::
+/// kill_art`, by the weapons' kill icons `kills`); none for another
+/// game's gun (`foreign_gun`).
+fn icon_art(icon: &KillIcon, kills: &HashMap<String, String>) -> Option<String> {
     match icon {
-        KillIcon::Weapon(Some(id)) if foreign_gun(icon).is_none() => Some(crate::ui::install::kill_icon(id)),
+        KillIcon::Weapon(Some(id)) if foreign_gun(icon).is_none() => Some(crate::ui::install::kill_art(kills, id)),
         _ => None,
     }
 }
@@ -2138,15 +2143,11 @@ fn foreign_weapon(
 }
 
 /// Registers the install's kill icons for other games' HUDs
-/// (`WeaponIcons`), as the art loads.
-fn register_icons(art: Option<Res<draw::CaArt>>, mut icons: ResMut<WeaponIcons>) {
+/// (`WeaponIcons`), as the art loads: each weapon's own (`install::
+/// kill_art`: the install's copies by their record's icon).
+fn register_icons(art: Option<Res<draw::CaArt>>, bound: Option<Res<BoundHud>>, mut icons: ResMut<WeaponIcons>) {
     let Some(art) = art.filter(|a| a.is_changed() && !a.0.is_empty()) else { return };
-    let kills: HashMap<String, (Handle<Image>, IVec2)> = art
-        .0
-        .iter()
-        .filter(|(k, _)| k.contains("/killdeath/weapon/"))
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    let by_id = bound.map(|b| b.kill_icons.clone()).unwrap_or_default();
     if let Some((image, size)) = badge_art(Badge::Headshot).and_then(|k| art.get(&k)) {
         icons.register_mark(
             crate::game::GAME,
@@ -2154,10 +2155,26 @@ fn register_icons(art: Option<Res<draw::CaArt>>, mut icons: ResMut<WeaponIcons>)
             WeaponIcon::Image { image: image.clone(), size: size.as_vec2() },
         );
     }
-    icons.register(crate::game::GAME, move |id| {
-        let (image, size) = kills.get(&crate::ui::install::texture_key(&crate::ui::install::kill_icon(id)))?;
+    icons.register(crate::game::GAME, icon_resolver(&art, by_id));
+}
+
+/// Our weapon ids' kill icons from `art` (`WeaponIcons`' resolver): each
+/// weapon's own (`install::kill_art` by the weapons' kill icons
+/// `by_id`), none for a gun without art.
+pub fn icon_resolver(
+    art: &draw::CaArt,
+    by_id: std::sync::Arc<HashMap<String, String>>,
+) -> impl Fn(&str) -> Option<WeaponIcon> + Send + Sync + 'static {
+    let kills: HashMap<String, (Handle<Image>, IVec2)> = art
+        .0
+        .iter()
+        .filter(|(k, _)| k.contains("/killdeath/"))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    move |id| {
+        let (image, size) = kills.get(&crate::ui::install::kill_art(&by_id, id))?;
         Some(WeaponIcon::Image { image: image.clone(), size: size.as_vec2() })
-    });
+    }
 }
 
 /// A badge's texture in the install, where it has one.
@@ -2355,8 +2372,12 @@ mod foreign_gun_tests {
     #[test]
     fn the_install_art_is_for_its_own_guns_only() {
         let k = |id: &str| KillIcon::Weapon(Some(id.into()));
-        assert_eq!(icon_art(&k("combat_arms:m4a1")), Some(crate::ui::install::kill_icon("combat_arms:m4a1")));
-        assert_eq!(icon_art(&k("cs_source:weapon_m4a1")), None);
+        let none = HashMap::new();
+        assert_eq!(icon_art(&k("combat_arms:m4a1"), &none), Some(crate::ui::install::texture_key(&crate::ui::install::kill_icon("combat_arms:m4a1"))));
+        assert_eq!(icon_art(&k("cs_source:weapon_m4a1"), &none), None);
+        // An install copy: its record's icon.
+        let kills: HashMap<String, String> = [("combat_arms:m4a1_gold".to_string(), "ui_hud_message/killdeath/weapon/kill_message_m4a1.dtx".to_string())].into();
+        assert_eq!(icon_art(&k("combat_arms:m4a1_gold"), &kills).as_deref(), Some("ui_hud_message/killdeath/weapon/kill_message_m4a1.dtx"));
         assert_eq!(foreign_gun(&k("cs_source:weapon_m4a1")), Some("cs_source:weapon_m4a1"));
         assert_eq!(foreign_gun(&k("combat_arms:m4a1")), None);
         assert_eq!(foreign_gun(&KillIcon::Suicide), None);

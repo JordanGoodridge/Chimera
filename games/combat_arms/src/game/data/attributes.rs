@@ -349,6 +349,9 @@ pub struct WeaponRecord {
     /// of the two models (view_models.md 2, characters.md 2).
     pub pv_render_styles: Vec<String>,
     pub hh_render_styles: Vec<String>,
+    /// `Weaponkillimage`: the kill feed's icon of the weapon, an archive
+    /// path as stored (empty when missing).
+    pub kill_image: String,
     /// `Pos`, `MuzzlePos`, `BreachOffset` (camera space, world units;
     /// missing: zero).
     pub pos: [f64; 3],
@@ -475,6 +478,7 @@ impl WeaponRecord {
             pv_model: s.string("PVModelNormal").map(text).unwrap_or_default(),
             pv_skins: s.string_list("PVSkin").iter().map(|v| text(v)).collect(),
             hh_model: s.string("HHModel").map(text).unwrap_or_default(),
+            kill_image: s.string("Weaponkillimage").map(text).unwrap_or_default(),
             hh_skins: s.string_list("HHSkin").iter().map(|v| text(v)).collect(),
             pv_render_styles: s.string_list("PVRenderStyle").iter().map(|v| text(v)).collect(),
             hh_render_styles: s.string_list("HHRenderStyle").iter().map(|v| text(v)).collect(),

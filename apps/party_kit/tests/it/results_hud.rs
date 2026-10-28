@@ -34,6 +34,13 @@ fn win_the_match(sim: &mut chimera_world::harness::Sim, me: Entity, other: Entit
     sim.seconds(runtime::ROUND_OVER as f64 + 1.0);
 }
 
+/// The match-end screen's flag (`MinigameHud::results_shown`), as the
+/// shell sets it while its screen is up.
+fn set_screen_up(sim: &mut chimera_world::harness::Sim, up: bool) {
+    sim.app.world_mut().resource_mut::<chimera_sim::minigame::hud::MinigameHud>().results_shown = up;
+    sim.seconds(0.2);
+}
+
 #[test]
 fn the_results_panel_shows_on_both_huds() {
     let (mut sim, me, other) = party_with_huds();
@@ -53,6 +60,13 @@ fn the_results_panel_shows_on_both_huds() {
     assert!(lines[1].starts_with("1. ") && lines[1].contains("rung 10/10") && lines[1].contains("1 kills"), "{lines:?}");
     assert!(lines[2].starts_with("2. ") && lines[2].contains("rung 1/10") && lines[2].contains("1 deaths"), "{lines:?}");
     assert!(shown(&mut sim, cs_source::game::GAME));
+    // The shell's match-end screen up (`client::match_end`): the whole
+    // panel steps aside, title and status lines too (they drew into the
+    // screen's winner, seen in a capture).
+    set_screen_up(&mut sim, true);
+    assert_eq!(cs_minigame_lines(&mut sim), [], "nothing of CS:S's panel over the screen");
+    set_screen_up(&mut sim, false);
+    assert!(!cs_minigame_lines(&mut sim).is_empty(), "back once it goes");
     // Combat Arms' HUD (the M60 in hand): the same results in its view.
     swap_to(&mut sim, me, 8);
     assert_eq!(hud(&sim), combat_arms::game::GAME);
@@ -61,6 +75,9 @@ fn the_results_panel_shows_on_both_huds() {
     assert_eq!(ca.results.len(), 3, "{ca:?}");
     assert!(ca.results[0].ends_with("wins the match"), "{ca:?}");
     assert!(ca.results[1].starts_with("1. "), "{ca:?}");
+    set_screen_up(&mut sim, true);
+    assert_eq!(sim.app.world().resource::<CaHud>().minigame, None, "nor Combat Arms' panel");
+    set_screen_up(&mut sim, false);
     // The next match: the results are gone from the HUD's data.
     minigame::restart(sim.app.world_mut());
     sim.seconds(0.5);

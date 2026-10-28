@@ -148,6 +148,28 @@ the user's go-ahead: no Actions runs unless asked.
   object again regardless of identity), the spectator's in-eye hiding (it
   shows the old target again when the target changes), the local body's
   hiding (`LocalPlayer` only), and PVS culling (characters aren't culled).
+- **CS:S's minigame panel drew over the match-end screen: fixed,
+  confirm in a playtest** (promo capture). The panel left out only its
+  results and notices while the screen was up (`MinigameHud::
+  results_shown`), so its title, rung, next gun, leader and "Match over"
+  status lines still sat over the screen's title and winner. Both games'
+  panels now draw nothing while it is up (cs_source's `minigame_hud`,
+  Combat Arms' `minigame_view`). The screen also scales with the
+  window's height as the kill feed does (sized for 720 lines; its
+  standings were 20 px at 1080; it shrinks when the rows would not fit). Tests: party_kit's `results_hud`,
+  chimera_client's `match_end::the_screen_scales_with_the_windows_height`.
+- **Kill feed names instead of icons for Combat Arms guns: fixed, confirm
+  in a playtest** ("[Ironwood M1866 lv.4]"). The icon was looked up by
+  the id's name (`kill_message_<id>.dtx`) and decoded for our own
+  weapons only, so the install's copies (2240 of 2298 guns, the
+  ladder's most) had none. Each install weapon record names its icon
+  (`Weaponkillimage`: copies share their model's art, some files are
+  spelled otherwise or sit outside `weapon/`); `ui::install::kill_icons`
+  reads it and every weapon's icon is decoded, used by the shared feed,
+  Combat Arms' own feed and death screen. 2286 of 2298 now have one
+  (the rest: kits, smoke and flash grenades, a missing snowball file).
+  The text fallback is the plain name, no brackets. Tests: combat_arms'
+  `heavy::kill_icons` (install), `kill_feed::tests` in chimera_client.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
