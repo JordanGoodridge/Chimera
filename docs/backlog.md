@@ -25,6 +25,23 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
+### Combat Arms kill streaks and special kills (user, 2026-10-27)
+
+- **Kill-streak announcements, as in Combat Arms.** The big banner at the
+  top centre of the screen and the announcer voice for each streak step:
+  Double Kill, Multi Kill, Ultra Kill, Fantastic, Unbelievable,
+  Unbelievable+ (exact names, thresholds, window, art, sounds and timing
+  from specs/combat_arms — death_killcam.md's kill message already carries
+  a multi-kill count; gear_perks.md has the 5 s multi-kill window; the
+  install has `ui_hud_message/killdeath/icon/*` art incl. `nutshot.dtx`).
+  Also the special-kill callouts: **headshot** and **nutshot** (groin
+  hit; the generic hit regions have `groin`, DESIGN.md "Hits across
+  games"), with their banner/icon and voice. First a spec session for
+  whatever the specs don't cover yet (streak UI layout, announcer files,
+  queueing/overlap rules), then implement in Combat Arms' HUD; in the
+  party apps show them for kills with Combat Arms guns (or for every kill,
+  as a party option).
+
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
 - **Combat Arms character models and held guns: fixed, confirm in a
