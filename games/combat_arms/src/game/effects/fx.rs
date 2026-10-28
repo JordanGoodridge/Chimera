@@ -22,6 +22,9 @@
 //!   distance (`rules::jitter_falloff`), read by the front end;
 //! - `CreateFX`: another group.
 //!
+//! A key drawn through an effect shader (`library::shaded`: the
+//! refraction keys of heat and blasts) draws nothing.
+//!
 //! Several jitters add up (`jitter_at`, Open question 24).
 //!
 //! Known shortcuts (docs/tech-debt.md): keys are placed at the effect's
@@ -34,7 +37,9 @@
 //! out; a bouncing system's particles all bounce (Chimera's bounce planes
 //! probed once, 75 % ± 10 % kept); friction is Chimera's linear damping at
 //! the same per-second rate; `DisableZ` and `CastVisibleRay` sprites are
-//! drawn depth-tested; `LightningFX`, `LTBModel`, `PolyTrail`,
+//! drawn depth-tested; no effect shaders (the refraction keys, whose
+//! textures are distortion maps, are left out, not drawn as colour);
+//! `LightningFX`, `LTBModel`, `PolyTrail`,
 //! `PlaySound` and `Null` keys draw nothing; off-screen systems keep
 //! ageing (Quirk 7 not reproduced).
 
@@ -42,7 +47,7 @@ use bevy::prelude::*;
 use lithtech_formats::fxf::{FxKey, sample_keys};
 
 use super::{
-    library::{FxLibrary, additive, material_name},
+    library::{FxLibrary, additive, material_name, shaded},
     rules::jitter_falloff,
 };
 use crate::map::{
@@ -214,7 +219,7 @@ impl CaFx {
             inst.age += dt;
             let Some(g) = lib.group(&inst.group) else { continue };
             for (k, run) in g.keys.iter().zip(inst.keys.iter_mut()) {
-                if !k.at_detail(self.detail) || inst.age < k.start {
+                if !k.at_detail(self.detail) || inst.age < k.start || shaded(k) {
                     continue;
                 }
                 let first = !run.started;

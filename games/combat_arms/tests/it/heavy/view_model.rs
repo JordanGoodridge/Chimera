@@ -6,7 +6,8 @@
 //! and pieces (1, 2), its origin at `Pos` (4), its `flash` and `breach`
 //! sockets through the animations, root translation included (5-7), both
 //! by the game's own sampling and as drawn (the converted model), and its
-//! state machine in play on the greybox. The hand model (`CHARS_M_HAND`)
+//! state machine in play on the greybox; the M67's throw as drawn (every
+//! node as the game samples it, the skinned arms intact). The hand model (`CHARS_M_HAND`)
 //! and the M4A1 (case 8) are V2-keyed: those parts note and skip. Passes
 //! with a note without `[games.combat_arms] path` in chimera.local.toml.
 
@@ -378,4 +379,101 @@ fn m92fs_in_play() {
     }
     assert_eq!(sim.app.world().get::<Magazine>(w).unwrap().clip, 15);
     assert_eq!(sim.app.world().get::<ViewAnimator>(p).unwrap().key.as_deref(), Some(M92FS));
+}
+
+/// The M67's throw as drawn (the pin pull, the cocked loop, the throw):
+/// every node where the game's own sampling puts it (within 0.1 u, the
+/// 30 fps resampling), the hand model's weights summing to 1, and the
+/// skinned arms and grenade intact at every 10 ms: no edge more than 4
+/// times its bind length (the fingers' small edges reach about 3), no
+/// vertex more than 10 u from the eye. The arm that sweeps past the eye
+/// in the throw (a large sleeve on screen for a few frames) is the stock
+/// animation, not a bad blend or skeleton.
+#[test]
+fn m67_throw_poses_follow_the_data() {
+    let Some(mount) = mount() else { return };
+    let keys = combat_arms::game::mount::keys().unwrap();
+    if !(keys.contains_key("V1") && keys.contains_key("V2")) {
+        eprintln!("skipping: needs the V1 and V2 keys");
+        return;
+    }
+    let ca = combat_arms::game::data::CaData::install();
+    let file = |p: &str| mount.read(p).ok();
+    let mut map = MapData::default();
+    view_model::add_view_models(&mut map, &ca, &file);
+    let v = map.kit.view_models.iter().find(|v| v.key == "combat_arms:m67").expect("the M67's view model");
+    let models = &ca.weapon_set().get("combat_arms:m67").unwrap().models;
+    let (path, pos) = (models.view.clone().unwrap(), Vec3::from(models.view_offset.unwrap_or_default()));
+    let m = model::load(&path, &file).unwrap();
+    let set = v.animations.as_ref().unwrap();
+    for mesh in &v.model.meshes {
+        assert!(
+            mesh.joint_weights.iter().all(|w| (w.iter().sum::<f32>() - 1.0).abs() < 1e-3),
+            "{}: weights sum to 1",
+            mesh.material
+        );
+    }
+    let inverse: Vec<Mat4> = hands::globals(&v.bones).iter().map(|g| g.inverse()).collect();
+    let (root, root_inv) = (v.root.to_matrix(), v.root.to_matrix().inverse());
+    let mut bad = Vec::new();
+    for anim in ["prefire", "fire_0", "postfire"] {
+        let e = &m.list.entries[m.list.find(anim).unwrap()];
+        let s = set.sequence(anim).unwrap();
+        let length = e.length() as f32;
+        let mut t = 0.0;
+        while t <= length {
+            // The game's own sampling.
+            let pose: Vec<_> = (0..m.model.nodes.len()).map(|j| lta::sample(e, j, t)).collect();
+            let exact = lta::globals(&m.model, &pose);
+            // As drawn.
+            let mut animator = chimera_world::map::anim::Animator::new(set.clone());
+            animator.main = Some(s);
+            animator.cycle = (t / 1000.0 / set.duration(s)).clamp(0.0, 1.0);
+            let mut drawn: Vec<Mat4> = Vec::with_capacity(v.bones.len());
+            for (b, (q, p)) in v.bones.iter().zip(animator.pose(0.0)) {
+                let local = Mat4::from_rotation_translation(q, p);
+                drawn.push(b.parent.map_or(local, |p| drawn[p] * local));
+            }
+            for (j, node) in m.model.nodes.iter().enumerate() {
+                let want = Vec3::from(lta::transform_point(&exact[j], [0.0; 3]));
+                let d = (root * drawn[j]).transform_point3(Vec3::ZERO) / VIEW_SCALE;
+                let got = Vec3::new(d.x, d.y, -d.z) - pos;
+                if (got - want).length() > 0.1 {
+                    bad.push(format!("{anim} {t} ms {}: drawn {got} != {want}", node.name));
+                }
+            }
+            for mesh in &v.model.meshes {
+                let posed: Vec<Vec3> = mesh
+                    .positions
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        let p = root_inv.transform_point3(Vec3::from(*p));
+                        let blend = mesh.joints[i]
+                            .iter()
+                            .zip(mesh.joint_weights[i])
+                            .map(|(j, w)| (drawn[*j as usize] * inverse[*j as usize]).transform_point3(p) * w)
+                            .sum::<Vec3>();
+                        root.transform_point3(blend)
+                    })
+                    .collect();
+                if let Some(far) = posed.iter().find(|p| p.length() / VIEW_SCALE > 10.0) {
+                    bad.push(format!("{anim} {t} ms {}: a vertex {} u from the eye", mesh.material, far.length() / VIEW_SCALE));
+                }
+                for tri in mesh.indices.chunks(3) {
+                    for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+                        let (a, b) = (a as usize, b as usize);
+                        let rest = (Vec3::from(mesh.positions[a]) - Vec3::from(mesh.positions[b])).length();
+                        let now = (posed[a] - posed[b]).length();
+                        if rest > 1e-4 && now > 4.0 * rest {
+                            bad.push(format!("{anim} {t} ms {}: edge {a}-{b} {rest} -> {now}", mesh.material));
+                        }
+                    }
+                }
+            }
+            t += 10.0;
+        }
+    }
+    bad.truncate(20);
+    assert!(bad.is_empty(), "{bad:#?}");
 }

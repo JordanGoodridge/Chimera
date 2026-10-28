@@ -510,7 +510,7 @@ fn muzzle_flash(
                 *qv = Visibility::Hidden;
                 return;
             };
-            let p = g.keys.iter().find(|k| k.kind == "ParticleSystem");
+            let p = g.keys.iter().find(|k| k.kind == "ParticleSystem" && !library::shaded(k));
             let l = g.keys.iter().find(|k| k.kind == "DynaLight");
             let Some(p) = p else {
                 *qv = Visibility::Hidden;

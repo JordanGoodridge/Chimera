@@ -39,8 +39,9 @@
 //! the shooter's own hit test on the frame of the shot, an enemy outside
 //! its spawn window as this client sees it; on a network client its
 //! predicted rounds' traces, nothing waiting for the server; grenades,
-//! fire and poison never); `core::Damage` (damage taken; on a network
-//! client the server's `core::DamageTaken`), `core::Died` (the kill
+//! fire and poison never); `core::DamageTaken` (damage that reached
+//! health, C: on a network client the server's report; refused hits and
+//! hits under `god` show nothing), `core::Died` (the kill
 //! feed), the match's phase (`game::rules::CaMatchView`: a round's end
 //! clears the hit indicator, a round going live the damage overlay; also
 //! `RoundRestarts`); bodies (`game::characters::CaBody`: a dead player's
@@ -151,7 +152,7 @@ use crate::{
         spectate::SpecView,
     },
     core::{
-        Damage, DamageKind, DamageTaken, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState, NetRole,
+        Damage, DamageKind, DamageTaken, Dead, Died, Health, Hitgroup, Intent, LocalPlayer, MovementState,
         RoundRestarts, SimClock, Team,
     },
     game::{
@@ -579,13 +580,13 @@ fn track(
     (time, real, sim): (Res<Time>, Res<Time<Real>>, Option<Res<SimClock>>),
     mut memory: ResMut<HudMemory>,
     mut weapons: MessageReader<WeaponEvent>,
-    (mut damage, mut taken): (MessageReader<Damage>, MessageReader<DamageTaken>),
+    mut taken: MessageReader<DamageTaken>,
     mut died: MessageReader<Died>,
     local: Option<Single<(Entity, &Intent, Option<&Team>), With<LocalPlayer>>>,
     characters: Query<(Entity, &Health, Option<&Team>, Has<Dead>), With<Intent>>,
     (names, settings): (Query<NameParts>, Option<Res<NetSettings>>),
     (held, ids, carry, npcs): (Query<&Inventory>, Query<&Weapon>, Query<&CaCarry>, Query<(), With<CaNpc>>),
-    (rounds, role, view): (Option<Res<RoundRestarts>>, Option<Res<NetRole>>, Option<Res<CaMatchView>>),
+    (rounds, view): (Option<Res<RoundRestarts>>, Option<Res<CaMatchView>>),
 ) {
     let (ms, now) = clocks(&real, &time, sim.as_deref());
     let memory = &mut *memory;
@@ -643,16 +644,10 @@ fn track(
             memory.flashes.insert(target, now);
         }
     }
-    // Damage taken (C): the server's report on a network client, else the
-    // damage dealt here.
-    let client = role.is_some_and(|r| *r == NetRole::Client);
-    let hits: Vec<Damage> = if client {
-        damage.clear();
-        taken.read().map(|t| t.damage.clone()).collect()
-    } else {
-        taken.clear();
-        damage.read().cloned().collect()
-    };
+    // Damage taken (C): what reached health (`DamageTaken`: the server's
+    // report on a network client, `apply_damage`'s here). A hit refused
+    // or taken under `god` loses no health and shows nothing.
+    let hits: Vec<Damage> = taken.read().map(|t| t.damage.clone()).collect();
     if let (Some(me), Some(intent)) = (me, intent) {
         for d in hits.iter().filter(|d| d.target == me && d.amount > 0.0) {
             let (f, rt) = view_axes(&intent);

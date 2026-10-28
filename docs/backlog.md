@@ -51,12 +51,20 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
-- **Combat Arms grenade throw visuals** (promo captures 2026-10-27, M67 on
-  de_dust2): mid-throw the view model's arm stretches into a huge camo
-  blob for a frame or two (a bad bone/sequence blend at the throw), a red
-  arc smear shows at the screen edge, and the explosion shows a square of
-  an unrendered blue/pink ring texture (a normal map drawn as colour?)
-  where the shockwave should be.
+- **Combat Arms grenade throw visuals: fixed, confirm in a playtest**
+  (promo captures 2026-10-27, M67 on de_dust2). The red arc and red edges
+  were the damage overlay lit by hits that lost no health (the capture
+  ran under `god`): the HUD read the damage dealt on a listen server; now
+  only what reached health (`DamageTaken`; `hud::
+  hits_without_health_loss_show_nothing`). The blue and pink square in the
+  blast was a refraction key (`EffectShaderID` 100, a distortion map)
+  drawn as colour; keys with an effect shader are now left out
+  (`effects_sounds::shaded_keys_draw_nothing`). The big sleeve mid-throw
+  is the stock throw animation, not a blend or skeleton fault: every node
+  matches the game's own sampling and the skinned arm stays intact
+  (`heavy::view_model::m67_throw_poses_follow_the_data`); the right
+  upper arm sweeps past the eye and its open sleeve end shows for a few
+  frames. If it still looks wrong, compare with Combat Arms itself.
 
 - **Combat Arms character models and held guns: fixed, confirm in a
   playtest.** Heads looked thin and the head and backpack vanished up
