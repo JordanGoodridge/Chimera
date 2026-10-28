@@ -1,13 +1,13 @@
-//! The local player's HUD (crosshair, health, ammo, hit marker, killfeed,
+//! The local player's HUD (crosshair, health, ammo, killfeed,
 //! sniper scope) and bodies for other characters until character models
 //! exist.
 //!
 //! Covers: crosshair (gap from spread, CS:S's `cl_crosshaircolor` presets,
 //! `cl_crosshairscale`, `cl_crosshairalpha` with `cl_crosshairusealpha`,
 //! `cl_dynamiccrosshair`), sniper scope overlay, smoke grey and flash white
-//! screen tints, health, ammo, hit marker, killfeed, capsule bodies for other
+//! screen tints, health, ammo, killfeed, capsule bodies for other
 //! characters. A game that draws its own crosshair, health and ammo, hit
-//! marker or kill feed turns this HUD's off with `GameDraws`.
+//! marker (`hit_marker`: the opt-in generic one, `client::hit_marker`, stays out) or kill feed turns this HUD's off with `GameDraws`.
 //!
 //! An app whose HUD changes (`gameplay::Gameplay::hud`: Lucker Party's
 //! local player follows its weapon's game, `chimera_sim::identity`) keeps
@@ -25,15 +25,14 @@ use bevy::prelude::*;
 use super::FirstPersonCamera;
 use crate::{
     core::{Dead, Died, Health, Intent, LocalPlayer, Score, Team},
-    weapon::{Hitscan, Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, Zoomed},
+    weapon::{Hitscan, Inventory, Magazine, Weapon, Zoomed},
 };
 
 pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<HitMarker>()
-            .init_resource::<Killfeed>()
+        app.init_resource::<Killfeed>()
             .init_resource::<GameDraws>()
             .init_resource::<CrosshairColor>()
             .init_resource::<ScopeOverlayImage>()
@@ -44,7 +43,7 @@ impl Plugin for HudPlugin {
                 (
                     character_bodies,
                     show_bodies,
-                    (hit_marker, killfeed, draw_hud, draw_crosshair, draw_scope).chain(),
+                    (killfeed, draw_hud, draw_crosshair, draw_scope).chain(),
                     (scope_aspect, game_scope)
                         .chain()
                         .run_if(scope_inputs_changed),
@@ -380,8 +379,6 @@ struct HealthText;
 #[derive(Component)]
 struct AmmoText;
 #[derive(Component)]
-struct HitMarkerText;
-#[derive(Component)]
 struct KillfeedText;
 #[derive(Component)]
 struct CenterText;
@@ -459,12 +456,6 @@ pub fn crosshair_kind(inventory: Option<&Inventory>, dead: bool, scoped: bool) -
 /// offsets from the centre, pixels.
 const DEFAULT_DOT_SPREAD: f32 = 8.0;
 
-/// Seconds the hit marker stays up, and whether the last hit killed.
-#[derive(Resource, Default)]
-struct HitMarker {
-    left: f32,
-}
-
 #[derive(Resource, Default)]
 struct Killfeed(Vec<(String, f32)>);
 
@@ -473,7 +464,6 @@ const CROSSHAIR_COLOR: Color = Color::srgba(0.3, 1.0, 0.3, 0.9);
 const LINE_LENGTH: f32 = 7.0;
 const LINE_WIDTH: f32 = 2.0;
 const MIN_GAP: f32 = 3.0;
-const MARKER_SECONDS: f32 = 0.2;
 const FEED_SECONDS: f32 = 6.0;
 
 /// Our stand-in for CS:S's scope: black outside a circle filling the
@@ -661,22 +651,6 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             ..default()
         },
         GlobalZIndex(40),
-    ));
-    commands.spawn((
-        HitMarkerText,
-        Text::new("x"),
-        font(26.0),
-        TextColor(Color::srgb(1.0, 1.0, 1.0)),
-        TextLayout::justify(Justify::Center),
-        Node {
-            position_type: PositionType::Absolute,
-            top: percent(50.0),
-            width: percent(100.0),
-            margin: UiRect::top(px(-17.0)),
-            ..default()
-        },
-        GlobalZIndex(41),
-        Visibility::Hidden,
     ));
     commands.spawn((
         DefaultCrosshair,
@@ -1065,34 +1039,6 @@ fn draw_scope(
             *v = want;
         }
     }
-}
-
-fn hit_marker(
-    mut events: MessageReader<WeaponEvent>,
-    local: Option<Single<Entity, With<LocalPlayer>>>,
-    mut marker: ResMut<HitMarker>,
-    mut text: Single<(&mut Visibility, &mut TextColor), With<HitMarkerText>>,
-    time: Res<Time>,
-    own: Res<GameDraws>,
-) {
-    let me = local.map(|l| *l);
-    if own.hit_marker {
-        events.clear();
-        marker.left = 0.0;
-    }
-    for e in events.read().filter(|e| e.shown()) {
-        if Some(e.owner) == me && matches!(e.kind, WeaponEventKind::Hit { .. }) {
-            marker.left = MARKER_SECONDS;
-        }
-    }
-    marker.left = (marker.left - time.delta_secs()).max(0.0);
-    let (vis, color) = &mut *text;
-    **vis = if marker.left > 0.0 {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    color.0 = Color::srgba(1.0, 1.0, 1.0, (marker.left / MARKER_SECONDS).min(1.0));
 }
 
 fn killfeed(

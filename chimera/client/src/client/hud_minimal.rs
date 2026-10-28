@@ -11,7 +11,7 @@
 //! texts and crosshair (`HudDraws`). An app adds `MinimalHudPlugin`.
 //!
 //! Known shortcuts: the weapon is called by its id (no display-name
-//! registry in the shell); no hit marker, kill feed or scoreboard.
+//! registry in the shell); no kill feed or scoreboard (the opt-in `cl_hitmarker` works over it).
 
 use bevy::prelude::*;
 use chimera_core::game_parts::MINIMAL_HUD;

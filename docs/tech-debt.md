@@ -47,7 +47,8 @@ fails when this file is stale; never edit the generated lines).
 - `chimera/client/src/client/announcer.rs`: the plain kill's number is the server's count of the killer's enemy kills for the map (`KillFacts::total`), not a scoreboard entry (no...
 - `chimera/client/src/client/binds.rs`: a named action is only a held button: it has no console `+throw` typed-hold (`console::HeldActions` keeps Chimera's own) and no wheel notch
 - `chimera/client/src/client/callouts.rs`: plain text on a dark band, no animation; the files load on first use (the first cue of each kind may come up to a load late, given up after 3 s)
-- `chimera/client/src/client/hud_minimal.rs`: the weapon is called by its id (no display-name registry in the shell); no hit marker, kill feed or scoreboard
+- `chimera/client/src/client/hit_marker.rs`: no sound (the cvar is a switch only); a plain text glyph, no animation
+- `chimera/client/src/client/hud_minimal.rs`: the weapon is called by its id (no display-name registry in the shell); no kill feed or scoreboard (the opt-in `cl_hitmarker` works over it)
 - `chimera/client/src/client/kill_feed.rs`: no penetration (wallbang) flag: the killing hit doesn't say whether it went through something; names are taken at the kill (a later rename doesn't...
 - `chimera/client/src/client/match_end.rs`: no map vote (the server's rotation picks the next map); plain text and colours, no game's look or art; no music pause
 - `chimera/client/src/client/minigame_scoreboard.rs`: plain text, no team colours

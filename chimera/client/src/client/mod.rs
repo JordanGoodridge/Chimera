@@ -13,6 +13,7 @@
 pub mod aim;
 pub mod announcer;
 pub mod callouts;
+pub mod hit_marker;
 pub mod canvas;
 pub mod app;
 pub mod audio;
@@ -417,6 +418,7 @@ impl PluginGroup for ClientPlugins {
             .add(match_end::MatchEndPlugin)
             .add(kill_feed::KillFeedPlugin)
             .add(callouts::CalloutsPlugin)
+            .add(hit_marker::HitMarkerPlugin)
             .add(hdr::HdrPlugin)
             .add(video::VideoPlugin)
             .add(hud_text::HudTextPlugin)

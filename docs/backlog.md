@@ -425,11 +425,20 @@ sections above already list.
   identity more. Chimera's mix has no per-game balance. A listening pass
   with both games' guns and steps at set distances, then a per-game gain
   (and a footstep range option).
-- **Hit feedback differs by the gun in hand.** A Combat Arms gun gets
+- **Hit feedback differs by the gun in hand: fixed (opt-in), confirm in a playtest.** A Combat Arms gun gets
   its hit indicator and name-tag flash (`ui::hud`), a CS:S gun nothing
   (parity), so CS:S rungs feel unresponsive next to Combat Arms ones.
   An opt-in party hit marker or hit sound for every gun (parity first,
   options later).
+  `cl_hitmarker 1` (archived, default 0 everywhere) draws a cross on the
+  shooter's own client when its round damages another player: white for
+  a hit, yellow for a headshot, red for a kill (`client::hit_marker`,
+  over any game's HUD; from `WeaponEvent::Hit`, which a network client
+  gets as the server's `HitConfirm`, and `Died`). Nothing for the
+  victim, for a hit that dealt no damage (spawn protection) or a prop,
+  or where the HUD's game draws its own indicator (Combat Arms'). The
+  shell's old always-on "x" is gone (CS:S has no hit feedback). No sound
+  yet.
 - **Dominations and revenge (plain CS:S, and CS:S identity)** (spec
   first). CS:S marks a player who kills the same enemy several times
   without dying to them as dominating (a kill feed line, the freeze
