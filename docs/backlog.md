@@ -376,6 +376,19 @@ sections above already list.
   (mods give the lowest or average rung of the others); no grenade or
   knife-only last rungs (the classic HE-then-knife finale). Data options
   on `chimera:ladder` (a `demote_on` list, a join rung, rung kinds).
+  *Fixed, confirm in a playtest (2026-10-28):* `chimera:ladder` settings
+  (DESIGN.md "Gun game rules"): `demote_on_suicide` (default on) takes a
+  rung for a suicide (own grenade or blast, `kill`) or a death with no
+  killer (a fall, the world), never below the first, with a "Suicide!
+  Level down: <gun>" callout (event `suicide_down`, the knifing's cue);
+  nobody's kill, so no streak. `join_rung` (default `lowest`; `average`
+  rounded down, `first`) puts a late joiner on the others' lowest rung,
+  never the last. `knife_finale` (default off; true: the kit's knife, or
+  a weapon id) adds a knife-only last rung whose kill wins. The knife
+  kill's stolen rung (`demote_on = "melee_death"`) stays. Grenade rungs
+  were already possible (Ultimate Gun Game's). Combat Arms' Arms Race
+  keeps its spec's rules (no suicide cost); plain CS:S and Combat Arms
+  are unchanged.
 - **Loudness and hearing range differ by game.** Each game's guns,
   footsteps and impacts play at their own levels and falloff (Combat
   Arms' nearly flat up close, CS:S's own curves), so one game's players

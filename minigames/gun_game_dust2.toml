@@ -1,7 +1,8 @@
 # Gun Game on de_dust2 (docs/plans/active/architecture-review.md D2): every
 # player for themselves up a ladder of Counter-Strike: Source's and Combat
-# Arms' guns, a rung a kill; a knife death costs a rung; the first kill
-# with the last gun wins. Each player is the game of the gun in hand
+# Arms' guns, a rung a kill; a knife death, a suicide or a fall costs a
+# rung; a late joiner starts on the lowest rung; the first kill with the
+# last gun wins. Each player is the game of the gun in hand
 # (`identity = "weapon"`): a CS:S gun moves, looks and shows its HUD as
 # CS:S, a Combat Arms gun as Combat Arms; the knife is the gun's game's
 # (CS:S's with a CS:S gun, Combat Arms' M9 with a Combat Arms gun), so
@@ -9,7 +10,7 @@
 # Arms' Warehouse, the pool's second map).
 id = "originals:gun_game_dust2"
 name = "Gun Game: Dust II"
-description = "Climb a ladder of CS:S and Combat Arms guns; a knife death costs a rung; the last gun's kill wins."
+description = "Climb a ladder of CS:S and Combat Arms guns; a knife death or a suicide costs a rung; the last gun's kill wins."
 players = { min = 2, max = 16 }
 maps = ["cs_source:de_dust2", "combat_arms:warehouse"]
 teams = "free_for_all"
@@ -49,5 +50,8 @@ ladder = [
 ]
 advance_on = "kill"
 demote_on = "melee_death"
+demote_on_suicide = true   # a suicide, a fall or `kill` costs a rung (the default)
+join_rung = "lowest"       # a late joiner starts on the others' lowest rung (the default)
+knife_finale = false       # true: a knife-only rung after the AWP (the default: off)
 refill_ammo = true   # the ladder gives each gun once: 200 rounds of M60 run out
 win = { kind = "ladder_end" }

@@ -7,7 +7,21 @@
 //! last rung wins the match. With `demote_on = "melee_death"` a player
 //! killed by an enemy's melee swing goes a rung down (not below the first):
 //! melee damage, or any damage from a melee weapon (CS:S's knife deals
-//! bullet damage).
+//! bullet damage); the knifer still climbs, so a knife kill steals a rung.
+//! A death of one's own doing costs a rung too (`demote_on_suicide`, on
+//! by default; never below the first): a suicide (one's own grenade or
+//! blast, `kill`) or a death with no killer (a fall, the world), so `kill`
+//! is no free way out of a bad spawn. It is no kill for anyone: the
+//! announcer's streaks count enemy kills only (`announce`).
+//! A player who joins a live match starts on the lowest rung of the
+//! others (`join_rung = "lowest"`, the default), their average rounded
+//! down (`"average"`) or the first (`"first"`), never the last rung; at a
+//! match's start everyone is on the first. With `knife_finale` the
+//! ladder ends with a knife-only rung: after the last gun the player
+//! holds only a knife (the kit's melee weapon of the last gun's game, or
+//! the one named), and a knife kill wins (off by default).
+//! Combat Arms' own Arms Race (`games/combat_arms`, its rules) is not
+//! this module and keeps its spec's rules (no cost for a suicide).
 //! The ladder gives the weapons, so nobody drops one at death
 //! (`weapon::drop::NoDeathDrops`).
 //! At the time limit the highest rung wins, then the most kills; a tie is
@@ -19,18 +33,24 @@
 //! ladder = ["cs_source:weapon_glock", "combat_arms:m4a1"]   # the rungs, in order
 //! advance_on = "kill"              # the only one so far
 //! demote_on = "melee_death"        # or "none" (the default)
+//! demote_on_suicide = true         # a suicide, fall or `kill` costs a rung (default)
+//! join_rung = "lowest"             # a late joiner's rung: "lowest" (default), "average", "first"
+//! knife_finale = false             # true (the kit's knife) or a weapon id: a knife-only
+//!                                  # last rung (default: false)
 //! refill_ammo = true               # a rung's gun never runs dry, its grenade comes
 //!                                  # back once thrown (default: false)
 //! win = { kind = "ladder_end" }    # the only one so far
 //! ```
 //!
-//! Events (`MinigameEvent`): `rung_up` and `rung_down` (the new rung),
+//! Events (`MinigameEvent`): `rung_up`, `rung_down` (knifed) and
+//! `suicide_down` (one's own death) with the new rung,
 //! `last_rung` (a player reached the last rung), and the lead (the
 //! highest rung, then the most kills; nobody leads before a kill):
 //! `lead_taken` (alone in it), `lead_lost` (no longer in it),
 //! `lead_tied` (newly sharing it, or a sole leader caught up), each with
 //! the player's rung. The viewer's callouts (`callout`):
-//! "Level up: <gun>", "Knifed! Level down", "Last level!", "<name> is on
+//! "Level up: <gun>", "Knifed! Level down: <gun>", "Suicide! Level down:
+//! <gun>", "Last level!", "<name> is on
 //! the last level!", "You took the lead", "You lost the lead", "Tied for
 //! the lead"; the HUD's notices (`notice`) stay the small text.
 
@@ -62,6 +82,8 @@ pub const RULES: RulesModule = RulesModule {
     check,
     start,
     loadout,
+    no_kit,
+    joined,
     status,
     notice,
     callout,
@@ -104,6 +126,43 @@ struct Params {
     win: Win,
     #[serde(default)]
     refill_ammo: bool,
+    #[serde(default = "yes")]
+    demote_on_suicide: bool,
+    #[serde(default)]
+    join_rung: JoinRung,
+    #[serde(default)]
+    knife_finale: Finale,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// A late joiner's rung (`join_rung`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinRung {
+    /// The lowest rung of the others.
+    #[default]
+    Lowest,
+    /// The others' average, rounded down.
+    Average,
+    /// The first rung.
+    First,
+}
+
+/// `knife_finale`: off, the kit's knife, or a named melee weapon.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum Finale {
+    On(bool),
+    Weapon(String),
+}
+
+impl Default for Finale {
+    fn default() -> Self {
+        Self::On(false)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
@@ -142,6 +201,27 @@ pub struct Ladder {
     pub demote_on_melee: bool,
     /// The rungs' guns keep a full reserve (a ladder has no ammo to find).
     pub refill_ammo: bool,
+    /// A suicide or a death with no killer costs a rung.
+    pub demote_on_suicide: bool,
+    /// A late joiner's rung.
+    pub join_rung: JoinRung,
+    /// The last rung is a knife alone (`knife_finale`): its weapon is the
+    /// last of `rungs`, held without the kit.
+    pub knife_finale: bool,
+}
+
+impl Ladder {
+    /// Whether `id` is one of the ladder's guns (a rung's weapon, but not
+    /// the knife finale's, which is a kit weapon).
+    pub fn is_gun(&self, id: &str) -> bool {
+        let guns = self.rungs.len() - usize::from(self.knife_finale && !self.rungs.is_empty());
+        self.rungs[..guns].contains(&id)
+    }
+
+    /// Whether `rung` is the knife-only last rung.
+    pub fn knife_only(&self, rung: usize) -> bool {
+        self.knife_finale && rung + 1 == self.rungs.len()
+    }
 }
 
 /// A player's rung (0: the first). Replicated to clients (`minigame_net`).
@@ -164,19 +244,81 @@ fn check(def: &MinigameDef, catalog: &WeaponCatalog) -> Result<(), String> {
     for id in &p.ladder {
         super::weapon(def, catalog, id)?;
     }
+    finale(def, catalog, &p)?;
     Ok(())
+}
+
+/// The knife finale's weapon (None: off): the named one, or the kit's
+/// first melee weapon for the last gun's game; a melee weapon either way.
+fn finale(def: &MinigameDef, catalog: &WeaponCatalog, p: &Params) -> Result<Option<&'static str>, String> {
+    let melee = |id: &str| catalog.get(id).is_some_and(|w| w.melee.is_some());
+    let id = match &p.knife_finale {
+        Finale::On(false) => return Ok(None),
+        Finale::Weapon(id) => super::weapon(def, catalog, id)?,
+        Finale::On(true) => {
+            let game = p.ladder.last().and_then(|g| g.split_once(':')).map(|(g, _)| g);
+            let knife = def.spawn.kit.for_game(game).into_iter().find(|id| melee(id));
+            let Some(knife) = knife else {
+                return Err(format!(
+                    "[rules] knife_finale: the kit has no melee weapon for {}; name one (knife_finale = \"<id>\")",
+                    game.unwrap_or("the last gun")
+                ));
+            };
+            super::weapon(def, catalog, knife)?
+        }
+    };
+    if !melee(id) {
+        return Err(format!("[rules] knife_finale: {id} is not a melee weapon"));
+    }
+    Ok(Some(id))
 }
 
 fn start(world: &mut World, def: &MinigameDef) {
     let Ok(p) = params(def) else { return };
     let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
-    let rungs = p.ladder.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
+    let mut rungs: Vec<&'static str> =
+        p.ladder.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
+    let knife = finale(def, &catalog, &p).ok().flatten();
+    rungs.extend(knife);
     world.insert_resource(crate::weapon::drop::NoDeathDrops);
     world.insert_resource(Ladder {
         rungs,
         demote_on_melee: p.demote_on == Demote::MeleeDeath,
         refill_ammo: p.refill_ammo,
+        demote_on_suicide: p.demote_on_suicide,
+        join_rung: p.join_rung,
+        knife_finale: knife.is_some(),
     });
+}
+
+/// The knife-only last rung's life has no kit (the knife is its weapon).
+fn no_kit(world: &World, e: Entity) -> bool {
+    let Some(ladder) = world.get_resource::<Ladder>() else { return false };
+    ladder.knife_only(world.get::<Rung>(e).map_or(0, |r| r.0))
+}
+
+/// A joiner's rung: in a live match the others' lowest (or average, or
+/// the first: `join_rung`), never the last; else the first (the match's
+/// start puts everyone there anyway).
+fn joined(world: &mut World, e: Entity) {
+    let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return };
+    let rung = if world.resource::<Match>().counting() { join_rung(world, e, &ladder) } else { 0 };
+    world.entity_mut(e).insert(Rung(rung));
+}
+
+/// The rung `join_rung` gives joiner `e`.
+pub fn join_rung(world: &mut World, e: Entity, ladder: &Ladder) -> usize {
+    let others: Vec<usize> = runtime::players(world)
+        .into_iter()
+        .filter(|(p, _)| *p != e)
+        .map(|(p, _)| world.get::<Rung>(p).map_or(0, |r| r.0))
+        .collect();
+    let rung = match (ladder.join_rung, others.is_empty()) {
+        (_, true) | (JoinRung::First, _) => 0,
+        (JoinRung::Lowest, false) => others.iter().copied().min().unwrap_or(0),
+        (JoinRung::Average, false) => others.iter().sum::<usize>() / others.len(),
+    };
+    rung.min(ladder.rungs.len().saturating_sub(2))
 }
 
 /// The rung's weapon.
@@ -291,10 +433,13 @@ fn before_spawns(world: &mut World) {
 }
 
 /// An enemy kill: the killer a rung up (its weapon swapped), or the match
-/// won from the last rung.
+/// won from the last rung; one's own death (a suicide, a fall): a rung
+/// down with `demote_on_suicide`.
 fn on_death(world: &mut World, d: &Death) {
-    if d.kind != DeathKind::Enemy {
-        return;
+    match d.kind {
+        DeathKind::Enemy => {}
+        DeathKind::Suicide | DeathKind::NoKiller => return own_death(world, d.victim),
+        DeathKind::TeamKill => return,
     }
     let Some(k) = d.killer else { return };
     let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return };
@@ -318,6 +463,25 @@ fn on_death(world: &mut World, d: &Death) {
             value: rung as i32,
         });
     }
+}
+
+/// `victim` died by its own doing (a suicide, a fall, the world): a rung
+/// down (not below the first; dead, the weapon is the next life's).
+fn own_death(world: &mut World, victim: Entity) {
+    let Some(ladder) = world.get_resource::<Ladder>() else { return };
+    if !ladder.demote_on_suicide {
+        return;
+    }
+    let rung = world.get::<Rung>(victim).map_or(0, |r| r.0);
+    if rung == 0 {
+        return;
+    }
+    world.entity_mut(victim).insert(Rung(rung - 1));
+    world.write_message(MinigameEvent {
+        name: "suicide_down",
+        player: Some(victim),
+        value: rung as i32 - 1,
+    });
 }
 
 /// A melee death at an enemy's hands: a rung down.
@@ -362,9 +526,13 @@ fn melee_kill(world: &World, d: &Died) -> bool {
         .is_some_and(|w| w.melee.is_some())
 }
 
-/// `e` on `rung`, holding its weapon in place of the ladder's others.
+/// `e` on `rung`, holding its weapon in place of the ladder's others (on
+/// the knife-only last rung: that knife alone).
 pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     world.entity_mut(e).insert(Rung(rung));
+    if ladder.knife_only(rung) {
+        return knife_alone(world, e, ladder.rungs[rung]);
+    }
     let before = carried_slots(world, e, ladder);
     let old: Vec<Entity> = world
         .get::<Inventory>(e)
@@ -372,7 +540,7 @@ pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
             i.weapons
                 .iter()
                 .copied()
-                .filter(|w| world.get::<Weapon>(*w).is_some_and(|w| ladder.rungs.contains(&w.id)))
+                .filter(|w| world.get::<Weapon>(*w).is_some_and(|w| ladder.is_gun(w.id)))
                 .collect()
         })
         .unwrap_or_default();
@@ -388,6 +556,28 @@ pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     crate::core::rebase(world, e);
 }
 
+/// `e` holding `knife` alone, drawn: every other weapon taken (the gun,
+/// the kit's others), the knife kept if carried, else given.
+fn knife_alone(world: &mut World, e: Entity, knife: &'static str) {
+    let held: Vec<(Entity, &'static str)> = world
+        .get::<Inventory>(e)
+        .map(|i| i.weapons.iter().filter_map(|w| world.get::<Weapon>(*w).map(|x| (*w, x.id))).collect())
+        .unwrap_or_default();
+    let mut kept = None;
+    for (w, id) in held {
+        if id == knife && kept.is_none() {
+            kept = Some(w);
+        } else {
+            runtime::take_weapon(world, e, w);
+        }
+    }
+    let knife = kept.or_else(|| give(world, e, knife));
+    if let (Some(k), Some(mut inv)) = (knife, world.get_mut::<Inventory>(e)) {
+        inv.wanted = Some(k);
+    }
+    crate::core::rebase(world, e);
+}
+
 /// What `e` carries as (weapon, slot, is one of the ladder's guns: else
 /// the kit's, the knife).
 fn carried_slots(world: &World, e: Entity, ladder: &Ladder) -> Vec<(Entity, u8, bool)> {
@@ -396,7 +586,7 @@ fn carried_slots(world: &World, e: Entity, ladder: &Ladder) -> Vec<(Entity, u8, 
         .iter()
         .filter_map(|w| {
             let weapon = world.get::<Weapon>(*w)?;
-            Some((*w, weapon.slot, ladder.rungs.contains(&weapon.id)))
+            Some((*w, weapon.slot, ladder.is_gun(weapon.id)))
         })
         .collect()
 }
@@ -494,7 +684,7 @@ fn status(world: &mut World, viewer: Entity) -> Vec<HudLine> {
     lines
 }
 
-/// The viewer's own rung changes (`rung_up`, `rung_down`).
+/// The viewer's own rung changes (`rung_up`, `rung_down`, `suicide_down`).
 fn notice(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<HudLine> {
     if event.player != Some(viewer) {
         return None;
@@ -505,6 +695,7 @@ fn notice(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<HudLin
     let text = match event.name {
         "rung_up" => format!("Rung up! {}/{total}: {{weapon}}", event.value + 1),
         "rung_down" => format!("Knifed! Down to {}/{total}: {{weapon}}", event.value + 1),
+        "suicide_down" => format!("Suicide! Down to {}/{total}: {{weapon}}", event.value + 1),
         _ => return None,
     };
     Some(HudLine::new(text).weapon(weapon))
@@ -530,6 +721,8 @@ fn callout(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<Callo
         // The last rung's own callout says it.
         ("rung_up", true) if rung + 1 < total => Callout::new(2, "rung_up", vec![gun("Level up: {weapon}"), level_line()]),
         ("rung_down", true) => Callout::new(3, "rung_down", vec![gun("Knifed! Level down: {weapon}"), level_line()]),
+        // The same denied cue as a knifing.
+        ("suicide_down", true) => Callout::new(3, "rung_down", vec![gun("Suicide! Level down: {weapon}"), level_line()]),
         ("last_rung", true) => Callout::new(4, "last_rung", vec![HudLine::new("Last level!"), gun("{weapon}: a kill wins")]),
         ("last_rung", false) => Callout::new(
             4,

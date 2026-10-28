@@ -58,7 +58,7 @@ impl Plugin for CalloutsPlugin {
             app,
             "chimera_callout",
             "Make a minigame event for you, or another player, as the server would (a test): \
-             chimera_callout <rung_up|rung_down|last_rung|lead_taken|lead_lost|lead_tied|match_won> [other] [rung].",
+             chimera_callout <rung_up|rung_down|suicide_down|last_rung|lead_taken|lead_lost|lead_tied|match_won> [other] [rung].",
             test_callout,
         );
         if app.world().contains_resource::<AssetServer>() {

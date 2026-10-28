@@ -374,6 +374,28 @@ Part B Combat Arms' pack).
   registered). Plain CS:S and Combat Arms play no minigame, so neither
   changes.
 
+### Gun game rules
+
+The party's gun game (`chimera:ladder`, `chimera_sim::minigame::ladder`)
+follows the common GunGame server conventions, each a setting of the
+definition's `[rules]` (no spec covers them: CS:S has no gun game, and
+Combat Arms' Arms Race, which is plain Combat Arms' own rules, climbs by
+kill count with no cost for a suicide, game_modes.md M14, and keeps
+that):
+
+- **A kill a rung up; a knife kill steals one** (`demote_on =
+  "melee_death"`): the knifed player goes down, the knifer still climbs.
+- **One's own death costs a rung** (`demote_on_suicide`, default on):
+  a suicide (one's own grenade or blast, `kill`) or a death with no
+  killer (a fall, the world), never below the first; so `kill` is no
+  free respawn. Called "Suicide! Level down: <gun>"; it is nobody's kill,
+  so the announcer's streaks ignore it.
+- **A late joiner starts near the others** (`join_rung`, default
+  `lowest`; `average`, rounded down; `first`), never on the last rung.
+- **A knife-only finale** (`knife_finale`, default off): a last rung
+  after the guns where the player holds only a knife (the kit's, or a
+  named one); its kill wins. Ultimate Gun Game keeps its gun ending.
+
 ### Automatic gun games (variety)
 
 Ultimate Gun Game's ladder and maps are made, not written

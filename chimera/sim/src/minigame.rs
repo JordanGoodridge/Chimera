@@ -34,7 +34,8 @@
 //!   the match (no joins, respawns or phases) while a server changes map
 //!   for the next one; `start` lifts it.
 //! - `MinigameEvent`: named events (`rung_up`, `rung_down`, `match_won`,
-//!   the ladder's `last_rung` and `lead_taken`, `lead_lost`, `lead_tied`)
+//!   the ladder's `last_rung`, `suicide_down` and `lead_taken`,
+//!   `lead_lost`, `lead_tied`)
 //!   for a HUD or an announcer; `hud::MinigameHud` is what the local
 //!   player's HUD shows of the minigame (status lines from the rules
 //!   module, the match's time, notices from the events): data a game's HUD
@@ -121,6 +122,13 @@ pub struct RulesModule {
     /// The weapons a life gets from the rules (after the kit; the last
     /// given is drawn).
     pub loadout: fn(&World, Entity) -> Vec<&'static str>,
+    /// The life gets the rules' weapons alone, without the definition's
+    /// kit (the ladder's knife-only last rung).
+    pub no_kit: fn(&World, Entity) -> bool,
+    /// A player joins the match (`runtime::join`, its team made, before
+    /// its first spawn): the module's start for it (the ladder's join
+    /// rung).
+    pub joined: fn(&mut World, Entity),
     /// The lines the HUD shows the viewer of the match's standing
     /// (`hud::MinigameHud`).
     pub status: fn(&mut World, Entity) -> Vec<hud::HudLine>,
@@ -213,12 +221,14 @@ pub const EVENT_NAMES: &[&str] = &[
     "lead_taken",
     "lead_lost",
     "lead_tied",
+    "suicide_down",
 ];
 
 /// A named moment of the match, for a HUD or an announcer.
 #[derive(Message, Clone, Debug, PartialEq)]
 pub struct MinigameEvent {
-    /// `rung_up`, `rung_down`, `match_won`, `last_rung`, `lead_taken`, ...
+    /// `rung_up`, `rung_down`, `suicide_down`, `match_won`, `last_rung`,
+    /// `lead_taken`, ...
     pub name: &'static str,
     pub player: Option<Entity>,
     /// The event's number (a rung, a score).

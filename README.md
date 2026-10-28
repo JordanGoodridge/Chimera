@@ -219,8 +219,9 @@ friends; the game port is **UDP 28930** (`-Port` changes it).
   and a joining game never starts bots of its own).
 - `+name <name>` is your name in the game (`-Name` in the scripts).
 - The match: first to climb the whole ladder (a rung a kill, CS:S's guns and
-  Combat Arms' in turn, a knife death costs a rung) wins; it waits for at
-  least two players.
+  Combat Arms' in turn; a knife death, a suicide or a fall costs a rung)
+  wins; a late joiner starts on the lowest rung of the others; it waits
+  for at least two players.
 
 ## How it is built
 
