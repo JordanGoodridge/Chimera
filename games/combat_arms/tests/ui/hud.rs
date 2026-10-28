@@ -817,6 +817,24 @@ fn t40_absorbed_hit() {
     assert!(hud(&sim).damage.is_none());
 }
 
+/// A hit that loses no health shows nothing (C's trigger: a health loss
+/// > 0): under `god` the bots' shots once lit the overlay and the arc for
+/// as long as they kept shooting, at full health.
+#[test]
+fn hits_without_health_loss_show_nothing() {
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.app.world_mut().entity_mut(me).insert(chimera_core::core::God);
+    for _ in 0..5 {
+        hurt(&mut sim, me, None, 0.2, Vec3::Z);
+        sim.ticks(1);
+        assert!(hud(&sim).damage.is_none(), "no overlay under god");
+    }
+    sim.app.world_mut().entity_mut(me).remove::<chimera_core::core::God>();
+    hurt(&mut sim, me, None, 0.01, Vec3::Z);
+    sim.ticks(1);
+    assert!(hud(&sim).damage.is_some(), "a hit that lands shows");
+}
+
 #[test]
 fn t41_overlay_rect() {
     assert_eq!(hit_overlay_rect(Screen::new(1920.0, 1080.0)), PxRect::new(0.0, 1920.0, 0.0, 1440.0));

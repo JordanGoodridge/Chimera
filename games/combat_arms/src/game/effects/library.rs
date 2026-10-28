@@ -120,6 +120,14 @@ pub fn sprite_texture(bytes: &[u8]) -> Option<String> {
     Some(normalize(&String::from_utf8_lossy(name)))
 }
 
+/// Whether a key is drawn through an effect shader (`EffectShaderID` >
+/// 0): in the stock file only the refraction keys (heat shimmer and the
+/// blasts' shock rings, whose textures are distortion maps, not colours).
+/// We have no effect shaders: such keys draw nothing.
+pub fn shaded(key: &FxKey) -> bool {
+    key.int("EffectShaderID").is_some_and(|id| id > 0)
+}
+
 /// Whether a key draws additively.
 pub fn additive(key: &FxKey) -> bool {
     key.combo("BlendMode") == Some(1)
@@ -192,7 +200,7 @@ pub fn add_looks(map: &mut MapData, data: &super::super::data::CaDataInner, file
     let mut missing = 0;
     for name in &groups {
         let Some(g) = fx.group(name) else { continue };
-        for k in &g.keys {
+        for k in g.keys.iter().filter(|k| !shaded(k)) {
             let Some(path) = key_texture(k, file) else { continue };
             if let Some(spr) = k.path("Sprite").filter(|_| k.kind == "Sprite") {
                 sprites.insert(normalize(spr), path.clone());

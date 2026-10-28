@@ -1784,3 +1784,54 @@ fn corrections_12_third_person_flash_hider() {
     c.parts[combat_arms::game::attachments::MUZZLE].as_mut().unwrap().record.flash_hider_level = 0;
     assert_eq!(effects::hh_muzzle(t(), &m4, Some(&c)), "M4_HH_Muzz");
 }
+
+/// A key drawn through an effect shader (`EffectShaderID` > 0: the
+/// blasts' refraction ring, a distortion map) draws nothing; it once
+/// showed as a square of its blue and pink texture in every frag's
+/// explosion.
+#[test]
+fn shaded_keys_draw_nothing() {
+    use chimera_world::map::particles::{MapParticles, NoWorld, ParticleMaterial, Particles};
+    use combat_arms::game::effects::{
+        fx::CaFx,
+        library::{FxLibrary, material_name, shaded},
+    };
+    use lithtech_formats::fxf::{FxFile, FxGroup, FxKey, FxProp, FxValue};
+    const TEX: &str = "fx/explosion/ring.dtx";
+    let prop = |name: &str, value: FxValue| FxProp { name: name.into(), value };
+    let key = |shader: i64| FxKey {
+        kind: "ParticleSystem".into(),
+        end: 0.5,
+        props: vec![
+            prop("Texture", FxValue::Path { ext: "dtx".into(), path: TEX.into() }),
+            prop("EmissionInterval", FxValue::Float(-1.0)),
+            prop("ParticlesPerEmission", FxValue::Int(1)),
+            prop("MinParticleLifeSpan", FxValue::Float(0.3)),
+            prop("MaxParticleLifeSpan", FxValue::Float(0.4)),
+            prop("EffectShaderID", FxValue::Int(shader)),
+        ],
+        ..default()
+    };
+    assert!(shaded(&key(100)));
+    assert!(!shaded(&key(0)));
+    let lib = FxLibrary {
+        file: FxFile {
+            groups: vec![
+                FxGroup { name: "Plain".into(), phase_ms: 500, keys: vec![key(0)] },
+                FxGroup { name: "Refract".into(), phase_ms: 500, keys: vec![key(100)] },
+            ],
+        },
+        ..default()
+    };
+    let materials = MapParticles {
+        materials: vec![ParticleMaterial { name: material_name(TEX, false), ..default() }],
+    };
+    let count = |group: &str| {
+        let (mut fx, mut particles) = (CaFx::default(), Particles::default());
+        assert!(fx.spawn(&lib, group, Vec3::ZERO, Mat3::IDENTITY));
+        fx.step(0.05, &lib, &mut particles, &materials, &NoWorld);
+        particles.count()
+    };
+    assert_eq!(count("Plain"), 1, "an ordinary key emits");
+    assert_eq!(count("Refract"), 0, "a shaded key draws nothing");
+}

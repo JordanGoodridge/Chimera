@@ -294,6 +294,15 @@ fn shots_on_a_map() {
     eprintln!("warehouse: {typed} of {} meshes typed, {} effect materials", map.meshes.len(), map.particles.materials.len());
     assert!(typed > map.meshes.len() / 2);
     assert!(map.particles.materials.len() > 30);
+    // The refraction keys (effect shaders) aren't drawn as colour.
+    let refract: Vec<&str> = map
+        .particles
+        .materials
+        .iter()
+        .map(|m| m.name.as_str())
+        .filter(|n| n.contains("refract") || n.contains("heatsmoke"))
+        .collect();
+    assert!(refract.is_empty(), "{refract:?}");
     assert!(library::library().is_some());
     let spawn = map.spawns[0].0;
     let mut sim = Sim::with(CaSim, move |app| {
