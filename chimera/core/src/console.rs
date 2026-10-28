@@ -86,12 +86,14 @@ pub enum CvarScope {
 pub const SERVER_PREFIXES: &[&str] = &["sv_", "mp_", "phys_", "bot_", "ammo_"];
 
 /// Game rules without a server prefix that are the server's and
-/// replicated all the same: ours, and Source's `decalfrequency` (the
+/// replicated all the same: ours (the party's `party_even_footsteps`,
+/// which every machine mixes by), and Source's `decalfrequency` (the
 /// seconds between a player's sprays) and the freeze cam's timings
 /// (`spec_freeze_time`, `spec_freeze_traveltime`; replicated in CS:S).
 pub const SERVER_NAMES: &[&str] = &[
     "chimera_rounds",
     "chimera_noblock",
+    "party_even_footsteps",
     "decalfrequency",
     "spec_freeze_time",
     "spec_freeze_traveltime",

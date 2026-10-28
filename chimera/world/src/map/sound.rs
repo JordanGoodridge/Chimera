@@ -6,8 +6,10 @@
 //! Source sound level, an attenuation, or an inner and outer radius with
 //! a distance low-pass, `distance_cutoff`: LithTech's) and the
 //! surface under a point (`SurfaceGrid`, footsteps) and volumes that
-//! swap one surface's footsteps for another's (`StepRemap`). Playback is
-//! `audio`.
+//! swap one surface's footsteps for another's (`StepRemap`), and the
+//! party's one footstep profile for every game's characters
+//! (`EvenFootsteps`, `party_even_footsteps`: CS:S's level and volumes).
+//! Playback is `audio`.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -329,6 +331,66 @@ pub fn distance_gain(level: SoundLevel, metres: f32) -> f32 {
         SoundLevel::Attenuation(a) if a <= 0.0 => 1.0,
         SoundLevel::Attenuation(a) => (1.0 - units * a / 1000.0).clamp(0.0, 1.0),
         SoundLevel::Radius { inner, outer, .. } => radius_gain(inner, outer, metres),
+    }
+}
+
+/// `party_even_footsteps` (a party setting, the server's and replicated;
+/// default 0, so each game's steps keep their own levels): 1 makes every
+/// game's player movement sounds (steps, jump and landing steps) of
+/// characters other than the listener fall off with one shared profile,
+/// CS:S's (`EVEN_STEP_LEVEL`, `even_step_volume`), so neither game's
+/// identity is heard louder or farther than the other's. CS:S's steps are
+/// that profile already; another game's movement applies it to its own
+/// (Combat Arms' others' steps, `combat_arms::game::effects`).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EvenFootsteps {
+    pub on: u8,
+}
+
+impl EvenFootsteps {
+    /// Whether the setting is on (`None`: an app without it, off).
+    pub fn is_on(s: Option<&Self>) -> bool {
+        s.is_some_and(|s| s.on != 0)
+    }
+}
+
+/// The shared footstep level with `party_even_footsteps 1`: CS:S's
+/// (specs/cs_source/sounds.md: every footstep entry has
+/// CompatibilityAttenuation 1.0), a linear falloff silent from 1000
+/// Source units (25.4 m). CS:S's rather than a mean of both games' curves:
+/// it is one game's tuned and specified behaviour, not a curve of ours,
+/// and it leaves the CS:S identity exactly as in CS:S.
+pub const EVEN_STEP_LEVEL: SoundLevel = SoundLevel::Attenuation(1.0);
+
+/// A movement sound's pace, for the shared profile's volume.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepPace {
+    Walk,
+    Run,
+    Crouch,
+    /// A jump's (or a landing's) one step.
+    Jump,
+}
+
+/// The shared profile's volume for a step at `pace`: CS:S's on a hard
+/// surface (sounds.md "When a footstep is checked"): 0.2 walking, 0.5
+/// running, a ducked run's 0.5 x 0.65, a jump's step 1.0.
+pub fn even_step_volume(pace: StepPace) -> f32 {
+    match pace {
+        StepPace::Walk => 0.2,
+        StepPace::Run => 0.5,
+        StepPace::Crouch => 0.5 * 0.65,
+        StepPace::Jump => 1.0,
+    }
+}
+
+/// The distance (metres) from which a sound of `level` is silent (None:
+/// heard everywhere): Source's levels' falloff never reaches zero.
+pub fn silent_from(level: SoundLevel) -> Option<f32> {
+    match level {
+        SoundLevel::Attenuation(a) if a > 0.0 => Some(1000.0 / a * SOURCE_UNIT),
+        SoundLevel::Radius { inner, outer, .. } => Some(outer.min((inner * inner + (outer - inner).powi(2)).sqrt())),
+        _ => None,
     }
 }
 

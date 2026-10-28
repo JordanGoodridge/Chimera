@@ -51,7 +51,12 @@
 //!   feet (ladders 200), radius 1200, the model's `FootprintSndVolume`
 //!   share added to the volume (ghillie -0.5), the listener's Awareness
 //!   in place of the walker's Specter plus the perk's own sound
-//!   (`footstep_sound`); your jump voice.
+//!   (`footstep_sound`); your jump voice. With the party's
+//!   `party_even_footsteps 1` (`map::sound::EvenFootsteps`, default off)
+//!   others' steps fall off by the shared profile instead, CS:S's level
+//!   and its volume for the pace (`even_step`: a landing is a jump's
+//!   step, sprinting runs; the perks still scale it, the model's share
+//!   doesn't).
 //! - **Your voices** (`voice`): the kill voice, the sprint and idle sounds
 //!   (and the HUD's heartbeat), local (Corrections 2026-10-22, 8).
 //! - Hurt sounds, footsteps and voices are only our characters': one
@@ -1456,11 +1461,13 @@ fn footsteps(
     mut last: Local<HashMap<Entity, (Vec3, bool)>>,
     mut commands: Commands,
     volumes: Query<&CaVolume>,
+    even: Option<Res<crate::map::sound::EvenFootsteps>>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 {
         return;
     }
+    let even = crate::map::sound::EvenFootsteps::is_on(even.as_deref());
     // What the listener's Awareness does to enemy steps (gear_perks.md 14).
     let listener = listener.single().ok().filter(|(fx, _)| fx.awareness).map(|(fx, t)| (*fx, t.map(|t| t.0)));
     for (e, t, ms, intent, health, local, own, others, (perk, team, look, identity)) in &mut players {
@@ -1540,10 +1547,11 @@ fn footsteps(
         } else {
             Gait::Run
         };
+        let landing = landed && steps.airborne && gait != Gait::Jump;
         let n = match gait {
             // A jump's one key is its landing.
             Gait::Jump => 0,
-            _ if landed && steps.airborne => 1,
+            _ if landing => 1,
             _ => rules::footsteps_between(gait, steps.clock, steps.clock + dt),
         };
         steps.airborne = !ms.on_ground;
@@ -1560,22 +1568,61 @@ fn footsteps(
             .map_or(0.0, |c| c.characters().effective(look.unwrap_or(&Selection::default())).0.footprint_volume);
         let aware = listener.filter(|(_, mine)| *mine != team.map(|t| t.0));
         let specter = perk.map_or(1.0, |p| if ms.sprinting { p.dash_volume } else { p.step_volume });
-        let (volume, radius, extra) = footstep_sound(aware.map(|(fx, _)| (fx.aware_volume, fx.aware_radius)), specter, share);
+        let awareness = aware.map(|(fx, _)| (fx.aware_volume, fx.aware_radius));
+        let (volume, radius, extra) = footstep_sound(awareness, specter, share);
+        // `party_even_footsteps 1`: the shared profile (CS:S's level and
+        // its volume for the pace) instead of the radii; the perks still
+        // scale it (Awareness's radius factor stretches the falloff), the
+        // model's share doesn't (it is a body's own loudness).
+        let (volume, extra, level) = match even.then(|| even_step(gait, landing, awareness.map(|(_, r)| r))) {
+            Some((level, pace)) => (
+                pace * footstep_sound(awareness, specter, 0.0).0,
+                extra.map(|_| pace * 100.0),
+                Some(level),
+            ),
+            None => (volume, extra, None),
+        };
+        let shape = |s: CaSound, volume: f32| {
+            let s = s.volume(volume);
+            match level {
+                Some(level) => s.with_level(level),
+                None => s,
+            }
+        };
         // Others' steps sound from the character's centre; only the
         // surface ray starts at the foot.
         let centre = t.translation;
         for i in 0..n {
             let roll = if (steps.clock * 1000.0) as u32 / 300 % 2 == 0 && i == 0 { 0.0 } else { 1.0 };
             if let Some(f) = surface(roll, &mut rolls) {
-                sounds.write(CaSound::at(f, centre, radius).volume(volume));
+                sounds.write(shape(CaSound::at(f, centre, radius), volume));
             }
             if let Some(volume) = extra
                 && let Some(f) = rules::draw_any(&tables.sounds.awareness, rolls.next())
             {
-                sounds.write(CaSound::at(f, centre, radius).volume(volume));
+                sounds.write(shape(CaSound::at(f, centre, radius), volume));
             }
         }
     }
+}
+
+/// A step's level and volume (0..1) in the party's shared profile
+/// (`party_even_footsteps 1`, `map::sound::EVEN_STEP_LEVEL`): the pace
+/// from the gait (a landing is the jump's one step; sprinting runs), the
+/// falloff stretched by the listener's Awareness radius factor.
+pub fn even_step(gait: Gait, landing: bool, aware_radius: Option<f32>) -> (crate::map::SoundLevel, f32) {
+    use crate::map::sound::{EVEN_STEP_LEVEL, StepPace, even_step_volume};
+    let pace = match gait {
+        _ if landing => StepPace::Jump,
+        Gait::Walk => StepPace::Walk,
+        Gait::Crouch => StepPace::Crouch,
+        _ => StepPace::Run,
+    };
+    let level = match (EVEN_STEP_LEVEL, aware_radius) {
+        (crate::map::SoundLevel::Attenuation(a), Some(r)) if r > 0.0 => crate::map::SoundLevel::Attenuation(a / r),
+        (level, _) => level,
+    };
+    (level, even_step_volume(pace))
 }
 
 /// An enemy step's volume (0..100) and radius (u), and the volume of the

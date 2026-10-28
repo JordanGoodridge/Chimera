@@ -437,6 +437,21 @@ sections above already list.
   identity more. Chimera's mix has no per-game balance. A listening pass
   with both games' guns and steps at set distances, then a per-game gain
   (and a footstep range option).
+  *Opt-in setting added (default off), confirm in a playtest
+  (2026-10-28):* measured for others' steps as our mixer computes them
+  (apps/party_kit/tests/it/footstep_levels.rs, gain = volume x
+  `distance_gain` at 5 / 15 / 30 m): CS:S identity running 0.50 volume,
+  0.40 / 0.21 / 0 (linear, CompatibilityAttenuation 1.0, silent from
+  25.4 m), its jump step 1.0: 0.80 / 0.41 / 0; Combat Arms identity
+  running, sprinting and landing all 1.0 volume, 0.94 / 0.45 / 0 (radius
+  1.5 to 21.6 m, silent from 20.1 m); walking silent in both (CS:S's
+  bands, Combat Arms' walk animation has no step keys). So Combat Arms'
+  steps are over twice as loud close by and CS:S's carry about 5 m
+  farther. `party_even_footsteps 1` (the server's, replicated) gives
+  Combat Arms' others' steps CS:S's profile (`map::sound::EvenFootsteps`:
+  its level, 0.2 walk, 0.5 run or sprint, 0.325 crouched, 1.0 a jump's
+  or landing's step; perks still scale it), both then 0.40 / 0.21 / 0
+  running. Guns and impacts keep their games' levels.
 - **Hit feedback differs by the gun in hand: fixed (opt-in), confirm in a playtest.** A Combat Arms gun gets
   its hit indicator and name-tag flash (`ui::hud`), a CS:S gun nothing
   (parity), so CS:S rungs feel unresponsive next to Combat Arms ones.
@@ -488,6 +503,13 @@ sections above already list.
   no character choice: `character` in a definition is informational
   (minigame.rs shortcut), so nobody picks a CS:S class or a Combat Arms
   soldier as both games let them.
+  *Opt-in swap effect added (default off), confirm in a playtest
+  (2026-10-28):* `party_swap_effect 1` (archived, the party clients'):
+  when the local player's game changes on a rung its screen flashes
+  white and fades over 0.3 s while the new gun draws; another player's
+  swap puffs a pale sphere at its body for 0.5 s (`client::
+  swap_effect`); once per swap, nothing for a first identity or a dead
+  player. No sound. Character choice still needs the user's decision.
 - **Balance across identities is unmeasured.** Speeds, sprint, hull
   height, jump, head size and one-shot ranges change with the rung's
   game; nobody has looked at whether one game's rungs are easier to win

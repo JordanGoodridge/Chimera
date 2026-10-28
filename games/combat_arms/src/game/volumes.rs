@@ -620,6 +620,7 @@ fn pad_sound(l: &PadLaunch) -> CaSound {
         source: None,
         channel: None,
         server: true,
+        level: None,
     }
 }
 
