@@ -1,16 +1,17 @@
 # Combat Arms: kill streaks and special-kill callouts
 
-Source basis: reference material the user pointed the spec session to: the client's handling of the kill message (who killed whom, the multi-kill and first-kill fields, hit location, revenge and lucky-shot flags), the client's centre-screen effect banner (its animation, replacement rule and sound helper), the client UI image's scaling, the client's interface-sound path and the server's per-player match statistics. The client panel that turns a kill into a particular banner, side-log line and voice (it decides the step from the count) is **not** in the reference; where this spec says which banner or sound a kill gets, that is worked out from the install's data and the call sites around that panel, and is marked "(inferred)". Data was read from the Steam install on the Linux dev box through the repo's own archive reader: the HUD layout attributes (`attributes/layout.txt`, `[HUDLayout0]`, `[RevengeSystem]` and the weapon-effect sections), the client attributes (`attributes/clientbutes.txt`, `[Interface]` and the weapon-effect sections), the weapon list (`attributes/weapons.txt`, `HUDEffectOverride`), the main HUD layout (`xml/hud_main.xml`, control `Effect`), the English string table, the archives' file lists and the sound files' headers (lengths only).
+Source basis: reference material the user pointed the spec session to: the client's handling of the kill message (who killed whom, the multi-kill and first-kill fields, hit location, revenge and lucky-shot flags), the client's centre-screen effect banner (its animation, replacement rule and sound helper), the client UI image's scaling, the client's interface-sound path and the server's per-player match statistics. The first version of this spec did not find the client panel that turns a kill into a particular banner, side-log line and voice; it inferred those rules. A second pass (2026-10-28) found that panel in the reference and settled them: A2, A3, A6, B1, B2 and B4 now follow it, and "Corrections (2026-10-28)" lists what changed. Statements still marked "(inferred)" were not covered by that panel. Data was read from the Steam install on the Linux dev box through the repo's own archive reader: the HUD layout attributes (`attributes/layout.txt`, `[HUDLayout0]`, `[RevengeSystem]` and the weapon-effect sections), the client attributes (`attributes/clientbutes.txt`, `[Interface]` and the weapon-effect sections), the weapon list (`attributes/weapons.txt`, `HUDEffectOverride`), the main HUD layout (`xml/hud_main.xml`, control `Effect`), the English string table, the archives' file lists and the sound files' headers (lengths only).
 Status: draft
 
-Sections: Summary; Units and conventions; Part A, the rules (A1 what the server counts and sends, A2 which event a kill raises, A3 who sees and hears what, A4 the banner player, A5 the banner animation, A6 the voice player, A7 the side log, A8 weapon skins, A9 options); Part B, the Combat Arms pack (B1 steps, B2 special kills, B3 banner layout, B4 timings, B5 voice files, B6 side log, B7 weapon skins, B8 unused art); Per-frame order; Edge cases; Quirks; Test cases; Open questions.
+Sections: Summary; Units and conventions; Part A, the rules (A1 what the server counts and sends, A2 which event a kill raises, A3 who sees and hears what, A4 the banner player, A5 the banner animation, A6 the voice player, A7 the side log, A8 weapon skins, A9 options); Part B, the Combat Arms pack (B1 steps, B2 special kills, B3 banner layout, B4 timings, B5 voice files, B6 side log, B7 weapon skins, B8 unused art); Per-frame order; Edge cases; Quirks; Corrections (2026-10-28); Test cases; Open questions.
 
 ---
 
 ## Summary
 
 - The server counts each player's **multi-kill**: enemy kills each less than 5 s after the previous one. Every kill message carries that count, a first-kill flag, the hit location (head, groin, ...), and revenge and lucky-shot flags. Every client receives every kill message.
-- The **killer's own client** shows a big animated banner at the top centre of the screen (DOUBLE KILL, MULTI KILL, ULTRA KILL, FANTASTIC, UNBELIEVABLE, UNBELIEVABLE+; also FIRST KILL, HEADSHOT, NUTSHOT, REVENGE, LUCKY SHOT) and plays an announcer voice. The banner slams in from 5x size, throws off a growing "echo" copy while it shakes, holds, then blows up and fades. The whole thing lasts 1.4 s.
+- The **killer's own client** shows a big animated banner at the top centre of the screen (DOUBLE KILL, MULTI KILL, ULTRA KILL, FANTASTIC, UNBELIEVABLE, UNBELIEVABLE+; also FIRST KILL, HEADSHOT, NUTSHOT, REVENGE, LUCKY SHOT, and "KILL"/"N KILLS" for a plain kill) and plays an announcer voice. The banner slams in from 5x size, throws off a growing "echo" copy while it shakes, holds, then blows up and fades. The whole thing lasts 1.4 s.
+- **One kill, one announcement.** A kill picks exactly one event by a fixed priority (first kill, revenge, streak step, headshot or groin shot, plain kill). That one event gives the banner and **at most one voice**. A headshot double kill shows DOUBLE KILL with the skull drawn over it and says only "double kill". Voices of different kills are never stopped, queued or skipped: kills in quick succession overlap.
 - Only one banner shows at a time. Each banner kind has a **priority level**: a new banner replaces the current one unless the current one has a higher level, in which case the new one is dropped.
 - A weapon can carry a **skin** (a named section of data) that swaps the banner art and some voice files for kills made with it.
 
@@ -48,13 +49,29 @@ The split asked for by the engine plan: **Part A** is rules any game's announcer
 
 ### A2. Which event a kill raises
 
-On every kill message that names a killer, each client works out **one centre event** for that kill, in this order (inferred; Open question 1):
+On every kill message that names a killer, each client works out **exactly one event** for that kill. The inputs: whether the local player is the killer, the multi-kill count n, the first-kill flag, the revenge flag, the ice-crush flag (Snowball Fight), the victim's VIP rank (VIP modes), and the local **head and groin flags** (A3: refreshed from the hit location only on the local player's own kills). The first rule that matches picks the event:
 
-1. **First kill** flag set → the first-kill event. The streak step is ignored for this kill (the count is treated as 0).
-2. Otherwise the **step** for the multi-kill count n: the pack's step table maps n to a step (B1). A count with no step (n = 1 in Combat Arms) raises no step event.
-3. **Special shot**: a head hit location gives the headshot event, a groin hit location the groin-shot ("nutshot") event. These are raised on the same kill as a step. Which banner wins is decided by the levels (A4). Because their level is higher than a step's, a headshot double kill shows HEADSHOT (Open question 1).
-4. **Revenge** flag → the revenge event.
-5. **Lucky shot** flag → the lucky-shot event (A3: the killer only). Everyone also gets an extra kill-feed line.
+1. The victim has a VIP rank above 0 and the kill is a step kill or a first kill (n > 0 or first-kill flag) → **VIP kill**, level "event kill".
+2. First-kill flag → **first kill**, level "event kill". The count is not looked at.
+3. Ice-crush flag → **ice crush**, level "event kill".
+4. Revenge flag → **revenge**, level "event kill". A revenge kill that is also a double kill or a headshot shows REVENGE, not the step or HEADSHOT.
+5. n = 1 (no streak):
+   1. head flag set → **headshot**, level "special shot". The head flag is cleared here.
+   2. otherwise groin flag set → **groin shot** ("nutshot"), level "special shot". The groin flag is cleared here.
+   3. otherwise, if the local player is the killer → **plain kill**, level "kills", with the number N = the local player's kill total in this match after this kill (the scoreboard's kills: enemy kills only, not added during a training round). N = 1 uses the single "KILL" image, N > 1 the "KILLS" image; the number N is drawn in both.
+   4. otherwise nothing.
+6. n from 2 to 6 → that **step** (B1); n ≥ 7 → Unbelievable+. Level "special shot" (the same level as a headshot). n = 0 (or anything else) → nothing.
+
+So a headshot or groin shot is announced as such **only on a kill that is not a streak step**, not a first kill and not a revenge. On those other kills the head and groin flags still matter, but only for the top image and as a voice fall-back (A4, A6).
+
+What the chosen event does:
+
+- **Side log** (every client, A7): a line for a VIP kill, first kill, ice crush, step or plain kill. Revenge, headshot and groin shot get none.
+- **Banner and voice**, only when the local player is the killer:
+  - Banner request (A4) with the event's image and level; the number N for a plain kill (none otherwise); and a **top image**: the skull if the head flag is still set at this point, else the nut if the groin flag is still set, else none. The VIP kill never gets a top image. Because rule 5 clears the flag it used, a single-kill HEADSHOT or NUTSHOT banner has **no** top image, while a headshot DOUBLE KILL, FIRST KILL or REVENGE has the skull over it (Quirk 7).
+  - **One voice** at most (A6): the event's own voice if the pack (with the skin, A8) has one; otherwise the headshot voice if the head flag is still set and the pack has one; otherwise the groin-shot voice if the groin flag is still set and the pack has one for the local player's gender. Otherwise silence.
+
+The **lucky shot** is separate: after the kill's event, if the lucky-shot flag is set and the local player is the killer, a lucky-shot banner is requested at level "lucky shot" (no voice). Its level is above every kill event, so it replaces the kill's banner on that same kill. Everyone also gets the extra kill-feed line (A3). In Snowball Fight the killer's client also requests the frozen-kill banner after the kill's event (level "snowball kill"), which likewise replaces it.
 
 In co-operative mission modes (kills of AI enemies), the same banner player shows "N KILLS" with N in digits, or "COMBO" with a number when the server's co-op combo count is above 1, instead of the steps. Those numbers come from the co-op kill message, not from the multi-kill count. They are pack data (B2) and outside this spec's main scope.
 
@@ -64,13 +81,13 @@ In co-operative mission modes (kills of AI enemies), the same banner player show
 |---|---|---|
 | Kill-feed line with the headshot / groin-shot / revenge badges | everyone | `hud_crosshair.md` D5. The headshot badge whenever the location is head, killer or not |
 | Lucky-shot extra kill-feed line | everyone | a second line for the same kill, showing only the lucky-shot icon (no other badges) |
-| Centre banner (A4, A5) | the **killer's own client** only (inferred from the "killer is me" input the banner panel receives; Open question 1) | |
+| Centre banner (A4, A5) | the **killer's own client** only | other players' kills never show a banner |
 | Announcer voice (A6) | the killer only, local, no position | |
-| Side-log line (A7) | everyone (inferred; Open question 4) | small bar on the left edge, "name STEP" |
+| Side-log line (A7) | everyone, for the events A2 lists | small bar on the left edge, "name STEP" |
 | Killer's own "enemy kill" grunt | the killer only | the character's voice, not the announcer: `effects_sounds.md` Corrections 8. Not on a groin-shot kill |
 | Victim's hurt sounds (head: `HEADSHOT.WAV` grunt, groin: `NutPain.wav`) | everyone near, 3D | `effects_sounds.md` 11. They are not announcer lines |
 
-The headshot and groin-shot flags the banner panel uses are only updated when the local player is the killer (the client compares the killer's name with its own). For anyone else's kill they keep their last value (Quirk 3).
+The headshot and groin-shot flags the banner panel uses are only updated when the local player is the killer (the client compares the killer's name with its own). For anyone else's kill they keep their last value (Quirk 3). A flag stays set after a kill that did not use it (a headshot step kill) until the local player's next kill rewrites it, or until another player's single kill passes rule 5 of A2 on this client and clears it there.
 
 ### A4. The banner player
 
@@ -89,7 +106,7 @@ On a request with level ℓ:
 
 There is **no queue**. A request that loses to a higher level is gone, even if that banner ends 0.1 s later. A step that arrives while a lower or equal banner plays cuts it off at once.
 
-**Sound is separate.** The voice of a kill (A6) is played by the code that raised the event, whether or not its banner won (inferred; Open question 5).
+**Sound is separate.** The voice of a kill (A6) is played right after its banner request, whether or not that request was dropped. A double kill whose banner loses to a showing FIRST KILL still says "double kill".
 
 On entering a world (map load, reconnect) every banner is hidden and its timer stopped.
 
@@ -146,21 +163,22 @@ with alpha 255 at scale 1 falling linearly to 0 at scale B.
 
 ### A6. The voice player
 
-- Each event's voice is one sound file from the pack (B5), chosen at the moment of the event. A skin (A8) may replace it.
+- **One voice per kill, at most.** The kill's single event (A2) picks it: the event's own line; if the event has none in the pack, the headshot line when the head flag is still set; else the groin-shot line when the groin flag is still set. A kill never plays two announcer lines. Examples (stock pack): headshot double kill → "double kill" only; headshot first kill → "first kill" only; headshot revenge → "headshot" (revenge has no line, so the fall-back speaks); plain revenge → nothing.
+- The file is looked up at the moment of the event, in the killing weapon's skin first (A8).
 - Played as an **interface sound**: local (no position, no distance falloff), never passed through the map's sound filter (no reverb), medium priority, at the effects volume (`music_ambience.md` 8: effects master s × 1). Nothing plays when sound is disabled (`soundenable` 0).
-- **Overlap**: a new voice does **not** stop or wait for the previous one. Two kills 0.3 s apart play both lines, overlapping. (The helper has a "wait until the previous is done" mode; the announcer does not use it as far as the reference shows. Open question 5.)
-- Voices are not queued and have no cooldown.
-- Some events have no voice in the stock pack (revenge, lucky shot; B5).
+- **Kills in quick succession**: each kill message plays its own line at once. A new line does **not** stop, wait for or replace the previous one, and nothing is queued or skipped: two kills 0.3 s apart play both lines, overlapping, and two kills in the same frame start both lines in that frame. There is no cooldown. (The banner area's own sound helper has a "skip if the previous sound is still playing" mode, used by some mode messages; the announcer never goes through it.)
+- Whether its banner request won (A4) does not matter: the line plays either way.
+- Events without a line in the stock pack: revenge, plain kill (N > 1 always; N = 1 only if the pack's single-kill key is set, Open question 11), lucky shot.
 
 ### A7. The side log
 
-A short line per announced event on the left side, ("NAME  DOUBLE KILL" on a coloured bar), stacked, each fading out after a few seconds. The reference does not include its logic; the pack's layout values (B6) are all there is. Treat its exact behaviour (stacking, colours of the name, which events) as open (Open question 4).
+A short line per event on the left side ("NAME  DOUBLE KILL" on a coloured bar), stacked, each fading out after a few seconds. Which events get a line, and that every client adds it, is settled in A2: VIP kill, first kill, ice crush, step, and the local player's own plain kills; not revenge, headshot or groin shot. Its stacking, fading and name colours were not traced; the pack's layout values (B6) are all there is (Open question 4).
 
 ### A8. Weapon skins
 
 - A weapon may name a **skin** (`HUDEffectOverride` in the weapon list: the name of a data section).
 - When a kill message is handled, the client first selects the killing weapon's skin (the kill message's weapon id), handles the kill, then clears it.
-- While a skin is selected, every banner image and voice file is looked up first in the skin's section (the layout file's section for images, the client attribute file's section for sounds). A key the section lacks falls back to the default (inferred; Open question 7).
+- While a skin is selected, every banner image and voice file is looked up first in the skin's section (the layout file's section for images, the client attribute file's section for sounds). A key the section lacks falls back to the default pack's value: the skin's table starts as a copy of the default one and only the keys present in the section replace entries. The skull and nut top images follow the same rule.
 - So the skin follows the **killer's weapon**, on the killer's client.
 
 ### A9. Options and modes
@@ -175,7 +193,7 @@ A short line per announced event on the left side, ("NAME  DOUBLE KILL" on a col
 
 | Count n | Step | Banner (`[HUDLayout0]` key → file) | Voice (`[Interface]` key → file) | Side-log label (string key) | Side-log bar |
 |---|---|---|---|---|---|
-| 1 | none (unless first kill) | – | – | – | – |
+| 1 | none: the kill is a headshot, groin shot or plain kill instead (A2 rule 5) | – | – | – | – |
 | 2 | Double Kill | `MKComboDoubleKillImg` → `UI_HUD_Message\Effect\DoubleKill.dtx` | `DoubleKillSound` → `UI_SND\doublekill.wav` (1.41 s) | `MKDoubleKillImg` "DOUBLE KILL" | `bg_kill03.dtx` |
 | 3 | Multi Kill | `MKComboMultiKillImg` → `...\MultiKill.dtx` | `MultiKillSound` → `UI_SND\multikill.wav` (1.47 s) | "MULTI KILL" | `bg_kill02.dtx` |
 | 4 | Ultra Kill | `MKComboUltraKillImg` → `...\UltraKill.dtx` | `UltraKillSound` → `UI_SND\ultrakill.wav` (1.40 s) | "ULTRA KILL" | `bg_kill02.dtx` |
@@ -183,7 +201,7 @@ A short line per announced event on the left side, ("NAME  DOUBLE KILL" on a col
 | 6 | Unbelievable | `MKComboUnbelImg` → `...\Unbelievable.dtx` | `UnbelievableSound` → `UI_SND\Unbelievable.wav` (1.81 s) | "UNBELIEVABLE" | `bg_kill01.dtx` |
 | ≥ 7 | Unbelievable+ | `MKComboUnbelPlusImg` → `...\Unbelievable_plus.dtx` | `UnbelievablePlusSound` → `UI_SND\Unbelievable.wav` (the same file as Unbelievable) | "UNBELIEVABLE+" | `bg_kill01.dtx` |
 
-- Names and order are certain: they are the order of the server's six step counters, the layout keys, the string table and the art. The **thresholds** (2 to 7) are inferred from that order (Open question 1). The string table's old "Triple kill" entry is not used by any of this.
+- Names and order are certain: they are the order of the server's six step counters, the layout keys, the string table and the art. The **thresholds** are the reference's: n = 2 to 6 map to Double to Unbelievable, any n ≥ 7 to Unbelievable+. Every step requests at the "special shot" level (B4). The string table's old "Triple kill" entry is not used by any of this.
 - Window: 5000 ms, strictly less (A1).
 - The step art is drawn without a number.
 
@@ -191,14 +209,14 @@ A short line per announced event on the left side, ("NAME  DOUBLE KILL" on a col
 
 | Event | Banner image | Top image | Voice | Level (B4) |
 |---|---|---|---|---|
-| First kill | `MKComboFirstKillImg` → `Effect\FirstKill.dtx` | – | `FirstKillSound` → `UI_SND\FirstKill.wav` (1.30 s) | step level (inferred) |
+| First kill | `MKComboFirstKillImg` → `Effect\FirstKill.dtx` | – | `FirstKillSound` → `UI_SND\FirstKill.wav` (1.30 s) | event kill |
 | Headshot | `MKComboHeadShotImg` → `Effect\HeadShot.dtx` | `MKComboSkullImg` → `Effect\Head.dtx` (skull) | `HeatShotKillSound` (sic) → `UI_SND\headshot.wav` (0.93 s) | special shot |
-| Groin shot ("nutshot") | `MKComboNutShotImg` → `Effect\NutShot.dtx` | `MKComboNutsImg` → `Effect\Nut.dtx` | `NutShotMaleKillSound` → `UI_SND\NutShot_Male.wav` (1.87 s) or `NutShotFeMaleKillSound` → `UI_SND\NutShot_Female.wav` (1.57 s), by the **victim's** body gender (inferred; Open question 10) | special shot |
-| Revenge | `MKRevengeImg` → `Effect\Revenge.dtx`; the revenge panel's own copy `RevengeSuccessMsgImg` (same file, 250 x 101 at (512, 213), same timings as B4) | – | none in the default pack (`RevengeSound` exists only in the PSY skin) | revenge |
+| Groin shot ("nutshot") | `MKComboNutShotImg` → `Effect\NutShot.dtx` | `MKComboNutsImg` → `Effect\Nut.dtx` | `NutShotMaleKillSound` → `UI_SND\NutShot_Male.wav` (1.87 s) or `NutShotFeMaleKillSound` → `UI_SND\NutShot_Female.wav` (1.57 s), by the gender of the **local player's own** body (the killer's: a worn cosmetic body's figure type if any, else the character's) | special shot |
+| Revenge | `MKRevengeImg` → `Effect\Revenge.dtx`; the revenge panel's own copy `RevengeSuccessMsgImg` (same file, 250 x 101 at (512, 213), same timings as B4) | – | none in the default pack (`RevengeSound` exists only in the PSY skin), so the headshot or groin-shot line speaks instead when that flag is set (A6) | event kill |
 | Lucky shot | `LuckyShotEffectEXImg` → `effect\LuckyShot_EXPass.dtx` (the plain `LuckyShotEffectImg` is never used) | – | none | lucky shot |
-| VIP kill (VIP modes) | `MKVIPKillEffectImg` → `Effect\VIPKill.dtx` | – | `VipKillSount` (sic) → `UI_SND\VIP_kill.wav` | VIP escort |
-| Ice crush (Snowball Fight, killer only) | `SnowballFrozenKill` → `effect\IceCrush.dtx` | – | `IceCrushSound` → `UI_SND\SnowBallFight\IceCrush.wav` | snowball kill |
-| Co-op single kills | `MKComboOneKillImg` "KILL" / `MKComboOneKillsImg` "KILLS" with digits `MKComboNumberImg` + `0..9` + `.dtx` | headshot skull when a head kill | – | kills |
+| VIP kill (VIP modes) | `MKVIPKillEffectImg` → `Effect\VIPKill.dtx` | – | `VipKillSount` (sic) → `UI_SND\VIP_kill.wav` | event kill |
+| Ice crush (Snowball Fight, killer only) | the event's own image is `MKComboIceCrushImg` (its file is missing, B8), at once replaced by a second request `SnowballFrozenKill` → `effect\IceCrush.dtx` | – | `IceCrushSound` → `UI_SND\SnowBallFight\IceCrush.wav` | event kill, then snowball kill |
+| Plain kill (A2 rule 5.3) and co-op single kills | `MKComboOneKillImg` "KILL" (N = 1) / `MKComboOneKillsImg` "KILLS" (N > 1) with digits `MKComboNumberImg` + `0..9` + `.dtx` | – | `OneKillSound` for "KILL" only, if the pack sets it (Open question 11); "KILLS" has no voice key | kills |
 | Co-op combo | `MKComboComboImg` → `Effect\Combo.DTX` with digits | – | – | combo |
 
 No knife, grenade or other weapon-class callout exists. The only other kill-type marks are kill-feed icons (`hud_crosshair.md` D5).
@@ -241,12 +259,12 @@ Levels, low to high (a request is dropped while a higher one shows):
 | Level | Kind |
 |---|---|
 | 0 | HiSec case pickup (and "nothing showing") |
-| 1 | co-op kill count ("N KILLS") |
+| 1 | kills: plain kill ("KILL" / "N KILLS"), co-op kill count |
 | 2 | infection |
-| 3 | revenge |
-| 4 | streak step / combo |
-| 5 | special shot (headshot, groin shot) |
-| 6 | event kill |
+| 3 | revenge (no kill event uses it) |
+| 4 | co-op combo |
+| 5 | special shot: streak steps, headshot, groin shot |
+| 6 | event kill: first kill, revenge, VIP kill, ice crush |
 | 7 | mutation |
 | 8 | game message (bounty, mode messages) |
 | 9 | extra life |
@@ -255,7 +273,7 @@ Levels, low to high (a request is dropped while a higher one shows):
 | 12–14 | co-op mission complete, coin, boss down |
 | 15–16 | Snowball Fight frozen kill, safe |
 
-The kinds come from the level table. Which kinds the step, first-kill, headshot and groin-shot events use is inferred from their names (Open question 1).
+The kinds come from the level table; which level each kill event requests is the reference's (A2). Level 3 ("revenge") is not used by the revenge kill, which requests level 6. So: a step replaces a showing HEADSHOT and the other way round (equal levels); nothing at level 5 replaces a showing FIRST KILL or REVENGE; a plain kill (level 1) replaces nothing but a co-op count or a HiSec pickup.
 
 ### B5. Voices
 
@@ -298,18 +316,21 @@ Two of the skin keys name files that do not exist in the install (`Kil_Graffiti.
 
 Client, one frame:
 
-1. Network messages, in arrival order. For each kill message: update the kill feed (everyone); select the killer's weapon skin; if the local player is the killer, update the headshot and groin-shot flags; raise the event(s) of A2, each making its banner request (A4) and playing its voice (A6); clear the skin; add the side-log line.
+1. Network messages, in arrival order. For each kill message: update the kill feed (everyone); select the killer's weapon skin; if the local player is the killer, update the headshot and groin-shot flags; pick the kill's one event (A2); add its side-log line; if the local player is the killer, make its banner request (A4) and then play its one voice (A6); clear the skin; then the lucky-shot request (and Snowball's frozen-kill request), if any.
 2. HUD update: for each visible banner, apply A5 (scale, alpha, shake) for the current t; hide those with t ≥ T.
 3. Draw.
 
-Several kill messages in one frame are handled one after another, so the last request that is not dropped is the one seen. Every voice of that frame plays.
+Several kill messages in one frame are handled one after another, so the last request that is not dropped is the one seen. Each of those kills plays its own one voice, all starting in that frame.
 
 ## Edge cases
 
-- **Kill during a higher banner**: a double kill (level 4) 0.5 s after a headshot banner (level 5) shows no banner, but its voice plays (inferred).
+- **Kill during a higher banner**: a double kill (level 5) 0.5 s after a FIRST KILL banner (level 6) shows no banner, but "double kill" plays.
+- **Step during HEADSHOT**: a double kill 0.5 s after a single-kill HEADSHOT cuts it off and starts DOUBLE KILL (equal levels); both lines are heard, overlapping ("headshot" is 0.93 s long).
 - **Kill during an equal or lower banner**: a triple-count kill 0.6 s after DOUBLE KILL cuts it off and starts MULTI KILL at t = 0 (equal level).
 - **Counts above the table**: any n ≥ 7 is Unbelievable+, again on each further kill, with the same voice as Unbelievable.
 - **No killer, suicide or team kill**: no step, first-kill or special banner for the killer (the count only counts enemy kills). The kill feed still shows a head badge.
+- **Headshot on a streak, first kill or revenge**: no HEADSHOT banner and no "headshot" line (except a revenge, whose stock pack has no line, A6); the skull is drawn over the step, FIRST KILL or REVENGE banner.
+- **Training round**: kills still raise events and banners, but the plain-kill number does not grow (the kill total is not added to).
 - **Damage types that cannot headshot**: the location is torso, so no headshot event.
 - **Spectating or dead**: the killer's own client gets the banner even while dead (e.g. a grenade kill after death). The banner area is drawn at every HUD level (inferred; Open question 9).
 - **Map change**: every banner is hidden (A4).
@@ -319,10 +340,23 @@ Several kill messages in one frame are handled one after another, so the last re
 
 1. **Phase starts are a frame late.** The slam-in, echo and blow-out each start on the first frame at or after their time, and the echo only on the frame after the slam-in is seen to end. At 30 fps the echo can begin up to about 33 ms late, and the main copy sits at scale 1 for that frame. Keep (invisible at normal frame rates).
 2. **Skull timings unused.** The top image has its own timing values in the data, but it follows the banner's. Keep: use the banner's.
-3. **Stale special-shot flags.** The headshot and groin-shot flags the banner panel reads are only refreshed on the local player's own kills. Whatever the panel does with them for other players' kills (the side log, if it uses them) sees the local player's last kill's flags. Fix in ours: take them from each kill message.
+3. **Stale special-shot flags.** The headshot and groin-shot flags the banner panel reads are only refreshed on the local player's own kills, and only rule 5 of A2 clears them. Another player's single kill can therefore take the headshot branch on this client with the local player's stale flag, which shows and plays nothing (not the killer) and only clears the flag. Nothing visible depends on it. Fix in ours: take them from each kill message.
 4. **Custom-timing banners compute their blow-out from the defaults**: d = 3 − (0 + 0.1 + 0.15) = 2.75 s with tₑ unchanged at 1.2 s (when not given). Keep the formula for those modes.
 5. **Missing skin art.** The Graffiti skin's single "KILL" image names a file that does not exist, so that banner would draw blank (or the engine's missing-texture look) for a co-op single kill with that weapon. Keep the lookup; an empty image is fine.
 6. **Unbelievable+ has no voice of its own**: it replays the Unbelievable line. Keep (data).
+7. **No skull on a single-kill HEADSHOT.** The top image is chosen after the headshot rule has cleared the head flag, so the HEADSHOT banner of a single kill is drawn without the skull (and NUTSHOT without the nut), while a headshot step, first kill or revenge carries the skull. Keep (unless the banner art itself already includes it, which this pass did not look at).
+
+## Corrections (2026-10-28)
+
+A second pass found the client panel that turns a kill message into the banner, side-log line and voice. Changes from the first version:
+
+1. **One event per kill** (A2), by a fixed priority: VIP kill, first kill, ice crush, revenge, then the count. Headshot and groin shot are events only on a single (non-streak) kill. Before: a step and a special shot could both be raised by one kill.
+2. **One voice per kill** (A6). Before: "every voice plays" (inferred). A headshot double kill says only "double kill"; the playtest of 2026-10-28 heard both lines, which is wrong.
+3. **Levels** (B2, B4): steps request level 5 (the same as headshot and groin shot), not 4; first kill, revenge, VIP kill and ice crush request 6. A step now replaces a showing HEADSHOT (equal levels) and loses to a showing FIRST KILL or REVENGE.
+4. **Plain kills** by the local player show "KILL" / "N KILLS" with the match kill total (A2 rule 5.3), and get a side-log line.
+5. **Top image**: the skull or nut goes over a step, first-kill or revenge banner when the flag is set, and not over a single-kill HEADSHOT or NUTSHOT (Quirk 7). Before: the skull always went with HEADSHOT.
+6. **Groin-shot voice gender** is the killer's (local player's) body, not the victim's.
+7. **Skin fall-back** to the default pack is confirmed.
 
 ## Test cases
 
@@ -330,15 +364,15 @@ Times in seconds unless marked. "Banner" means the local killer's centre banner.
 
 | # | Setup | Input | Expected |
 |---|---|---|---|
-| 1 | Player P, no previous kill | P kills an enemy at 0 | count 1; no step banner; no step voice |
+| 1 | Player P, no previous kill, no first-kill flag | P kills an enemy at 0 (body hit) | count 1; banner "KILL" with the number 1 at level 1; no step voice (a voice only if the pack sets `OneKillSound`) |
 | 2 | As 1 | further enemy kills at 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 | counts 2..7 → DOUBLE KILL, MULTI KILL, ULTRA KILL, FANTASTIC, UNBELIEVABLE, UNBELIEVABLE+; voices doublekill, multikill, ultrakill, fantastic, Unbelievable, Unbelievable |
-| 3 | P killed an enemy at 0 | next enemy kill at exactly 5.000 | count 1; no banner |
+| 3 | P killed an enemy at 0 | next enemy kill at exactly 5.000 (body hit) | count 1; no step: banner "KILLS" with the number 2, no voice |
 | 4 | P killed an enemy at 0 | next enemy kill at 4.999 | count 2; DOUBLE KILL |
 | 5 | P killed an enemy at 0 | team kill at 1, enemy kill at 2 | count 2 at 2 (the team kill neither counts nor resets); DOUBLE KILL at 2 |
 | 6 | Count 7 at 6.0 | enemy kill at 7.0 | count 8; UNBELIEVABLE+ again |
 | 7 | Any | kill message with first-kill flag, count 1 | FIRST KILL banner, `FirstKill.wav` |
-| 8 | Any | head kill, count 1 | HEADSHOT banner with the skull top image; `headshot.wav` |
-| 9 | Any | groin kill of a female character, count 1 | NUTSHOT banner with the nut top image; `NutShot_Female.wav`; no "enemy kill" grunt for the killer |
+| 8 | Any | head kill, count 1, no first-kill or revenge flag | HEADSHOT banner (level 5) **without** a top image (Quirk 7); `headshot.wav` only |
+| 9 | Local player's body female | groin kill (of anyone), count 1 | NUTSHOT banner without a top image; `NutShot_Female.wav`; no "enemy kill" grunt for the killer. Same kill by a male-bodied local player: `NutShot_Male.wav` |
 | 10 | Banner player idle | request level 4 at t = 0 | visible 0 ≤ t < 1.4; hidden on the first frame with t ≥ 1.4 |
 | 11 | Default timings | main copy at t = 0.05 | scale 5 − 4·(0.5)⁴ = 4.75; alpha ⌊255 − 3.75·255/4⌋ = 15 |
 | 12 | Default timings | main copy at t = 0.5 | scale 1, alpha 255, offset (0, 0) |
@@ -346,11 +380,11 @@ Times in seconds unless marked. "Banner" means the local killer's centre banner.
 | 14 | Default timings | echo at 0.075 s into the echo phase | scale 3 − 2·(0.5)⁴ = 2.875; alpha ⌊255 − 1.875·255/2⌋ = 15 |
 | 15 | Default timings | echo outside its phase (t = 0.05 or t = 0.5) | alpha 0 |
 | 16 | Default timings, echo phase | main copy offset | each axis an integer in −5..5, new every frame; echo offset 0 |
-| 17 | HEADSHOT (level 5) shown at 0 | DOUBLE KILL request (level 4) at 0.5 | request dropped; HEADSHOT keeps playing to 1.4; `doublekill.wav` still plays at 0.5 |
-| 18 | DOUBLE KILL (4) shown at 0 | MULTI KILL request (4) at 0.6 | DOUBLE KILL hidden at once; MULTI KILL at its t = 0 |
-| 19 | REVENGE (3) shown at 0 | DOUBLE KILL request (4) at 0.2 | REVENGE replaced |
+| 17 | FIRST KILL (level 6) shown at 0 | DOUBLE KILL request (level 5) at 0.5 | request dropped; FIRST KILL keeps playing to 1.4; `doublekill.wav` still plays at 0.5, overlapping `FirstKill.wav` (1.30 s) |
+| 18 | DOUBLE KILL (5) shown at 0 | MULTI KILL request (5) at 0.6 | DOUBLE KILL hidden at once; MULTI KILL at its t = 0 |
+| 19 | REVENGE (6) shown at 0 | DOUBLE KILL request (5) at 0.2 | request dropped; REVENGE keeps playing; `doublekill.wav` plays |
 | 20 | DOUBLE KILL shown | LUCKY SHOT (11) at 0.3 | replaced; no lucky-shot voice |
-| 21 | Two kills in one frame raising DOUBLE then MULTI | – | MULTI KILL shown; both voices play, overlapping |
+| 21 | Two kills in one frame raising DOUBLE then MULTI | – | MULTI KILL shown; `doublekill.wav` and `multikill.wav` both start that frame, overlapping |
 | 22 | Voice playing (`fantastic.wav`, 1.67 s) | next step at +0.5 | `Unbelievable.wav` starts at +0.5 while `fantastic.wav` keeps playing |
 | 23 | `soundenable` 0 | any announced kill | banner as usual, no voice |
 | 24 | Screen 1920 x 1080 | banner at t = 0.5 | `effect_Img` rect x 480, y 106.875, w 960, h 360 (512·1.875, 256·1.40625); centre (960, 286.875) |
@@ -359,21 +393,29 @@ Times in seconds unless marked. "Banner" means the local killer's centre banner.
 | 27 | Request with number 120 | – | hundreds 1, tens 2, ones 0 all shown |
 | 28 | Request with number 1234 | – | shows 2, 3, 4 |
 | 29 | Kill with a weapon whose skin is `PSYWeaponEffect`, count 2 | – | `DoubleKill_PSY.dtx`; voice `doublekill.wav` (the PSY skin has no double-kill voice) |
-| 30 | Head kill with a `TMWeaponEffect` weapon | – | `HeadShot_RoboSkull.dtx`, top `Head_RoboSkull.dtx`, `TM_Headshot.wav` |
-| 31 | Head kill with a `PhantomWeaponEffect` weapon | – | `Headshot_phantom.dtx`, top image the default skull `Head.dtx` (no skull key in the section), `headshot.wav` |
-| 32 | Another player Q gets a double kill | on P's client | no banner, no voice; kill-feed line for Q's kill (and a side-log line, Open question 4) |
+| 30 | Head kill with a `TMWeaponEffect` weapon | count 1 | `HeadShot_RoboSkull.dtx`, no top image, `TM_Headshot.wav`. Same weapon, head kill at count 2: default `DoubleKill.dtx` with top `Head_RoboSkull.dtx`, `doublekill.wav` only |
+| 31 | Head kill with a `PhantomWeaponEffect` weapon | count 2 | `DoubleKill_phantom.dtx`, top image the default skull `Head.dtx` (no skull key in the section), `doublekill.wav` (default, the section has no voices) |
+| 32 | Another player Q gets a double kill | on P's client | no banner, no voice; kill-feed line and a side-log line "Q DOUBLE KILL" |
 | 33 | Map change while a banner shows | – | banner hidden, timer stopped |
-| 34 | Lucky-shot kill by P of R | on every client | two kill-feed lines; on P's client the `LuckyShot_EXPass.dtx` banner |
+| 34 | Lucky-shot kill by P of R | on every client | two kill-feed lines; on P's client the `LuckyShot_EXPass.dtx` banner (it replaces the kill's own banner, requested just before it) |
+| 35 | P's previous enemy kill 2 s ago | head kill, count 2 (the playtest case) | DOUBLE KILL banner (level 5) with the skull over it; **only** `doublekill.wav`; no HEADSHOT banner, no `headshot.wav`; side-log line "P DOUBLE KILL" |
+| 36 | Any | head kill with the first-kill flag | FIRST KILL banner with the skull; only `FirstKill.wav` |
+| 37 | Any | head kill with the revenge flag, count 2 | REVENGE banner (level 6) with the skull; `headshot.wav` (the stock revenge has no line, so the head fall-back speaks); no side-log line |
+| 38 | Any | revenge kill, body hit | REVENGE banner, no voice |
+| 39 | Any | groin kill at count 3, local body male | MULTI KILL with the nut top image; only `multikill.wav` |
+| 40 | Kills by P at 0.0 (head, count 1) and 0.4 (body, count 2) | – | HEADSHOT at 0.0, replaced at 0.4 by DOUBLE KILL (equal level); `headshot.wav` from 0.0 to 0.93 and `doublekill.wav` from 0.4, overlapping; neither is stopped, delayed or skipped |
+| 41 | P's single kill with a PSY-skin weapon, revenge flag, body hit | – | the PSY skin's revenge image and its revenge line (the only skin with one) |
 
 ## Open questions
 
-1. **Thresholds and levels per event.** The panel that maps the count to a step, and decides which banner each event requests (and at which level, and whether a head kill on a streak step shows the step or HEADSHOT), is missing from the reference. The table B1 (2 → Double ... 7+ → Unbelievable+) and the levels in B2 are inferred from the data's order and names. Check live: three quick kills should show MULTI KILL; a headshot second kill shows which banner and plays which voices; whether other players' streaks show a banner (A3).
+1. **Thresholds and levels per event.** **Answered (2026-10-28)** from the reference's kill panel: A2, B1, B2, B4. A headshot second kill shows DOUBLE KILL with the skull and plays only "double kill"; other players' streaks show no banner. Still worth a live look: whether the stock "KILL" / "N KILLS" banner really shows on every plain kill in the Steam build (A2 rule 5.3), since nobody has described it from play.
 2. **Death and the count.** Does the killer's own death reset the multi-kill count? Check live: kill, die within 2 s, kill again from respawn within 5 s of the first kill.
 3. **First kill scope.** First kill of the round or of the match, per team or overall? Check in a round mode.
-4. **Side log.** Who gets a line (everyone, or only the killer), what it says, how lines stack and fade (the four timing values and two alpha steps suggest fade in, grow to 1.1x, hold, fade out over 3.75 s), and whether single kills and special shots get lines. Check live with screenshots.
-5. **Voice when the banner is dropped, and overlap.** Confirm a lower-level event still plays its voice while a higher banner shows, and that two voices overlap rather than cut.
+4. **Side log.** Which events get a line and who sees it is answered (A2, A7). Still open: what the line says for a plain kill, how lines stack and fade (the four timing values and two alpha steps suggest fade in, grow to 1.1x, hold, fade out over 3.75 s) and the name colours. Check live with screenshots.
+5. **Voice when the banner is dropped, and overlap.** **Answered (2026-10-28):** one kill plays at most one line (its single event's, with the head and groin fall-backs of A6); the line plays whether or not its banner request was dropped; lines of different kills overlap, never stopped, queued or skipped (the skip-if-playing sound helper is not used by the announcer). Narrowed to a live check only: that the engine's interface-sound voice limit does not cut a line when many sounds play at once.
 6. **Lucky-shot roll.** The rate comes from the lobby; its value and what decides a lucky shot are not in the reference.
-7. **Skin fall-back.** Confirm that a key missing from a skin section falls back to the default (test case 31), rather than drawing nothing.
+7. **Skin fall-back.** **Answered (2026-10-28):** a skin's table starts as a copy of the default one; missing keys keep the default (A8).
 8. **Scoreboard step counters.** The client counts kills per multi-kill count value per player; where (if anywhere) the scoreboard shows them.
-9. **Warm-up and HUD levels.** Are warm-up kills announced? Is the banner drawn while the local player is dead (death screen up) or spectating?
-10. **Groin-shot voice gender.** Male or female line by the victim's body or by the killer's? Check live with a female character killed and killing.
+9. **Warm-up and HUD levels.** Narrowed (2026-10-28): the client announces kills whatever the round; in a training round it only skips adding to the kill total (so the plain-kill number stalls). Whether the server sets the count and flags during warm-up, and whether the banner is drawn while the local player is dead (death screen up) or spectating, is still open.
+10. **Groin-shot voice gender.** **Answered (2026-10-28):** by the local player's (the killer's) own body: a worn cosmetic body's figure type if any, else the character's model (B2).
+11. **Single-kill voice key.** The plain-kill "KILL" event looks up `OneKillSound` in `[Interface]` (and in a skin's section). This pass could not re-read the keyed attribute file to see whether the stock data sets it; the first pass listed no co-op single-kill voice, which suggests it does not. If it is set, every first kill of a match by the local player (without the first-kill flag) says it.
