@@ -9,10 +9,19 @@
 //! (`MinigameHud::playing`), so plain CS:S keeps its own. An app adds
 //! `MinigameScoreboardPlugin`.
 //!
-//! Known shortcuts: the gun is its id without the game's prefix (no
-//! display-name registry in the shell); plain text, no team colours.
+//! The gun is shown by its display name: `GunNames` (an app fills it from
+//! the games' strings, as the minigame panel's `{weapon}` does), else the
+//! weapon data's plain `hud.name` (`WeaponCatalog`), else the id's last
+//! part in capitals. The columns have fixed widths (numbers right-aligned,
+//! cells clipped) so a header never runs into the next. The board is drawn
+//! above the minigame panel with an opaque background.
+//!
+//! Known shortcuts: plain text, no team colours.
+
+use std::collections::HashMap;
 
 use bevy::prelude::*;
+use chimera_sim::weapon::data::WeaponCatalog;
 use chimera_sim::minigame::{
     hud::MinigameHud,
     ladder::{Ladder, Rung},
@@ -31,8 +40,27 @@ pub struct MinigameScoreboardPlugin;
 
 impl Plugin for MinigameScoreboardPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<HeldActions>().add_systems(Startup, spawn).add_systems(Update, draw);
+        app.init_resource::<HeldActions>().init_resource::<GunNames>().add_systems(Startup, spawn).add_systems(Update, draw);
     }
+}
+
+/// Guns' display names by weapon id (an app fills it; the minigame panel
+/// names guns the same way).
+#[derive(Resource, Clone, Debug, Default)]
+pub struct GunNames(pub HashMap<String, String>);
+
+/// What the board calls gun `id`: `names`, else the data's `hud.name`
+/// (not a `#` string token), else the id's last part in capitals.
+pub fn gun_name(id: &str, names: Option<&GunNames>, catalog: Option<&WeaponCatalog>) -> String {
+    if let Some(n) = names.and_then(|n| n.0.get(id)) {
+        return n.clone();
+    }
+    if let Some(n) = catalog.and_then(|c| c.get(id)).and_then(|d| d.hud.name.as_deref()).filter(|n| !n.starts_with('#')) {
+        return n.to_string();
+    }
+    let last = id.rsplit(':').next().unwrap_or(id);
+    let last = last.strip_prefix("weapon_").unwrap_or(last);
+    last.chars().map(|c| if c == '_' || c == '-' { ' ' } else { c.to_ascii_uppercase() }).collect()
 }
 
 /// The overlay's root (hidden unless the key is held).
@@ -60,20 +88,27 @@ pub struct ScoreboardRow {
 
 const COLOR: Color = Color::srgb(0.95, 0.95, 0.95);
 const LOCAL: Color = Color::srgb(1.0, 0.85, 0.3);
-const WIDTHS: [f32; 6] = [220.0, 60.0, 70.0, 200.0, 70.0, 70.0];
+/// Name, Kills, Deaths, Gun, Ping, Wins.
+pub const WIDTHS: [f32; 6] = [240.0, 80.0, 90.0, 260.0, 80.0, 80.0];
+const GAP: f32 = 10.0;
+const BOARD_WIDTH: f32 = 840.0 + 5.0 * GAP + 24.0;
+
+fn row_node() -> Node {
+    Node { column_gap: px(GAP), ..default() }
+}
 
 fn spawn(mut commands: Commands) {
     commands.spawn((
         ScoreboardRoot,
         Visibility::Hidden,
-        GlobalZIndex(60),
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75)),
+        GlobalZIndex(80),
+        BackgroundColor(Color::srgb(0.04, 0.04, 0.05)),
         Node {
             position_type: PositionType::Absolute,
             left: percent(50.0),
             top: percent(12.0),
-            margin: UiRect::left(px(-385.0)),
-            width: px(770.0),
+            margin: UiRect::left(px(-BOARD_WIDTH / 2.0)),
+            width: px(BOARD_WIDTH),
             padding: UiRect::all(px(12.0)),
             flex_direction: FlexDirection::Column,
             row_gap: px(4.0),
@@ -88,7 +123,7 @@ fn cell(parent: &mut ChildSpawnerCommands, text: String, width: f32, right: bool
         TextFont { font_size: FontSize::Px(18.0), ..default() },
         TextColor(color),
         TextLayout::justify(if right { Justify::Right } else { Justify::Left }),
-        Node { width: px(width), ..default() },
+        Node { width: px(width), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
     ));
 }
 
@@ -109,6 +144,8 @@ fn draw(
     hud: Option<Res<MinigameHud>>,
     ladder: Option<Res<Ladder>>,
     settings: Option<Res<NetSettings>>,
+    gun_names: Res<GunNames>,
+    catalog: Option<Res<WeaponCatalog>>,
     players: Query<
         (
             Entity,
@@ -142,7 +179,7 @@ fn draw(
             let gun = ladder
                 .as_ref()
                 .and_then(|l| l.rungs.get(rung))
-                .map(|id| id.split_once(':').map_or(*id, |(_, g)| g).to_string())
+                .map(|id| gun_name(id, Some(&gun_names), catalog.as_deref()))
                 .unwrap_or_default();
             (
                 rung,
@@ -162,8 +199,8 @@ fn draw(
     let rows = sorted(rows);
     let root_e = root.0;
     commands.entity(root_e).with_children(|p| {
-        p.spawn((ScoreboardHeader, Node::default())).with_children(|r| {
-            for (i, (h, w)) in ["Player", "Kills", "Deaths", "Gun", "Ping", "Wins"].iter().zip(WIDTHS).enumerate() {
+        p.spawn((ScoreboardHeader, row_node())).with_children(|r| {
+            for (i, (h, w)) in ["Name", "Kills", "Deaths", "Gun", "Ping", "Wins"].iter().zip(WIDTHS).enumerate() {
                 cell(r, h.to_string(), w, i != 0 && i != 3, COLOR);
             }
         });
@@ -178,7 +215,7 @@ fn draw(
                 (ping, true),
                 (row.wins.to_string(), true),
             ];
-            p.spawn((row, Node::default())).with_children(|r| {
+            p.spawn((row, row_node())).with_children(|r| {
                 for ((text, right), w) in cells.into_iter().zip(WIDTHS) {
                     cell(r, text, w, right, color);
                 }
