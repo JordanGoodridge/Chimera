@@ -2195,6 +2195,7 @@ fn t102_minigame_state_on_the_hud() {
         rung: Some(10),
         winner,
         player,
+        ..Default::default()
     };
     sim.app.world_mut().resource_mut::<MinigameHud>().results = Some(MatchResults {
         title: "Gun Game".into(),
@@ -2206,6 +2207,11 @@ fn t102_minigame_state_on_the_hud() {
     assert_eq!(m.results[0], "Remote wins the match");
     assert_eq!(m.results[1], "1. Remote  rung 10/10  4 kills  1 deaths");
     assert_eq!(m.results[2], "2. AI_Bravo_7  rung 10/10  4 kills  1 deaths", "a local character by the HUD's name");
+    // The shell's match-end screen up: the panel leaves the results to it.
+    sim.app.world_mut().resource_mut::<MinigameHud>().results_shown = true;
+    sim.ticks(1);
+    let m = hud(&sim).minigame.expect("still shown");
+    assert!(m.results.is_empty() && m.notices.is_empty(), "{m:?}");
     sim.app.world_mut().insert_resource(MinigameHud::default());
     sim.ticks(1);
     assert_eq!(hud(&sim).minigame, None);

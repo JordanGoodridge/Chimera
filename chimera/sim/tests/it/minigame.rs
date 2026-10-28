@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 use chimera_core::{
-    core::{Damage, DamageKind, Dead, God, Hitgroup, Score, SimClock, Team},
+    core::{Damage, DamageKind, Dead, FreezeTime, God, Hitgroup, Intent, Score, SimClock, Team},
     gameplay::Gameplay,
 };
 use chimera_sim::{
@@ -170,6 +170,22 @@ fn kills_climb_the_ladder_melee_deaths_demote_and_the_last_rung_wins() {
     let team_a = sim.app.world().get::<Team>(a).unwrap().0;
     assert!(matches!(phase(&sim), Phase::RoundOver { .. }), "{:?}", phase(&sim));
     assert_eq!(sim.app.world().resource::<Match>().winner, Some(team_a));
+    // The win pauses everyone through the match's end: a's forward, jump
+    // and fire are ignored (its look kept), the freeze is on for bots and
+    // a client's prediction.
+    let at = sim.position(a);
+    for _ in 0..60 {
+        let mut i = sim.app.world_mut().get_mut::<Intent>(a).unwrap();
+        i.move_axis = Vec2::Y;
+        i.jump = true;
+        i.fire = true;
+        i.yaw = 1.0;
+        sim.ticks(1);
+    }
+    assert!(sim.app.world().resource::<FreezeTime>().0, "frozen");
+    let i = sim.app.world().get::<Intent>(a).unwrap().clone();
+    assert!(i.move_axis == Vec2::ZERO && !i.jump && !i.fire && i.yaw == 1.0, "{i:?}");
+    assert!(sim.position(a).distance(at) < 0.01, "a stands: {} -> {}", at, sim.position(a));
     sim.seconds(minigame::runtime::ROUND_OVER as f64 + minigame::runtime::INTERMISSION as f64 + 0.2);
     assert_eq!(phase(&sim), Phase::MatchOver);
     assert_eq!(sim.app.world().resource::<Match>().result, Some(Some(team_a)));
@@ -191,10 +207,21 @@ fn kills_climb_the_ladder_melee_deaths_demote_and_the_last_rung_wins() {
     assert!(lines[1].starts_with("1. ") && lines[1].contains("rung 3/3") && lines[1].contains("3 kills"), "{lines:?}");
     assert!(lines[2].starts_with("2. ") && lines[2].contains("rung 1/3"), "{lines:?}");
     assert_eq!(sim.app.world().resource::<chimera_sim::minigame::hud::MinigameHud>().results.as_ref(), Some(&results));
+    // Each row's final gun and matches won (this one counted), and the
+    // match-end hold from the match over: the next match's change
+    // `RESULTS_HOLD` s on (no server here to pick a map).
+    let guns: Vec<(Option<&str>, u32)> = results.rows.iter().map(|r| (r.gun.as_deref(), r.wins)).collect();
+    assert_eq!(guns, [(Some(SHOTGUN), 1), (Some(PISTOL), 0)]);
+    let next = sim.app.world().resource::<minigame::NextMatch>().clone();
+    let now = sim.app.world().resource::<SimClock>().now;
+    assert_eq!(next.map, None);
+    assert!(next.at > now && next.at <= now + minigame::runtime::RESULTS_HOLD, "{next:?} at {now}");
 
     // `minigame_restart`: everyone again from the first rung, no results.
     minigame::restart(sim.app.world_mut());
     assert!(sim.app.world().get_resource::<MatchResults>().is_none());
+    assert!(sim.app.world().get_resource::<minigame::NextMatch>().is_none(), "the hold over");
+    assert!(!sim.app.world().resource::<FreezeTime>().0, "the freeze lifted");
     settle(&mut sim);
     assert_eq!(phase(&sim), Phase::Live);
     assert_eq!((rung(&sim, a), rung(&sim, b)), (0, 0));

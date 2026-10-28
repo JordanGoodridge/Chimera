@@ -34,6 +34,9 @@ pub static PARTS: GameParts = GameParts {
     hud: Some(super::GAME),
     maps: &["combat_arms:warehouse"],
     announcer: Some(ANNOUNCER),
+    // Its result screen's win sound (`ResultWinSound`, music_ambience.md
+    // section 4) is a file the spec doesn't name: none yet.
+    match_won_sound: None,
     // No cue pack yet: its interface sounds' files (the level-up, last
     // stage and result sounds) are in keyed attribute files we don't read
     // (music_ambience.md, Open question 1).

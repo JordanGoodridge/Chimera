@@ -29,6 +29,11 @@
 //!   `core::RespawnDue`).
 //! - Held (`MatchHold`, a server changing map for the next match): no
 //!   one joins or respawns, the phases don't step.
+//! - The match's end pauses everyone (`hold_the_end`): from the win (the
+//!   round over) through the intermission, the match over and a map
+//!   change's hold, every intent (players' and bots') keeps only its look
+//!   and `core::FreezeTime` is on (bots stand, a network client's
+//!   prediction holds); lifted when the next match plays.
 //! - Deaths (`handle_deaths`, after the tick's damage): the dead marked
 //!   (`Dead`, not solid), `core::Score`'s deaths and an enemy kill's kill
 //!   counted while the match counts, the mode's `on_death`, then its
@@ -45,7 +50,7 @@ use super::{
 };
 use crate::{
     core::{
-        Connecting, Dead, Died, God, Health, Intent, Npc, Score, SimClock, SimSet, SpawnPoint, Spectating, Team,
+        Connecting, Dead, Died, FreezeTime, God, Health, Intent, Npc, Score, SimClock, SimSet, SpawnPoint, Spectating, Team,
     },
     mode::{
         self, ALPHA, Death, DeathKind, Flow, FlowEvent, Match, Phase, Span, classify, current_mode, plays,
@@ -495,6 +500,61 @@ pub fn status(world: &mut World) -> Result<String, String> {
     Ok(lines.join("\n"))
 }
 
+/// The match's end froze everyone (`hold_the_end`), so the freeze lifts
+/// with the end (here or at `minigame::restart`), not a game's own.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct EndFreeze;
+
+/// What a player held by the match's end keeps of its intent: the look
+/// (and the command's number); no moving, jumping, firing or weapon use.
+pub fn end_frozen(i: &Intent) -> Intent {
+    Intent {
+        yaw: i.yaw,
+        pitch: i.pitch,
+        command: i.command,
+        ..default()
+    }
+}
+
+/// Whether the match's end holds everyone: from the win (the round over)
+/// through the intermission, the match over and a map change's
+/// `MatchHold`, until the next match.
+pub fn end_holds(world: &World) -> bool {
+    super::held(world)
+        || world.get_resource::<Match>().is_some_and(|m| {
+            matches!(m.phase, Phase::RoundOver { .. } | Phase::Intermission { .. } | Phase::MatchOver)
+        })
+}
+
+/// The match's end pauses the game for everyone (players and bots, the
+/// server's rule, so a network client's prediction is held too through
+/// `core::FreezeTime`): every intent kept to its look (`end_frozen`)
+/// while `end_holds`; the freeze lifted when the next match plays.
+fn hold_the_end(world: &mut World) {
+    let ours = world.contains_resource::<EndFreeze>();
+    if end_holds(world) {
+        if !ours {
+            world.insert_resource(EndFreeze);
+        }
+        if world.get_resource::<FreezeTime>().is_none_or(|f| !f.0) {
+            world.insert_resource(FreezeTime(true));
+        }
+        let mut q = world.query::<&mut Intent>();
+        for mut i in q.iter_mut(world) {
+            *i = end_frozen(&i);
+        }
+    } else if ours {
+        lift_end_freeze(world);
+    }
+}
+
+/// The match's end freeze lifted (if it is on).
+pub fn lift_end_freeze(world: &mut World) {
+    if world.remove_resource::<EndFreeze>().is_some() {
+        world.insert_resource(FreezeTime(false));
+    }
+}
+
 /// The runtime's systems (the server's, while a minigame is the
 /// gameplay's rules) and the join order.
 pub(super) fn plugin(app: &mut App) {
@@ -516,6 +576,7 @@ pub(super) fn plugin(app: &mut App) {
                     crate::spawning::hold_the_dead,
                     end_protection,
                     super::results::record,
+                    hold_the_end,
                 )
                     .chain()
                     .in_set(SimSet::Rules),

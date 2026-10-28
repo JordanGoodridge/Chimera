@@ -69,6 +69,11 @@ pub struct GameParts {
     /// Its announcer pack, a TOML document (`announcer::AnnouncerPack`),
     /// registered with its parts.
     pub announcer: Option<&'static str>,
+    /// A sound file in its install (a path its mount reads, loaded at run
+    /// time) that a party match's end plays to everyone when someone won
+    /// (the shell's match-end screen, `chimera_client::client::match_end`;
+    /// the HUD's game's first, else another game's; none if missing).
+    pub match_won_sound: Option<&'static str>,
     /// Its minigame cue pack, a TOML document (`cues::CuePack`: the
     /// sounds of a gun game's rung ups, last rung, lead and win),
     /// registered with its parts.
@@ -163,6 +168,7 @@ mod tests {
         hud: None,
         maps: &[],
         announcer: None,
+        match_won_sound: None,
         cues: None,
     };
 

@@ -124,6 +124,10 @@ pub struct MinigameHud {
     pub notices: Vec<(HudLine, f64)>,
     /// The finished match's results while the match is decided.
     pub results: Option<super::results::MatchResults>,
+    /// The shell's match-end screen shows the results over the whole
+    /// screen (`chimera_client::client::match_end` sets it): a game's
+    /// panel leaves the results and notices out meanwhile.
+    pub results_shown: bool,
     /// The callout showing, for `CALLOUT_SECONDS` (module doc).
     pub callout: Option<ShownCallout>,
     /// The last callout's number.

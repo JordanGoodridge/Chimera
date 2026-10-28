@@ -48,6 +48,7 @@ fails when this file is stale; never edit the generated lines).
 - `chimera/client/src/client/binds.rs`: a named action is only a held button: it has no console `+throw` typed-hold (`console::HeldActions` keeps Chimera's own) and no wheel notch
 - `chimera/client/src/client/callouts.rs`: plain text on a dark band, no animation; the files load on first use (the first cue of each kind may come up to a load late, given up after 3 s)
 - `chimera/client/src/client/hud_minimal.rs`: the weapon is called by its id (no display-name registry in the shell); no hit marker, kill feed or scoreboard
+- `chimera/client/src/client/match_end.rs`: no map vote (the server's rotation picks the next map); plain text and colours, no game's look or art; no music pause
 - `chimera/client/src/client/minigame_scoreboard.rs`: plain text, no team colours
 - `chimera/client/src/client/net_graph.rs`: the layout (the lines' order and words, the colours' thresholds, the graph's bands, scales and colours, `net_graphheight`'s meaning) is from...
 - `chimera/client/src/client/night_vision.rs`: Night vision: the overlay's colour (the frame plus the frame times pure green, `NIGHT_VISION_TINT`) is ours (the material says additive frame...
