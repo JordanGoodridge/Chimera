@@ -528,3 +528,76 @@ fn a_definitions_cue_pack_must_be_registered() {
     let err = minigame::add(sim.app.world_mut(), "bad.toml", &with("nobody")).unwrap_err();
     assert!(err.contains("no cue pack `nobody`"), "{err}");
 }
+
+/// Spawn protection's two windows (`protection = { damage, bullets }`,
+/// Combat Arms' S6 in shape): `core::SpawnProtected` with both, `God`
+/// for the damage window; after the bullets window the damage is still
+/// blocked; both over, nothing is left. The first shot ends both.
+#[test]
+fn spawn_protection_has_a_damage_and_a_bullets_window_and_the_first_shot_ends_it() {
+    use chimera_core::core::SpawnProtected;
+    let def = DEF.replace("protection = \"0.5s\"", "protection = { damage = \"1s\", bullets = \"0.5s\" }");
+    let mut sim = started(&def);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.ticks(3);
+    let now = sim.app.world().resource::<SimClock>().now;
+    let p = *sim.app.world().get::<SpawnProtected>(b).expect("protected");
+    assert!((p.damage_until - now - 1.0).abs() < 0.1 && (p.bullets_until - now - 0.5).abs() < 0.1, "{p:?}");
+    assert!(p.stops_bullets(now) && p.hides_hits(now));
+    sim.seconds(0.6);
+    let w = sim.app.world();
+    assert!(w.get::<God>(b).is_some(), "damage still blocked after the bullets window");
+    let now = w.resource::<SimClock>().now;
+    assert!(!w.get::<SpawnProtected>(b).unwrap().stops_bullets(now) && w.get::<SpawnProtected>(b).unwrap().hides_hits(now));
+    sim.seconds(0.5);
+    let w = sim.app.world();
+    assert!(w.get::<God>(b).is_none() && w.get::<SpawnProtected>(b).is_none() && w.get::<Protected>(b).is_none(), "over");
+    // A's protection is cut short by its first shot.
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    sim.seconds(1.2);
+    assert!(sim.app.world().get::<SpawnProtected>(a).is_some(), "respawned protected");
+    sim.intent(a).fire = true;
+    sim.ticks(2);
+    let w = sim.app.world();
+    assert!(w.get::<SpawnProtected>(a).is_none() && w.get::<God>(a).is_none(), "the first shot ends it");
+}
+
+/// The match's moments for a music director (`moments::MinigameMoments`):
+/// the phase, the local player alive, the last rung's players, the
+/// respawn countdown, the result; the music by the definition (`none`).
+#[test]
+fn the_moments_follow_the_match_for_the_local_player() {
+    use chimera_core::core::LocalPlayer;
+    use chimera_sim::minigame::moments::{MinigameMoments, MomentPhase};
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
+    sim.ticks(2);
+    let m = |sim: &Sim| sim.app.world().resource::<MinigameMoments>().clone();
+    assert!(m(&sim).playing && m(&sim).phase == MomentPhase::Waiting && m(&sim).alive);
+    assert_eq!(m(&sim).music, None, "no game here lends a music director");
+    let b = player(&mut sim);
+    settle(&mut sim);
+    assert_eq!(m(&sim).phase, MomentPhase::Live);
+    // a climbs to the last rung.
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    assert_eq!(m(&sim).last_rung, 1, "a on the last rung");
+    // a dies: the countdown's whole seconds.
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    sim.ticks(2);
+    assert!(!m(&sim).alive);
+    assert_eq!(m(&sim).respawn_in, Some(1), "1 s delay");
+    settle(&mut sim);
+    assert_eq!(m(&sim).respawn_in, None);
+    // a wins on the last rung.
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(3);
+    assert_eq!(m(&sim).phase, MomentPhase::Over);
+    assert_eq!(m(&sim).result, None, "the win's own moment: not decided yet");
+    // The round's end decides the match (the match-end screen's).
+    sim.seconds(5.5);
+    assert_eq!(m(&sim).result, Some(Some(true)), "the local player won");
+}

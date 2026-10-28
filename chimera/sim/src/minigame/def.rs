@@ -14,7 +14,10 @@
 //! avoid_recent = 10          #   not one of the last this many played (at most the pool's size
 //!                            #   less one: never the same map twice); the host's `MapHistory`
 //! cues = "cs_source"          # the cue pack its callouts sound (`chimera_core::cues`); "none";
-//!                             # default: the first a game registered
+//!                             # default: the pack of the game whose HUD is up, else the first
+//! music = "combat_arms"       # the game whose music director plays its moments
+//!                             # (`minigame::moments`); "none"; default: the first game whose
+//!                             # parts lend one (`GameParts::music`)
 //!
 //! [slots]                     # the gameplay's slots by game id (`chimera_core::gameplay`)
 //! hud = "combat_arms"         # the HUD drawn
@@ -28,7 +31,11 @@
 //! weapons = ["cs_source", "combat_arms"]   # the weapon sets a definition may name
 //!
 //! [spawn]
-//! respawn = { delay = "2s", protection = "1.5s" }
+//! respawn = { delay = "2s", protection = "1.5s" }   # protection: both windows; or
+//! # protection = { damage = "4s", bullets = "3s", fire_ends = true }
+//! #   no damage for `damage`; a bullet stops at the player, doing nothing, for
+//! #   `bullets` (`core::SpawnProtected`); the player's first shot ends both
+//! #   (`fire_ends`, the default); a hit on the player shows nothing meanwhile
 //! points = "far_from_enemies"   # or "map" (in turn), "team" (the player's team's),
 //!                               # "random_hidden" (anywhere walkable, out of enemies' sight)
 //! min_distance = 20.32          # m from a living enemy for "random_hidden" (800 u)
@@ -83,6 +90,11 @@ pub struct MinigameDef {
     /// registered.
     #[serde(default)]
     pub cues: Option<String>,
+    /// The game whose music director plays the match's moments
+    /// (`super::moments`): a game's id, `none`, or None the first whose
+    /// parts lend one (`chimera_core::game_parts::GameParts::music`).
+    #[serde(default)]
+    pub music: Option<String>,
     #[serde(default)]
     pub slots: Slots,
     #[serde(default)]
@@ -241,23 +253,85 @@ impl Default for SpawnDef {
     }
 }
 
-/// The dead respawn after `delay` s, protected from damage for
-/// `protection` s (firing ends it).
+/// The dead respawn after `delay` s, protected (`Protection`).
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Respawn {
     #[serde(deserialize_with = "seconds")]
     pub delay: f32,
-    #[serde(deserialize_with = "seconds", default)]
-    pub protection: f32,
+    #[serde(default)]
+    pub protection: Protection,
 }
 
 impl Default for Respawn {
     fn default() -> Self {
         Self {
             delay: 2.0,
-            protection: 1.5,
+            protection: Protection::both(1.5),
         }
+    }
+}
+
+/// Spawn protection (`core::SpawnProtected`; Combat Arms' S6 in shape):
+/// no damage for `damage` s; a bullet stops at the player and does
+/// nothing for `bullets` s; the player's first shot ends both when
+/// `fire_ends`. A plain duration is both windows, ended by firing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Protection {
+    pub damage: f32,
+    pub bullets: f32,
+    pub fire_ends: bool,
+}
+
+impl Protection {
+    /// Both windows `seconds` long, ended by firing.
+    pub fn both(seconds: f32) -> Self {
+        Self {
+            damage: seconds,
+            bullets: seconds,
+            fire_ends: true,
+        }
+    }
+
+    /// Whether it protects at all.
+    pub fn any(&self) -> bool {
+        self.damage > 0.0 || self.bullets > 0.0
+    }
+}
+
+impl Default for Protection {
+    /// None.
+    fn default() -> Self {
+        Self::both(0.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for Protection {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Windows {
+            #[serde(deserialize_with = "seconds", default)]
+            damage: f32,
+            #[serde(deserialize_with = "seconds", default)]
+            bullets: f32,
+            #[serde(default = "yes")]
+            fire_ends: bool,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Value {
+            Windows(Windows),
+            Both(#[serde(deserialize_with = "seconds")] f32),
+        }
+        Ok(match Value::deserialize(d)? {
+            Value::Both(s) => Self::both(s),
+            Value::Windows(w) => Self {
+                damage: w.damage,
+                bullets: w.bullets,
+                fire_ends: w.fire_ends,
+            },
+        })
     }
 }
 
@@ -314,7 +388,7 @@ impl MinigameDef {
         if self.time_limit <= 0.0 {
             return Err("time_limit must be more than 0".into());
         }
-        if self.spawn.respawn.delay < 0.0 || self.spawn.respawn.protection < 0.0 {
+        if self.spawn.respawn.delay < 0.0 || self.spawn.respawn.protection.damage < 0.0 || self.spawn.respawn.protection.bullets < 0.0 {
             return Err("spawn.respawn: negative times".into());
         }
         Ok(())
@@ -386,7 +460,14 @@ ladder = ["kit:pistol", "kit:rifle"]
     fn a_definition_reads() {
         let def = MinigameDef::parse("t", DEF).unwrap();
         assert_eq!(def.time_limit, 120.0);
-        assert_eq!(def.spawn.respawn, Respawn { delay: 0.5, protection: 1.0 });
+        assert_eq!(def.spawn.respawn, Respawn { delay: 0.5, protection: Protection::both(1.0) });
+        let windows = MinigameDef::parse(
+            "t",
+            &DEF.replace("protection = 1", "protection = { damage = \"4s\", bullets = \"3s\", fire_ends = false }"),
+        )
+        .unwrap();
+        assert_eq!(windows.spawn.respawn.protection, Protection { damage: 4.0, bullets: 3.0, fire_ends: false });
+        assert!(MinigameDef::parse("t", &DEF.replace("protection = 1", "protection = { damage = \"4s\", what = 1 }")).is_err());
         assert_eq!(def.spawn.points, Points::FarFromEnemies);
         assert_eq!(def.spawn.min_distance, 20.32);
         let hidden = DEF.replace("[spawn]", "[spawn]\npoints = \"random_hidden\"\nmin_distance = 15");

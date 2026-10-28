@@ -12,7 +12,11 @@
 //!   menu update, and the cues of a match (loading, the mode's start
 //!   track at the first real round, Quarantine's and Seize and Secure's
 //!   cues, Arms Race's last stage, perk cues, the round and result
-//!   sounds) from the match's facts (`MusicFacts`, `director::observe`).
+//!   sounds) from the match's facts (`MusicFacts`, `director::observe`);
+//!   a party match's (a minigame's moments, Chimera's `minigame::
+//!   moments`, when Combat Arms plays its music: `GameParts::music`)
+//!   by Section 10 (`director::observe_party`), its interface sounds'
+//!   files from data/music.toml's `[party]` (inferred).
 //! - `trigger` (5): the server's `BGMTrigger` objects, `CaMusicOn` and
 //!   `CaMusicOff` to every client, the late joiner's one trigger.
 //! - `ambient` (6): the map's `SoundFX` objects as every client holds them
@@ -151,8 +155,34 @@ fn advance_clock(time: Res<Time<Real>>, mut clock: ResMut<MusicClock>) {
 
 /// The facts of this frame (the client's view of the match).
 fn gather(world: &mut World) {
-    let view = world.resource::<CaMatchView>().clone();
     let loading = world.resource::<MusicLoading>().0;
+    // A party match (a minigame plays): its moments, Section 10.
+    if let Some(party) = world
+        .get_resource::<chimera_sim::minigame::moments::MinigameMoments>()
+        .filter(|m| m.playing)
+        .cloned()
+    {
+        use chimera_sim::minigame::moments::MomentPhase;
+        let screen = if loading {
+            Screen::Loading
+        } else if party.phase == MomentPhase::Over && party.result.is_some() {
+            Screen::Result
+        } else {
+            Screen::Match
+        };
+        let facts = MusicFacts {
+            screen,
+            mode: world.resource::<CaMusic>().data.party.mode.clone(),
+            alive: party.alive,
+            party: Some(party),
+            ..default()
+        };
+        if *world.resource::<MusicFacts>() != facts {
+            world.insert_resource(facts);
+        }
+        return;
+    }
+    let view = world.resource::<CaMatchView>().clone();
     let in_match = world.get_resource::<MapFile>().is_some() || !view.mode.is_empty();
     let screen = if loading {
         Screen::Loading
@@ -220,6 +250,7 @@ fn gather(world: &mut World) {
         first,
         war_cry,
         eagle_eye,
+        party: None,
     };
     if *world.resource::<MusicFacts>() != facts {
         world.insert_resource(facts);
@@ -239,8 +270,10 @@ fn drive(
     *prev = facts.clone();
     music.frame(clock.now);
     let keys = std::mem::take(&mut music.sounds);
+    // A party match's sounds have their files (`[party.interface]`).
+    let table = if facts.party.is_some() { &music.data.party.interface } else { &music.data.interface };
     for k in keys {
-        if let Some(file) = music.data.interface.get(&k).filter(|f| !f.is_empty()) {
+        if let Some(file) = table.get(&k).filter(|f| !f.is_empty()) {
             out.write(CaSound::local(file.clone()));
         }
     }

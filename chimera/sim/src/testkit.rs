@@ -200,6 +200,8 @@ pub static STAND_IN: GameParts = GameParts {
     map_patterns: &[],
     announcer: None,
     match_won_sound: None,
+    match_lost_sound: None,
+    music: false,
     cues: None,
 };
 

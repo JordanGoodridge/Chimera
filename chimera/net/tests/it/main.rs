@@ -8,3 +8,4 @@
 
 mod minigame_callouts;
 mod prediction;
+mod spawn_protection;

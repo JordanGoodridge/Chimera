@@ -17,8 +17,10 @@
 //!
 //! A game contributes its pack as one of its parts (`GameParts::cues`),
 //! registered in order (`CuePacks`); a minigame definition picks one by
-//! id (`cues = "<id>"`), `none`, or by default the first registered. The
-//! client shell plays them (`chimera_client::client::callouts`).
+//! id (`cues = "<id>"`), `none`, or by default the pack of the game whose
+//! HUD is up (the gameplay's `hud`, which follows the local player's gun
+//! in a gun game), else the first registered (`CuePacks::choose_for`).
+//! The client shell plays them (`chimera_client::client::callouts`).
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -87,6 +89,16 @@ impl CuePacks {
         }
     }
 
+    /// `choose`, with the default the pack of game `hud` (the HUD up)
+    /// when there is one, else the first registered.
+    pub fn choose_for(&self, choice: Option<&str>, hud: Option<&str>) -> Option<&Arc<CuePack>> {
+        let default = choice.is_none_or(|c| c.eq_ignore_ascii_case("default"));
+        match hud.filter(|_| default).and_then(|h| self.0.iter().find(|p| p.game.eq_ignore_ascii_case(h))) {
+            Some(p) => Some(p),
+            None => self.choose(choice),
+        }
+    }
+
     /// Whether `choice` names a pack there is (or `default`, `none`).
     pub fn valid(&self, choice: &str) -> bool {
         ["default", "none"].iter().any(|c| c.eq_ignore_ascii_case(choice)) || self.get(choice).is_some()
@@ -136,6 +148,16 @@ rung_up = "up.wav"
         assert_eq!(packs.choose(Some("default")).unwrap().id, "stand_in");
         assert_eq!(packs.choose(Some("OTHER")).unwrap().id, "other");
         assert!(packs.choose(Some("none")).is_none());
+        let other_game = CuePack {
+            id: "theirs".into(),
+            game: "their_game".into(),
+            ..packs.get("stand_in").unwrap().as_ref().clone()
+        };
+        packs.register(other_game);
+        assert_eq!(packs.choose_for(None, Some("their_game")).unwrap().id, "theirs", "the HUD's game's");
+        assert_eq!(packs.choose_for(Some("default"), Some("nobody")).unwrap().id, "stand_in", "else the first");
+        assert_eq!(packs.choose_for(Some("other"), Some("their_game")).unwrap().id, "other", "named wins");
+        assert!(packs.choose_for(Some("none"), Some("their_game")).is_none());
         assert!(packs.choose(Some("nobody")).is_none());
         assert!(packs.valid("none") && packs.valid("other") && !packs.valid("nobody"));
         assert!(CuePack::parse("id = \"x\"\nname = \"x\"\ngame = \"x\"\nbogus = 1").is_err());

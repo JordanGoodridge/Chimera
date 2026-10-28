@@ -21,9 +21,11 @@
 //!   that weapon); with `identity =
 //!   "weapon"` the player follows its weapon's game (`slots::
 //!   FollowsWeapon`; `identity::follow` at once for the drawn one),
-//!   protected from damage
-//!   (`Protected`, through `core::God`) for `protection` s or until it
-//!   fires. The dead respawn after `delay` s (`respawn_dead`) unless the
+//!   protected (`Protected`, with `core::SpawnProtected`'s two windows:
+//!   `core::God` for `protection.damage` s, a bullet stopping at the
+//!   player and doing nothing for `protection.bullets` s, a hit showing
+//!   nothing while either runs) until they run out or, with
+//!   `protection.fire_ends`, it fires. The dead respawn after `delay` s (`respawn_dead`) unless the
 //!   match is over or the mode refuses (`respawn_due`: when, which the
 //!   HUD's countdown and the shell's death view read as
 //!   `core::RespawnDue`).
@@ -50,7 +52,8 @@ use super::{
 };
 use crate::{
     core::{
-        Connecting, Dead, Died, FreezeTime, God, Health, Intent, Npc, Score, SimClock, SimSet, SpawnPoint, Spectating, Team,
+        Connecting, Dead, Died, FreezeTime, God, Health, Intent, Npc, Score, SimClock, SimSet, SpawnPoint, SpawnProtected,
+        Spectating, Team,
     },
     mode::{
         self, ALPHA, Death, DeathKind, Flow, FlowEvent, Match, Phase, Span, classify, current_mode, plays,
@@ -91,11 +94,12 @@ pub struct JoinOrder(pub u64);
 #[derive(Component, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct InMinigame;
 
-/// Spawn protection: no damage (`core::God`, which this inserted) until
-/// `until` or the first shot.
+/// Spawn protection the runtime gave: its windows are the character's
+/// `core::SpawnProtected`, its `core::God` (while damage is blocked) the
+/// runtime's own; `fire_ends`: the first shot ends both.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct Protected {
-    pub until: f64,
+    pub fire_ends: bool,
 }
 
 /// The `Points::Map` cursor.
@@ -187,11 +191,25 @@ pub fn respawn(world: &mut World, e: Entity) {
         crate::identity::follow(world, e);
     }
     let protection = def.spawn.respawn.protection;
-    if protection > 0.0 && world.get::<God>(e).is_none() {
+    // Not over a `god` of the player's own (the cheat's: not the
+    // runtime's to lift), nor again while a protection runs (the match's
+    // start respawning everyone just after they joined).
+    let free = world.get::<God>(e).is_none() && world.get::<Protected>(e).is_none();
+    if protection.any() && free {
         let now = world.resource::<SimClock>().now;
-        world.entity_mut(e).insert((God, Protected {
-            until: now + protection as f64,
-        }));
+        let mut ent = world.entity_mut(e);
+        ent.insert((
+            SpawnProtected {
+                damage_until: now + protection.damage as f64,
+                bullets_until: now + protection.bullets as f64,
+            },
+            Protected {
+                fire_ends: protection.fire_ends,
+            },
+        ));
+        if protection.damage > 0.0 {
+            ent.insert(God);
+        }
     }
 }
 
@@ -404,17 +422,33 @@ fn respawn_dead(world: &mut World) {
     }
 }
 
-/// Protection ends at its time or the first shot.
+/// Protection ends with its windows or (`fire_ends`) the first shot;
+/// `God` goes with the damage window.
 fn end_protection(world: &mut World) {
     let now = world.resource::<SimClock>().now;
-    let done: Vec<Entity> = world
-        .query::<(Entity, &Protected, &Intent)>()
-        .iter(world)
-        .filter(|(_, p, i)| now + 1e-9 >= p.until || i.fire)
-        .map(|(e, ..)| e)
-        .collect();
+    let mut done = Vec::new();
+    let mut damage_over = Vec::new();
+    for (e, sp, p, i, god) in world.query::<(Entity, &SpawnProtected, &Protected, &Intent, Has<God>)>().iter(world) {
+        if (p.fire_ends && i.fire) || sp.over(now) {
+            done.push(e);
+        } else if god && now + 1e-9 >= sp.damage_until {
+            damage_over.push(e);
+        }
+    }
     for e in done {
-        world.entity_mut(e).remove::<(Protected, God)>();
+        unprotect(world, e);
+    }
+    for e in damage_over {
+        world.entity_mut(e).remove::<God>();
+    }
+}
+
+/// `e`'s spawn protection (the runtime's) gone, its `God` with it.
+pub fn unprotect(world: &mut World, e: Entity) {
+    if let Ok(mut ent) = world.get_entity_mut(e)
+        && ent.contains::<Protected>()
+    {
+        ent.remove::<(Protected, SpawnProtected, God)>();
     }
 }
 
@@ -448,7 +482,8 @@ fn on_died(world: &mut World, d: &Died) {
         return;
     }
     let now = world.resource::<SimClock>().now;
-    world.entity_mut(victim).insert((Dead { since: now }, ColliderDisabled)).remove::<(Protected, God)>();
+    unprotect(world, victim);
+    world.entity_mut(victim).insert((Dead { since: now }, ColliderDisabled));
     let team_of = |w: &World, e: Entity| w.get::<Team>(e).map(|t| t.0);
     let Some(victim_team) = team_of(world, victim).filter(|t| plays(*t)) else { return };
     let fall = d.damage.kind == crate::core::DamageKind::Fall;

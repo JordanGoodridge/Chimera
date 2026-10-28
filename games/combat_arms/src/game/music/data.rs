@@ -73,6 +73,22 @@ pub struct MusicData {
     /// Interface sound attribute key to its file.
     #[serde(default)]
     pub interface: HashMap<String, String>,
+    /// A party match's music (`director`'s party cues).
+    #[serde(default)]
+    pub party: PartyMusic,
+}
+
+/// What a party match (a minigame, Chimera's `minigame::moments`) takes
+/// of Combat Arms' music (music_ambience.md Section 10).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct PartyMusic {
+    /// The mode whose start track and last-stage music it plays (Arms
+    /// Race's for a gun game).
+    #[serde(default)]
+    pub mode: String,
+    /// Its interface sounds' files by attribute key (inferred, Section 7).
+    #[serde(default)]
+    pub interface: HashMap<String, String>,
 }
 
 impl MusicData {
@@ -138,6 +154,9 @@ mod tests {
         assert_eq!(d.mode_track("TDM", None), None);
         assert_eq!(normalize("Game\\BGM\\Map_Loading.mp3"), "bgm/map_loading.mp3");
         assert!(d.playlist.len() >= 3);
+        assert_eq!(d.party.mode, "VWRM");
+        assert_eq!(d.party.interface["RoundStartSound"], "UI_SND/ROUNDSTART.WAV");
+        assert!(d.interface.is_empty(), "plain Combat Arms' interface sounds stay silent");
     }
 
     #[test]

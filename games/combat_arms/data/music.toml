@@ -139,3 +139,18 @@ loop = true
 # attribute file (Open question 1), so none is named here; a key with no
 # file plays nothing (the cue still happens and is counted).
 [interface]
+
+# A party match (a minigame played with Combat Arms' music: Chimera's
+# minigame::moments; music_ambience.md Section 10): the mode whose start
+# track (at the start of play, if alive) and last-stage music (while a
+# player is on the ladder's last rung) it plays, and the files of the
+# interface sounds its director plays there: the round start and the
+# respawn countdown. The files are inferred from their names in
+# UI_SND.rez (Section 7). The rung-up and last-rung sounds are the cue
+# pack's (data/cues.toml), the result sounds the match-end screen's
+# (GameParts::match_won_sound, match_lost_sound).
+[party]
+mode = "VWRM"
+[party.interface]
+RoundStartSound = "UI_SND/ROUNDSTART.WAV"
+RespawnCountSound = "UI_SND/RESPWANCOUNT.WAV"

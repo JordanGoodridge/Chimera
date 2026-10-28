@@ -37,6 +37,8 @@ static LOUD: GameParts = GameParts {
     map_patterns: &[],
     announcer: None,
     match_won_sound: Some("sound/loud_win.wav"),
+    match_lost_sound: None,
+    music: false,
     cues: None,
 };
 static QUIET: GameParts = GameParts {

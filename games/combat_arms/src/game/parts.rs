@@ -4,8 +4,11 @@
 //! others, its launchers and its install's weapons, by the `class` in
 //! their data), its
 //! movement (`movement::ID`), its soldiers (`characters`), its HUD
-//! (`ui`, the composing app's), its maps and its announcer pack
-//! (data/announcer.toml). The app registers it
+//! (`ui`, the composing app's), its maps, its announcer pack
+//! (data/announcer.toml), its minigame cue pack (data/cues.toml), its
+//! result screen's win and lose sounds for a party match's end, and its
+//! music director (`music`, which plays a party match's moments:
+//! `music::director`'s party cues). The app registers it
 //! (`register_parts(&PARTS)`).
 //!
 //! Known shortcuts: the announcer pack has no weapon skins yet (which
@@ -42,14 +45,23 @@ pub static PARTS: GameParts = GameParts {
     maps: &["combat_arms:warehouse", "combat_arms:junkflea", "combat_arms:darkhills", "combat_arms:bloodmoney"],
     map_patterns: &[],
     announcer: Some(ANNOUNCER),
-    // Its result screen's win sound (`ResultWinSound`, music_ambience.md
-    // section 4) is a file the spec doesn't name: none yet.
-    match_won_sound: None,
-    // No cue pack yet: its interface sounds' files (the level-up, last
-    // stage and result sounds) are in keyed attribute files we don't read
-    // (music_ambience.md, Open question 1).
-    cues: None,
+    // Its result screen's win and lose sounds (`ResultWinSound`,
+    // `ResultLoseSound`, music_ambience.md 4, 7: the files inferred by
+    // name, in UI_SND.rez).
+    match_won_sound: Some(RESULT_WIN_SOUND),
+    match_lost_sound: Some(RESULT_LOSE_SOUND),
+    music: true,
+    cues: Some(CUES),
 };
+
+/// `ResultWinSound`'s file (music_ambience.md 7, inferred).
+pub const RESULT_WIN_SOUND: &str = "UI_SND/WIN.WAV";
+/// `ResultLoseSound`'s file (inferred).
+pub const RESULT_LOSE_SOUND: &str = "UI_SND/LOSE.WAV";
+
+/// Combat Arms' minigame cue pack (data/cues.toml; `chimera_core::cues`):
+/// Arms Race's interface sounds for a rung up and the last rung.
+pub const CUES: &str = include_str!("../../data/cues.toml");
 
 /// Combat Arms' announcer pack (specs/combat_arms/kill_streaks.md Part B;
 /// `chimera_core::announcer`): its streak steps, special kills, banner

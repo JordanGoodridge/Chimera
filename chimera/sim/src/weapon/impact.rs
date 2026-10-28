@@ -22,6 +22,14 @@
 //!   predicted weapon tick (`ApplyImpulses`: a game telling pushes after
 //!   the frame orders itself before it). The server's
 //!   alone: a client's own shots push nothing.
+//! - **Spawn protection hides hits** (`core::SpawnProtected`): a hit on
+//!   a protected character shows nothing on any machine, whichever game's
+//!   gun or effects: Chimera's deliveries tell its trace with no `hit`
+//!   (`deliver`), and a game with its own (Combat Arms') passes its
+//!   events through `hide_protected`; so no game draws blood, a puff, a
+//!   decal or an impact sound there, nor a hit indicator or name-tag
+//!   flash (those follow the `Hit`s and traces), and the damage the rules
+//!   block (`core::God`) never shows as landed.
 //! - **Whose recoil the view punch is** (`RecoilGame`): each game kicks
 //!   and returns the shared `ViewPunch` by its own rules; a character
 //!   that switches to another game's weapon (the gun game's swap on a
@@ -35,7 +43,7 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::{Inventory, PushScale, ViewPunch, Weapon, WeaponEvent};
+use super::{Inventory, PushScale, ViewPunch, Weapon, WeaponEvent, WeaponEventKind};
 use crate::{
     core::{Predict, PredictedAppExt},
     map::{interp::NetDrawn, impact::ActiveImpacts},
@@ -128,6 +136,35 @@ impl ImpactRoute<'_, '_> {
     pub fn map_game(&self) -> Option<&str> {
         self.impacts.as_deref().and_then(|i| i.0.map_game())
     }
+}
+
+/// A game's own delivery's event with spawn protection applied (module
+/// doc): a trace whose `hit` `hides` loses its hit and normal, a swing
+/// at one is a miss, a `Hit` on one is gone (None).
+pub fn hide_protected(kind: WeaponEventKind, hides: impl Fn(Entity) -> bool) -> Option<WeaponEventKind> {
+    use WeaponEventKind as K;
+    Some(match kind {
+        K::Shot { from, to, hit: Some(h), .. } if hides(h) => K::Shot {
+            from,
+            to,
+            hit: None,
+            normal: None,
+        },
+        K::ShotContinued { from, to, hit: Some(h), .. } if hides(h) => K::ShotContinued {
+            from,
+            to,
+            hit: None,
+            normal: None,
+        },
+        K::Swing { secondary, at: Some((_, _, h)), line, .. } if hides(h) => K::Swing {
+            hit: false,
+            secondary,
+            at: None,
+            line,
+        },
+        K::Hit { target, .. } if hides(target) => return None,
+        k => k,
+    })
 }
 
 /// A bullet's push on a body: `impulse` (N·s, world space) at `point`.

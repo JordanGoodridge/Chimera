@@ -3,7 +3,9 @@
 //! plain files), the loose `Game/BGM/` folder (counts, sizes, decoded
 //! lengths and rates, and our built-in table's lengths against them),
 //! one map's ambience (`training`) and the census of the 33 plain maps'
-//! sound objects and music triggers. They pass with a note without
+//! sound objects and music triggers; case 29's interface sounds (the
+//! party's cue pack, result and director sounds, inferred by name, are
+//! WAVs in the install). They pass with a note without
 //! `[games.combat_arms] path` in chimera.local.toml.
 
 use std::path::{Path, PathBuf};
@@ -303,3 +305,27 @@ fn t22_census() {
 }
 
 use bevy::prelude::Vec3;
+
+/// 29. The interface sounds a party match plays (the cue pack's,
+/// data/cues.toml; the result screen's, `GameParts::match_won_sound` and
+/// `match_lost_sound`; the director's, data/music.toml `[party.interface]`)
+/// are in the install as 16-bit WAVs; `WIN.WAV` is stereo, 3.108 s.
+#[test]
+fn t29_the_partys_interface_sounds_are_in_the_install() {
+    let Some(mount) = mount() else { return };
+    let parts = &combat_arms::game::parts::PARTS;
+    let pack = chimera_core::cues::CuePack::parse(parts.cues.unwrap()).unwrap();
+    assert_eq!(pack.game, GAME);
+    let mut files: Vec<String> = pack.sounds.values().cloned().collect();
+    files.extend(parts.match_won_sound.into_iter().chain(parts.match_lost_sound).map(str::to_string));
+    files.extend(MusicData::built_in().party.interface.values().cloned());
+    for f in &files {
+        let bytes = mount.read(&f.to_lowercase()).unwrap_or_else(|e| panic!("{f}: {e}"));
+        let clip = source_formats::wav::decode(&bytes).unwrap_or_else(|e| panic!("{f}: {e:?}"));
+        if f.eq_ignore_ascii_case("UI_SND/WIN.WAV") {
+            assert_eq!(clip.channels, 2, "{f}");
+            let secs = clip.samples.len() as f64 / clip.channels as f64 / clip.rate as f64;
+            assert!((secs - 3.108).abs() < 0.01, "{f}: {secs} s");
+        }
+    }
+}

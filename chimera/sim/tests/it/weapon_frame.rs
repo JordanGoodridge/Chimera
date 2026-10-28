@@ -200,3 +200,94 @@ fn a_remote_shot_sounds_after_its_shooter_swapped_guns() {
         .collect();
     assert_eq!(heard, ["kit.rifle_fire"], "the shot's sound plays though the gun is gone");
 }
+
+/// The weapon events of `ticks` ticks.
+fn events_in(sim: &mut Sim, ticks: u64) -> Vec<WeaponEvent> {
+    let mut cursor = sim.app.world().resource::<Messages<WeaponEvent>>().get_cursor_current();
+    let mut out = Vec::new();
+    for _ in 0..ticks {
+        sim.ticks(1);
+        out.extend(cursor.read(sim.app.world().resource::<Messages<WeaponEvent>>()).cloned());
+    }
+    out
+}
+
+/// Spawn protection (`core::SpawnProtected`, Combat Arms' style): a hit
+/// on a protected player shows nothing (its trace has no hit: no blood,
+/// impact or hit indicator) and deals nothing, in the bullets window and
+/// in the damage window after it; once both are over, hits are normal.
+#[test]
+fn a_spawn_protected_target_shows_and_takes_no_hit() {
+    use chimera_core::core::{SimClock, SpawnProtected};
+    let (mut sim, p, target) = armed(PISTOL);
+    let now = sim.app.world().resource::<SimClock>().now;
+    sim.app.world_mut().entity_mut(target).insert(SpawnProtected {
+        damage_until: now + 2.0,
+        bullets_until: now + 1.0,
+    });
+    let hits = |events: &[WeaponEvent]| {
+        let traced = events
+            .iter()
+            .filter(|e| matches!(e.kind, WeaponEventKind::Shot { hit: Some(h), .. } | WeaponEventKind::ShotContinued { hit: Some(h), .. } if h == target))
+            .count();
+        let dealt = events.iter().filter(|e| matches!(e.kind, WeaponEventKind::Hit { target: t, .. } if t == target)).count();
+        let shots = events.iter().filter(|e| matches!(e.kind, WeaponEventKind::Shot { .. })).count();
+        (shots, traced, dealt)
+    };
+    // The bullets window, then the damage window after it.
+    for _ in 0..2 {
+        sim.intent(p).fire = true;
+        let (shots, traced, dealt) = hits(&events_in(&mut sim, 2));
+        sim.intent(p).fire = false;
+        assert!(shots > 0, "it fired");
+        assert_eq!((traced, dealt), (0, 0), "no hit shown, none dealt");
+        assert_eq!(sim.app.world().get::<Health>(target).unwrap().current, 10.0, "no damage");
+        sim.seconds(1.0);
+    }
+    // Both over: a normal hit.
+    sim.app.world_mut().entity_mut(target).remove::<SpawnProtected>();
+    sim.intent(p).fire = true;
+    let (_, traced, dealt) = hits(&events_in(&mut sim, 2));
+    assert!(traced > 0 && dealt > 0, "shown and dealt after it");
+    assert!(sim.app.world().get::<Health>(target).unwrap().current < 10.0);
+}
+
+/// On a client, others' rounds traced again (`RemoteShot`) show no hit on
+/// a player its server protects (the replicated `SpawnProtected`).
+#[test]
+fn a_remote_shot_shows_no_hit_on_a_protected_player() {
+    use chimera_core::core::{SimClock, SpawnProtected};
+    use chimera_sim::weapon::remote::{RemoteShot, show_held};
+    let mut sim = testkit::kit_sim();
+    sim.app.insert_resource(chimera_core::core::Playback);
+    let shooter = sim.spawn_character(greybox::SPAWNS[0], placeholder::ID);
+    let target = sim.spawn_character(greybox::SPAWNS[0] - Vec3::Z * 6.0, placeholder::ID);
+    show_held(sim.app.world_mut(), shooter, Some(RIFLE), 0, false);
+    sim.seconds(0.5);
+    let origin = sim.position(shooter) + Vec3::Y * 0.6;
+    let d = sim.position(target) + Vec3::Y * 0.2 - origin;
+    let shot = RemoteShot {
+        shooter,
+        weapon: RIFLE,
+        origin,
+        yaw: (-d.x).atan2(-d.z),
+        pitch: d.y.atan2(d.xz().length()),
+        seed: 1,
+        spread: chimera_sim::weapon::SpreadShape::Template(0.0),
+        mode: 0,
+    };
+    let traced = |sim: &mut Sim| {
+        sim.app.world_mut().write_message(shot.clone());
+        events_in(sim, 2)
+            .iter()
+            .filter(|e| matches!(e.kind, WeaponEventKind::Shot { hit: Some(h), .. } if h == target))
+            .count()
+    };
+    assert_eq!(traced(&mut sim), 1, "unprotected: the hit shows");
+    let now = sim.app.world().resource::<SimClock>().now;
+    sim.app.world_mut().entity_mut(target).insert(SpawnProtected {
+        damage_until: now + 4.0,
+        bullets_until: now + 3.0,
+    });
+    assert_eq!(traced(&mut sim), 0, "protected: nothing shows");
+}

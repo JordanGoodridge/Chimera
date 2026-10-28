@@ -5,6 +5,19 @@
 //! at phase changes. Pure: every method takes the wall clock in
 //! milliseconds, so the tests step a day in a line; `observe` turns the
 //! match's facts into the moments.
+//!
+//! A party match (a minigame: Chimera's `minigame::moments` in
+//! `MusicFacts::party`) gets Section 10's cues instead, when Combat Arms
+//! plays its music (`MinigameMoments::music`; else the director is
+//! silent): the loading track going in, at the start of play (the match
+//! live) `RoundStartSound` and the party mode's start track if the local
+//! player is alive (data/music.toml `[party]`: Arms Race's; dead then, no
+//! music that match), `last_stage_bgm` looping while anyone is on the
+//! ladder's last rung (and the start track again from its start once
+//! nobody is, as the mode loops), `RespawnCountSound` at each whole
+//! second of the respawn countdown, and the music stopped and paused on
+//! the match-end screen. The rung-up and last-rung sounds are the cue
+//! pack's, the win and lose sounds the match-end screen's.
 
 use std::collections::HashMap;
 
@@ -19,6 +32,7 @@ use super::{
     playlist::Playlist,
 };
 use crate::music::{MusicPlayer, Stream};
+use chimera_sim::minigame::moments::{MinigameMoments, MomentPhase};
 
 /// Which screen the client shows (the playlist runs on the menu and
 /// result screens; a match has cues only).
@@ -362,9 +376,17 @@ impl CaMusic {
 
     /// Arms Race: `n` players are on the last stage.
     pub fn last_stage(&mut self, n: u32, now: f64) {
+        self.last_stage_with(n, now, true);
+    }
+
+    /// `last_stage`, its `last_stage_sound` played or not (a party match:
+    /// the cue pack plays it).
+    pub fn last_stage_with(&mut self, n: u32, now: f64, sound: bool) {
         if n > 0 && !self.last_stage_on {
             self.last_stage_on = true;
-            self.sound("last_stage_sound");
+            if sound {
+                self.sound("last_stage_sound");
+            }
             let f = self.data.cues.last_stage.clone();
             if !self.current.eq_ignore_ascii_case(&f) {
                 self.stop();
@@ -438,6 +460,14 @@ impl CaMusic {
         }
     }
 
+    /// A party match is decided (its match-end screen): music stopped and
+    /// paused; the screen plays the win or lose sound.
+    pub fn party_end(&mut self) {
+        self.screen = Screen::Result;
+        self.stop();
+        self.paused = true;
+    }
+
     /// Leaving the result screen: unpaused, the playlist starts its next
     /// track at the next menu frame.
     pub fn leave_result(&mut self) {
@@ -477,6 +507,9 @@ pub struct MusicFacts {
     /// The local player has War Cry's or Eagle Eye's buff.
     pub war_cry: bool,
     pub eagle_eye: bool,
+    /// A party match's moments (a minigame plays): Section 10's cues
+    /// instead of the mode's.
+    pub party: Option<MinigameMoments>,
 }
 
 fn in_round(p: &rules::Phase) -> bool {
@@ -488,6 +521,10 @@ fn in_round(p: &rules::Phase) -> bool {
 /// and results.
 pub fn observe(m: &mut CaMusic, prev: &MusicFacts, now: &MusicFacts, ms: f64) {
     use rules::Phase;
+    if let Some(party) = &now.party {
+        observe_party(m, prev, now, party, ms);
+        return;
+    }
     match (prev.screen, now.screen) {
         (a, Screen::Loading) if a != Screen::Loading => m.room_start(ms),
         (Screen::Loading, Screen::Match) => m.loading_closed(&now.mode, ms),
@@ -545,5 +582,60 @@ pub fn observe(m: &mut CaMusic, prev: &MusicFacts, now: &MusicFacts, ms: f64) {
     // A round's result (the warm-up's too).
     if matches!(now.phase, Phase::RoundOver { .. }) && !matches!(before, Phase::RoundOver { .. }) {
         m.round_result(&now.mode, now.winner, now.my_team);
+    }
+}
+
+/// A party match's moments (Section 10; module doc). `now.screen` is the
+/// loading screen, the match or its match-end screen (`Result`).
+pub fn observe_party(m: &mut CaMusic, prev: &MusicFacts, now: &MusicFacts, party: &MinigameMoments, ms: f64) {
+    if party.music != Some(crate::game::GAME) {
+        // Another game's music, or none: Combat Arms' is silent (and its
+        // playlist doesn't run).
+        if m.player.playing() {
+            m.stop();
+        }
+        m.paused = false;
+        m.screen = Screen::Match;
+        return;
+    }
+    let before = prev.party.as_ref().filter(|_| prev.screen == Screen::Match);
+    match (prev.screen, now.screen) {
+        (Screen::Result, s) if s != Screen::Result => {
+            m.leave_result();
+            m.reset_map();
+            if s == Screen::Loading {
+                m.room_start(ms);
+            } else {
+                m.loading_closed(&now.mode, ms);
+            }
+        }
+        (a, Screen::Loading) if a != Screen::Loading => m.room_start(ms),
+        (Screen::Loading, Screen::Match) => m.loading_closed(&now.mode, ms),
+        (Screen::Menu, Screen::Match) => {
+            m.reset_map();
+            m.loading_closed(&now.mode, ms);
+        }
+        (Screen::Match, Screen::Result) => m.party_end(),
+        _ => {}
+    }
+    m.screen = now.screen;
+    if now.screen != Screen::Match {
+        return;
+    }
+    let was = before.map_or(MomentPhase::Waiting, |p| p.phase);
+    // A new match on the same map (no match-end screen between).
+    if was == MomentPhase::Over && party.phase != MomentPhase::Over {
+        m.reset_map();
+    }
+    // The start of play: the round start's sound and the start track, if
+    // alive (dead then: no music this match).
+    if party.phase == MomentPhase::Live && was != MomentPhase::Live {
+        m.round_start(&now.mode, false, party.alive, ms);
+    }
+    if party.phase == MomentPhase::Live {
+        m.last_stage_with(party.last_rung, ms, false);
+    }
+    if party.respawn_in.is_some() && party.respawn_in != before.and_then(|p| p.respawn_in) {
+        m.sound("RespawnCountSound");
     }
 }

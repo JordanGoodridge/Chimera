@@ -23,7 +23,8 @@
 //! displacement mesh with its internal edges fixed (`ITEM_GROUND_LAYER`);
 //! gameplay queries mask with `SOLID_LAYERS`, characters' bodies and movement
 //! with `CHARACTER_FILTER`, which leaves loose items out), `MaxSpeed`
-//! (equipment speed cap), `God`, `Team`, `Seed` (a character's own dice seed
+//! (equipment speed cap), `God`, `SpawnProtected` (spawn protection's
+//! windows: hits on the player show nothing), `Team`, `Seed` (a character's own dice seed
 //! for rolls that must repeat run to run: bots' choices and route noise,
 //! buying, bullet spread; never entity ids, which shift with every spawn,
 //! resources included), `Radio` (a team radio call: sender and the game's
@@ -1070,6 +1071,41 @@ impl NoBlock {
 #[derive(Component, Reflect, Default, Clone, Copy, Debug)]
 #[reflect(Component)]
 pub struct God;
+
+/// Spawn protection's two windows, `SimClock` seconds (a minigame's,
+/// `chimera_sim::minigame::runtime`; replicated to network clients on
+/// their own clock by `chimera_net::minigame_net`), Combat Arms' style
+/// (specs/combat_arms/game_modes.md S6 and its Corrections 2026-10-28):
+/// nothing marks the player, the hit feedback that doesn't happen is the
+/// only sign. Until `bullets_until` a bullet stops at the player and does
+/// nothing (nothing behind it is hit); until `damage_until` no damage
+/// lands (the rules hold `God` meanwhile). While either runs, a hit on the
+/// player shows nothing on any machine (`hides_hits`): every delivery
+/// tells the trace with no `hit` (no blood, puff, decal, impact sound,
+/// hit indicator or name-tag flash: `chimera_sim::weapon::impact::
+/// hide_protected`), so the server and every client agree.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct SpawnProtected {
+    pub damage_until: f64,
+    pub bullets_until: f64,
+}
+
+impl SpawnProtected {
+    /// Whether a hit on the player at `now` shows nothing (either window).
+    pub fn hides_hits(&self, now: f64) -> bool {
+        now + 1e-9 < self.damage_until.max(self.bullets_until)
+    }
+
+    /// Whether a bullet stops at the player at `now` (doing nothing).
+    pub fn stops_bullets(&self, now: f64) -> bool {
+        now + 1e-9 < self.bullets_until
+    }
+
+    /// Whether both windows are over at `now`.
+    pub fn over(&self, now: f64) -> bool {
+        !self.hides_hits(now)
+    }
+}
 
 /// Flies through walls: the noclip movement's marker (`chimera_sim`'s
 /// `movement::noclip`; Source's noclip move type). Not `God`: CS:S still

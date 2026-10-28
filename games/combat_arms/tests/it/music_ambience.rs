@@ -1053,3 +1053,131 @@ fn t18_window_minimized() {
     v.set_sound(0);
     close(v.music(), 0.8, 1e-6, "music alone");
 }
+
+// --- A party match (Section 10, `director::observe_party`): a minigame's
+// moments (Chimera's `minigame::moments`) with Combat Arms' music.
+
+use chimera_sim::minigame::moments::{MinigameMoments, MomentPhase};
+
+/// The facts of a party match whose music is `music`'s.
+fn party(music: Option<&'static str>, phase: MomentPhase, alive: bool) -> MusicFacts {
+    let moments = MinigameMoments {
+        playing: true,
+        music,
+        phase,
+        alive,
+        ..Default::default()
+    };
+    let screen = if phase == MomentPhase::Over && moments.result.is_some() { Screen::Result } else { Screen::Match };
+    MusicFacts {
+        screen,
+        mode: data().party.mode.clone(),
+        alive,
+        party: Some(moments),
+        ..Default::default()
+    }
+}
+
+fn with(mut f: MusicFacts, edit: impl FnOnce(&mut MinigameMoments)) -> MusicFacts {
+    edit(f.party.as_mut().unwrap());
+    let p = f.party.as_ref().unwrap();
+    if p.phase == MomentPhase::Over && p.result.is_some() {
+        f.screen = Screen::Result;
+    }
+    f
+}
+
+const CA: Option<&str> = Some("combat_arms");
+
+/// Cases 6, 24-26 in a party match: going in plays the loading track;
+/// the start of play (alive) `RoundStartSound` and Arms Race's start
+/// track; a player on the last rung `last_stage_bgm` looping (its sound is
+/// the cue pack's, not here), a second one leaves it playing, nobody on
+/// it any more: the start track from its start (Arms Race loops).
+#[test]
+fn a_party_match_gets_arms_races_cues() {
+    let mut m = all_files();
+    let mut prev = MusicFacts::default();
+    let loading = MusicFacts {
+        screen: Screen::Loading,
+        ..party(CA, MomentPhase::Waiting, true)
+    };
+    step(&mut m, &mut prev, loading, 0.0);
+    assert_eq!(playing(&m), [data().cues.loading.clone()], "the loading track");
+    step(&mut m, &mut prev, party(CA, MomentPhase::Waiting, true), 2_500.0);
+    assert!(playing(&m).is_empty(), "stopped as the loading screen closes");
+    step(&mut m, &mut prev, party(CA, MomentPhase::Live, true), 3_000.0);
+    let start = data().mode_track("VWRM", None).unwrap().0.to_string();
+    assert_eq!(playing(&m), [start.clone()], "the start track at the start of play");
+    assert!(m.heard.contains(&"RoundStartSound".to_string()));
+    let last = with(party(CA, MomentPhase::Live, true), |p| p.last_rung = 1);
+    step(&mut m, &mut prev, last.clone(), 10_000.0);
+    assert_eq!(playing(&m), [data().cues.last_stage.clone()], "the last stage's music");
+    assert!(!m.heard.contains(&"last_stage_sound".to_string()), "its sound is the cue pack's");
+    let two = with(party(CA, MomentPhase::Live, true), |p| p.last_rung = 2);
+    step(&mut m, &mut prev, two, 30_000.0);
+    let started = m.mixed(1.0)[0].started;
+    assert_eq!(started, 10_000.0, "not restarted by a second player");
+    step(&mut m, &mut prev, party(CA, MomentPhase::Live, true), 40_000.0);
+    assert_eq!(playing(&m), [start], "nobody on it: the start track again");
+    assert_eq!(m.mixed(1.0)[0].started, 40_000.0, "from its start");
+}
+
+/// Case 8 in a party match: dead at the start of play, no sound and no
+/// music that match.
+#[test]
+fn dead_at_the_start_of_play_no_party_music() {
+    let mut m = all_files();
+    let mut prev = MusicFacts::default();
+    step(&mut m, &mut prev, party(CA, MomentPhase::Waiting, false), 0.0);
+    step(&mut m, &mut prev, party(CA, MomentPhase::Live, false), 1_000.0);
+    assert!(playing(&m).is_empty());
+    assert!(!m.heard.contains(&"RoundStartSound".to_string()));
+    step(&mut m, &mut prev, party(CA, MomentPhase::Live, true), 3_000.0);
+    assert!(playing(&m).is_empty(), "alive later: still none (one start of play a match)");
+}
+
+/// The respawn countdown (death_killcam.md 9): `RespawnCountSound` at
+/// each whole second; the match-end screen (case 27): music stopped and
+/// paused (the screen plays the win or lose sound), nothing until the
+/// next match, whose start of play has its music again.
+#[test]
+fn the_party_countdown_ticks_and_the_end_screen_is_silent() {
+    let mut m = all_files();
+    let mut prev = MusicFacts::default();
+    step(&mut m, &mut prev, party(CA, MomentPhase::Waiting, true), 0.0);
+    step(&mut m, &mut prev, party(CA, MomentPhase::Live, true), 1_000.0);
+    for (i, s) in [2, 2, 1, 1].into_iter().enumerate() {
+        let dead = with(party(CA, MomentPhase::Live, false), |p| p.respawn_in = Some(s));
+        step(&mut m, &mut prev, dead, 2_000.0 + i as f64 * 500.0);
+    }
+    assert_eq!(m.heard.iter().filter(|k| *k == "RespawnCountSound").count(), 2, "one a whole second");
+    let over = with(party(CA, MomentPhase::Over, true), |p| p.result = Some(Some(false)));
+    step(&mut m, &mut prev, over.clone(), 10_000.0);
+    assert!(playing(&m).is_empty(), "stopped on the match-end screen");
+    step(&mut m, &mut prev, over, 20_000.0);
+    assert!(playing(&m).is_empty(), "no playlist there");
+    assert!(!m.heard.iter().any(|k| k.starts_with("Result")), "the screen's sound, not the director's");
+    step(&mut m, &mut prev, party(CA, MomentPhase::Waiting, true), 30_000.0);
+    step(&mut m, &mut prev, party(CA, MomentPhase::Live, true), 31_000.0);
+    assert_eq!(playing(&m), [data().mode_track("VWRM", None).unwrap().0.to_string()], "the next match's music");
+}
+
+/// Another game's music (or none): Combat Arms' director stays silent in
+/// a party match, the loading track and playlist too.
+#[test]
+fn another_games_party_music_leaves_combat_arms_silent() {
+    for music in [None, Some("cs_source")] {
+        let mut m = all_files();
+        let mut prev = MusicFacts::default();
+        let loading = MusicFacts {
+            screen: Screen::Loading,
+            ..party(music, MomentPhase::Waiting, true)
+        };
+        step(&mut m, &mut prev, loading, 0.0);
+        step(&mut m, &mut prev, party(music, MomentPhase::Live, true), 1_000.0);
+        let last = with(party(music, MomentPhase::Live, true), |p| p.last_rung = 1);
+        step(&mut m, &mut prev, last, 2_000.0);
+        assert!(playing(&m).is_empty() && m.heard.is_empty(), "{music:?}");
+    }
+}
