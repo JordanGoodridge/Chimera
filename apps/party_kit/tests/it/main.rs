@@ -21,6 +21,7 @@ mod kill_feed;
 mod kill_icons;
 mod last_shot;
 mod net_gun_game;
+mod party_music;
 mod persist;
 mod net_party;
 mod results_hud;

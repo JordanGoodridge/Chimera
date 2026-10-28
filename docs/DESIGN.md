@@ -326,6 +326,19 @@ numbers (pinned by `parity_pin_*` tests in each game).
   and nobody carries armour their HUD doesn't show. (Combat Arms puts on
   its default gear at a switch, not a loadout's.)
 
+- **Spawn protection shows nothing** (`core::SpawnProtected`, a
+  minigame's: `protection = { damage, bullets, fire_ends }`, as Combat
+  Arms' 4 s and 3 s; the gun games keep one 1.5 s for both, ended by
+  the first shot): no damage lands in the damage
+  window (`core::God`), a bullet stops at the player in the bullets
+  window, and while either runs a hit on the player is told with no hit
+  (`weapon::impact::hide_protected`): no game draws blood, a puff, a
+  decal or an impact sound, nor a hit indicator, name-tag flash or the
+  victim's reaction, for any gun. The windows replicate on each client's
+  clock (`chimera_net::minigame_net::NetProtected`), so the server and
+  every client agree: no blood without damage. Like Combat Arms, nothing
+  marks a protected player (a visible marker would be a party option).
+
 ### Announcers
 
 Kill-streak and special-kill callouts (Combat Arms' DOUBLE KILL ...
@@ -373,10 +386,28 @@ Part B Combat Arms' pack).
   HUD (`chimera_client::client::callouts`) with a cue's sound. The
   sounds are a **cue pack** (`chimera_core::cues::CuePack`, TOML: cue
   key to a file in a game's install, loaded at run time), a game's part
-  (`GameParts::cues`; CS:S's is stock sounds, data/cues.toml); a
-  definition picks one (`cues = "<id>"`, `none`; default: the first
-  registered). Plain CS:S and Combat Arms play no minigame, so neither
-  changes.
+  (`GameParts::cues`; CS:S's is stock sounds, data/cues.toml; Combat
+  Arms' its Arms Race interface sounds for a rung up and the last rung);
+  a definition picks one (`cues = "<id>"`, `none`; default: the pack of
+  the game whose HUD is up, which follows the gun in a gun game, else the
+  first registered). The match-end screen's sound is the HUD's game's
+  too: its `match_won_sound` for the winner, and for the others its
+  `match_lost_sound` where it has one (Combat Arms' result screen's win
+  and lose), else the won sound; a draw plays none. Plain CS:S and
+  Combat Arms play no minigame, so neither changes.
+- **A minigame's music is one game's director's**: the match's moments
+  for the local player (`chimera_sim::minigame::moments::
+  MinigameMoments`: the phase, alive or not, players on the last rung,
+  the respawn countdown's seconds, the result), on every machine, are
+  read by the director of the game the definition's `music` names
+  (default: the first game whose parts lend one, `GameParts::music`:
+  Combat Arms'; CS:S has none). Combat Arms' plays Arms Race's cues for
+  them (specs/combat_arms/music_ambience.md Section 10: the loading
+  track, the round start's sound and start track at the start of play
+  if alive, the last stage's music while anyone is on the last rung, the
+  respawn countdown's ticks, silence on the match-end screen); the
+  others stay silent. Sounds a callout plays (rung up, last rung) are
+  the cue pack's, not the director's, so nothing plays twice.
 
 ### Gun game rules
 

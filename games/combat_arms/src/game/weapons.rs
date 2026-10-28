@@ -65,7 +65,9 @@
 //!   third-person reload / (min(rate, 2) x (2 - `ReloadCheckTime`)),
 //!   `CaServerSettings`) is dropped. An infected victim
 //!   (`movement::CaInfected`) of the other team gets the ammo's knock-back
-//!   (`movement::HitKnockback`).
+//!   (`movement::HitKnockback`). A hit on a spawn-protected character
+//!   (Chimera's `core::SpawnProtected`, a party match's) shows nothing:
+//!   the round's events go through `weapon::impact::hide_protected`.
 //! - `combat_arms:spread` (`CaSpread`): the firing and movement meters on
 //!   fixed 1/80 s sub-steps (an exact accumulator keeping the remainder,
 //!   Q2's recommendation; `SpreadOptions::quantised` discards it as the
@@ -1944,6 +1946,9 @@ struct Delivery<'w, 's> {
     /// Rounds' pushes on physics objects (`weapon::impact`).
     impulses: MessageWriter<'w, crate::weapon::impact::BulletImpulse>,
     rules: DamageRules<'w, 's>,
+    /// Spawn-protected characters (`core::SpawnProtected`, a party's): a
+    /// hit on them shows nothing (`weapon::impact::hide_protected`).
+    spawn_protected: Query<'w, 's, &'static crate::core::SpawnProtected>,
     /// The mode and friendly fire (game_modes.md S8: a teammate's round is
     /// scaled before armour and the zone factor).
     settings: Option<Res<'w, super::rules::CaRuleSettings>>,
@@ -2607,6 +2612,18 @@ fn after_shots(
             }
         }
     }
+    // A spawn-protected character's hits show nothing (Chimera's
+    // `SpawnProtected`; plain Combat Arms' own protection is `CaProtected`,
+    // whose blood the effects leave out).
+    let at = delivery.now.now;
+    let hides = |t: Entity| delivery.spawn_protected.get(t).is_ok_and(|p| p.hides_hits(at));
+    let out: Vec<WeaponEvent> = out
+        .into_iter()
+        .filter_map(|e| {
+            let kind = crate::weapon::impact::hide_protected(e.kind, hides)?;
+            Some(WeaponEvent { kind, ..e })
+        })
+        .collect();
     let mut writer = events.p1();
     for e in out {
         writer.write(e);

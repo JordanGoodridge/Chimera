@@ -1472,3 +1472,38 @@ fn t36_no_zoom_without_a_scope() {
     assert_eq!(sim.app.world().get::<CaMovement>(p).unwrap().speed_limit, limit);
     assert_eq!(shown_cone(&sim, w), cone, "the normal cone");
 }
+
+/// A party's spawn protection (Chimera's `core::SpawnProtected`;
+/// game_modes.md Corrections 2026-10-28, 2 and case 105): a Combat Arms
+/// gun's round on a protected player shows nothing (its traces carry no
+/// hit: no blood, impact, ding or name-tag flash) and deals nothing; once
+/// it is over the same round hits.
+#[test]
+fn a_spawn_protected_player_shows_and_takes_no_hit() {
+    use chimera_core::core::SpawnProtected;
+    let mut sim = new_sim();
+    let (shooter, target) = range_lane(&mut sim, "test:r870_exact", 500.0);
+    place_at(&mut sim, shooter, target, "Torso", 500.0);
+    let t = now(&sim);
+    sim.app.world_mut().entity_mut(target).insert((
+        SpawnProtected {
+            damage_until: t + 4.0,
+            bullets_until: t + 3.0,
+        },
+        chimera_core::core::God,
+    ));
+    let shown = |sim: &Sim| {
+        sim.app.world().resource::<Log>().0.iter().filter(|(_, _, k)| match k {
+            WeaponEventKind::Shot { hit, .. } | WeaponEventKind::ShotContinued { hit, .. } => *hit == Some(target),
+            WeaponEventKind::Hit { target: h, .. } => *h == target,
+            _ => false,
+        }).count()
+    };
+    sim.app.world_mut().resource_mut::<Log>().0.clear();
+    let lost = shoot_at(&mut sim, shooter, target, "Torso");
+    assert_eq!((lost, shown(&sim)), (0.0, 0), "protected: nothing shows, nothing lands");
+    sim.app.world_mut().entity_mut(target).remove::<(SpawnProtected, chimera_core::core::God)>();
+    sim.app.world_mut().resource_mut::<Log>().0.clear();
+    let lost = shoot_at(&mut sim, shooter, target, "Torso");
+    assert!(lost > 0.0 && shown(&sim) > 0, "after it: {lost}");
+}

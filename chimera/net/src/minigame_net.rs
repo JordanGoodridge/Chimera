@@ -16,6 +16,11 @@
 //! - **The players**: `InMinigame` and the rules module's own state
 //!   (`ladder::Rung`, `wins::MatchesWon`) replicate on the characters, so the HUD finds who
 //!   plays and who leads; kills and deaths are `NetScore`'s.
+//! - **Spawn protection** (`NetProtected`): a protected character's two
+//!   windows (`core::SpawnProtected`) as server ticks, which a client
+//!   puts on its copy on its own clock (`apply_protection`), so its
+//!   shots and others' traced again show no hit on that player for the
+//!   same windows the server blocks (no blood without damage).
 //! - **Events** (`MinigameNews`): rung ups and downs, the last rung, the
 //!   lead, a match won, for the HUD's notices and callouts, as the index
 //!   in `minigame::EVENT_NAMES`.
@@ -64,7 +69,7 @@ use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    core::{NetRole, SimClock},
+    core::{NetRole, SimClock, SpawnProtected},
     net::{
         GREYBOX, NetAppExt, NetHooks,
         game::{ServerTime, tick_of},
@@ -107,6 +112,14 @@ pub struct NetMinigame {
     pub next: Option<(Option<String>, f64)>,
 }
 
+/// A character's spawn protection (`core::SpawnProtected`), its windows'
+/// ends as server ticks (fractional); gone when it ends.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct NetProtected {
+    pub damage_until: f64,
+    pub bullets_until: f64,
+}
+
 /// Server -> clients: something happened in the match
 /// (`minigame::MinigameEvent`): its name's place in `EVENT_NAMES`, who it
 /// concerns (a placeholder for no one) and its number.
@@ -136,6 +149,7 @@ fn register(app: &mut App) {
         .replicate::<InMinigame>()
         .replicate::<Rung>()
         .replicate::<MatchesWon>()
+        .replicate::<NetProtected>()
         .ordered::<Rung>()
         .add_mapped_server_message::<MinigameNews>(Channel::Ordered)
         .add_server_message::<PartyOffer>(Channel::Ordered)
@@ -167,11 +181,11 @@ fn register(app: &mut App) {
     app.add_systems(FixedLast, serve_minigame.run_if(not(client())))
         .add_systems(
             PostUpdate,
-            (send_news, send_offer).chain().before(ServerSystems::Send).run_if(server()),
+            (write_protection, send_news, send_offer).chain().before(ServerSystems::Send).run_if(server()),
         )
         .add_systems(
             PreUpdate,
-            (apply_minigame, receive_news, receive_offer)
+            (apply_minigame, apply_protection, receive_news, receive_offer)
                 .chain()
                 .after(ClientSystems::Receive)
                 .run_if(client()),
@@ -819,6 +833,63 @@ fn next_map(world: &mut World, def: &'static MinigameDef) -> String {
 }
 
 /// The server's events back into `MinigameEvent`s (the HUD's notices).
+/// The server: each spawn-protected character's windows into
+/// `NetProtected` (written when they change), gone with them.
+fn write_protection(
+    clock: Res<SimClock>,
+    protected: Query<(Entity, &SpawnProtected, Option<&NetProtected>), With<Replicated>>,
+    stale: Query<Entity, (With<NetProtected>, Without<SpawnProtected>)>,
+    mut commands: Commands,
+) {
+    for (e, p, have) in &protected {
+        let now = NetProtected {
+            damage_until: tick_of(&clock, p.damage_until),
+            bullets_until: tick_of(&clock, p.bullets_until),
+        };
+        // The ticks of the same times move by float noise only.
+        let same = have.is_some_and(|h| {
+            (h.damage_until - now.damage_until).abs() < 1e-3 && (h.bullets_until - now.bullets_until).abs() < 1e-3
+        });
+        if !same {
+            commands.entity(e).insert(now);
+        }
+    }
+    for e in &stale {
+        commands.entity(e).remove::<NetProtected>();
+    }
+}
+
+/// A client: `NetProtected` as `SpawnProtected` on its own clock (gone
+/// with it).
+fn apply_protection(world: &mut World) {
+    let Some(t) = ServerTime::of(world) else { return };
+    let now = world.resource::<SimClock>().now;
+    let local = |tick: f64| now + (tick - t.tick) * t.step;
+    let mut q = world.query::<(Entity, &NetProtected, Option<&SpawnProtected>)>();
+    let set: Vec<(Entity, SpawnProtected)> = q
+        .iter(world)
+        .filter_map(|(e, n, have)| {
+            let p = SpawnProtected {
+                damage_until: local(n.damage_until),
+                bullets_until: local(n.bullets_until),
+            };
+            // Rewritten only when it moves by more than the clocks' jitter.
+            let same = have.is_some_and(|h| {
+                (h.damage_until - p.damage_until).abs() < 0.05 && (h.bullets_until - p.bullets_until).abs() < 0.05
+            });
+            (!same).then_some((e, p))
+        })
+        .collect();
+    for (e, p) in set {
+        world.entity_mut(e).insert(p);
+    }
+    let gone: Vec<Entity> =
+        world.query_filtered::<Entity, (With<SpawnProtected>, Without<NetProtected>)>().iter(world).collect();
+    for e in gone {
+        world.entity_mut(e).remove::<SpawnProtected>();
+    }
+}
+
 fn receive_news(mut news: MessageReader<MinigameNews>, mut events: MessageWriter<MinigameEvent>) {
     for n in news.read() {
         let Some(name) = EVENT_NAMES.get(n.name as usize) else { continue };

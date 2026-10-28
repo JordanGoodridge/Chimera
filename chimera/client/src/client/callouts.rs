@@ -5,7 +5,8 @@
 //! level!", "You took the lead", "You win!", ...) centre screen, its
 //! first line big, for `hud::CALLOUT_SECONDS`, and its cue's sound once
 //! (`chimera_core::cues`: the pack the definition's `cues` picks, else the
-//! first a game registered; a cue the pack lacks, or no pack, is silent).
+//! pack of the game whose HUD is up, else the first a game registered;
+//! a cue the pack lacks, or no pack, is silent).
 //! It is the shell's own overlay (not a `HudRoot`), so it looks the same
 //! on CS:S's HUD, Combat Arms' and the minimal one; plain CS:S and Combat
 //! Arms play no minigame, so it never shows there. `{player}` is the
@@ -182,6 +183,7 @@ fn draw(
     names: Option<Res<GunNames>>,
     catalog: Option<Res<WeaponCatalog>>,
     settings: Option<Res<NetSettings>>,
+    gameplay: Option<Res<chimera_core::gameplay::Gameplay>>,
     players: Query<(Option<&NetCharacter>, Option<&Name>, Has<LocalPlayer>)>,
     mut root: Query<&mut Visibility, (With<CalloutRoot>, Without<CalloutLine>)>,
     mut lines: Query<(&CalloutLine, &mut Text, &mut Visibility), Without<CalloutRoot>>,
@@ -204,7 +206,9 @@ fn draw(
             view.heard.push(cue.to_string());
             let excess = view.heard.len().saturating_sub(32);
             view.heard.drain(..excess);
-            let pack = packs.choose(active.as_ref().and_then(|a| a.def.cues.as_deref())).cloned();
+            let pack = packs
+                .choose_for(active.as_ref().and_then(|a| a.def.cues.as_deref()), gameplay.as_ref().map(|g| g.hud))
+                .cloned();
             if let Some(pack) = pack
                 && let Some(file) = pack.sound(cue).map(str::to_string)
             {

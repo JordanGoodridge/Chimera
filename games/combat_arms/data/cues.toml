@@ -1,0 +1,23 @@
+# Combat Arms' minigame cue pack (chimera_core::cues): the sounds a party
+# match's callouts play while Combat Arms' HUD is up, from the player's own
+# install (UI_SND.rez), loaded at run time. Arms Race's moments
+# (specs/combat_arms/music_ambience.md Section 10); the files are
+# inferred from their names (Section 7: the keys' values are in keyed
+# attribute files, Open question 1).
+#
+# Combat Arms has no cue for a step down, the lead or the win moment
+# itself (Section 10): those stay silent; the result sounds play on the
+# match-end screen (`GameParts::match_won_sound`, `match_lost_sound`), and
+# the music, the round start and the respawn countdown are its music
+# director's (game::music::director, party cues).
+id = "combat_arms"
+name = "Combat Arms"
+game = "combat_arms"
+
+[sounds]
+# Your own step up while alive: `weapon_change_sound`.
+rung_up = "UI_SND/VWRM/WEAPONRACE_CHANGE.WAV"
+# A player on the last step (you or another; everyone hears it):
+# `last_stage_sound`.
+last_rung = "UI_SND/VWRM/WEAPONRACE_LASTCHANGE.WAV"
+last_rung_other = "UI_SND/VWRM/WEAPONRACE_LASTCHANGE.WAV"

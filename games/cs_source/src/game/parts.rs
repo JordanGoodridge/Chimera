@@ -57,6 +57,10 @@ pub static PARTS: GameParts = GameParts {
     announcer: None,
     // No win music of its own: a bot's cheer for a party match's winner.
     match_won_sound: Some(MATCH_WON_SOUND),
+    // The cheer to everyone (no lose sound of its own).
+    match_lost_sound: None,
+    // No music director (CS:S plays no music in a match).
+    music: false,
     cues: Some(CUES),
 };
 

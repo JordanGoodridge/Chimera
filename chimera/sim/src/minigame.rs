@@ -42,6 +42,9 @@
 //!   draws; and its big callouts (`hud::Callout`, from the module's
 //!   `callout`), which the client shell draws and sounds with the
 //!   definition's cue pack (`cues`, `chimera_core::cues`).
+//!   `moments::MinigameMoments` is the match's moments for a game's music
+//!   director (the start of play, the last rung, the respawn countdown,
+//!   the result), the game the definition's `music` picks.
 //! - Console: `minigames` (the definitions, the playing one marked),
 //!   `minigame <id>`, `minigame_load <file>`, `minigame_status`,
 //!   `minigame_restart`.
@@ -81,6 +84,7 @@ pub mod auto;
 pub mod def;
 pub mod hud;
 pub mod ladder;
+pub mod moments;
 pub mod results;
 pub mod rotation;
 pub mod runtime;
@@ -276,6 +280,12 @@ pub fn check(world: &World, def: &MinigameDef) -> Result<(), String> {
     {
         return Err(fail(format!("cues: no cue pack `{c}` registered (or none, default)")));
     }
+    if let Some(m) = def.music.as_deref().filter(|m| !m.eq_ignore_ascii_case("none"))
+        && let Some(parts) = world.get_resource::<chimera_core::game_parts::PartsRegistry>()
+        && parts.get(m).is_none_or(|p| !p.music)
+    {
+        return Err(fail(format!("music: no game `{m}` lends a music director (or none)")));
+    }
     if let Some(m) = &def.slots.movement
         && world.get_resource::<MovementRegistry>().is_some_and(|r| r.get(m).is_none())
     {
@@ -385,7 +395,8 @@ pub fn restart(world: &mut World) {
     spawns::reset(world);
     let players: Vec<Entity> = world.query_filtered::<Entity, With<InMinigame>>().iter(world).collect();
     for p in players {
-        world.entity_mut(p).remove::<(InMinigame, Protected)>().insert(Score::default());
+        runtime::unprotect(world, p);
+        world.entity_mut(p).remove::<InMinigame>().insert(Score::default());
     }
 }
 
@@ -459,6 +470,7 @@ impl Plugin for MinigamePlugin {
             .add_message::<MinigameEvent>()
             .add_message::<crate::core::Died>()
             .init_resource::<hud::MinigameHud>()
+            .init_resource::<moments::MinigameMoments>()
             .init_resource::<wins::MatchWins>()
             .add_systems(Update, hud::update)
             .add_minigame_rules(ladder::RULES);

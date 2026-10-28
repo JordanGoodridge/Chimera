@@ -18,7 +18,8 @@
 //! with its cue; it replaces the one showing unless that one has a
 //! higher level and is younger than `CALLOUT_HOLD`. `update` also tells the shell
 //! when the dead local player comes back (`core::RespawnDue`, from
-//! `runtime::respawn_due`): the shell's countdown and death view read it.
+//! `runtime::respawn_due`): the shell's countdown and death view read it,
+//! and then the match's moments for a music director (`moments::update`).
 
 use bevy::{ecs::message::MessageCursor, prelude::*};
 
@@ -179,6 +180,7 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
             world.insert_resource(MinigameHud::default());
         }
         set_respawn_due(world, None);
+        super::moments::update(world);
         return;
     };
     let now = world.resource::<Time>().elapsed_secs_f64();
@@ -241,4 +243,5 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
         }
     }
     world.insert_resource(hud);
+    super::moments::update(world);
 }

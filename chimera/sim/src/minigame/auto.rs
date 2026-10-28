@@ -607,6 +607,8 @@ mod tests {
             map_patterns: &["de_*"],
             announcer: None,
             match_won_sound: None,
+            match_lost_sound: None,
+            music: false,
             cues: None,
         };
         let installed: Vec<String> = ["de_one", "DE_Two", "cs_three", "test_x"].iter().map(|s| s.to_string()).collect();

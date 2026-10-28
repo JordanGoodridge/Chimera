@@ -399,6 +399,18 @@ sections above already list.
   own (deathmatch plugins tint the player); Combat Arms' look for a
   protected player, if it has one, is in no spec (spec first for that
   look; the party's own marker is ours).
+  *Fixed, confirm in a playtest (2026-10-28):* Combat Arms' style, as
+  game_modes.md's Corrections (2026-10-28) specify it: an absence. The
+  minigame's protection has the spec's two windows (`protection =
+  { damage = "4s", bullets = "3s" }`; the gun games keep their 1.5 s for
+  both, the first shot ending it: `core::SpawnProtected`); a hit on a protected player, from
+  any game's gun, shows nothing on the host or any client (no blood,
+  puff, decal, impact sound, hit indicator, name-tag flash or reaction:
+  `weapon::impact::hide_protected`) and deals nothing, and the windows
+  replicate on each client's clock (`minigame_net::NetProtected`), so
+  there is no blood without damage. Follow-up: an optional visible
+  marker (a tint or icon, a party option, default off; not Combat
+  Arms').
 - **Ladder rules players expect from gun game.** No cost for a suicide,
   a fall, `kill` or one's own grenade (gun game mods take a level, so
   `kill` isn't a free reset); a late joiner starts on the first rung
@@ -453,6 +465,23 @@ sections above already list.
   last-stage cue can't follow the ladder's last rung (CS:S plays none in
   a match). Decide which cues a minigame gets and feed them from
   `MinigameHud`.
+  *Fixed, confirm in a playtest (2026-10-28):* a minigame's moments
+  (`minigame::moments`: the start of play, alive or not, the last rung's
+  players, the respawn countdown, the result) go to the director of the
+  game whose music the definition picks (`music`; default the first
+  that lends one, `GameParts::music`: Combat Arms'), which plays
+  music_ambience.md Section 10's cues: the loading track, the round
+  start's sound and Arms Race's start track at the start of play if
+  alive, the last stage's music while anyone is on the last rung, the
+  respawn countdown's ticks, silence on the match-end screen. Combat
+  Arms lends a cue pack (rung up and last rung: Arms Race's interface
+  sounds) and its result screen's win and lose sounds, both chosen by
+  the HUD up (the cue pack by `CuePacks::choose_for`, the match-end
+  sound by `PartsRegistry::match_end_sounds`, losers hearing the lose
+  sound). The files are inferred by name (Open question 1). Plain Combat
+  Arms' own interface sounds still have no files (data/music.toml
+  `[interface]`; the party's are `[party.interface]`): a follow-up could
+  give it the same inferred files.
 - **A rung's swap is a hard cut.** Body, HUD and movement change on the
   tick (`identity`): others see the model pop from one game's character
   to the other's, the player's HUD jumps; no swap effect or sound. And

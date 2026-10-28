@@ -20,9 +20,11 @@
 //!   server's, replicated: `chimera_net::minigame_net`).
 //! - **A winner sound** once as the screen comes up after a decided match:
 //!   a file from an install, chosen by data, each game's
-//!   `GameParts::match_won_sound` (the HUD's game first, then the others
-//!   in the order registered; the first that loads plays, none if none
-//!   does), an interface sound at the mixer's master.
+//!   `GameParts::match_won_sound`, or to a player who lost its
+//!   `match_lost_sound` where it has one (`PartsRegistry::
+//!   match_end_sounds`: the HUD's game first, then the others in the
+//!   order registered; the first that loads plays, none if none does), an
+//!   interface sound at the mixer's master.
 //!
 //! While it is up the games' minigame panels draw nothing
 //! (`MinigameHud::results_shown`): their title and status lines sat over
@@ -119,11 +121,7 @@ pub fn next_line(next: &NextMatch, left: f64) -> String {
 /// The winner sound's candidates: each game's `match_won_sound`, `first`
 /// (the HUD's game) before the others.
 pub fn sound_candidates(parts: &PartsRegistry, first: Option<&str>) -> Vec<(String, String)> {
-    let mut all: Vec<_> = parts.all().collect();
-    all.sort_by_key(|p| Some(p.game) != first);
-    all.into_iter()
-        .filter_map(|p| p.match_won_sound.map(|f| (p.game.to_string(), f.to_string())))
-        .collect()
+    parts.match_end_sounds(first, true)
 }
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -192,7 +190,7 @@ fn follow(
         sounds_asked: view.sounds_asked,
     };
     if came_up && v.winner.is_some() {
-        v.sound = parts.map_or_else(Vec::new, |p| sound_candidates(&p, gameplay.as_ref().map(|g| g.hud)));
+        v.sound = parts.map_or_else(Vec::new, |p| p.match_end_sounds(gameplay.as_ref().map(|g| g.hud), v.you_won));
         v.sounds_asked += 1;
     }
     view.set_if_neq(v);
