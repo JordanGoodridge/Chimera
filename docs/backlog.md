@@ -97,7 +97,102 @@ matched their specs wherever the docs don't already say otherwise; the
 gaps found were where the party apps put the two games together (sounds
 and HUD parts by identity, hits and armour across games: DESIGN.md "Hits
 across games", water and ladders across movements) plus a few low items.
-All fixed 2026-10-27; confirm in a playtest.
+All fixed 2026-10-27; confirm in a playtest. What no spec covers is in
+the second pass below.
+
+### Gaps vs the originals, second pass (2026-10-28)
+
+What a player of the gun game (Ultimate Gun Game, Lucker Party) or of
+plain CS:S and Combat Arms would notice, where no spec covers the
+behaviour, so the first pass could not find it. From the code and docs
+and general knowledge of the games; most noticeable first. Items marked
+(spec first) depend on exact original behaviour or data; the rest are
+our design. Not repeated here: what parity-gaps.md, tech-debt.md or the
+sections above already list.
+
+- **Gun game: no sound or banner for a rung up or down, the last rung,
+  a new leader or the win.** Gun game mods on CS:S servers play a
+  level-up and level-down sound, name the new gun big, call the leader
+  and the last level to everyone and play a winner sound; Combat Arms'
+  Arms Race has its last-stage call-out and music. Ours writes
+  `MinigameEvent`s (`rung_up`, `rung_down`, `match_won`) that only the
+  HUD panels read as small text notices, and only the viewer's own rung
+  (`minigame::ladder` `notice`); no leader-change or last-rung notice to
+  others. Fix: a gun-game announcer pack (Chimera's announcer is data,
+  DESIGN.md "Announcers") or Arms Race's cues, which our Arms Race keeps
+  but doesn't show (`rules/arms_race.rs`).
+- **Gun game: the death view fights the 2 s respawn, and there is no
+  countdown.** The dead player gets their identity's death camera: CS:S's
+  2 s death cam, 0.7 s travel and 5 s freeze (`client::spectate`,
+  `ui::freeze_cam`) or Combat Arms' 3.5 s pull-back (`game::death_cam`),
+  but the minigame respawns after `delay` 2 s (`runtime::respawn_dead`),
+  so the freeze cam never freezes and the pull-back is cut off; neither
+  `minigame::hud` nor any HUD shows when you come back. Fix: a short
+  party death view (killer's name, gun and health) sized to the respawn
+  delay, and a countdown.
+- **Kill feed and death screen show no weapon for the other game's
+  guns.** In the party half the kills have an empty weapon slot: CS:S's
+  death notices give another game's gun no icon (`ui::game_hud::
+  kill_icon` returns none), Combat Arms' feed and death screen look up
+  art in its own install by id (`ui::install::kill_icon`), which a CS:S
+  gun lacks. Fix: each feed draws the gun's own game's icon (CS:S's font
+  glyph, Combat Arms' texture), else the display name.
+- **Match end is a few lines of text.** The results replace the notices
+  in the minigame panel (`minigame::results`, `hud::MinigameHud::
+  results`): no full-screen winner or scoreboard, no winner sound or
+  music, no "next map" line, no map vote (minigame.rs shortcut), and the
+  Tab board is plain text without colours (`minigame_scoreboard`).
+  Combat Arms' own result screen is specced (lobby.md G) if the party
+  wants its look.
+- **Spawn protection can't be seen.** A protected player (`runtime`
+  `Protected`, through `core::God`) looks like anyone else, to them and
+  to others, so shots on them read as lost hits. CS:S has none of its
+  own (deathmatch plugins tint the player); Combat Arms' look for a
+  protected player, if it has one, is in no spec (spec first for that
+  look; the party's own marker is ours).
+- **Ladder rules players expect from gun game.** No cost for a suicide,
+  a fall, `kill` or one's own grenade (gun game mods take a level, so
+  `kill` isn't a free reset); a late joiner starts on the first rung
+  (mods give the lowest or average rung of the others); no grenade or
+  knife-only last rungs (the classic HE-then-knife finale). Data options
+  on `chimera:ladder` (a `demote_on` list, a join rung, rung kinds).
+- **Loudness and hearing range differ by game.** Each game's guns,
+  footsteps and impacts play at their own levels and falloff (Combat
+  Arms' nearly flat up close, CS:S's own curves), so one game's players
+  are heard louder or farther than the other's: footsteps give away one
+  identity more. Chimera's mix has no per-game balance. A listening pass
+  with both games' guns and steps at set distances, then a per-game gain
+  (and a footstep range option).
+- **Hit feedback differs by the gun in hand.** A Combat Arms gun gets
+  its hit indicator and name-tag flash (`ui::hud`), a CS:S gun nothing
+  (parity), so CS:S rungs feel unresponsive next to Combat Arms ones.
+  An opt-in party hit marker or hit sound for every gun (parity first,
+  options later).
+- **Dominations and revenge (plain CS:S, and CS:S identity)** (spec
+  first). CS:S marks a player who kills the same enemy several times
+  without dying to them as dominating (a kill feed line, the freeze
+  panel's nemesis line, a scoreboard icon, a sound) and calls a kill on
+  one's dominator revenge; nothing of it here (2b notes only the freeze
+  panel's line). Needs the threshold, the sounds, the icons and who
+  sees what.
+- **No music in the party's matches.** Combat Arms' music director
+  takes its facts from Combat Arms' match (`game::music` reads
+  `CaMatchView`'s mode and phase), which a minigame doesn't run, so the
+  party plays no start track, round or result sounds, and Arms Race's
+  last-stage cue can't follow the ladder's last rung (CS:S plays none in
+  a match). Decide which cues a minigame gets and feed them from
+  `MinigameHud`.
+- **A rung's swap is a hard cut.** Body, HUD and movement change on the
+  tick (`identity`): others see the model pop from one game's character
+  to the other's, the player's HUD jumps; no swap effect or sound. And
+  no character choice: `character` in a definition is informational
+  (minigame.rs shortcut), so nobody picks a CS:S class or a Combat Arms
+  soldier as both games let them.
+- **Balance across identities is unmeasured.** Speeds, sprint, hull
+  height, jump, head size and one-shot ranges change with the rung's
+  game; nobody has looked at whether one game's rungs are easier to win
+  on. A playtest table (time on each rung by game), then minigame
+  options if needed.
 
 ### Decisions 2026-10-13 (user)
 
