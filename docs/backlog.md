@@ -25,6 +25,50 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
+### Gun game playtest, 2026-10-28 (user)
+
+- **Combat Arms guns can't headshot CS:S players** (Dragunov and
+  others; hitbox drawing on): shots on a CS:S body's drawn head box do
+  nothing, only its neck box counts as the head. Every gun's rounds
+  must use the target body's real hitboxes through the one hit path
+  (DESIGN.md "Hits across games"). In progress.
+- **The last shot of a Combat Arms gun is still silent** before the
+  rung swap (reopened after the earlier fix). In progress.
+- **Match end: everyone stops**: when the last player wins, all players
+  and bots freeze for the end hold and the scoreboard comes up. In
+  progress with the match-end screen (second pass item 4).
+- **A new, random ladder on every map**: Ultimate Gun Game's ladder
+  comes from a fixed seed (`SEED`), so every launch plays the same guns,
+  and it is made again only by `ugg_new`. Pick a fresh seed at start
+  and a new ladder at every map change (show the seed; `ugg_new <seed>`
+  replays one); draw from every gun the players' games have (all of
+  Combat Arms' weapons too, not a short list); mix in grenade rungs at
+  the higher tiers, with enough grenades to get a kill.
+- **One generic kill feed in the party apps**: a kill made just before a
+  rung swap shows only in the previous game's feed, and the two games'
+  feeds sit on opposite sides. Keep the feed's entries in Chimera
+  (authoritative, not in any game's HUD) and draw one generic feed in
+  one place in the party apps, with each gun's own icon (the
+  `WeaponIcons` registry); plain CS:S and Combat Arms keep theirs.
+- **Hide the radars in the party apps** (setting to bring them back):
+  Combat Arms' radar over a CS:S map's overview doesn't match either
+  style, and many maps have no overview.
+- **Combat Arms' radar draws as two boxes**: the radar and its
+  background are drawn apart instead of over each other (plain Combat
+  Arms too).
+- **Headshot on a kill streak plays two voices**: a headshot double
+  kill shows HEADSHOT but the announcer says "headshot" and "double
+  kill" together. The spec's "every voice plays" is inferred
+  (kill_streaks.md Open question 5): a spec session should settle what
+  Combat Arms does, then match it.
+- **Combat Arms scopes don't fill the screen**: the overlay is centred
+  but not scaled, so the sides are black; Combat Arms stretches it to
+  the screen (spec first: how it scales).
+- **A Combat Arms character can't break glass by running into it**
+  (cs_office windows); a CS:S character can.
+- **A bot stays invisible**, as either game's character. Repro wanted
+  (map, bot, what happened before).
+
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
 - **HE grenade on a window, black blobs: fixed, confirm in a playtest**
