@@ -11,7 +11,9 @@
 //! network client's from the server's `net::HitConfirm`) and `core::Died`
 //! with the local player as the attacker; the victim sees nothing. A hit
 //! that dealt no damage (spawn protection, a zero-damage round) or whose
-//! target has no health (a prop) shows nothing. While the active HUD
+//! target is not a character (one with `Health` and an `Intent`, which
+//! players, bots and hostages have; a prop, door or breakable is not, even
+//! if something gives it `Health`) shows nothing. While the active HUD
 //! draws its own hit indicator (`hud::GameDraws::hit_marker`, Combat
 //! Arms' for its guns) the generic one stays out. `HitMarkerView` is the
 //! state, headless too (tests read it). Part of `ClientPlugins`.
@@ -23,7 +25,7 @@ use bevy::prelude::*;
 
 use super::hud::GameDraws;
 use crate::{
-    core::{Died, Health, Hitgroup, LocalPlayer},
+    core::{Died, Health, Hitgroup, Intent, LocalPlayer},
     weapon::{WeaponEvent, WeaponEventKind},
 };
 
@@ -105,7 +107,7 @@ fn update(
     mut hits: MessageReader<WeaponEvent>,
     mut died: MessageReader<Died>,
     local: Option<Single<Entity, With<LocalPlayer>>>,
-    healths: Query<(), With<Health>>,
+    characters: Query<(), (With<Health>, With<Intent>)>,
     setting: Res<HitMarkerSetting>,
     draws: Option<Res<GameDraws>>,
     time: Res<Time<Real>>,
@@ -131,7 +133,7 @@ fn update(
         else {
             continue;
         };
-        if wanted && Some(e.owner) == me && Some(target) != me && amount > 0.0 && healths.contains(target) {
+        if wanted && Some(e.owner) == me && Some(target) != me && amount > 0.0 && characters.contains(target) {
             raise(&mut view, if hitgroup == Hitgroup::Head { HitKind::Headshot } else { HitKind::Hit });
         }
     }

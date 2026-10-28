@@ -9,7 +9,7 @@ use chimera_client::client::{
     hit_marker::{HitKind, HitMarkerPlugin, HitMarkerSetting, HitMarkerView},
     hud::GameDraws,
 };
-use chimera_core::core::{Damage, DamageKind, Died, Health, Hitgroup, LocalPlayer};
+use chimera_core::core::{Damage, DamageKind, Died, Health, Hitgroup, Intent, LocalPlayer};
 use chimera_sim::{
     SimBasePlugins,
     weapon::{WeaponEvent, WeaponEventKind},
@@ -21,6 +21,7 @@ struct World3 {
     me: Entity,
     other: Entity,
     prop: Entity,
+    breakable: Entity,
 }
 
 fn world(on: bool) -> World3 {
@@ -31,11 +32,13 @@ fn world(on: bool) -> World3 {
         sim.app.world_mut().resource_mut::<HitMarkerSetting>().on = 1;
     }
     let w = sim.app.world_mut();
-    let me = w.spawn((LocalPlayer, Health::default())).id();
-    let other = w.spawn(Health::default()).id();
+    let me = w.spawn((LocalPlayer, Health::default(), Intent::default())).id();
+    let other = w.spawn((Health::default(), Intent::default())).id();
     let prop = w.spawn_empty().id();
+    // Door-like: has health but is no character (no `Intent`).
+    let breakable = w.spawn(Health::default()).id();
     sim.ticks(2);
-    World3 { sim, me, other, prop }
+    World3 { sim, me, other, prop, breakable }
 }
 
 fn killing_blow() -> Damage {
@@ -116,6 +119,9 @@ fn nothing_for_the_victim_a_prop_no_damage_or_a_hud_with_its_own() {
     assert!(!shown(&w).0, "victim");
     hit(&mut w, me, prop, 30.0, Hitgroup::Generic);
     assert!(!shown(&w).0, "prop");
+    let breakable = w.breakable;
+    hit(&mut w, me, breakable, 30.0, Hitgroup::Generic);
+    assert!(!shown(&w).0, "a breakable with health is no character");
     hit(&mut w, me, other, 0.0, Hitgroup::Chest);
     assert!(!shown(&w).0, "protected: no damage");
     w.sim.app.world_mut().insert_resource(GameDraws {
