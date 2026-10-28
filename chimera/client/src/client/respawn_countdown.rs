@@ -1,0 +1,94 @@
+//! The respawn countdown: while the local player is dead and the rules
+//! will bring it back on a timer (`core::RespawnDue`: a minigame's
+//! `respawn.delay`), "Respawning in N" (whole seconds, rounded up;
+//! "Respawning" once due, until the server's respawn arrives) in the
+//! upper middle of the screen. It is the shell's own overlay (not a
+//! `HudRoot`), so it looks the same on CS:S's HUD, Combat Arms' and the
+//! minimal one; nothing shows when nothing respawns on a timer (plain
+//! CS:S's and Combat Arms' rules leave `RespawnDue` unset, Combat Arms'
+//! death screen has its own countdown). Part of `ClientPlugins`.
+//!
+//! Known shortcuts: plain text on a dark band, no gauge or sound.
+
+use bevy::prelude::*;
+
+use crate::core::{Dead, LocalPlayer, RespawnDue, SimClock};
+
+/// Adds the countdown's node and its system.
+pub struct RespawnCountdownPlugin;
+
+impl Plugin for RespawnCountdownPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<RespawnDue>().add_systems(Startup, spawn).add_systems(Update, draw);
+    }
+}
+
+/// The countdown's root (hidden while there is nothing to count).
+#[derive(Component)]
+pub struct RespawnCountdownRoot;
+
+/// The countdown's text node.
+#[derive(Component)]
+pub struct RespawnCountdownText;
+
+/// What the countdown says `left` seconds before the respawn.
+pub fn text(left: f64) -> String {
+    match left.ceil() as i64 {
+        n if n <= 0 => "Respawning".into(),
+        n => format!("Respawning in {n}"),
+    }
+}
+
+fn spawn(mut commands: Commands) {
+    commands
+        .spawn((
+            RespawnCountdownRoot,
+            Visibility::Hidden,
+            GlobalZIndex(70),
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(0.0),
+                width: percent(100.0),
+                top: percent(24.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+        ))
+        .with_children(|c| {
+            c.spawn((
+                RespawnCountdownText,
+                Text::new(""),
+                TextFont {
+                    font_size: FontSize::Px(28.0),
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+                Node {
+                    padding: UiRect::axes(px(16.0), px(6.0)),
+                    ..default()
+                },
+            ));
+        });
+}
+
+fn draw(
+    due: Option<Res<RespawnDue>>,
+    clock: Option<Res<SimClock>>,
+    local: Query<Has<Dead>, With<LocalPlayer>>,
+    mut root: Query<&mut Visibility, With<RespawnCountdownRoot>>,
+    mut label: Query<&mut Text, With<RespawnCountdownText>>,
+) {
+    let dead = local.iter().next().unwrap_or(false);
+    let shown = due.and_then(|d| d.0).filter(|_| dead).zip(clock).map(|(d, c)| text(d.at - c.now));
+    for mut v in &mut root {
+        v.set_if_neq(if shown.is_some() { Visibility::Inherited } else { Visibility::Hidden });
+    }
+    if let Some(s) = shown {
+        for mut t in &mut label {
+            if t.0 != s {
+                t.0 = s.clone();
+            }
+        }
+    }
+}

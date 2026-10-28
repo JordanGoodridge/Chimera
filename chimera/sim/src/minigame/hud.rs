@@ -8,13 +8,15 @@
 //! game's HUD may show it (Combat Arms' does, `ui::hud`); it names nobody
 //! and no weapon itself: a line's text has `{player}` and `{weapon}` where
 //! the HUD puts the player's name and the weapon's display name, which
-//! only the HUD's game knows (`HudLine`).
+//! only the HUD's game knows (`HudLine`). `update` also tells the shell
+//! when the dead local player comes back (`core::RespawnDue`, from
+//! `runtime::respawn_due`): the shell's countdown and death view read it.
 
 use bevy::{ecs::message::MessageCursor, prelude::*};
 
 use super::{ActiveMinigame, MinigameEvent};
 use crate::{
-    core::{LocalPlayer, SimClock},
+    core::{LocalPlayer, RespawnAt, RespawnDue, SimClock},
     mode::{Match, Phase},
 };
 
@@ -85,7 +87,19 @@ fn phase_line(world: &World) -> Option<HudLine> {
     }
 }
 
-/// `MinigameHud` for this frame (an exclusive system, `Update`).
+/// `core::RespawnDue`, written only when it changes.
+fn set_respawn_due(world: &mut World, due: Option<RespawnAt>) {
+    match world.get_resource_mut::<RespawnDue>() {
+        Some(mut r) => {
+            r.set_if_neq(RespawnDue(due));
+        }
+        None if due.is_some() => world.insert_resource(RespawnDue(due)),
+        None => {}
+    }
+}
+
+/// `MinigameHud` for this frame (an exclusive system, `Update`), and the
+/// local player's `core::RespawnDue` (`runtime::respawn_due`).
 pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>) {
     let events: Vec<MinigameEvent> = world
         .get_resource::<Messages<MinigameEvent>>()
@@ -95,10 +109,19 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
         if world.get_resource::<MinigameHud>().is_some_and(MinigameHud::playing) {
             world.insert_resource(MinigameHud::default());
         }
+        set_respawn_due(world, None);
         return;
     };
     let now = world.resource::<Time>().elapsed_secs_f64();
     let viewer = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next();
+    let due = viewer.and_then(|v| {
+        let at = super::runtime::respawn_due(world, v)?;
+        Some(RespawnAt {
+            at,
+            delay: active.def.spawn.respawn.delay as f64,
+        })
+    });
+    set_respawn_due(world, due);
     let mut hud = world.remove_resource::<MinigameHud>().unwrap_or_default();
     hud.title = active.def.name.clone();
     hud.notices.retain(|(_, until)| *until > now);

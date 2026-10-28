@@ -10,6 +10,13 @@
 //! `games::cs_source::ui::spectator_hud`); in first person the target's crosshair and scope (`hud.rs`). Back to
 //! the eye when you live again (respawn, new round).
 //!
+//! Under rules that respawn the dead on a timer (`core::RespawnDue`: a
+//! minigame's `respawn.delay`, 2 s in the gun game) the death cam and the
+//! freeze cam are fitted into the wait (`fit_to_respawn`: at most 40 % of
+//! it death cam, 15 % travel, the rest the held picture), so the picture
+//! is reached and seen before the respawn; without one (plain CS:S) the
+//! timings below stand.
+//!
 //! Client-side only: it reads the simulation and moves the local camera.
 //! The state machine (`Spectator::step`) is pure; `SpectateStatePlugin`
 //! runs it without a window (tests), `SpectatePlugin` adds the camera
@@ -103,7 +110,7 @@ pub const DEATH_CAM_ALONE: f64 = 6.5;
 /// CS:S dedicated server's (measured 2026-10-15), server cvars replicated
 /// to clients (`core::SpectatorRules`, `console::SERVER_NAMES`).
 pub use crate::core::{FREEZE_HOLD, FREEZE_TRAVEL};
-use crate::core::{FREEZE_TRAVEL_MIN, SpectatorRules};
+use crate::core::{FREEZE_TRAVEL_MIN, RespawnDue, SimClock, SpectatorRules};
 /// How far from the killer's eye the freeze cam stops, CS:S units (at
 /// most; nearer when the death cam was nearer). A guess.
 const FREEZE_DISTANCE: f32 = 128.0;
@@ -224,6 +231,11 @@ pub struct Me {
     /// On the spectator team (`core::Spectating`): watching starts free
     /// (no death cam), and anyone may be watched (`team` is None).
     pub spectator: bool,
+    /// Seconds until the rules respawn you on a timer (`core::RespawnDue`:
+    /// a minigame's `respawn.delay`); None: no timed respawn, CS:S's own
+    /// timings. The death cam and freeze cam are fitted into the wait
+    /// (`fit_to_respawn`).
+    pub respawn_in: Option<f64>,
 }
 
 /// Spectator requests from keys and console commands.
@@ -255,7 +267,35 @@ pub struct Spectator {
     /// Dead on a team whose players are all dead under `mp_forcecamera`:
     /// nobody to watch, the camera held (`SpecMode::Fixed`).
     pub stranded: bool,
+    /// This death's death cam length, seconds (`DEATH_CAM_SECONDS`, or
+    /// shorter fitted to a timed respawn); 0 before the first.
+    pub death_cam_length: f64,
 }
+
+/// A timed respawn's wait (`budget`, seconds from the death) fitted with
+/// the death view: the death cam takes at most `FIT_DEATH_CAM` of it
+/// (never more than `DEATH_CAM_SECONDS`), the freeze cam's travel at most
+/// `FIT_TRAVEL` (never more than its own), and the picture holds for what
+/// is left (never more than its own hold), so the freeze is reached and
+/// seen before the respawn. A wait as long as the whole view (7.7 s with
+/// CS:S's defaults) changes nothing. Returns the death cam's length and
+/// the freeze cam's travel and hold (None stays None: disabled).
+pub fn fit_to_respawn(budget: f64, freeze: Option<(f32, f32)>) -> (f64, Option<(f32, f32)>) {
+    let budget = budget.max(0.0);
+    let death_cam = DEATH_CAM_SECONDS.min(budget * FIT_DEATH_CAM);
+    let freeze = freeze.map(|(travel, hold)| {
+        let travel = travel.min((budget * FIT_TRAVEL) as f32).max(FREEZE_TRAVEL_MIN);
+        let left = (budget - death_cam) as f32 - travel;
+        (travel, hold.min(left.max(0.0)))
+    });
+    (death_cam, freeze)
+}
+
+/// The shares of a timed respawn's wait the death cam and the freeze
+/// cam's travel may take (ours: with a 2 s wait 0.8 s of death cam, the
+/// whole of its rise, 0.3 s of travel and 0.9 s of held picture).
+pub const FIT_DEATH_CAM: f64 = 0.4;
+pub const FIT_TRAVEL: f64 = 0.15;
 
 /// The player's own freeze cam setting: `cl_disablefreezecam`
 /// (Multiplayer > Advanced "Disable freeze cam", default 0). Its timings
@@ -349,14 +389,20 @@ impl Spectator {
             };
         }
         if let SpecPhase::DeathCam { since, killer } = self.phase {
+            // A timed respawn's wait (from the death) fits the view.
+            let (length, freeze) = match me.respawn_in {
+                Some(left) => fit_to_respawn(left + (now - since), me.freeze),
+                None => (DEATH_CAM_SECONDS, me.freeze),
+            };
+            self.death_cam_length = length;
             // The death cam plays out; keys wait for it.
-            if now - since < DEATH_CAM_SECONDS {
+            if now - since < length {
                 return;
             }
             // The freeze cam, on a killer still alive; without one the
             // death cam lasts CS:S's `DEATH_CAM_ALONE`.
             let alive = |k: Entity| living.iter().any(|c| c.entity == k);
-            match (me.freeze, killer.filter(|k| alive(*k))) {
+            match (freeze, killer.filter(|k| alive(*k))) {
                 (Some((travel, hold)), Some(killer)) => {
                     self.phase = SpecPhase::FreezeCam {
                         since: now,
@@ -565,6 +611,7 @@ type Living<'a> = (
 #[allow(clippy::type_complexity)]
 fn track(
     time: Res<Time>,
+    (due, clock): (Option<Res<RespawnDue>>, Option<Res<SimClock>>),
     local: Option<Single<(&Transform, Option<&Team>, Has<Dead>, Has<Spectating>), With<LocalPlayer>>>,
     characters: Query<Living, (With<Intent>, Without<LocalPlayer>, Without<Npc>)>,
     killed: Res<KilledBy>,
@@ -582,6 +629,10 @@ fn track(
         position: at.translation,
         freeze: freeze.timing(&rules),
         spectator,
+        respawn_in: due
+            .and_then(|d| d.0)
+            .zip(clock)
+            .map(|(d, c)| (d.at - c.now).max(0.0)),
     };
     let mut living: Vec<(String, Candidate)> = characters
         .iter()
@@ -705,7 +756,12 @@ pub fn place_camera(
         SpecPhase::Alive => None,
         SpecPhase::DeathCam { since, killer } => {
             let dc = death_cam(me, at, own.eye_offset, intent, killer, &watched, &ragdolls, &bodies, &spatial, &characters);
-            let s = ((time.elapsed_secs_f64() - since) as f32 / DEATH_CAM_MOVE).clamp(0.0, 1.0);
+            // The rise, within a death cam fitted shorter.
+            let rise = match spec.death_cam_length as f32 {
+                l if l > 0.0 => DEATH_CAM_MOVE.min(l),
+                _ => DEATH_CAM_MOVE,
+            };
+            let s = ((time.elapsed_secs_f64() - since) as f32 / rise).clamp(0.0, 1.0);
             Some(dc.at(s))
         }
         SpecPhase::FreezeCam {
@@ -970,7 +1026,51 @@ mod tests {
             position: Vec3::ZERO,
             freeze: None,
             spectator: false,
+            respawn_in: None,
         }
+    }
+
+    /// A timed respawn fits the death view: with a 2 s wait the death cam
+    /// is 0.8 s, the travel 0.3 s and the picture holds 0.9 s; a wait as
+    /// long as the whole view leaves CS:S's timings; a short one never
+    /// gives a negative hold.
+    #[test]
+    fn a_timed_respawn_fits_the_death_and_freeze_cams() {
+        let cs = Some((FREEZE_TRAVEL, FREEZE_HOLD));
+        let (dc, f) = fit_to_respawn(2.0, cs);
+        let (travel, hold) = f.unwrap();
+        assert!((dc - 0.8).abs() < 1e-9 && (travel - 0.3).abs() < 1e-6 && (hold - 0.9).abs() < 1e-5, "{dc} {f:?}");
+        assert_eq!(fit_to_respawn(20.0, cs), (DEATH_CAM_SECONDS, cs));
+        let (dc, f) = fit_to_respawn(0.1, cs);
+        assert!(dc <= 0.1 && f.unwrap().1 >= 0.0);
+        assert_eq!(fit_to_respawn(2.0, None).1, None, "disabled stays disabled");
+    }
+
+    /// Dead with a respawn 2 s away: the freeze cam starts at 0.8 s, holds
+    /// until the respawn and the death view is over by then.
+    #[test]
+    fn the_freeze_cam_is_reached_before_a_timed_respawn() {
+        let living = [cand(9, 1, 4.0), cand(2, 2, 9.0)];
+        let mut me = dead_ct(true);
+        me.freeze = Some((FREEZE_TRAVEL, FREEZE_HOLD));
+        let mut s = Spectator::default();
+        for i in 0..20 {
+            let t = 10.0 + i as f64 * 0.1;
+            me.respawn_in = Some((12.0 - t).max(0.0));
+            s.step(t, &me, &living, 1, SpecInput::default());
+            match i {
+                0..=7 => assert!(matches!(s.phase, SpecPhase::DeathCam { .. }), "{t}: {:?}", s.phase),
+                8 => {}
+                _ => assert!(matches!(s.phase, SpecPhase::FreezeCam { .. }), "{t}: {:?}", s.phase),
+            }
+        }
+        assert!((s.death_cam_length - 0.8).abs() < 1e-9);
+        // Without a timed respawn, CS:S's 2 s.
+        let mut s = Spectator::default();
+        me.respawn_in = None;
+        s.step(10.0, &me, &living, 1, SpecInput::default());
+        s.step(11.0, &me, &living, 1, SpecInput::default());
+        assert!(matches!(s.phase, SpecPhase::DeathCam { .. }));
     }
 
     /// CS:S: only first person hides the watched player (its body and the
