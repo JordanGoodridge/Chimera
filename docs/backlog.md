@@ -44,6 +44,16 @@ the user's go-ahead: no Actions runs unless asked.
   replays one); draw from every gun the players' games have (all of
   Combat Arms' weapons too, not a short list); mix in grenade rungs at
   the higher tiers, with enough grenades to get a kill.
+- **A random map every match, from a broad pool**: the next map is
+  picked at random from every installed map gun game can run on (CS:S
+  and Combat Arms maps with enough spawns), skipping the last 10 played
+  (as many as the pool allows; never the same map twice in a row); the
+  host keeps the history for the server's lifetime. Goes with the
+  random ladder above.
+- **Combat Arms characters can't climb a ladder from the front** (cs_office;
+  other maps untested): climbing works from the ladder's left and right
+  sides, not head-on. Check the Source ladder's facing/normal as Combat
+  Arms' movement uses it (`core::LadderZone`).
 - **One generic kill feed in the party apps**: a kill made just before a
   rung swap shows only in the previous game's feed, and the two games'
   feeds sit on opposite sides. Keep the feed's entries in Chimera
