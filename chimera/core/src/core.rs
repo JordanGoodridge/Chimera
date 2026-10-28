@@ -70,7 +70,8 @@
 //! carried item marks on the scoreboard); `BuildVersion` (the app's stamp);
 //! `DEFAULT_TICK_HZ`; what the client shell reads of a game's rules without
 //! naming them: `JoinChoice` (how a player comes into a game), `MapCycle`,
-//! `FadeToBlack` and the `NewGame` hook (`new_game`).
+//! `FadeToBlack`, `RespawnDue` (when the dead local player comes back, for
+//! rules that respawn on a timer) and the `NewGame` hook (`new_game`).
 //!
 //! `BrushGrid`: a grid over brushes' bounds, the Source movement's broad
 //! phase over `MapBrushes` (identical results to testing every brush).
@@ -1335,6 +1336,26 @@ impl Default for SpectatorRules {
     }
 }
 
+/// When the dead local player comes back, as the rules know it: set by
+/// rules that respawn the dead a fixed time after their death and say so
+/// (the minigame runtime: `chimera_sim::minigame::hud::update`, from its
+/// definition's `respawn.delay`). `at` is `SimClock` seconds (a network
+/// client's own clock, as its `Dead::since`); `delay` the whole wait from
+/// the death. None while alive, or when nothing respawns the player on a
+/// timer (plain CS:S's and Combat Arms' rules leave it unset: their death
+/// views keep their own timings and screens). Read by the shell's death
+/// view (`client::spectate`, which fits CS:S's death and freeze cams into
+/// the wait) and its countdown (`client::respawn_countdown`).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct RespawnDue(pub Option<RespawnAt>);
+
+/// A timed respawn: at `at` (`SimClock` s), `delay` s after the death.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RespawnAt {
+    pub at: f64,
+    pub delay: f64,
+}
+
 /// `mp_fadetoblack` (CS:S's default 0): the dead see black
 /// (`client::senses`; set by the rules' `mp_fadetoblack`).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -2171,6 +2192,7 @@ impl Plugin for CorePlugin {
             .add_systems(FixedFirst, start_tick)
             .init_resource::<RoundRestarts>()
             .init_resource::<FreezeTime>()
+            .init_resource::<RespawnDue>()
             .configure_sets(
                 FixedUpdate,
                 (SimSet::Rules, SimSet::Commands, SimSet::Movement, SimSet::Weapons).chain(),

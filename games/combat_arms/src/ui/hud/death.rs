@@ -20,7 +20,11 @@
 //! - `CaDeathInputPlugin`: Space, Ctrl and Shift (cycle, Hunted's free
 //!   cameras), F7 (fast respawn), the mouse, the wheel and the movement
 //!   keys into `CaDeathInput`, and the death camera's pose onto the
-//!   shell's camera (`SpecView`), after the shell's own spectator.
+//!   shell's camera (`SpecView`), after the shell's own spectator. Pose
+//!   and screen only while Combat Arms' HUD is the gameplay's (always in
+//!   Combat Arms; in a party app while the dead player is a Combat Arms
+//!   soldier: another game's identity keeps that game's death view, the
+//!   shell's `client::spectate` for CS:S).
 //!
 //! Known shortcuts: without the install's layout no screen is drawn (ours
 //! has no geometry to give: Open question 2), only the camera; the rank
@@ -200,7 +204,11 @@ impl Plugin for CaDeathScreenPlugin {
             .add_systems(Update, read_input.before(DeathCamSet))
             .add_systems(
                 Update,
-                place_death_camera.in_set(SpectateSet).after(place_camera).after(DeathCamSet),
+                place_death_camera
+                    .in_set(SpectateSet)
+                    .after(place_camera)
+                    .after(DeathCamSet)
+                    .run_if(crate::gameplay::hud_is(crate::game::GAME)),
             )
             .add_systems(Update, (load_panel, draw_screen).chain().after(DeathCamSet));
     }
@@ -302,13 +310,15 @@ fn draw_screen(
     params: super::PenParams,
     art: Option<Res<crate::ui::draw::CaArt>>,
     map_view: Query<(), (With<LocalPlayer>, With<MapView>)>,
+    gameplay: Option<Res<crate::gameplay::Gameplay>>,
     root: Single<Entity, With<DeathRoot>>,
     mut last: Local<Option<(DeathScreen, crate::ui::hud::Screen, bool)>>,
     mut commands: Commands,
 ) {
     let Some(panel) = &state.panel else { return };
     let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
-    let up = death.screen_up && map_view.is_empty();
+    let ours = gameplay.is_none_or(|g| g.hud == crate::game::GAME);
+    let up = death.screen_up && map_view.is_empty() && ours;
     let shown = if up { death.screen.clone() } else { DeathScreen::default() };
     if !super::rebuild(&mut last, (shown.clone(), hud.screen, loaded), *root, &mut commands) || !up {
         return;

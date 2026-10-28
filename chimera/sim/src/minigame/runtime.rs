@@ -24,7 +24,9 @@
 //!   protected from damage
 //!   (`Protected`, through `core::God`) for `protection` s or until it
 //!   fires. The dead respawn after `delay` s (`respawn_dead`) unless the
-//!   match is over or the mode refuses.
+//!   match is over or the mode refuses (`respawn_due`: when, which the
+//!   HUD's countdown and the shell's death view read as
+//!   `core::RespawnDue`).
 //! - Held (`MatchHold`, a server changing map for the next match): no
 //!   one joins or respawns, the phases don't step.
 //! - Deaths (`handle_deaths`, after the tick's damage): the dead marked
@@ -358,23 +360,42 @@ fn step_phases(world: &mut World) {
     mode::flow::mission_update(world);
 }
 
+/// When dead `e` comes back (`SimClock` s): its death plus the
+/// definition's `delay`, while a minigame plays that respawns it (not held,
+/// the match not over, the mode willing). A network client, which has no
+/// mode of its own, goes by the definition alone. What `respawn_dead`
+/// waits for and what the HUD's countdown shows (`hud::update`, into
+/// `core::RespawnDue`).
+pub fn respawn_due(world: &World, e: Entity) -> Option<f64> {
+    let def = world.get_resource::<ActiveMinigame>()?.def;
+    let dead = world.get::<Dead>(e)?;
+    if super::held(world) || world.get_resource::<Match>().is_none_or(|m| m.phase == Phase::MatchOver) {
+        return None;
+    }
+    if world.get::<Spectating>(e).is_some() {
+        return None;
+    }
+    if let Some(mode) = current_mode(world)
+        && (!mode.respawns || !(mode.hooks.may_respawn)(world, e))
+    {
+        return None;
+    }
+    Some(dead.since + def.spawn.respawn.delay as f64)
+}
+
 /// The dead back after the definition's delay.
 fn respawn_dead(world: &mut World) {
-    let Some(def) = world.get_resource::<ActiveMinigame>().map(|a| a.def) else { return };
-    let Some(mode) = current_mode(world) else { return };
-    if super::held(world) || !mode.respawns || world.resource::<Match>().phase == Phase::MatchOver {
+    if current_mode(world).is_none() {
         return;
     }
     let now = world.resource::<SimClock>().now;
     let due: Vec<Entity> = players(world)
         .into_iter()
-        .filter(|(e, _)| world.get::<Dead>(*e).is_some_and(|d| now + 1e-9 >= d.since + def.spawn.respawn.delay as f64))
+        .filter(|(e, _)| respawn_due(world, *e).is_some_and(|at| now + 1e-9 >= at))
         .map(|(e, _)| e)
         .collect();
     for e in due {
-        if (mode.hooks.may_respawn)(world, e) {
-            respawn(world, e);
-        }
+        respawn(world, e);
     }
 }
 

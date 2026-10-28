@@ -364,3 +364,38 @@ fn the_shooters_own_killing_shot_sounds_once() {
     assert!(rounds >= 10, "the rifle fired its rounds: {rounds}");
     assert_eq!(heard, rounds, "one fire sound per round, the killing one too");
 }
+
+/// The dead local player is told when it comes back (`core::RespawnDue`):
+/// its death plus the definition's delay, the respawn at that time, then
+/// nothing; nothing while alive, and nothing once the match is over.
+#[test]
+fn the_dead_local_player_knows_when_it_respawns() {
+    use chimera_core::core::{LocalPlayer, RespawnDue};
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.app.world_mut().entity_mut(b).insert(LocalPlayer);
+    settle(&mut sim);
+    let due = |sim: &Sim| sim.app.world().resource::<RespawnDue>().0;
+    assert_eq!(due(&sim), None, "alive");
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(1);
+    let since = sim.app.world().get::<Dead>(b).expect("dead").since;
+    let d = due(&sim).expect("a timed respawn");
+    assert!((d.at - (since + 1.0)).abs() < 1e-9 && d.delay == 1.0, "{d:?} {since}");
+    // Back at that time, not before.
+    while sim.app.world().resource::<SimClock>().now + 0.05 < d.at {
+        sim.ticks(1);
+        assert!(sim.app.world().get::<Dead>(b).is_some(), "not before the time it was told");
+    }
+    sim.seconds(0.1);
+    assert!(sim.app.world().get::<Dead>(b).is_none(), "respawned");
+    assert_eq!(due(&sim), None);
+    // Match over: the dead stay dead and are told nothing.
+    settle(&mut sim);
+    sim.app.world_mut().resource_mut::<Match>().phase = Phase::MatchOver;
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    assert!(sim.app.world().get::<Dead>(b).is_some());
+    assert_eq!(due(&sim), None, "no countdown after the match");
+}

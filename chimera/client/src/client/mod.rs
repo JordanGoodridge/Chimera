@@ -42,6 +42,7 @@ pub mod net_graph;
 pub mod night_vision;
 pub mod frame_metrics;
 pub mod perf;
+pub mod respawn_countdown;
 #[cfg(feature = "trace")]
 pub mod trace_capture;
 pub mod game_text;
@@ -408,6 +409,7 @@ impl PluginGroup for ClientPlugins {
             .add(chat::ChatPlugin)
             .add(senses::SensesPlugin)
             .add(spectate::SpectatePlugin)
+            .add(respawn_countdown::RespawnCountdownPlugin)
             .add(hdr::HdrPlugin)
             .add(video::VideoPlugin)
             .add(hud_text::HudTextPlugin)

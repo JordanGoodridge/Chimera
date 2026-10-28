@@ -130,6 +130,16 @@ sections above already list.
   `minigame::hud` nor any HUD shows when you come back. Fix: a short
   party death view (killer's name, gun and health) sized to the respawn
   delay, and a countdown.
+  *Fixed, confirm in a playtest (2026-10-28):* the minigame tells the
+  shell when the dead local player comes back (`core::RespawnDue`, from
+  the definition's `delay`); the shell fits CS:S's death and freeze cams
+  into that wait (`spectate::fit_to_respawn`: 0.8 s death cam, 0.3 s
+  travel, 0.9 s frozen picture with 2 s) and shows "Respawning in N" on
+  every HUD (`client::respawn_countdown`). Combat Arms' pull-back is
+  kept: its spec's 2 s reference wait also ends it early, after the
+  camera has settled (0.7 s). Its camera and death screen now show only
+  while Combat Arms' HUD is up, so a CS:S-gun death gets CS:S's view.
+  Plain CS:S and Combat Arms set no `RespawnDue` and are unchanged.
 - **Kill feed and death screen show no weapon for the other game's
   guns.** In the party half the kills have an empty weapon slot: CS:S's
   death notices give another game's gun no icon (`ui::game_hud::
