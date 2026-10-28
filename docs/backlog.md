@@ -48,10 +48,16 @@ the user's go-ahead: no Actions runs unless asked.
   (as many as the pool allows; never the same map twice in a row); the
   host keeps the history for the server's lifetime. Goes with the
   random ladder above.
-- **Combat Arms characters can't climb a ladder from the front** (cs_office;
-  other maps untested): climbing works from the ladder's left and right
-  sides, not head-on. Check the Source ladder's facing/normal as Combat
-  Arms' movement uses it (`core::LadderZone`).
+- **Combat Arms characters can't climb a ladder from the front: fixed,
+  confirm in a playtest** (cs_office). A Source map's ladder brush is
+  solid, so Combat Arms' (round) hull stopped a skin short of its face and
+  its box never touched the brush's `Ladder` volume; at a slant only the
+  box's corners poked in, so the sides worked. The volume made from a
+  ladder brush now reaches 2 Source units past its side faces
+  (`combat_arms` `volumes::ladder_from_brush`;
+  `movement_volumes::a_solid_map_ladder_brush_is_climbed_from_any_side`,
+  party_kit `heavy::css_map_moves` on cs_office's and de_nuke's ladders;
+  de_train's checked once).
 - **One generic kill feed in the party apps**: a kill made just before a
   rung swap shows only in the previous game's feed, and the two games'
   feeds sit on opposite sides. Keep the feed's entries in Chimera
@@ -80,8 +86,20 @@ the user's go-ahead: no Actions runs unless asked.
   Arms maps had them as a guest's (`dress_guest`), hence "after a map
   change". Now the impact decals load with any kit and stay with the
   map. Fixed, confirm in a playtest.
-- **A Combat Arms character can't break glass by running into it**
-  (cs_office windows); a CS:S character can.
+- **A Combat Arms character can't break glass by running into it: fixed,
+  confirm in a playtest** (cs_office windows). A whole window stops
+  either game's character (spec: only a broken one shatters by touch);
+  once a bullet cracked it, CS:S's movement (which sweeps the map's
+  brushes) walked through and shattered the panes, but the cracked
+  window's pane collider was on the default layer (the logic bridge put
+  it back every tick), so Combat Arms' movement (which sweeps colliders)
+  was stopped by it. The panes are now for shots only
+  (`core::TRACE_ONLY_LAYER`, `source_logic` bridge and
+  `map::breakables::update_panes`), so any game's character runs through
+  and shatters them (party_kit `cross_glass`, `heavy::css_map_moves`).
+  Left: break-on-touch glass reads this tick's velocity for the spec's
+  "smoothed speed", so a CS:S player (velocity clipped at the glass)
+  doesn't break it; a Combat Arms one does (no such glass on cs_office).
 - **A bot stays invisible**, as either game's character. Repro wanted
   (map, bot, what happened before).
 
