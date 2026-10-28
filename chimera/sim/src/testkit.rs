@@ -198,6 +198,7 @@ pub static STAND_IN: GameParts = GameParts {
     hud: None,
     maps: &[],
     announcer: None,
+    match_won_sound: None,
 };
 
 /// The stand-in game's movement: the placeholder's, under the kit's name.

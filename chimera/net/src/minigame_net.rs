@@ -42,7 +42,11 @@
 //!   meanwhile. A server rotates through it by itself once a match has
 //!   been over for `RESULTS_HOLD` s (`serve_minigame`,
 //!   `MinigameDef::rotate`) and puts the results up meanwhile
-//!   (`NetMinigame::results`).
+//!   (`NetMinigame::results`, each row's character mapped to the client's
+//!   entity) with the match-end hold (`minigame::NextMatch`: the map
+//!   picked for the next match as soon as the match is decided, and when the
+//!   change comes; `NetMinigame::next`), which the shell's match-end
+//!   screen shows.
 //! - **The playable set** (`playable`, `PartyOffer`, console
 //!   `party_offer`): each registered minigame on its pool's first map
 //!   against the players' mount doctor reports (their userinfo); the
@@ -65,7 +69,7 @@ use crate::{
         maps::sha256,
         ordered::OrderedAppExt,
     },
-    minigame::{self, ActiveMinigame, MatchResults, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame, wins::MatchesWon},
+    minigame::{self, ActiveMinigame, MatchResults, NextMatch, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, runtime::InMinigame, wins::MatchesWon},
     mode::{Match, Phase},
 };
 use chimera_core::game_registry::Games;
@@ -93,7 +97,11 @@ pub struct NetMinigame {
     pub ends: Option<f64>,
     /// The finished match's results (`minigame::MatchResults`), names as
     /// the players are known on the network; none while the match plays.
+    #[entities]
     pub results: Option<MatchResults>,
+    /// The match-end hold (`minigame::NextMatch`): the next match's map
+    /// once picked, and when it comes (a server tick).
+    pub next: Option<(Option<String>, f64)>,
 }
 
 /// Server -> clients: something happened in the match
@@ -207,6 +215,7 @@ fn write_minigame(world: &mut World) {
             }
             r
         }),
+        next: world.get_resource::<NextMatch>().map(|n| (n.map.clone(), tick_of(&clock, n.at))),
     };
     // Another minigame, or its definition made again (same id, new text).
     let announced = world.get_resource::<Announced>().map(|a| a.0);
@@ -696,54 +705,82 @@ fn apply_minigame(world: &mut World, mut refused: Local<Option<String>>) {
             }
         }
     }
+    // The match-end hold, its time on this clock (rewritten only when it
+    // moves by more than the clocks' jitter).
+    let next = n.next.and_then(|(map, at)| Some(NextMatch { map, at: local.as_ref().map(|f| f(at))? }));
+    let have = world.get_resource::<NextMatch>();
+    let same = match (have, &next) {
+        (Some(h), Some(n)) => h.map == n.map && (h.at - n.at).abs() < 0.1,
+        (None, None) => true,
+        _ => false,
+    };
+    if !same {
+        match next {
+            Some(n) => world.insert_resource(n),
+            None => {
+                world.remove_resource::<NextMatch>();
+            }
+        }
+    }
 }
 
 /// The minigame's end of the tick on a server or a standalone game: a
 /// map change for the next match followed (`follow_map_change`), the
 /// next map once the match has been over a while (`rotate`), and (a
 /// server) the match into `NetMinigame`.
-fn serve_minigame(world: &mut World, mut over_since: Local<Option<f64>>) {
+fn serve_minigame(world: &mut World) {
     follow_map_change(world);
-    rotate(world, &mut over_since);
+    rotate(world);
     if world.get_resource::<NetRole>() == Some(&NetRole::Server) {
         write_minigame(world);
     }
 }
 
-/// A server (or a standalone game): the match has been over for
-/// `RESULTS_HOLD` s with its results up: on to the next map of the pool
-/// that every player can play (`MinigameDef::rotate`; else the same map
-/// anew), by `change_match`.
-fn rotate(world: &mut World, over_since: &mut Option<f64>) {
-    let over = world.get_resource::<Match>().is_some_and(|m| m.phase == Phase::MatchOver)
-        && !world.contains_resource::<MapChange>();
-    let Some(active) = world.get_resource::<ActiveMinigame>().copied().filter(|_| over) else {
-        *over_since = None;
-        return;
-    };
-    let now = world.resource::<SimClock>().now;
-    let since = *over_since.get_or_insert(now);
-    if now < since + minigame::runtime::RESULTS_HOLD {
+/// A server (or a standalone game): the match is decided and its results
+/// up (`minigame::NextMatch`, the hold `results::record` began): the next
+/// map of the pool that every player can play (`MinigameDef::rotate`;
+/// else the same map anew) is picked at once for the match-end screen,
+/// and once the match has been over `RESULTS_HOLD` s the server moves there by
+/// `change_match` (the map picked again if a player who joined meanwhile
+/// can't play it).
+fn rotate(world: &mut World) {
+    if world.contains_resource::<MapChange>() {
         return;
     }
-    *over_since = None;
+    let Some(active) = world.get_resource::<ActiveMinigame>().copied() else { return };
+    let Some(next) = world.get_resource::<NextMatch>().cloned() else { return };
     let def = active.def;
-    let here = crate::net::current_map(world);
-    let pool: Vec<String> = def.maps.iter().map(|m| crate::net::normalize_map(m)).collect();
-    // The next map in turn that every player can play, this one last.
-    let mut target = here.clone();
-    if def.rotate {
-        let start = pool.iter().position(|m| *m == here).map_or(0, |i| i + 1);
-        let candidates = (0..pool.len()).map(|i| pool[(start + i) % pool.len()].clone());
-        let chosen = candidates.into_iter().find(|m| playable_on(world, def, Some(m)).ok());
-        if let Some(m) = chosen {
-            target = m;
+    let target = match next.map.clone() {
+        Some(m) => m,
+        None => {
+            let m = next_map(world, def);
+            world.resource_mut::<NextMatch>().map = Some(m.clone());
+            m
         }
+    };
+    let over = world.get_resource::<Match>().is_some_and(|m| m.phase == Phase::MatchOver);
+    let now = world.resource::<SimClock>().now;
+    if !over || now < next.at {
+        return;
     }
+    let target = if playable_on(world, def, Some(&target)).ok() { target } else { next_map(world, def) };
     info!("{} is over: next, {} on {target}", def.id, def.name);
     if let Err(e) = change_match(world, &def.id, Some(&target)) {
         warn!("rotating {}: {e}", def.id);
     }
+}
+
+/// The map `def`'s next match plays on: the pool's next map in turn that
+/// every player can play, this one last (with `rotate = false`, this one).
+fn next_map(world: &mut World, def: &'static MinigameDef) -> String {
+    let here = crate::net::current_map(world);
+    if !def.rotate {
+        return here;
+    }
+    let pool: Vec<String> = def.maps.iter().map(|m| crate::net::normalize_map(m)).collect();
+    let start = pool.iter().position(|m| *m == here).map_or(0, |i| i + 1);
+    let candidates = (0..pool.len()).map(|i| pool[(start + i) % pool.len()].clone());
+    candidates.into_iter().find(|m| playable_on(world, def, Some(m)).ok()).unwrap_or(here)
 }
 
 /// The server's events back into `MinigameEvent`s (the HUD's notices).

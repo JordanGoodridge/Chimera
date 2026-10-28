@@ -9,7 +9,10 @@
 //! loading state (`JoinProgress`'s `ChangingLevel`, the loading dialog's)
 //! while it loads, and the next match only once the server and every
 //! client have the new map (the test's maps load in a few frames, the
-//! clients' later than the server's).
+//! clients' later than the server's). The win pauses everyone (the
+//! server's end freeze, held in the clients' prediction too) and every
+//! client shows the match-end screen (`client::match_end`): the
+//! standings with its own row, the next map and the countdown.
 
 use bevy::{ecs::message::MessageCursor, prelude::*};
 use chimera_core::{
@@ -31,7 +34,7 @@ use chimera_sim::{
 };
 use chimera_world::map::{LoadedMapName, MapFile};
 
-use crate::net_party::{failure, party};
+use crate::net_party::{failure, party_and};
 
 /// A two-rung ladder on a pool of two maps, short enough to finish in a
 /// test.
@@ -136,7 +139,12 @@ fn hit(sim: &mut NetSim, victim: Entity, by: Entity) {
 /// Two clients joined to `text`'s ladder, and the first one's character
 /// wins it (two kills on the second's).
 fn a_won_match(text: &str) -> (NetSim, Entity) {
-    let mut sim = party(2, Some(text));
+    a_won_match_and(text, |_| {})
+}
+
+/// `a_won_match` with `extra` on every app.
+fn a_won_match_and(text: &str, extra: fn(&mut App)) -> (NetSim, Entity) {
+    let mut sim = party_and(2, Some(text), extra);
     sim.server.app.init_resource::<Levels>().add_systems(Update, server_loads);
     sim.server.app.console_command("changelevel", "changelevel <map>: a test's.", |w, a| {
         let map = a.first().cloned().unwrap_or_default();
@@ -283,4 +291,94 @@ fn matches_won_reach_every_client_and_survive_the_rotation() {
     for i in 0..2 {
         assert_eq!(tallies(&mut sim, i), [0, 1], "client {i}: kept over the rotation");
     }
+}
+
+/// The match-end screen on every client (`client::match_end`): during the
+/// hold each client has the server's standings (final gun, matches won),
+/// its own row found by its character, the next map the server picked
+/// and the countdown to the change, in step with the server's.
+#[test]
+fn every_client_shows_the_match_end_screen_with_its_own_row_and_the_next_map() {
+    use chimera_client::client::match_end::{MatchEndPlugin, MatchEndView};
+    use chimera_sim::minigame::NextMatch;
+    let (mut sim, a) = a_won_match_and(ROTATING, |app| {
+        app.add_plugins(MatchEndPlugin);
+    });
+    // The win pauses everyone: both clients press forward, jump and fire,
+    // and nobody moves on the server or in a client's prediction, the
+    // winner's weapon silent (the server's freeze, `core::FreezeTime`).
+    assert!(matches!(sim.server.app.world().resource::<Match>().phase, Phase::RoundOver { .. }));
+    sim.ticks(10);
+    let me: Vec<Entity> = (0..2).map(|i| sim.local_player(i).unwrap()).collect();
+    let flat = |v: Vec3| Vec2::new(v.x, v.z);
+    let server_at = flat(sim.server.position(a));
+    let client_at: Vec<Vec2> = (0..2).map(|i| flat(sim.clients[i].position(me[i]))).collect();
+    let fired = |s: &NetSim| {
+        let w = s.server.app.world();
+        let gun = w.get::<chimera_sim::weapon::Inventory>(a).and_then(|inv| inv.active);
+        gun.and_then(|g| w.get::<chimera_sim::weapon::WeaponState>(g)).map(|st| (st.burst, st.next_primary.to_bits()))
+    };
+    let before = fired(&sim);
+    for _ in 0..90 {
+        for i in 0..2 {
+            let mut intent = sim.clients[i].app.world_mut().get_mut::<chimera_core::core::Intent>(me[i]).unwrap();
+            intent.move_axis = Vec2::Y;
+            intent.jump = true;
+            intent.fire = true;
+        }
+        sim.step();
+    }
+    assert!(sim.server.app.world().resource::<chimera_core::core::FreezeTime>().0, "frozen on the server");
+    let moved = flat(sim.server.position(a)).distance(server_at);
+    assert!(moved < 0.01, "the winner stands on the server: moved {moved}");
+    for i in 0..2 {
+        let moved = flat(sim.clients[i].position(me[i])).distance(client_at[i]);
+        assert!(moved < 0.01, "client {i} stands in its prediction: moved {moved}");
+    }
+    assert_eq!(fired(&sim), before, "no shot fired");
+    // The screen with the results, at the round's end (after the win's
+    // own moment).
+    let ok = sim.until(1500, |s| s.clients.iter().all(|c| c.app.world().get_resource::<MatchResults>().is_some()));
+    assert!(ok);
+    // The server's next match, then the screen on both clients.
+    let ok = sim.until(1500, |s| {
+        s.server.app.world().get_resource::<NextMatch>().is_some_and(|n| n.map.is_some())
+            && s.clients.iter().all(|c| c.app.world().resource::<MatchEndView>().shown)
+    });
+    assert!(ok, "the screen on every client");
+    let server = sim.server.app.world().resource::<MatchResults>().clone();
+    let guns: Vec<(Option<&str>, u32)> = server.rows.iter().map(|r| (r.gun.as_deref(), r.wins)).collect();
+    assert_eq!(guns, [(Some("cs_source:weapon_ak47"), 1), (Some("cs_source:weapon_deagle"), 0)]);
+    let next = sim.server.app.world().resource::<NextMatch>().clone();
+    assert_eq!(next.map.as_deref(), Some("test:next"), "the pool's next map, picked at the hold's start");
+    let server_left = next.at - sim.server.app.world().resource::<chimera_core::core::SimClock>().now;
+    for i in 0..2 {
+        let me = sim.local_player(i).unwrap();
+        let w = sim.clients[i].app.world();
+        let r = w.resource::<MatchResults>();
+        let mine: Vec<bool> = r.rows.iter().map(|row| row.player == Some(me)).collect();
+        assert_eq!(mine.iter().filter(|m| **m).count(), 1, "client {i}: its own character in the results: {r:?}");
+        let n = w.resource::<NextMatch>();
+        assert_eq!(n.map, next.map, "client {i}");
+        let left = n.at - w.resource::<chimera_core::core::SimClock>().now;
+        assert!((left - server_left).abs() < 0.5, "client {i}: {left} s left, the server {server_left}");
+        let v = w.resource::<MatchEndView>();
+        assert_eq!(v.rows.len(), 2);
+        assert_eq!(v.rows.iter().filter(|r| r.local).count(), 1, "client {i}: one row marked");
+        let my_row = v.rows.iter().position(|r| r.local).unwrap();
+        assert_eq!(mine.iter().position(|m| *m), Some(my_row), "client {i}: the marked row is its own");
+        assert!(!v.rows[0].gun.is_empty() && !v.rows[0].gun.contains(':'), "client {i}: the final gun by name: {:?}", v.rows[0]);
+        assert_eq!((v.rows[0].wins, v.rows[0].winner), (1, true));
+        assert_eq!(v.winner.as_deref(), Some("Ann"), "client {i}");
+        assert_eq!(v.you_won, v.rows[my_row].winner, "client {i}");
+        assert!(v.next.starts_with("Next map: next in "), "client {i}: {}", v.next);
+    }
+    // Through the change: the screen says so, then goes with the new match.
+    let ok = sim.until(3000, |s| s.clients.iter().all(|c| c.app.world().resource::<MatchEndView>().next == "Changing map to next"));
+    assert!(ok, "the countdown reaches the change");
+    let ok = sim.until(3000, |s| s.server.app.world().resource::<Match>().phase == Phase::Live);
+    assert!(ok);
+    sim.ticks(60);
+    assert!(sim.clients.iter().all(|c| !c.app.world().resource::<MatchEndView>().shown), "gone with the new match");
+    assert!(!sim.server.app.world().resource::<chimera_core::core::FreezeTime>().0, "the freeze lifted");
 }

@@ -44,10 +44,11 @@
 //!
 //! - Results: once the match is decided `results::MatchResults` (winner,
 //!   each player's final rung, kills and deaths) is kept for the HUDs
-//!   (`hud::MinigameHud::results`) and replicated; after `runtime::
-//!   RESULTS_HOLD` s of match over a definition with `rotate = true` (the
-//!   default) moves on to the next map of its pool (`chimera_net::
-//!   minigame_net`).
+//!   (`hud::MinigameHud::results`) and replicated; the match over begins
+//!   the match-end hold (`results::NextMatch`, the shell's match-end
+//!   screen counts it down); after `runtime::RESULTS_HOLD` s of it a
+//!   definition with `rotate = true` (the default) moves on to the next
+//!   map of its pool (`chimera_net::minigame_net`).
 //! - Matches won: `wins::MatchWins` counts a decided match for its winner
 //!   by name for as long as the process runs (kept over `restart`, a
 //!   rotation and `change_match`), `wins::MatchesWon` carries it on each
@@ -82,7 +83,7 @@ pub mod wins;
 use bevy::prelude::*;
 
 pub use def::MinigameDef;
-pub use results::MatchResults;
+pub use results::{MatchResults, NextMatch};
 pub use runtime::{InMinigame, JoinOrder, Protected};
 
 use crate::{
@@ -345,6 +346,8 @@ fn begin(world: &mut World, id: &str, fresh: bool) -> Result<&'static MinigameDe
 pub fn restart(world: &mut World) {
     world.insert_resource(Match::default());
     world.remove_resource::<MatchResults>();
+    world.remove_resource::<NextMatch>();
+    runtime::lift_end_freeze(world);
     world.insert_resource(mode::flow::MissionFrames::default());
     spawns::reset(world);
     let players: Vec<Entity> = world.query_filtered::<Entity, With<InMinigame>>().iter(world).collect();

@@ -2195,6 +2195,7 @@ fn t102_minigame_state_on_the_hud() {
         rung: Some(10),
         winner,
         player,
+        ..Default::default()
     };
     sim.app.world_mut().resource_mut::<MinigameHud>().results = Some(MatchResults {
         title: "Gun Game".into(),

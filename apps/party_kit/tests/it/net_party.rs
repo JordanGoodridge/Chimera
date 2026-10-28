@@ -65,6 +65,12 @@ fn setup(app: &mut App) {
 /// A server playing `minigame` (none: the gun game) and `clients` clients,
 /// not yet joined.
 pub fn party(clients: usize, minigame: Option<&str>) -> NetSim {
+    party_and(clients, minigame, |_| {})
+}
+
+/// `party` with `extra` added to every app (the server's and the
+/// clients': a client shell plugin under test).
+pub fn party_and(clients: usize, minigame: Option<&str>, extra: fn(&mut App)) -> NetSim {
     let mut sim = NetSim::new(
         CaSim,
         LinkConditions {
@@ -74,7 +80,10 @@ pub fn party(clients: usize, minigame: Option<&str>) -> NetSim {
         },
         11,
         clients,
-        setup,
+        move |app: &mut App| {
+            setup(app);
+            extra(app);
+        },
     );
     sim.set_frame(TICK_INTERVAL);
     let id = match minigame {

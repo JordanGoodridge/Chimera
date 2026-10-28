@@ -37,6 +37,7 @@ pub mod hud_text;
 pub mod input;
 pub mod interp;
 pub mod map_screen;
+pub mod match_end;
 pub mod net;
 pub mod net_graph;
 pub mod night_vision;
@@ -411,6 +412,7 @@ impl PluginGroup for ClientPlugins {
             .add(senses::SensesPlugin)
             .add(spectate::SpectatePlugin)
             .add(respawn_countdown::RespawnCountdownPlugin)
+            .add(match_end::MatchEndPlugin)
             .add(hdr::HdrPlugin)
             .add(video::VideoPlugin)
             .add(hud_text::HudTextPlugin)

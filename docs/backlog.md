@@ -158,6 +158,26 @@ sections above already list.
   Tab board is plain text without colours (`minigame_scoreboard`).
   Combat Arms' own result screen is specced (lobby.md G) if the party
   wants its look.
+  *Fixed, confirm in a playtest (2026-10-28):* the win pauses the game
+  for everyone: from the winning kill through the match-end hold every
+  player's and bot's intent keeps only its look (`minigame::runtime`'s
+  end freeze, the server's, with `core::FreezeTime` so a client's
+  prediction holds too). The shell draws a
+  match-end screen over every HUD for the match-end hold
+  (`client::match_end`, from the round's end, after the win's own
+  moment, until the next match): the
+  winner big, the final standings in the Tab board's columns (place,
+  name, kills, deaths, final gun, matches won) with your own row
+  highlighted, the next map and a countdown to the change. The server
+  picks the next map as the hold begins (`minigame::NextMatch`,
+  replicated in `NetMinigame` with the results; each row's character is
+  mapped so a client finds its own row). A winner sound plays as it comes
+  up, a file from an install named by data (`GameParts::
+  match_won_sound`: CS:S's a bot cheer; Combat Arms' `ResultWinSound`
+  file isn't in a spec yet), none if missing. Plain CS:S and Combat Arms
+  have no minigame and show nothing new. Follow-up: a map vote on that
+  screen (the server's rotation picks the map meanwhile), and the Tab
+  board's colours.
 - **Spawn protection can't be seen.** A protected player (`runtime`
   `Protected`, through `core::God`) looks like anyone else, to them and
   to others, so shots on them read as lost hits. CS:S has none of its

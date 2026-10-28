@@ -48,4 +48,10 @@ pub static PARTS: GameParts = GameParts {
     maps: &["cs_source:de_dust2", "cs_source:cs_office"],
     // No announcer of its own (CS:S has none).
     announcer: None,
+    // No win music of its own: a bot's cheer for a party match's winner.
+    match_won_sound: Some(MATCH_WON_SOUND),
 };
+
+/// The party match-end screen's winner sound (`GameParts::
+/// match_won_sound`), from the install.
+pub const MATCH_WON_SOUND: &str = "sound/bot/yea_baby.wav";

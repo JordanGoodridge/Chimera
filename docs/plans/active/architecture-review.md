@@ -1854,6 +1854,10 @@ Warehouse.
   standalone game (no server) loads the next map with `map`, not
   `changelevel`, and the minigame goes on (live: the gun game's short
   match on Warehouse, results, then de_dust2 and a new match).
+  (10-28: the next map is picked as the hold begins, `minigame::
+  NextMatch`, replicated in `NetMinigame::next`, for the shell's
+  match-end screen `client::match_end`; the change still comes after
+  the 8 s.)
 - Results: `minigame::results::MatchResults` (title, ladder length, a row a
   player: name, kills, deaths, final rung, winner first; sorted winner,
   rung, kills, fewest deaths), collected by `results::record` as soon as

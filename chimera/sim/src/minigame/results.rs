@@ -7,6 +7,14 @@
 //! it), and a network server replicates it (`chimera_net::minigame_net`'s
 //! `NetMinigame`) so every client's HUD shows the same. Gone when the next
 //! match starts (`minigame::restart`).
+//!
+//! Each row also has the final rung's gun (its weapon id) and the
+//! player's matches won counting this one (`wins::MatchWins`), and the
+//! character it was (mapped to a client's own entity over the network,
+//! so a client finds its own row). With the results the match-end hold
+//! begins (`NextMatch`: when the next match's map change comes, and
+//! where once a server's rotation picked it), which the shell's
+//! match-end screen counts down (`chimera_client::client::match_end`).
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -15,7 +23,7 @@ use super::{ActiveMinigame, ladder, runtime};
 use crate::{core::Score, mode::Match};
 
 /// One player's line of the results.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, bevy::ecs::entity::MapEntities)]
 pub struct ResultRow {
     pub name: String,
     pub kills: i32,
@@ -23,19 +31,45 @@ pub struct ResultRow {
     /// On a ladder: the final rung, counted from 1.
     pub rung: Option<u32>,
     pub winner: bool,
-    /// The character, on the side that played it (not replicated).
-    #[serde(skip)]
+    /// The character (replicated and mapped: a client's own entity for
+    /// it, so it finds its own row).
+    #[entities]
     pub player: Option<Entity>,
+    /// On a ladder: the final rung's gun (a weapon id).
+    pub gun: Option<String>,
+    /// Matches won so far, this one counted (`wins::MatchWins`).
+    pub wins: u32,
 }
 
 /// The finished match's results, best first.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Serialize, Deserialize, bevy::ecs::entity::MapEntities)]
 pub struct MatchResults {
     /// The minigame's name.
     pub title: String,
     /// On a ladder: how many rungs it has (0: not one).
     pub rungs: u32,
+    #[entities]
     pub rows: Vec<ResultRow>,
+}
+
+/// The match-end hold: the match is decided with its results up (from
+/// the round's end, after the win's own moment), and the next match's
+/// map change comes at `at` (`SimClock`; `runtime::RESULTS_HOLD` s after
+/// the match over) on `map` (`net::normalize_map`'s
+/// form) once a server's rotation picked it (`chimera_net::minigame_net`,
+/// which also replicates it). Begun by `record` on the authoritative side,
+/// gone with the results (`minigame::restart`).
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct NextMatch {
+    pub map: Option<String>,
+    pub at: f64,
+}
+
+impl NextMatch {
+    /// The map's name as a player reads it: its id without the game.
+    pub fn map_name(&self) -> Option<&str> {
+        self.map.as_deref().map(|m| m.rsplit(':').next().unwrap_or(m))
+    }
 }
 
 impl MatchResults {
@@ -67,15 +101,24 @@ pub fn collect(world: &mut World) -> Option<MatchResults> {
     let active = *world.get_resource::<ActiveMinigame>()?;
     let m = world.resource::<Match>().clone();
     let on_ladder = active.rules.mode.id == ladder::LADDER;
-    let rungs = if on_ladder { world.get_resource::<ladder::Ladder>().map_or(0, |l| l.rungs.len() as u32) } else { 0 };
+    let ladder_rungs: Vec<&'static str> =
+        if on_ladder { world.get_resource::<ladder::Ladder>().map(|l| l.rungs.clone()).unwrap_or_default() } else { Vec::new() };
+    let rungs = ladder_rungs.len() as u32;
+    let wins = world.get_resource::<super::wins::MatchWins>().cloned().unwrap_or_default();
     let mut rows: Vec<(usize, ResultRow)> = runtime::players(world)
         .into_iter()
         .enumerate()
         .map(|(order, (e, team))| {
             let s = world.get::<Score>(e).copied().unwrap_or_default();
             let name = world.get::<Name>(e).map_or_else(|| format!("Player {}", order + 1), |n| n.as_str().to_string());
-            let rung = on_ladder.then(|| world.get::<ladder::Rung>(e).map_or(0, |r| r.0 as u32) + 1);
+            let at = world.get::<ladder::Rung>(e).map_or(0, |r| r.0);
+            let rung = on_ladder.then_some(at as u32 + 1);
+            let gun = on_ladder
+                .then(|| ladder_rungs.get(at.min(ladder_rungs.len().saturating_sub(1))).map(|g| g.to_string()))
+                .flatten();
             (order, ResultRow {
+                wins: wins.of(&name),
+                gun,
                 name,
                 kills: s.kills,
                 deaths: s.deaths,
@@ -106,14 +149,36 @@ pub(super) fn record(world: &mut World) {
     let decided = world.get_resource::<Match>().is_some_and(|m| m.result.is_some());
     let have = world.contains_resource::<MatchResults>();
     if decided && !have {
-        if let Some(r) = collect(world) {
+        if let Some(mut r) = collect(world) {
             if let (Some(w), Some(mut wins)) = (r.winner(), world.get_resource_mut::<super::wins::MatchWins>()) {
                 wins.add(&w.name);
+                // This match counted on the winner's row.
+                for row in r.rows.iter_mut().filter(|row| row.winner) {
+                    row.wins += 1;
+                }
             }
             world.insert_resource(r);
         }
     } else if !decided && have {
         world.remove_resource::<MatchResults>();
+    }
+    // The match-end hold, from the match decided (the round's end, after
+    // the win's own moment): the change comes `RESULTS_HOLD` s after the
+    // match over.
+    let have_next = world.contains_resource::<NextMatch>();
+    if world.contains_resource::<MatchResults>() && !have_next {
+        let now = world.get_resource::<crate::core::SimClock>().map_or(0.0, |c| c.now);
+        let over_at = match world.resource::<Match>().phase {
+            crate::mode::Phase::Intermission { until } => until,
+            crate::mode::Phase::MatchOver => now,
+            _ => now + runtime::INTERMISSION as f64,
+        };
+        world.insert_resource(NextMatch {
+            map: None,
+            at: over_at + runtime::RESULTS_HOLD,
+        });
+    } else if have_next && !world.contains_resource::<MatchResults>() {
+        world.remove_resource::<NextMatch>();
     }
     // Every player's matches won, from the tally.
     let names: Vec<(Entity, String)> = runtime::players(world)
