@@ -5,7 +5,10 @@
 //! `map::particles`), the smoke cloud's 64 sprites (7.3), and the flash
 //! model (6.2, a fit pending the probe's measurement), and what blasts
 //! and flashes do to hearing (5.5, 6.4: the DSP presets as
-//! `core::HearingEffect`s).
+//! `core::HearingEffect`s). The looks alone (`GrenadeLooksPlugin`: the
+//! explosion's particles and the smoke cloud's sprites, for CS:S's grenades
+//! and explosions of no game, not another game's) for apps that take
+//! CS:S's guns into another game's gameplay (the party apps).
 //!
 //! Units: the spec's inches, converted with `UNIT`. Source's up (z) is our
 //! y.
@@ -77,11 +80,10 @@ impl Plugin for GrenadesPlugin {
             // the bell with σ = R/3, `sv_legacy_grenade_damage` or not
             // (measured 2026-10-17, prop_damage.md Q3).
             .insert_resource(ExplosionRule(he_blast()))
-            .init_resource::<crate::weapon::grenade::LegacyBlastDamage>()
-            .init_resource::<Particles>()
-            .init_resource::<FxRng>()
-            .add_systems(FixedUpdate, explosions.after(crate::core::SimSet::Weapons))
-            .add_systems(Update, draw_clouds.after(ParticleSet::Step).before(ParticleSet::Draw));
+            .init_resource::<crate::weapon::grenade::LegacyBlastDamage>();
+        if !app.is_plugin_added::<GrenadeLooksPlugin>() {
+            app.add_plugins(GrenadeLooksPlugin);
+        }
         crate::console::resource_cvar::<crate::weapon::grenade::LegacyBlastDamage, u8>(
             app,
             "sv_legacy_grenade_damage",
@@ -89,6 +91,29 @@ impl Plugin for GrenadesPlugin {
             |l| &mut l.0,
         );
     }
+}
+
+/// What CS:S's grenades look like, alone (for another game's gameplay
+/// with CS:S's guns: the party apps): the HE's explosion particles (spec
+/// 5.4) and the smoke cloud's sprites (7.3), for CS:S's grenades and for
+/// explosions of no game (env_explosion, exploding props), not another
+/// game's (that game draws its own). `GrenadesPlugin` adds it.
+pub struct GrenadeLooksPlugin;
+
+impl Plugin for GrenadeLooksPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_message::<Detonated>()
+            .init_resource::<Particles>()
+            .init_resource::<FxRng>()
+            .add_systems(FixedUpdate, explosions.after(crate::core::SimSet::Weapons))
+            .add_systems(Update, draw_clouds.after(ParticleSet::Step).before(ParticleSet::Draw));
+    }
+}
+
+/// Whether CS:S draws a grenade or explosion of weapon `id`: its own, and
+/// ones of no game (`env_explosion`); not another game's.
+pub fn draws_blast_of(id: &'static str) -> bool {
+    crate::weapon::impact::weapon_game(id).is_none_or(|g| g.eq_ignore_ascii_case(super::GAME))
 }
 
 #[derive(Resource)]
@@ -629,7 +654,7 @@ fn explosions(
     };
     let mats = FxMaterials::new(&materials.0);
     for d in detonated.read() {
-        if d.kind != GrenadeKind::Blast {
+        if d.kind != GrenadeKind::Blast || !draws_blast_of(d.weapon) {
             continue;
         }
         let a = blast_direction(d.at, &world);
@@ -699,6 +724,9 @@ fn draw_clouds(
     let now = time.elapsed_secs_f64();
     let rng = &mut rng.0;
     for (e, cloud, sprites) in &mut clouds {
+        if cloud.weapon.is_some_and(|w| !draws_blast_of(w)) {
+            continue;
+        }
         let Some(mut s) = sprites else {
             let light = (0..64)
                 .map(|i| light_at(light.as_deref(), cloud.centre + slot_offset(i)))

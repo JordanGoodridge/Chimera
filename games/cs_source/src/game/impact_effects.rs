@@ -2,8 +2,9 @@
 //! the surface's game material letter picks debris flecks and dust
 //! (concrete, tile, wood), a dust puff (dirt, sand), metal sparks (metal,
 //! vent) or electric sparks (computer); flecks and dust take the hit
-//! surface's colour. Players bleed (`blood_impact_red_01`, built from the
-//! spec's table of the install's `.pcf`) and stain the walls behind them,
+//! surface's colour. Players hit by bullets or the knife bleed
+//! (`blood_impact_red_01`, built from the spec's table of the install's
+//! `.pcf`; not from blasts, fire or falls) and stain the walls behind them,
 //! a noclipping player too though its hit is refused, a teammate's hit
 //! with friendly fire off not (CS:S's server sent the blood effect and
 //! decals for the one, nothing for the other: measured 2026-10-17 in a
@@ -64,7 +65,8 @@
 //! ragdolls never count); the push itself is `map::ragdoll`'s, on every ragdoll
 //! on the line (ragdolls.md 6.2). The glass impact (section 9) goes out for
 //! tile windows too (the breakables spec's hit rule doesn't limit it to glass);
-//! the pane bursts' shards are ours (counts, sizes, speeds) with section 9's
+//! the pane bursts' shards are ours (counts, sizes, speeds; at most
+//! `MAX_PANE_SHARDS` a burst) with section 9's
 //! tumbling and settling. Why it's OK for now: Spec defaults; the open
 //! questions need the game.
 //!
@@ -1131,6 +1133,12 @@ fn shard_spin(rng: &mut ParticleRng) -> (Vec3, f32) {
     (angles, rng.float(-800.0, 800.0))
 }
 
+/// Most shards one burst throws (ours). A blast's whole-window burst (shard
+/// size 7) at one shard per shard-size square: cs_office's windows need
+/// about 100 to look shattered; 48 left a few specks drifting into the
+/// room and the panes seemed to vanish.
+pub const MAX_PANE_SHARDS: i32 = 160;
+
 /// Shards of a shattered window pane (spec section 9's glass shards,
 /// spread over the pane): flat translucent squares from the pane's area,
 /// thrown along its push and normal, falling, bouncing (keep 0.3) and
@@ -1156,7 +1164,7 @@ pub fn glass_shards(
     // bursts of a blast cover a whole window).
     let shard = (pane.shard / UNIT).max(1.0);
     let area = pane.size.x * pane.size.y / (UNIT * UNIT);
-    let count = ((area / (shard * shard)) as i32).clamp(2, 48) + rng.int(0, 2);
+    let count = ((area / (shard * shard)) as i32).clamp(2, MAX_PANE_SHARDS) + rng.int(0, 2);
     let lit = light.clamp(Vec3::ZERO, Vec3::ONE) * 0.7 + Vec3::splat(0.3);
     let color = Vec3::new(200.0, 200.0, 210.0) / 255.0 * lit;
     let planes = probe_planes(
@@ -1795,7 +1803,12 @@ fn blood_effects(
         }
         // Only damage that is taken: not a teammate's with friendly fire
         // off (spec section 10).
+        // Bullets and the knife bleed (spec section 10), not blasts, fire
+        // or falls: an HE's damage carries the victim's own centre as its
+        // point, so a burst there drew the goop's dark sprites over the
+        // thrower's own view.
         if hit.attacker.is_none()
+            || !bleeds(hit.kind)
             || !characters.contains(hit.target)
             || settings.violence_hblood == 0
             || crate::core::refused_by_team(hit, &teams, friendly_fire.as_deref())
@@ -1837,6 +1850,13 @@ fn blood_effects(
             });
         }
     }
+}
+
+/// Whether damage of this kind makes blood (spec section 10: bullets and
+/// the knife hitting a player; damage of no stated kind counts as a hit).
+pub fn bleeds(kind: crate::core::DamageKind) -> bool {
+    use crate::core::DamageKind;
+    matches!(kind, DamageKind::Bullet | DamageKind::Melee | DamageKind::Generic)
 }
 
 #[cfg(test)]
@@ -2109,6 +2129,43 @@ mod tests {
             assert!(pool[..4].iter().all(|p| (0.1..=0.25).contains(&p.life)));
             assert!((1.0..=1.5).contains(&pool[4].life));
         }
+    }
+
+    /// A blast's burst over a whole window: one shard per shard-size
+    /// square up to the cap (not 48 specks), each a translucent glass
+    /// fleck tumbling and fading, thrown along the push.
+    #[test]
+    fn a_blasted_window_throws_a_full_burst_of_glass_shards() {
+        // Stand-ins: material 0 for every role, glass flecks 1 and 2.
+        let mut mats = EffectMaterials::all(0);
+        mats.fleck_glass = [Some(1), Some(2)];
+        let mut rng = ParticleRng::new(3);
+        // cs_office-sized: 96 x 48 units, shard size 7, pushed inwards.
+        let pane = crate::map::GlassShatter {
+            at: Vec3::ZERO,
+            normal: Vec3::Z,
+            size: Vec2::new(96.0, 48.0) * UNIT,
+            velocity: Vec3::NEG_Z * 30.0,
+            tile: false,
+            shard: 7.0 * UNIT,
+            piece: false,
+        };
+        let g = glass_shards(&mut rng, &mats, &pane, Vec3::splat(0.5), &NoWorld).unwrap();
+        assert!(g.particles.len() >= 94, "{}", g.particles.len());
+        for s in &g.particles {
+            assert!(s.material == 1 || s.material == 2, "glass fleck material");
+            assert!(matches!(s.shape, Shape::Tumble { settle: true, .. }));
+            assert!(matches!(s.fade, Fade::Tail(t) if t == 2.0));
+            assert!(s.velocity.z < 0.0, "along the push: {}", s.velocity);
+            assert!(s.color.min_element() > 0.45, "lit glass, not dark: {}", s.color);
+        }
+        // A whole cs_office front (16 x 4 panes of 12): capped.
+        let big = crate::map::GlassShatter {
+            size: Vec2::new(192.0, 48.0) * UNIT,
+            ..pane
+        };
+        let g = glass_shards(&mut rng, &mats, &big, Vec3::splat(0.5), &NoWorld).unwrap();
+        assert!((MAX_PANE_SHARDS as usize..=MAX_PANE_SHARDS as usize + 2).contains(&g.particles.len()));
     }
 
     #[test]
