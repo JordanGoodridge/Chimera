@@ -1048,7 +1048,10 @@ impl GameKit {
     /// weapons an app offers in the gameplay's slots), and with `players`
     /// what a player of the map's game wears and sees (its character
     /// bodies, hostages' aside, and its HUD look: an app whose players may
-    /// be that game's, `slots::GameIdentity`). Nothing else stays.
+    /// be that game's, `slots::GameIdentity`), and its impact decals: they
+    /// are part of the map game's impact looks, which stay with the map
+    /// (`MapData::impacts`; `weapon::impact` routes that game's guns' and
+    /// the map's impacts to them). Nothing else stays.
     pub fn stay(self, kept: &[&str], players: bool) -> GameKit {
         let keep = |key: &str| kept.iter().any(|k| key.starts_with(k));
         let Self {
@@ -1056,6 +1059,7 @@ impl GameKit {
             view_models,
             characters,
             hud,
+            decals,
             ..
         } = self;
         GameKit {
@@ -1063,6 +1067,7 @@ impl GameKit {
             view_models: view_models.into_iter().filter(|v| keep(&v.key)).collect(),
             characters: characters.into_iter().filter(|c| players && c.name.is_none()).collect(),
             hud: hud.filter(|_| players),
+            decals,
             ..GameKit::default()
         }
     }

@@ -15,7 +15,8 @@ neither game knows the other (checks/tests/it/architecture.rs).
   `MapData::kit` (a `GameKit`) holds what a map's game brings to every
   map (bodies, held and view models, HUD, radio, bot names, navigation,
   round sounds, muzzle flash, shells, decals); a mashup replaces it
-  (`GameKit::stay`; was `take_game_parts`, X7).
+  (`GameKit::stay`; was `take_game_parts`, X7), keeping the kept guns
+  and the impact decals (the map's game's impact looks stay with it).
 - The games' sides: `cs_source::game::MAP_LOADER` (the CS:S app's
   `games::load_map_level` uses it too), `combat_arms::game::world::
   MAP_LOADER` and `DRESSING` (`world::dress`: effect looks, view models,
