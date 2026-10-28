@@ -23,7 +23,11 @@
 //!   (`rules::flyby`, played at the nearest point of the line, also for
 //!   shots that hit nothing); your hits
 //!   on characters queue a ding (`rules::DingQueue`, played next frame);
-//!   dry fire and knife swings their sounds.
+//!   dry fire and knife swings their sounds. A round whose gun is gone
+//!   when it is drawn (the gun game swaps it on the kill's tick) is drawn
+//!   as that gun (`KnownWeapons`: by entity until its despawn's frame is
+//!   drawn, by weapon ID for others' rounds a client hears after their gun
+//!   changed).
 //! - **View-model keys** (`key_sounds`): `sound_key n` plays the weapon's
 //!   reload, select, deselect or misc sound (yours local, others' 3D, R
 //!   `ReloadSndRadius`/`SelectSndRadius`, 2000 for misc; none from the
@@ -134,7 +138,7 @@ use super::{
     characters::records::Selection,
     grenades::{CaBlastSurface, CaGrenade},
     inventory::UNIT,
-    view_model::{CaViewKey, CaViewModel, CaViewParams, machine::ViewKey},
+    view_model::{CaViewKey, CaViewModel, machine::ViewKey},
     volumes::{CaVolume, in_liquid},
     weapons::CaZoom,
 };
@@ -275,6 +279,7 @@ impl Plugin for CaEffectsPlugin {
         .init_resource::<CaTracerCounters>()
         .init_resource::<CaFx>()
         .init_resource::<DingQueue>()
+        .init_resource::<KnownWeapons>()
         .init_resource::<HurtLimiter>()
         .init_resource::<CaSoundFiles>()
         .init_resource::<CaSoundLengths>()
@@ -288,7 +293,9 @@ impl Plugin for CaEffectsPlugin {
             Update,
             (
                 play_dings,
+                remember_weapons,
                 shot_effects,
+                forget_weapons,
                 key_sounds,
                 crate::game::grenades::callout::hear,
                 grenade_effects,
@@ -489,17 +496,69 @@ impl Rolls {
 // Shots
 
 /// What the weapons a shot names say.
-type WeaponFxQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static Weapon,
-        Option<&'static CaWeaponFx>,
-        Option<&'static CaMods>,
-        Option<&'static CaViewParams>,
-        Option<&'static CaZoom>,
-    ),
->;
+type WeaponFxQuery<'w, 's> =
+    Query<'w, 's, (&'static Weapon, Option<&'static CaWeaponFx>, Option<&'static CaMods>, Option<&'static CaZoom>)>;
+
+/// What a weapon seen here said (its effects and fitted parts), kept past
+/// its despawn: the gun game swaps the gun on the kill's tick, so the
+/// killing round's events (`Update`) name a gun already gone (playtest
+/// 2026-10-28: its fire sound was lost). By entity until the frame it is
+/// despawned in has drawn its events (`forget_weapons`), and by weapon ID
+/// for others' rounds a network client hears after their gun changed.
+#[derive(Resource, Default)]
+pub struct KnownWeapons {
+    by_entity: std::collections::BTreeMap<Entity, KnownWeapon>,
+    by_id: std::collections::BTreeMap<&'static str, KnownWeapon>,
+}
+
+#[derive(Clone)]
+struct KnownWeapon {
+    fx: Option<CaWeaponFx>,
+    mods: Option<CaMods>,
+}
+
+impl KnownWeapons {
+    /// What weapon event `e` was made with, the weapon gone or not.
+    fn of<'a>(
+        &'a self,
+        weapons: &'a WeaponFxQuery,
+        e: &WeaponEvent,
+    ) -> Option<(Option<&'a CaWeaponFx>, Option<&'a CaMods>, Option<&'a CaZoom>)> {
+        if let Ok((_, fx, mods, zoom)) = weapons.get(e.weapon) {
+            return Some((fx, mods, zoom));
+        }
+        let known = self.by_entity.get(&e.weapon).or_else(|| match e.kind {
+            WeaponEventKind::Fired { id, .. } => self.by_id.get(id),
+            _ => None,
+        })?;
+        Some((known.fx.as_ref(), known.mods.as_ref(), None))
+    }
+}
+
+#[allow(clippy::type_complexity)]
+fn remember_weapons(
+    new: Query<
+        (Entity, &Weapon, Option<&CaWeaponFx>, Option<&CaMods>),
+        Or<(Added<Weapon>, Changed<CaWeaponFx>, Changed<CaMods>)>,
+    >,
+    mut known: ResMut<KnownWeapons>,
+) {
+    for (e, w, fx, mods) in &new {
+        let k = KnownWeapon {
+            fx: fx.cloned(),
+            mods: mods.cloned(),
+        };
+        known.by_id.insert(w.id, k.clone());
+        known.by_entity.insert(e, k);
+    }
+}
+
+/// Weapons despawned this frame, their events drawn: forgotten by entity.
+fn forget_weapons(mut gone: RemovedComponents<Weapon>, mut known: ResMut<KnownWeapons>) {
+    for e in gone.read() {
+        known.by_entity.remove(&e);
+    }
+}
 
 /// The fire sound of a weapon for its own shooter (`own`) or others: the
 /// file and radius (u); None: nothing (a silenced part with no level).
@@ -700,7 +759,12 @@ struct Round {
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn shot_effects(
-    (mut events, mut remote, holders): (MessageReader<WeaponEvent>, MessageReader<RemoteShot>, Query<&Inventory>),
+    (mut events, mut remote, holders, known): (
+        MessageReader<WeaponEvent>,
+        MessageReader<RemoteShot>,
+        Query<&Inventory>,
+        Res<KnownWeapons>,
+    ),
     cameras: CameraQuery,
     weapons: WeaponFxQuery,
     characters: Query<(Has<Health>, Has<Intent>, Option<&CaViewModel>, Option<&Transform>)>,
@@ -723,13 +787,17 @@ fn shot_effects(
     mut commands: Commands,
 ) {
     // Others' rounds on a network client arrive as `RemoteShot`s (their
-    // traces as shots): each is a round fired.
+    // traces as shots): each is a round fired, with the gun in hand when
+    // it is the round's, else (swapped since) the gun known by its ID.
     let fired: Vec<WeaponEvent> = remote
         .read()
-        .filter_map(|r| {
-            Some(WeaponEvent {
+        .map(|r| {
+            let held = holders.get(r.shooter).ok().and_then(|i| i.active);
+            WeaponEvent {
                 owner: r.shooter,
-                weapon: holders.get(r.shooter).ok()?.active?,
+                weapon: held
+                    .filter(|w| weapons.get(*w).is_ok_and(|x| x.0.id == r.weapon))
+                    .unwrap_or(Entity::PLACEHOLDER),
                 kind: WeaponEventKind::Fired {
                     id: r.weapon,
                     origin: r.origin,
@@ -740,7 +808,7 @@ fn shot_effects(
                     mode: r.mode,
                 },
                 replay: false,
-            })
+            }
         })
         .collect();
     let events: Vec<&WeaponEvent> = fired.iter().chain(events.read().filter(|e| e.shown())).collect();
@@ -765,7 +833,9 @@ fn shot_effects(
     let guest_fx = guest_fx();
     for e in events {
         let mine = Some(e.owner) == me;
-        let Ok((weapon, wfx, mods, view, zoom)) = weapons.get(e.weapon) else { continue };
+        // The gun may be gone (the gun game swaps it on the kill):
+        // what it was (`KnownWeapons`).
+        let Some((wfx, mods, zoom)) = known.of(&weapons, e) else { continue };
         // Combat Arms draws this event's impacts (`weapon::impact`: its
         // guns' where its looks are on the map; another game's gun's where
         // that game's can't be drawn).
@@ -855,7 +925,6 @@ fn shot_effects(
                     let serial = state.serial;
                     spawn_casing(&mut commands, &mut state.rolls, (e.owner, Some(e.weapon)), &wfx.fire, f, breach, frame, mine, serial);
                 }
-                let _ = (weapon, view);
             }
             WeaponEventKind::Shot { from, to, hit, normal } | WeaponEventKind::ShotContinued { from, to, hit, normal } => {
                 let first = matches!(e.kind, WeaponEventKind::Shot { .. });

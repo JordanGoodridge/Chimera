@@ -843,6 +843,66 @@ fn shots_sound_local_for_you_and_3d_for_others() {
     assert_eq!((fire.source, fire.channel), (Some(other), Some(effects::sounds::CHANNEL_FIRE)));
 }
 
+/// A round whose gun is gone when its effects are drawn (the gun game
+/// swaps the gun on the kill's tick: playtest 2026-10-28) still sounds as
+/// that gun: your own (the event names the despawned gun) and others' on a
+/// network client (a `RemoteShot` naming a gun no longer in their hands).
+#[test]
+fn a_round_whose_gun_was_swapped_still_sounds() {
+    use chimera_sim::{minigame::runtime::take_weapon, weapon::{SpreadShape, remote::RemoteShot}};
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let other = player(&mut sim, Vec3::new(24.0, 1.0, 20.0), 0.0);
+    let mine = arm(&mut sim, me, "combat_arms:m4a1");
+    arm(&mut sim, other, "combat_arms:m4a1");
+    heard(&mut sim);
+    let fired = |owner, weapon| WeaponEvent {
+        owner,
+        weapon,
+        kind: WeaponEventKind::Fired {
+            id: "combat_arms:m4a1",
+            origin: Vec3::new(20.0, 1.6, 20.0),
+            yaw: 0.0,
+            pitch: 0.0,
+            seed: 0,
+            spread: SpreadShape::Template(0.0),
+            mode: 0,
+        },
+        replay: false,
+    };
+    // Yours: the round's event, then the gun despawned in the same tick.
+    let w = sim.app.world_mut();
+    w.write_message(fired(me, mine));
+    take_weapon(w, me, mine);
+    weapon::give(w, me, "combat_arms:mp5a4").unwrap();
+    sim.ticks(1);
+    let s = heard(&mut sim);
+    assert!(s.iter().any(|s| s.file == "guns_snd_ar/m4a1/fire.wav" && s.at.is_none()), "{s:?}");
+    // Others': their gun swapped before their round arrived.
+    let theirs = sim.app.world().get::<Inventory>(other).unwrap().active.unwrap();
+    let w = sim.app.world_mut();
+    take_weapon(w, other, theirs);
+    weapon::give(w, other, "combat_arms:mp5a4").unwrap();
+    sim.ticks(1);
+    heard(&mut sim);
+    sim.app.world_mut().write_message(RemoteShot {
+        shooter: other,
+        weapon: "combat_arms:m4a1",
+        origin: Vec3::new(24.0, 1.6, 20.0),
+        yaw: 0.0,
+        pitch: 0.0,
+        seed: 0,
+        spread: SpreadShape::Template(0.0),
+        mode: 0,
+    });
+    sim.ticks(1);
+    let s = heard(&mut sim);
+    let fire = s.iter().find(|s| s.file == "guns_snd_ar/m4a1/fire.wav").unwrap_or_else(|| panic!("{s:?}"));
+    assert_eq!(fire.source, Some(other));
+    assert!(!s.iter().any(|s| s.file.contains("mp5") && s.file.contains("fire")), "not the new gun's: {s:?}");
+}
+
 #[test]
 fn impacts_make_decals_bursts_and_sounds() {
     let mut sim = sim();

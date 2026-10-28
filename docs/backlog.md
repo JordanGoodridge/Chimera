@@ -72,6 +72,20 @@ the user's go-ahead: no Actions runs unless asked.
   and Chimera's playback limits voices per source (8) and per sourceless
   entry (4) (`fire_voices::full_auto_keeps_a_few_voices`). Check in a
   playtest; if it still peaks, a limiter on the mix is next.
+- **Your killing shot with a Combat Arms gun is silent: fixed, confirm
+  in a playtest** (user, 2026-10-28, Ultimate Gun Game). The ladder swaps
+  the gun on the kill's tick (`minigame::runtime::take_weapon` despawns
+  it), and Combat Arms plays fire sounds (and impacts, tracers, casings)
+  in `Update` from the round's events by looking up the named gun, so
+  where the match runs (single player, listen server) the killing round
+  found no gun and drew nothing; the earlier fix (Chimera's `FireSounds`,
+  `Fired` carrying the weapon ID) covered CS:S's sounds and the network
+  only. Now Combat Arms' effects keep what each gun was past its despawn
+  (`effects::KnownWeapons`, by entity and, for others' rounds a client
+  hears after their gun changed, by ID). Tests: `party_kit last_shot::`
+  (host, victim, network clients), `combat_arms effects_sounds::
+  a_round_whose_gun_was_swapped_still_sounds`; CS:S's guns:
+  `chimera_sim minigame::the_shooters_own_killing_shot_sounds_once`.
 - **Combat Arms grenades: fixed, confirm in a playtest** (user,
   2026-10-27; nothing left). The flight matched grenades.md (arc, bounce,
   rest, fuse: `grenades::t01`-`t49`) but was drawn at the server's 20
