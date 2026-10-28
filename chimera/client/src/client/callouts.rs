@@ -7,9 +7,13 @@
 //! (`chimera_core::cues`: the pack the definition's `cues` picks, else the
 //! pack of the game whose HUD is up, else the first a game registered;
 //! a cue the pack lacks, or no pack, is silent).
-//! It is the shell's own overlay (not a `HudRoot`), so it looks the same
-//! on CS:S's HUD, Combat Arms' and the minimal one; plain CS:S and Combat
-//! Arms play no minigame, so it never shows there. `{player}` is the
+//! It is the shell's own overlay (not a `HudRoot`), the same on every HUD
+//! that draws no callout of its own (CS:S's, the minimal one); a game's
+//! HUD that draws it in its own looks (`hud::GameDraws::callout`: Combat
+//! Arms', in its notices' place) has the overlay hidden while it is up, so
+//! one callout shows whichever game's HUD the player has (Lucker Party
+//! swaps it with the gun at the same kill); the cue sounds either way.
+//! Plain CS:S and Combat Arms play no minigame, so it never shows there. `{player}` is the
 //! player's shown name (`super::shown_name`), `{weapon}` the gun's display
 //! name (`minigame_scoreboard::gun_name`). Part of `ClientPlugins`.
 //!
@@ -54,7 +58,7 @@ impl Plugin for CalloutsPlugin {
         app.init_resource::<CalloutView>()
             .init_resource::<CuePacks>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, draw);
+            .add_systems(Update, draw.after(super::hud::HudSwitch));
         crate::console::ConsoleAppExt::console_command(
             app,
             "chimera_callout",
@@ -72,7 +76,8 @@ impl Plugin for CalloutsPlugin {
 /// What the callout shows and the cues it sounded.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct CalloutView {
-    /// The lines showing (empty: hidden).
+    /// The lines the overlay shows (empty: hidden: no callout, or the
+    /// HUD's game draws it, `hud::GameDraws::callout`).
     pub lines: Vec<String>,
     /// The number of the last callout seen.
     pub id: u32,
@@ -184,6 +189,7 @@ fn draw(
     catalog: Option<Res<WeaponCatalog>>,
     settings: Option<Res<NetSettings>>,
     gameplay: Option<Res<chimera_core::gameplay::Gameplay>>,
+    draws: Option<Res<super::hud::GameDraws>>,
     players: Query<(Option<&NetCharacter>, Option<&Name>, Has<LocalPlayer>)>,
     mut root: Query<&mut Visibility, (With<CalloutRoot>, Without<CalloutLine>)>,
     mut lines: Query<(&CalloutLine, &mut Text, &mut Visibility), Without<CalloutRoot>>,
@@ -216,6 +222,8 @@ fn draw(
             }
         }
     }
+    // The HUD's game draws it in its own looks.
+    let text = if draws.is_some_and(|d| d.callout) { Vec::new() } else { text };
     if view.to_play.len() > 8 {
         let excess = view.to_play.len() - 8;
         view.to_play.drain(..excess);

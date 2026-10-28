@@ -390,8 +390,11 @@ Part B Combat Arms' pack).
   lead taken, lost or tied, and the win are `MinigameEvent`s the server
   sends; each client's minigame HUD data turns the local player's into a
   `Callout` (`chimera_sim::minigame::hud`; text from the rules module,
-  `RulesModule::callout`), which the shell draws centre screen on every
-  HUD (`chimera_client::client::callouts`) with a cue's sound. The
+  `RulesModule::callout`), which the shell draws centre screen
+  (`chimera_client::client::callouts`) with a cue's sound, unless the
+  HUD that is up draws it in its own looks (`GameDraws::callout`:
+  Combat Arms' does, in its notices' place): one callout whichever HUD
+  the gun has swapped in. The
   sounds are a **cue pack** (`chimera_core::cues::CuePack`, TOML: cue
   key to a file in a game's install, loaded at run time), a game's part
   (`GameParts::cues`; CS:S's is stock sounds, data/cues.toml; Combat

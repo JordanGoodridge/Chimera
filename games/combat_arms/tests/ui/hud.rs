@@ -2160,7 +2160,7 @@ fn t101_feed_names_players_not_characters() {
 /// the weapons' names, and shows only while one plays.
 #[test]
 fn t102_minigame_state_on_the_hud() {
-    use chimera_sim::minigame::hud::{HudLine, MinigameHud};
+    use chimera_sim::minigame::hud::{Callout, HudLine, MinigameHud, ShownCallout};
     let (mut sim, me) = setup(&[RIFLE]);
     let foe = other(&mut sim, me, 5.0, 2, "AI_Bravo_7");
     assert_eq!(hud(&sim).minigame, None, "no minigame, nothing shown");
@@ -2176,13 +2176,20 @@ fn t102_minigame_state_on_the_hud() {
             HudLine::new("Leader: {player}").player(foe),
         ],
         notices: vec![(HudLine::new("Rung up! {weapon}").weapon(RIFLE), 1e9)],
+        callout: Some(ShownCallout {
+            callout: Callout::new(2, "rung_up", vec![HudLine::new("Level up: {weapon}").weapon(RIFLE), HudLine::new("Level 3/10")]),
+            since: 0.0,
+            id: 1,
+        }),
         ..default()
     });
     sim.ticks(1);
     let m = hud(&sim).minigame.expect("shown while one plays");
     assert_eq!(m.title, "Gun Game");
     assert_eq!(m.lines, ["Rung 3/10: Rifle One", "Leader: AI_Bravo_7"]);
-    assert_eq!(m.notices, ["Rung up! Rifle One"]);
+    // The callout ours (the shell's hidden while this HUD is up), the
+    // notices left to the panels that list them.
+    assert_eq!(m.callout, ["Level up: Rifle One", "Level 3/10"]);
     assert!(m.results.is_empty(), "no results while the match plays");
     // A finished match's results: the winner (a character here, named as
     // the HUD names it; one from the network has its name in the row) and a

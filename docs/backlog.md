@@ -61,6 +61,16 @@ the user's go-ahead: no Actions runs unless asked.
   `movement_volumes::a_solid_map_ladder_brush_is_climbed_from_any_side`,
   party_kit `heavy::css_map_moves` on cs_office's and de_nuke's ladders;
   de_train's checked once).
+- **Three level-up banners stacked at a rung up: fixed, confirm in a
+  playtest.** A kill that moved the player up a rung showed the shell's
+  callout ("Level up: M92FS", "Level 2/10") and, under Combat Arms' HUD,
+  that HUD's minigame notice ("Rung up! 2/10: M92FS") over it. Combat
+  Arms' HUD now draws the callout itself in its notice looks and place,
+  with the shell's hidden while it is up (`client::hud::GameDraws::
+  callout`; its notices are no longer drawn there, the callout says the
+  same); CS:S's HUD keeps the shell's. One callout on every frame of a
+  swap either way (party_kit
+  `hud::a_rung_up_across_games_shows_one_level_up_callout`).
 - **One generic kill feed in the party apps: fixed, confirm in a
   playtest.** A kill made just before a rung swap showed only in the
   previous game's feed, and the two games' feeds sat on opposite sides.
