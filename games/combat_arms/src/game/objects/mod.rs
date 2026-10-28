@@ -774,6 +774,7 @@ fn effect(world: &mut World, f: Fx, scale: f32) {
                 source,
                 channel: None,
                 server: true,
+                level: None,
             });
         }
         // Our sounds don't loop (`CaSound`), so there is nothing to stop.

@@ -50,6 +50,9 @@ pub struct CaSound {
     pub channel: Option<u8>,
     /// A server sound (sent to clients).
     pub server: bool,
+    /// A falloff of Chimera's that replaces the radii's (the party's
+    /// shared footstep profile, `map::sound::EvenFootsteps`).
+    pub level: Option<SoundLevel>,
 }
 
 impl CaSound {
@@ -63,6 +66,7 @@ impl CaSound {
             source: None,
             channel: None,
             server: false,
+            level: None,
         }
     }
 
@@ -92,11 +96,32 @@ impl CaSound {
         Self { server: true, ..self }
     }
 
+    /// A 3D sound falling off by Chimera's `level` instead of its radii.
+    pub fn with_level(self, level: SoundLevel) -> Self {
+        Self {
+            level: Some(level),
+            ..self
+        }
+    }
+
     /// The bank entry name it plays as.
     pub fn entry(&self) -> String {
-        match self.at {
-            None => format!("ca:{}", self.file),
-            Some(_) => format!("ca:{}@{}:{}", self.file, self.radii.0, self.radii.1),
+        match (self.at, self.level) {
+            (None, _) => format!("ca:{}", self.file),
+            (Some(_), Some(level)) => format!("ca:{}@{level:?}", self.file),
+            (Some(_), None) => format!("ca:{}@{}:{}", self.file, self.radii.0, self.radii.1),
+        }
+    }
+
+    /// How it falls off with distance as Chimera's mixer plays it: none
+    /// for a local sound, else its `level` or its radii's
+    /// (`rules::sound_level_radii`: the squared-distance gain and the
+    /// distance low-pass).
+    pub fn sound_level(&self) -> SoundLevel {
+        match (self.at, self.level) {
+            (None, _) => SoundLevel::Db(0.0),
+            (Some(_), Some(level)) => level,
+            (Some(_), None) => rules::sound_level_radii(self.radii.0, self.radii.1, super::super::inventory::UNIT),
         }
     }
 }
@@ -200,10 +225,7 @@ fn ensure(
         Some(sounds.clips.len() - 1)
     });
     let Some(clip) = clip else { return false };
-    let level = match s.at {
-        Some(_) => rules::sound_level_radii(s.radii.0, s.radii.1, super::super::inventory::UNIT),
-        None => SoundLevel::Db(0.0),
-    };
+    let level = s.sound_level();
     std::sync::Arc::make_mut(&mut bank.0).entries.insert(
         entry,
         MapSoundEntry {

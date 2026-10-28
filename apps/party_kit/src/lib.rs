@@ -63,6 +63,11 @@
 //!   `mount_report`: the same as the network's mount doctor report
 //!   (`net::manifest::MountReport`), which the client sends when it joins
 //!   (`LocalMounts`, set by `ClientPlugin`).
+//! - Party options, off by default (parity first): `party_even_footsteps`
+//!   (one footstep profile for both games' identities, CS:S's; the
+//!   server's, replicated) and, on the client, `party_swap_effect` (a
+//!   short flash on a rung's swap and a puff at others' bodies:
+//!   `chimera_client::client::swap_effect`).
 //!
 //! Known shortcuts: maps load by id only (no downloaded map files); the
 //! minigame's map pool isn't rotated (its first map plays); the bots fight
@@ -269,6 +274,7 @@ impl Plugin for PartyPartsPlugin {
         if let Some(mut bots) = app.world_mut().get_resource_mut::<combat_arms::game::bots::BotData>() {
             bots.gun_types.extend(bot_gun_types());
         }
+        even_footsteps(app);
     }
 
     fn finish(&self, app: &mut App) {
@@ -286,6 +292,24 @@ impl Plugin for PartyPartsPlugin {
                 }
             }
         }
+    }
+}
+
+/// `party_even_footsteps` (the server's, replicated; default 0: each
+/// game's steps as its own): 1 makes both games' others' steps fall off
+/// with one profile, CS:S's (`chimera_world::map::sound::EvenFootsteps`),
+/// so neither identity is heard farther. Measured in tests/it/
+/// footstep_levels.rs.
+fn even_footsteps(app: &mut App) {
+    use chimera_world::map::sound::EvenFootsteps;
+    app.init_resource::<EvenFootsteps>();
+    if app.world().get_resource::<chimera_core::console::Console>().is_some() {
+        chimera_core::console::resource_cvar::<EvenFootsteps, u8>(
+            app,
+            "party_even_footsteps",
+            "1: every game's footsteps carry as far and as loud as CS:S's (one profile for both identities); 0: each game's own.",
+            |s| &mut s.on,
+        );
     }
 }
 

@@ -244,6 +244,14 @@ Prior art: Minecraft's item data components; Unreal's Gameplay Ability System.
 - Cross-game questions (whose sprint rules apply, what an MW2 perk does to
   Steve) are design decisions, made explicit as bridges or as ruleset options.
   Many make good dice modifiers.
+- Loudness stays each game's by default: a CS:S-identity player's steps
+  fall off as CS:S's (linear, silent from 25.4 m), a Combat Arms one's as
+  Combat Arms' (squared, silent from about 20 m, louder close by). The
+  party's `party_even_footsteps 1` (the server's, replicated; default 0)
+  gives every game's others' steps one profile, CS:S's level and its
+  volume for the pace (`map::sound::EvenFootsteps`), so neither identity
+  is heard more: CS:S's rather than a mean, because it is a specified,
+  tuned curve and leaves the CS:S identity exactly as in CS:S.
 - Cross-game kits (a CS:S character's moveset in another game) are generated
   ahead of time as data, reviewed and playtested, never generated during a
   match. A runtime "chaos kit" could exist later as a server-generated mode.
@@ -485,6 +493,11 @@ game's:
   (headshot and kill variants), on every HUD but one that draws its own
   (`GameDraws::hit_marker`), so a gun game's CS:S rungs answer like
   Combat Arms ones.
+- **The swap effect is an opt-in setting** (`client::swap_effect`,
+  `party_swap_effect`, default 0): neither game has a swap, so a rung's
+  change of game is a hard cut by default. On, the local player's screen
+  flashes and fades over 0.3 s while the new gun draws, and another
+  player's body gets a brief puff, generic, no game's look.
 
 ## Multiplayer
 

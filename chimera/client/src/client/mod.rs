@@ -52,6 +52,7 @@ pub mod trace_capture;
 pub mod game_text;
 pub mod senses;
 pub mod spectate;
+pub mod swap_effect;
 pub mod vgui;
 pub mod video;
 pub mod view;

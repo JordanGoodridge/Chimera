@@ -12,6 +12,7 @@ mod cross_glass;
 mod cross_water_ladders;
 mod cs_parts;
 mod death_view;
+mod footstep_levels;
 mod grenade_looks;
 mod gun_game;
 mod hud;
@@ -27,6 +28,7 @@ mod net_party;
 mod results_hud;
 mod rotation;
 mod startup;
+mod swap_effect;
 mod switches;
 
 mod heavy {

@@ -8,6 +8,7 @@
 mod match_end;
 mod callouts;
 mod hit_marker;
+mod swap_effect;
 mod metrics;
 mod minigame_scoreboard;
 mod respawn_countdown;

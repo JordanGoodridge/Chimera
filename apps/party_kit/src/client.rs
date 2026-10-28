@@ -16,7 +16,9 @@
 //! CS:S's maps, `MapSources::players`; put away while Combat Arms' HUD
 //! draws: `client::hud::HudLookOwner`), with the shell's crosshair, and
 //! the minigame's panel (`ui::minigame_hud`). Over both: one kill feed, the
-//! shell's, and no radars unless `hud_radar 1` (`PartyHudPlugin`). Known
+//! shell's, and no radars unless `hud_radar 1` (`PartyHudPlugin`); with
+//! `party_swap_effect 1` (default 0) a short flash when the local
+//! player's gun changes game, a puff at others' (`client::swap_effect`). Known
 //! shortcuts: not CS:S's spectator panel or overview;
 //! on Combat Arms' maps there is no CS:S HUD look (the shell's plain HUD
 //! with CS:S's guns).
@@ -100,6 +102,8 @@ impl Plugin for ClientPlugin {
         .add_plugins(PartyMousePlugin)
         .add_plugins(PartyHudPlugin)
         .add_plugins(chimera_client::client::minigame_scoreboard::MinigameScoreboardPlugin)
+        // `party_swap_effect` (default 0): a flash on a rung's swap.
+        .add_plugins(chimera_client::client::swap_effect::SwapEffectPlugin)
         .add_systems(Startup, (cs_source_names, mount_doctor))
         .add_systems(Update, sync_gun_names);
     }
