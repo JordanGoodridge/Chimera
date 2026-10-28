@@ -98,7 +98,8 @@ impl Plugin for ClientPlugin {
         .add_plugins(crate::controls::ControlsPlugin)
         .add_plugins(PartyMousePlugin)
         .add_plugins(chimera_client::client::minigame_scoreboard::MinigameScoreboardPlugin)
-        .add_systems(Startup, (cs_source_names, mount_doctor));
+        .add_systems(Startup, (cs_source_names, mount_doctor))
+        .add_systems(Update, sync_gun_names);
     }
 }
 
@@ -159,6 +160,20 @@ fn cs_source_names(games: Res<Games>, mut names: ResMut<ItemNames>) {
         return;
     };
     names.0.extend(cs_source::game::weapons::display_names(&mount));
+}
+
+/// The Tab scoreboard's gun names: CS:S's (the minigame panel's) and
+/// Combat Arms' (`ItemNames`), merged as either changes.
+fn sync_gun_names(
+    cs: Res<cs_source::ui::minigame_hud::WeaponNames>,
+    ca: Res<ItemNames>,
+    mut out: ResMut<chimera_client::client::minigame_scoreboard::GunNames>,
+) {
+    if !(cs.is_changed() || ca.is_changed()) {
+        return;
+    }
+    out.0.extend(cs.0.iter().map(|(k, v)| (k.clone(), v.clone())));
+    out.0.extend(ca.0.iter().map(|(k, v)| (k.clone(), v.clone())));
 }
 
 /// The game's app (the binary's, and other party apps' built on it): map

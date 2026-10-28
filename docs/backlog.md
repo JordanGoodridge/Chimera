@@ -51,11 +51,6 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
-- **Tab scoreboard: raw ids and overlapping headers** (seen in promo
-  captures 2026-10-27): the Gun column shows `weapon_tmp`-style ids
-  instead of the gun's display name, the Kills/Deaths/Gun headers run
-  together, and the minigame panel's "Time" line sits behind the board
-  (`chimera/client/src/client/minigame_scoreboard.rs`).
 - **Combat Arms grenade throw visuals** (promo captures 2026-10-27, M67 on
   de_dust2): mid-throw the view model's arm stretches into a huge camo
   blob for a frame or two (a bad bone/sequence blend at the throw), a red
