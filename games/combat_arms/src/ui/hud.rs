@@ -20,7 +20,8 @@
 //! out its crosshair, health and ammo, hit marker and kill feed, and the
 //! shell's minigame callout (`client::callouts`): a playing minigame's
 //! callout ("Level up: <gun>", "Level 2/10") is ours, in our notice looks
-//! under the middle of the view, where the minigame's notices would be
+//! above the middle of the view (under the announcer's kill banner),
+//! where the minigame's notices would be
 //! (they say the same moments smaller; this HUD leaves them to the
 //! panels that list them, CS:S's). Its
 //! roots are `client::hud::HudRoot`s and its `GameDraws` in the shell's
@@ -2317,10 +2318,13 @@ fn draw_minigame(
         // The results take the callout's place (they say who won).
         if m.results.is_empty() {
             for (i, line) in m.callout.iter().enumerate() {
+                // Under the announcer's kill banner (the shell's, 76..332
+                // on this canvas; its art ends near 250), above the
+                // crosshair.
                 if i == 0 {
-                    centred(p, 250.0, 28.0, line, looks::NOTICE, [255, 230, 120, 255]);
+                    centred(p, 284.0, 28.0, line, looks::NOTICE, [255, 230, 120, 255]);
                 } else {
-                    centred(p, 282.0 + 18.0 * (i - 1) as f32, 18.0, line, looks::MINIGAME, [255, 255, 255, 255]);
+                    centred(p, 316.0 + 18.0 * (i - 1) as f32, 18.0, line, looks::MINIGAME, [255, 255, 255, 255]);
                 }
             }
         }

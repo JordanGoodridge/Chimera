@@ -68,8 +68,11 @@ the user's go-ahead: no Actions runs unless asked.
   Arms' HUD now draws the callout itself in its notice looks and place,
   with the shell's hidden while it is up (`client::hud::GameDraws::
   callout`; its notices are no longer drawn there, the callout says the
-  same); CS:S's HUD keeps the shell's. One callout on every frame of a
-  swap either way (party_kit
+  same); CS:S's HUD keeps the shell's, and its minigame panel no longer
+  lists the notices either (its "Rung up! 3/10: <gun>" was a second
+  banner at the top). Both callouts now sit under the announcer's kill
+  banner (37 % down; "2 KILLS" covered "Level up" before). One callout
+  on every frame of a swap either way (party_kit
   `hud::a_rung_up_across_games_shows_one_level_up_callout`).
 - **One generic kill feed in the party apps: fixed, confirm in a
   playtest.** A kill made just before a rung swap showed only in the

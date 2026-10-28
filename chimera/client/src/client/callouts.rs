@@ -2,7 +2,8 @@
 //! game (docs/DESIGN.md, "Announcers"): the callout the minigame keeps
 //! for the local player (`chimera_sim::minigame::hud::MinigameHud::
 //! callout`: "Level up: <gun>", "Last level!", "<name> is on the last
-//! level!", "You took the lead", "You win!", ...) centre screen, its
+//! level!", "You took the lead", "You win!", ...) centre screen (from 37 %
+//! down: under the announcer's kill banner, above the crosshair), its
 //! first line big, for `hud::CALLOUT_SECONDS`, and its cue's sound once
 //! (`chimera_core::cues`: the pack the definition's `cues` picks, else the
 //! pack of the game whose HUD is up, else the first a game registered;
@@ -107,7 +108,10 @@ fn spawn(mut commands: Commands) {
                 position_type: PositionType::Absolute,
                 left: px(0.0),
                 width: percent(100.0),
-                top: percent(31.0),
+                // Under the announcer's kill banner (`announcer`, which
+                // a rung up's kill also shows: its art ends at about a
+                // third of the height), above the crosshair.
+                top: percent(37.0),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 row_gap: px(4.0),

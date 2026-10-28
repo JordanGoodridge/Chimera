@@ -223,4 +223,6 @@ fn a_rung_up_across_games_shows_one_level_up_callout() {
     let shell = shell_callout(&mut sim).expect("the shell's on CS:S's HUD");
     assert_eq!(shell, up);
     assert!(up[1].starts_with("Level 3/"), "{up:?}");
+    let lines = cs_minigame_lines(&mut sim);
+    assert!(!lines.iter().any(|(_, t)| t.starts_with("Rung up!")), "no second banner in CS:S's panel: {lines:?}");
 }

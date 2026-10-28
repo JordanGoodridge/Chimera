@@ -1,14 +1,16 @@
 //! A playing minigame on CS:S's HUD (`chimera_sim::minigame::hud::
 //! MinigameHud`: its name, the rules' status lines, the gun game's rung,
-//! next gun and leader among them, the match's time and the notices), for
+//! next gun and leader among them, the match's time), for
 //! an app whose minigames may show CS:S's HUD (Lucker Party): top centre,
 //! in the client scheme's fonts and the HUD's colour, as CS:S prints its
 //! centre messages. A line's `{player}` is the name the scoreboard shows,
 //! its `{weapon}` the gun's name in CS:S's own strings (the install's
 //! `resource/cstrike_english.txt`, `weapons::display_names`), else the
 //! id's last part in capitals. A finished match's results (`MinigameHud::
-//! results`: the winner, then a line a player) take the notices' place
-//! under the status lines; while the shell's match-end screen is up
+//! results`: the winner, then a line a player) come under the status
+//! lines. The minigame's moments (a rung up, the lead, the win) are the
+//! shell's callout centre screen (`client::callouts`), so the panel lists
+//! no notices (they said the same, a second banner); while the shell's match-end screen is up
 //! (`MinigameHud::results_shown`) the panel draws nothing. Its root is a `client::hud::HudRoot`: down
 //! while another game's HUD is the gameplay's.
 //!
@@ -46,12 +48,11 @@ pub struct WeaponNames(pub BTreeMap<String, String>);
 #[derive(Component)]
 pub struct MinigamePanel;
 
-/// The text of one line of the panel (title, status, notice).
+/// The text of one line of the panel (title, status, result).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PanelLine {
     Title,
     Status,
-    Notice,
     /// The finished match's results: the winner, then a line a player.
     Result,
 }
@@ -103,11 +104,10 @@ pub fn panel_lines_with(
     };
     let mut out = vec![(PanelLine::Title, m.title.clone())];
     out.extend(m.lines.iter().map(|l| (PanelLine::Status, word(l))));
-    match &m.results {
-        Some(r) => out.extend(
+    if let Some(r) = &m.results {
+        out.extend(
             r.lines(|row| row.player.map_or_else(|| row_name(row), &player)).into_iter().map(|t| (PanelLine::Result, t)),
-        ),
-        None => out.extend(m.notices.iter().map(|(l, _)| (PanelLine::Notice, word(l)))),
+        );
     }
     out
 }
@@ -177,7 +177,6 @@ fn draw(
         let (f, c) = match kind {
             PanelLine::Title => (font("CenterPrintText", 18.0), colour),
             PanelLine::Status => (font("ChatFont", 14.0), Color::WHITE),
-            PanelLine::Notice => (font("CenterPrintText", 18.0), Color::srgba_u8(255, 230, 120, 255)),
             PanelLine::Result if first_result => {
                 first_result = false;
                 (font("CenterPrintText", 18.0), Color::srgba_u8(255, 230, 120, 255))
