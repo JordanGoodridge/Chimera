@@ -7,7 +7,9 @@
 //! `cl_dynamiccrosshair`), sniper scope overlay, smoke grey and flash white
 //! screen tints, health, ammo, killfeed, capsule bodies for other
 //! characters. A game that draws its own crosshair, health and ammo, hit
-//! marker (`hit_marker`: the opt-in generic one, `client::hit_marker`, stays out) or kill feed turns this HUD's off with `GameDraws`.
+//! marker (`hit_marker`: the opt-in generic one, `client::hit_marker`, stays out) or kill feed turns this HUD's off with `GameDraws`;
+//! one that draws a minigame's big callout itself turns the shell's
+//! (`callouts`) off the same way (`GameDraws::callout`).
 //!
 //! An app whose HUD changes (`gameplay::Gameplay::hud`: Lucker Party's
 //! local player follows its weapon's game, `chimera_sim::identity`) keeps
@@ -72,10 +74,17 @@ impl Plugin for HudSwitchPlugin {
                 show_active_huds,
                 draws_follow_hud.run_if(resource_exists_and_changed::<crate::gameplay::Gameplay>),
                 put_away_hud_look.run_if(resource_exists::<HudLookOwner>),
-            ),
+            )
+                .in_set(HudSwitch),
         );
     }
 }
+
+/// Where the active HUD's roots and `GameDraws` follow the gameplay's
+/// HUD (`HudSwitchPlugin`): what reads them runs after it, so the frame
+/// the HUD changes draws one HUD's parts only.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct HudSwitch;
 
 /// Which parts of this HUD a game's own HUD draws instead (none by
 /// default: this HUD draws them all). A game's front end that has its own
@@ -88,6 +97,10 @@ pub struct GameDraws {
     pub status: bool,
     pub hit_marker: bool,
     pub killfeed: bool,
+    /// A minigame's big callout (`MinigameHud::callout`): the game's HUD
+    /// draws it in its own looks and the shell's (`callouts`) stays
+    /// hidden; the shell still sounds its cue.
+    pub callout: bool,
 }
 
 /// A root of game `0`'s HUD nodes: shown only while that game's HUD is

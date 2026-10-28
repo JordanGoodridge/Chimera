@@ -17,7 +17,13 @@
 //! gauge too: `bound`, `BoundHud`; the hit overlay, the direction
 //! indicator and the gauge sight are the HUD layout attributes' images),
 //! telling the shell's fallback HUD (`client::hud::GameDraws`) to leave
-//! out its crosshair, health and ammo, hit marker and kill feed. Its
+//! out its crosshair, health and ammo, hit marker and kill feed, and the
+//! shell's minigame callout (`client::callouts`): a playing minigame's
+//! callout ("Level up: <gun>", "Level 2/10") is ours, in our notice looks
+//! above the middle of the view (under the announcer's kill banner),
+//! where the minigame's notices would be
+//! (they say the same moments smaller; this HUD leaves them to the
+//! panels that list them, CS:S's). Its
 //! roots are `client::hud::HudRoot`s and its `GameDraws` in the shell's
 //! `HudDraws`, so in an app that switches HUDs it is up only while it is
 //! the gameplay's.
@@ -299,12 +305,13 @@ pub struct FeedLineView {
 }
 
 /// A playing minigame's state as the HUD words it: the minigame's name,
-/// its status lines (top to bottom) and its notices (`minigame_view`).
+/// its status lines (top to bottom) and its callout showing
+/// (`MinigameHud::callout`, the first line big; `minigame_view`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MinigameView {
     pub title: String,
     pub lines: Vec<String>,
-    pub notices: Vec<String>,
+    pub callout: Vec<String>,
     /// The finished match's results (the winner, then a line a player).
     pub results: Vec<String>,
 }
@@ -318,8 +325,8 @@ pub struct CaHud {
     pub status: Option<StatusView>,
     pub weapon: Option<WeaponPanel>,
     pub feed: Vec<FeedLineView>,
-    /// The playing minigame's state (its rung, the leader, brief
-    /// notices), only while one plays.
+    /// The playing minigame's state (its rung, the leader, its
+    /// callout), only while one plays.
     pub minigame: Option<MinigameView>,
     /// The weapon mode switch's centre notice ("Switched to Burst-Fire
     /// mode", `weapon::notice::CenterNotice`).
@@ -526,7 +533,7 @@ fn minigame_view(
     hud.minigame = Some(MinigameView {
         title: m.title.clone(),
         lines: m.lines.iter().map(word).collect(),
-        notices: m.notices.iter().map(|(l, _)| word(l)).collect(),
+        callout: m.callout.as_ref().map_or_else(Vec::new, |c| c.callout.lines.iter().map(word).collect()),
         results: m.results.as_ref().map_or_else(Vec::new, |r| {
             r.lines(|row| row.player.map_or_else(|| row.name.clone(), |p| name_of(&names, settings.as_deref(), p)))
         }),
@@ -1331,6 +1338,7 @@ pub const DRAWS: GameDraws = GameDraws {
     status: true,
     hit_marker: true,
     killfeed: true,
+    callout: true,
 };
 
 pub(crate) fn colour(c: Rgba) -> Color {
@@ -2273,8 +2281,9 @@ fn draw_tags(
     });
 }
 
-/// The minigame's panel: its name and status lines at the top centre, the
-/// notices (a rung up, the match won) under the middle of the view.
+/// The minigame's panel: its name and status lines at the top centre, its
+/// callout (a rung up, the lead, the match won: the shell's is hidden
+/// while this HUD is up, `DRAWS`) under the middle of the view.
 /// Ours (the install's HUD has no such panel), drawn in the HUD's own text
 /// looks.
 fn draw_minigame(
@@ -2306,10 +2315,17 @@ fn draw_minigame(
         for (i, line) in m.lines.iter().enumerate() {
             centred(p, 30.0 + 18.0 * i as f32, 18.0, line, looks::MINIGAME, [255, 255, 255, 255]);
         }
-        // The results take the notices' place (they say who won).
+        // The results take the callout's place (they say who won).
         if m.results.is_empty() {
-            for (i, notice) in m.notices.iter().enumerate() {
-                centred(p, 250.0 + 30.0 * i as f32, 28.0, notice, looks::NOTICE, [255, 230, 120, 255]);
+            for (i, line) in m.callout.iter().enumerate() {
+                // Under the announcer's kill banner (the shell's, 76..332
+                // on this canvas; its art ends near 250), above the
+                // crosshair.
+                if i == 0 {
+                    centred(p, 284.0, 28.0, line, looks::NOTICE, [255, 230, 120, 255]);
+                } else {
+                    centred(p, 316.0 + 18.0 * (i - 1) as f32, 18.0, line, looks::MINIGAME, [255, 255, 255, 255]);
+                }
             }
         }
         for (i, line) in m.results.iter().enumerate() {

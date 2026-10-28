@@ -4,12 +4,15 @@
 //! with a Combat Arms gun the other way round, Combat Arms' with the
 //! minigame's panel; and back. Headless, on the party's simulation with
 //! both HUDs' plugins and the shell's switching (`client::hud::
-//! HudSwitchPlugin`), a stand-in CS:S HUD look as the map's.
+//! HudSwitchPlugin`), a stand-in CS:S HUD look as the map's. A kill that
+//! moves the player up a rung and into the other game shows one level-up
+//! callout, the new HUD's: Combat Arms' own, or the shell's on CS:S's.
 
 use std::{collections::HashMap, sync::Arc};
 
 use bevy::prelude::*;
 use chimera_client::client::{
+    callouts::{CalloutRoot, CalloutView, CalloutsPlugin},
     fonts::UiFonts,
     hud::{GameDraws, HudDraws, HudLookOwner, HudRoot, HudSwitchPlugin},
 };
@@ -34,7 +37,7 @@ use cs_source::ui::{
 };
 use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
-use crate::gun_game::held;
+use crate::gun_game::{held, line_up, shoot_until_dead};
 
 /// A CS:S HUD look with health and armour panels, as a CS:S map's.
 pub(crate) fn cs_look() -> ActiveHud {
@@ -162,4 +165,64 @@ fn the_hud_follows_the_gun_with_the_minigame_on_both() {
     assert!(shown(&mut sim, cs_source::game::GAME));
     let lines = cs_minigame_lines(&mut sim);
     assert!(lines.iter().any(|(_, t)| t.starts_with("Rung 3/")), "the third rung shown: {lines:?}");
+}
+
+/// Whether the shell's callout overlay shows, and its lines.
+fn shell_callout(sim: &mut Sim) -> Option<Vec<String>> {
+    let w = sim.app.world_mut();
+    let shown = w.query_filtered::<&Visibility, With<CalloutRoot>>().iter(w).any(|v| *v != Visibility::Hidden);
+    shown.then(|| w.resource::<CalloutView>().lines.clone())
+}
+
+/// The level-up callouts drawn: the shell's overlay and Combat Arms' (its
+/// HUD up, a callout in its minigame panel).
+fn callouts_drawn(sim: &mut Sim) -> Vec<Vec<String>> {
+    let mut drawn: Vec<Vec<String>> = shell_callout(sim).into_iter().collect();
+    if hud(sim) == combat_arms::game::GAME
+        && let Some(m) = sim.app.world().resource::<CaHud>().minigame.clone()
+        && !m.callout.is_empty()
+    {
+        drawn.push(m.callout);
+    }
+    drawn
+}
+
+/// A kill with the Glock (CS:S) gives the Beretta (Combat Arms): one
+/// level-up callout, Combat Arms' (the shell's hidden under its HUD); the
+/// next kill gives the Desert Eagle (CS:S): one again, the shell's. Never
+/// two on any frame of the swap.
+#[test]
+fn a_rung_up_across_games_shows_one_level_up_callout() {
+    let (mut sim, me, other) = party_with_huds_and(|app| {
+        app.add_plugins(CalloutsPlugin);
+    });
+    let kill = |sim: &mut Sim| {
+        line_up(sim, me, other, 3.0);
+        assert!(shoot_until_dead(sim, me, other, 4.0), "the kill");
+        let mut seen = Vec::new();
+        for _ in 0..30 {
+            sim.ticks(1);
+            let drawn = callouts_drawn(sim);
+            assert!(drawn.len() <= 1, "one callout at a time: {drawn:?} (HUD {})", hud(sim));
+            seen.extend(drawn);
+        }
+        seen.last().cloned().expect("a level-up callout")
+    };
+    assert_eq!(hud(&sim), cs_source::game::GAME);
+    let up = kill(&mut sim);
+    assert_eq!(held(&sim, me), Some("combat_arms:beretta_m92fs"));
+    assert_eq!(hud(&sim), combat_arms::game::GAME);
+    assert_eq!(shell_callout(&mut sim), None, "the shell's hidden under Combat Arms' HUD");
+    assert!(up.len() >= 2, "{up:?}");
+    assert!(up[0].starts_with("Level up: "), "{up:?}");
+    assert!(up[1].starts_with("Level 2/"), "{up:?}");
+    // Back to CS:S: the shell's, Combat Arms' down.
+    let up = kill(&mut sim);
+    assert_eq!(held(&sim, me), Some(cs_source::game::weapons::DEAGLE));
+    assert_eq!(hud(&sim), cs_source::game::GAME);
+    let shell = shell_callout(&mut sim).expect("the shell's on CS:S's HUD");
+    assert_eq!(shell, up);
+    assert!(up[1].starts_with("Level 3/"), "{up:?}");
+    let lines = cs_minigame_lines(&mut sim);
+    assert!(!lines.iter().any(|(_, t)| t.starts_with("Rung up!")), "no second banner in CS:S's panel: {lines:?}");
 }

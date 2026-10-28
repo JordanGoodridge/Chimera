@@ -4,22 +4,28 @@
 //! local player (`RulesModule::status`: the ladder's rung, the next gun,
 //! the leader), the match's phase and time, and brief notices made of the
 //! match's `MinigameEvent`s (the module's `notice` for its own events,
-//! `match_won` for every minigame). Empty while no minigame plays. Any
-//! game's HUD may show it (Combat Arms' does, `ui::hud`); it names nobody
+//! `match_won` for every minigame; no HUD draws them now: each says a
+//! moment the callout below says big, and drawn too they were a second
+//! banner). Empty while no minigame plays. Any
+//! game's HUD may show it (Combat Arms' and CS:S's do); it names nobody
 //! and no weapon itself: a line's text has `{player}` and `{weapon}` where
 //! the HUD puts the player's name and the weapon's display name, which
 //! only the HUD's game knows (`HudLine`). The big moments for the viewer
 //! (`Callout`: a rung up or down, the last rung, yours or another's, the
 //! lead taken, lost or tied, the match won or lost) are kept apart
 //! (`MinigameHud::callout`): the client shell draws them centre screen
-//! and plays their cue's sound (`chimera_client::client::callouts`), on
-//! every HUD. The callouts of one frame merge into one: the highest
+//! and plays their cue's sound (`chimera_client::client::callouts`), or
+//! the HUD up draws them in its own looks (Combat Arms'). The callouts of one frame merge into one: the highest
 //! level's lines, then the others' first lines (at most `CALLOUT_LINES`),
 //! with its cue; it replaces the one showing unless that one has a
 //! higher level and is younger than `CALLOUT_HOLD`. `update` also tells the shell
 //! when the dead local player comes back (`core::RespawnDue`, from
 //! `runtime::respawn_due`): the shell's countdown and death view read it,
 //! and then the match's moments for a music director (`moments::update`).
+//!
+//! Known shortcuts: the notices (`RulesModule::notice`) are still made
+//! though no HUD draws them any more (only tests read them); drop them,
+//! or give them a place that is no banner (a log), when one is wanted.
 
 use bevy::{ecs::message::MessageCursor, prelude::*};
 
