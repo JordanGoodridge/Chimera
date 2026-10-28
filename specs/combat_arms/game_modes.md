@@ -220,10 +220,10 @@ So spawns cycle through a team's points in map order, skipping occupied ones; th
 At every respawn (including round setups):
 
 - **All damage blocked for 4.0 s** (`RespawnInvulnerabilityTime`), except damage types a mode exempts (Spy Hunt's stage-2 respawn exempts falling out of the world). Explosions, falls and telefrags do nothing.
-- **Instant-hit shots are absorbed for 3.0 s** (corrected; Open question 25): the shooter's ray still **stops** at the protected player's spheres (the ray test does not look at protection), and then nothing happens to the player: the shooter's client records no character hit (nothing is reported, no damage, no ding) and makes no blood. The ray's test ended at that player, so the round does not reach whatever is behind; whether a plain surface puff is drawn at the stopping point was not traced (Open question 25). A server-traced impact on a protected player (projectile, bot shot) likewise does nothing. Clients draw no blood and no flinch on a player for 3.5 s after they see the respawn, which is also the window in which their own shots at that player are absorbed (the client uses its own flag, so the effective window is the client's).
+- **Instant-hit shots are absorbed for 3.0 s** (corrected; Open question 25): the shooter's ray still **stops** at the protected player's spheres (the ray test does not look at protection), and then nothing happens to the player: the shooter's client records no character hit (nothing is reported, no damage, no ding) and makes no blood. The ray's test ended at that player, so the round does not reach whatever is behind; no surface puff, decal or impact sound is made there either (Corrections 2026-10-28, 2). A server-traced impact on a protected player (projectile, bot shot) likewise does nothing. Clients draw no blood and no flinch on a player for 3.5 s after they see the respawn, which is also the window in which their own shots at that player are absorbed (the client uses its own flag, so the effective window is the client's).
 - **What ends it early**: firing a weapon ends both parts at once, but only in One Man Army, Arms Race, Last Man Standing and Hunted; everyone is told and the client's no-blood flag clears too. In every other mode a protected player can shoot freely.
-- **How it shows**: no visual marker was found besides the missing blood and flinch.
-- The reference build carries edits setting both times to 0 (no protection). This spec uses 3.0 s and 4.0 s.
+- **How it shows**: nothing marks a protected player; the only signs are the hit feedback that does not happen. Who sees what, window by window, is in Corrections (2026-10-28) below.
+- The reference build carries edits setting both server times to 0 (no protection), but not the client's 3.5 s window; what that build does is in Corrections (2026-10-28) item 4. This spec uses 3.0 s and 4.0 s.
 
 ### S7. Kill counting and assists
 
@@ -726,6 +726,87 @@ Could not determine (left open):
 
 Test cases 92 to 103 below cover these corrections.
 
+## Corrections (2026-10-28): how spawn protection shows
+
+A second pass over S6 (the server's respawn, damage filter and update, the
+shot handling of both the client and the server, the client's character
+object, the HUD panels and the interface sounds), for an implementation
+that has to draw a generic "spawn protected" state the way Combat Arms
+does.
+
+1. **Nothing marks a protected player.** Neither the server nor any client
+   changes anything about a protected player's look: no tint, flash,
+   shader, transparency, outline or glow on the body or its attachments,
+   no effect at the spawn point, no icon, timer, bar or text on anyone's
+   HUD (the protected player's own included), no line in the chat, no
+   sound when protection starts, ends or is cut short by firing. (The
+   engine's older code base mentions cycling the model's transparency
+   while invulnerable; Combat Arms keeps an unused field for it and never
+   does it.) The tutorial's permanent god mode and the bots' own 3 s
+   window (`bots.md`) are equally invisible.
+2. **What the hit feedback does instead.** On a shooter's client, an
+   instant-hit trace that reaches a player inside that client's window
+   (3.5 s, item 3) is dropped whole at that player: no blood, no surface
+   puff or decal at the stopping point (this answers what Open question
+   25 left), no impact sound, no hit indicator or name-tag flash
+   (`hud_crosshair.md` A10, A11), no character hit reported to the
+   server. The round still ends there: nothing behind the player is hit.
+   The shot's own firing (muzzle flash, fire sound, recoil, ammunition)
+   happens as usual. A server-traced impact (a projectile, a bot's shot,
+   the server's own trace of a shot) on a player inside the server's
+   instant-hit window likewise makes no impact effect. Damage the server
+   blocks (any kind, inside the 4.0 s window) is dropped before anything
+   follows from it: health and armour do not change, so there is no
+   hurt voice, no damage-direction marker, no screen effect and no hit
+   reaction on the victim (`characters.md`). An explosion near a
+   protected player still explodes normally for everyone; only its
+   damage to that player is missing.
+3. **Three clocks.** The server's all-damage window (4.0 s,
+   `RespawnInvulnerabilityTime`) and instant-hit window (3.0 s) both run
+   from the respawn on the server. Every client runs its own 3.5 s window
+   for every player character from the moment that client handles the
+   respawn notice for it (its own millisecond clock, so the window starts
+   later by that client's latency). The protected player's own client
+   runs the same window on its own character, used only to skip hit
+   reactions. So, for a shooter with a small ping:
+   - 0 – 3.0 s: the shooter sees no hit at all (item 2), the server
+     deals nothing;
+   - 3.0 – 3.5 s: the shooter still sees no hit; the shooter reports no
+     player, the server traces the shot itself and meets the player, but
+     the all-damage window blocks it;
+   - 3.5 – 4.0 s: the shooter sees blood and the red crosshair (a normal
+     reported hit), but the server blocks the damage: these are the hits
+     that look landed and do nothing;
+   - after 4.0 s: normal.
+   In One Man Army, Arms Race, Last Man Standing and Hunted the
+   protected player's first shot ends all three at once (S6): the server
+   clears its windows and tells every client, which clear theirs.
+4. **The reference's newest values.** The reference's latest edits set the
+   server's two windows to 0 (the console default of
+   `RespawnInvulnerabilityTime` becomes 0, the instant-hit window becomes
+   0 and is cleared on the player's first update), and leave the
+   client's 3.5 s window as it was. If the Steam build matches those
+   edits (Open question 2), a freshly spawned player there is not
+   protected at all, yet for 3.5 s every shooter's client shows its own
+   instant-hit hits on that player as misses (item 2) and reports no
+   player; the server then traces the shot itself and **does** deal
+   damage. The first-shot notice is never sent in that build (the server
+   flag is already clear), so the client window always runs its full
+   3.5 s. This spec keeps 3.0 s and 4.0 s as its values; an implementation
+   that offers the newer behaviour should do so as an option.
+5. **Per mode**: no mode adds a look of its own. Besides the first-shot
+   rule (S6) and Spy Hunt's fall exemption, VIP Escort freezes every
+   living player at its round-end hold and starts the server's instant-hit
+   window on each of them (M13); no client is told, and nothing shows.
+
+For Chimera this means Combat Arms' style of a protected state is an
+**absence**: suppress blood, impact effects, the hit indicator, the
+name-tag flash and the victim's hit reaction for hits on a protected
+player, and draw nothing else. A visible marker (a tint, an icon) is not
+Combat Arms' and belongs to whoever adds it as an option.
+
+Test cases 104 to 108 below cover these corrections.
+
 ## Test cases
 
 Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Team Death Match` points (P0..P11 in map order per team), fallback hull (15, 50, 15), server 20 Hz, `ObjectEnd` 3 s, `MissionEnd` 3 s, `ObjectStart` 0 s, friendly fire off, spawn protection 3.0 / 4.0 s, respawn waits 7.0 / 5.0 s.
@@ -865,11 +946,17 @@ Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Tea
 101. **Spy Hunt stage 2 (Corrections 11, 12).** The final spy kills two hunters (no kills or deaths added), hunter H kills the spy → H's mission points = 5, the spy's = 0, Alpha wins. Final spy against one hunter, the hunter leaves → Alpha wins, the spy's points 0.
 102. **S&D credit (Corrections 13).** Plant at t = 100 s by P, last Creed dies at t = 110 s → JSF wins, P's detonations +1 at the round result. Warm-up: nothing credited.
 103. **Two kills at G in a frame (Corrections 14).** One Man Army G = 30, A and B on 29; A's kill then B's kill in one frame → winner B.
+104. **No marker (Corrections 2026-10-28, 1).** TDM, enemy P respawns at t = 0; an observer looks at P at t = 0.5, 2.0 and 3.9 s → P's model, materials, colour and opacity are exactly those of an unprotected player of the same character; no HUD element, chat line or sound appears for P on any client (P's own included) at t = 0, 3.0, 3.5 or 4.0 s.
+105. **Protected hit feedback (Corrections 2026-10-28, 2).** P (respawned at t = 0) stands 2 u in front of a concrete wall; the shooter's rifle shot at P's chest is traced at t = 1.0 s → on the shooter's client: muzzle flash, fire sound, recoil and one round spent; no blood, no puff or decal on P or on the wall, no impact sound, the crosshair keeps its colour, no character hit is reported; P's health and armour unchanged, P plays no hit reaction and hears no hurt voice.
+106. **The three windows (Corrections 2026-10-28, 3).** The shooter's client handles P's respawn notice 50 ms after the server's respawn. Shots traced at server time 2.9 s and 3.4 s → no hit shown, no damage; at 3.6 s (client window 3.55 s, over) → blood and the red crosshair on the shooter's client, no damage on the server; at 4.1 s → blood, red crosshair and normal damage.
+107. **First shot ends it everywhere (Corrections 2026-10-28, 3).** Arms Race, P respawns at t = 0, fires at t = 1.0 s; a shot at P traced at t = 1.2 s → blood, red crosshair, damage. The same in Elimination Pro → no hit shown until 3.5 s, no damage until 4.0 s.
+108. **Newest reference values (Corrections 2026-10-28, 4).** Server windows 0, client window 3.5 s: P respawns at t = 0; an M67 blast at t = 0.5 s → damage; a rifle shot at P traced at t = 1.0 s → the shooter's client shows no hit and reports no player, the server's own trace hits P and deals the damage; P's first shot sends no notice, and shots at P still show no hit until 3.5 s.
 
 ## Open questions
 
 1. **Elimination naming.** The brief lists "Team Death Match" and "Elimination" as two modes. In this game they are one mode (`TDM`, shown as Elimination); this spec takes the brief's "Elimination" to mean Elimination Pro (`TSV`, M2). Confirm.
 2. **Respawn and protection values.** The reference carries marked edits that change the respawn waits (7.0 → 2.0 s client, 5.0 → 1.5 s server) and turn off spawn protection (3.0 s and 4.0 s → 0). This spec uses the earlier values. Check on the live game: time death to respawn in TDM with a stopwatch, and shoot a freshly respawned enemy.
+   Narrowed (2026-10-28): the edits leave the client's 3.5 s window alone, so the two builds can be told apart live: in both, a shot at an enemy within about 3 s of their respawn shows no blood; with the edits it still takes their health (watch the kill feed or the enemy's death), without them it does not (Corrections 2026-10-28, 4; case 108).
 3. **Round phase lengths.** `ObjectEnd`, `MissionEnd` and `ObjectStart` default to 0 when the server file lacks them; only the client's copy of the server file has 3 / 3 / 0. Time the gap between a round's result and the next round's start in S&D (expect ≈ 6 s).
 4. **Bomb plant time.** The HUD gauge is 4 s and the zone accepts the plant when the client reports it; the exact hold time and whether moving or releasing fire cancels it are decided by the client's bomb weapon, which was not traced. Measure a plant with a stopwatch, and whether a partial defuse keeps its progress.
    **Answered:** the plant is the bomb's fire animation (XK-2 `fire_0` 4000 ms, fire key at 3904 ms) with the planter's movement locked; releasing fire cancels and nothing is kept; the zone plants at once when the key's shot arrives inside the widened box. A partial defuse keeps no progress (every attempt gets the full 7 s); the plant's own "keep time" rule is moot because the zone's plant time is 0. Applied in M3; cases 65, 66. A live check on Steam (the XK-2 files may differ): time from pressing fire to the "planted" text.
@@ -906,6 +993,7 @@ Common setup unless stated: Ghost Town–style map with 12 JSF and 12 Creed `Tea
     **Answered:** M10 (the `FlagPolePos` object, the `HQ_Flag_*` props and their sockets); case 69.
 25. **Spawn protection and instant-hit shots** (pass through, or stop and do nothing; blood).
     **Answered:** they stop and do nothing, and the client draws no blood (S6, corrected); case 78. Still open: whether a plain surface puff appears at the stopping point. Measure: shoot a freshly respawned enemy standing in front of a wall and watch for a puff on the enemy.
+    **Answered (2026-10-28):** no puff, no decal, no impact sound: the shooter's client drops the whole impact at the protected player (Corrections 2026-10-28, 2); case 105.
 26. **Scoring details** (damage scaled before or after armour, the team-id filter, heals, the teammate-hit voice).
     **Answered:** S8 Details; case 77.
 27. **Mutation boxes and the revenge buff.**

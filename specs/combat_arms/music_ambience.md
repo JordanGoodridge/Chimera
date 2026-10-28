@@ -12,7 +12,11 @@ delivery, and the engine's per-sound volume handling. Checked against the
 Steam install of Combat Arms: the Classic (Steam build id 25595979): the
 music files on disk and in `BGM.rez` (names, sizes, formats, lengths), and
 the sound objects of the 33 world files in the two unkeyed world archives
-(`WORLDS2.rez`, `WORLDS3.rez`). The music lists and interface attribute
+(`WORLDS2.rez`, `WORLDS3.rez`). A second pass (2026-10-28) added the
+Arms Race messages on both sides, the round-start, respawn-countdown and
+result-screen sound choices, the menus' rank-up popup, and the file list of
+the unkeyed interface-sound archive `UI_SND.rez` (names, sizes, WAV
+headers read in memory). The music lists and interface attribute
 values live in keyed attribute files that this session did not decrypt, so
 which track plays at which moment is stated by attribute key, with the
 likely file named only where the file name makes it obvious (marked
@@ -24,7 +28,8 @@ Sections: Summary; Units and conventions; Constants; Behavior (1 the music
 files, 2 the music player, 3 the menu playlist, 4 music by moment, 5 map
 music triggers, 6 ambient map sounds, 7 announcer and stinger sounds, 8
 volume channels, 9 server or client); Order of events at phase changes;
-Edge cases; Quirks; Test cases; Open questions.
+Edge cases; Quirks; Test cases; Open questions. Section 7 gained the
+interface-sound files and Section 10 the cues by event (2026-10-28).
 
 ---
 
@@ -269,11 +274,12 @@ attributes (`clientbutes.txt`) or the room data (`gameroom.txt`).
 | Loading screen | the loading track above; once loading reports finished, music is stopped every loading-screen frame | — | — | — |
 | Loading screen closes, Quarantine only | `QuarantineModeBGM` | no | **10 s** fade-in | ends on its own |
 | Warm-up round start (alive) | interface sound `FirstSpawnSound` | — | — | — |
-| First real round start after entering the map (alive) | interface sound `RoundStartSound`, then **stop and start the mode music**: the room data's `StartBGM_<map index>` for this mode if present, else the mode's `StartBGM`; nothing if empty | the mode's `LoopBGM` | 0 | stays (looping) or ends; later rounds do not restart it |
+| First real round start after entering the map at which the local player is alive (corrected 2026-10-28) | interface sound `RoundStartSound`, then **stop and start the mode music**: the room data's `StartBGM_<map index>` for this mode if present, else the mode's `StartBGM`; nothing if empty | the mode's `LoopBGM` | 0 | stays (looping) or ends; once it has started, later rounds do not restart it. A player dead at a real round start gets neither the sound nor the music then, and the music waits for the next real round start at which they are alive |
 | Later real round starts | `RoundStartSound` only | — | — | — |
 | Quarantine, real round, round time left in (20, 22] s | stop, `QuarantineModeEndBGM` (once per round) | no | 0 | ends on its own |
 | Seize and Secure, capture timer at or below 20 s | stop, `HQMOccupyProgressBGM` | no | 0 | stopped (silence) when the capture timer stops or rises above 20 s, or the round timer runs out |
-| Arms Race, a player reaches the last stage (server event) | interface sound `last_stage_sound`; stop, `last_stage_bgm`, unless already playing | **yes** | 0 | when that player leaves and no one else is on the last stage, or all players are removed: stop, and restart the mode's start music if the mode's `LoopBGM` is set |
+| Arms Race, the local player's weapon is replaced while alive (a new stage) | interface sound `weapon_change_sound`, on that player's client only (Section 10) | — | — | — |
+| Arms Race, a player reaches the last stage (server event, to every client) | interface sound `last_stage_sound`; a red chat line for 10 s; stop, `last_stage_bgm`, unless already playing | **yes** | 0 | when that player leaves and no one else is on the last stage, or all players are removed: stop, and restart the mode's start music if the mode's `LoopBGM` is set |
 | Perk with the war-cry or eagle-eye cue activated (`gear_perks.md`) | stop, the perk's sound file as music (`Ability\WarCry\WarCry.mp3`, `Ability\EagleEye\Alignment.mp3`) | no | 0 | ends on its own; the mode music does **not** come back (Quirk 5) |
 | Map music trigger (server) | Section 5 | per object | per object | per object |
 | Round result (each round, also the warm-up) | team modes: interface sound `RoundAlphaTeamWinSound` or `RoundBravoTeamWinSound` by the **winning team** (the same for both teams); Quarantine: `QRTHumanWinSound` or `QRTInfectorWinSound`; free-for-all modes, Spy Hunt for non-Alpha players, co-op and host games: none; a draw: none | — | — | — |
@@ -385,9 +391,44 @@ bullion banking sound (`game_modes_2.md`), the lobby countdown sound
 (`lobby.md` S). Interface stingers named in the client attributes and
 played by code: `MapLoadingSound`, `GameStartSound`, `GameOverSound`,
 `FirstSpawnSound`, `RoundStartSound`, the round and result win/lose sounds
-of Section 4, `last_stage_sound` and `weapon_change_sound` (Arms Race), the
-level-up sound. Their file names are in the keyed attribute file (Open
-questions 1).
+of Section 4, `last_stage_sound` and `weapon_change_sound` (Arms Race),
+`RespawnCountSound` (`death_killcam.md` 9), `StartCountSound` (the room
+countdown, `lobby.md`) and `LevelUpSound`. Corrected (2026-10-28):
+`LevelUpSound` is not a match sound. It belongs to the menus' rank-up
+popup (shown when the account's rank rises) and plays when that popup
+opens; nothing in a match plays it. The in-match "next weapon" sound is
+Arms Race's `weapon_change_sound`.
+
+**Their files** (narrows Open questions 1). The key values are in the
+keyed attribute file, which this pass did not read either. But every
+interface sound lives in `UI_SND.rez` (title `LithTech Resource File`,
+stored raw; 246 entries), and for most keys exactly one file there carries
+the key's name. Those pairs are listed as inferred; the lengths were read
+from the files' WAV headers.
+
+| Key | File (inferred, in `UI_SND.rez`) | Length (s) | Format |
+|---|---|---|---|
+| `ResultWinSound` | `UI_SND\WIN.WAV` | 3.108 | 44.1 kHz stereo |
+| `ResultLoseSound` | `UI_SND\LOSE.WAV` | 3.696 | 44.1 kHz stereo |
+| `RoundStartSound` | `UI_SND\ROUNDSTART.WAV` | 1.721 | 44.1 kHz mono |
+| `RoundAlphaTeamWinSound` | `UI_SND\ALPHAWIN.WAV` | 2.287 | 44.1 kHz mono |
+| `RoundBravoTeamWinSound` | `UI_SND\BRAVOWIN.WAV` | 2.267 | 44.1 kHz mono |
+| `QRTHumanWinSound` | `UI_SND\QUARANTINE\HUMAN_WIN.WAV` | 2.052 | 44.1 kHz mono |
+| `QRTInfectorWinSound` | `UI_SND\QUARANTINE\INFECTED_WIN.WAV` | 2.072 | 44.1 kHz mono |
+| `weapon_change_sound` | `UI_SND\VWRM\WEAPONRACE_CHANGE.WAV` | 1.543 | 44.1 kHz mono |
+| `last_stage_sound` | `UI_SND\VWRM\WEAPONRACE_LASTCHANGE.WAV` | 2.804 | 44.1 kHz mono |
+| `RespawnCountSound` | `UI_SND\RESPWANCOUNT.WAV` (sic) | 0.999 | 22.05 kHz mono |
+| `StartCountSound` | `UI_SND\STARTCOUNT.WAV` | 1.037 | 44.1 kHz mono |
+| `LevelUpSound` | `UI_SND\LEVELUP.WAV` | 2.208 | 44.1 kHz stereo |
+
+All are 16-bit PCM. Not matched: `FirstSpawnSound` (candidates
+`UI_SND\ROUNDFIGHT.WAV` and `UI_SND\SHOWTIME.WAV`, both 112 306 bytes,
+1.255 s, probably one clip under two names), `GameStartSound`,
+`GameOverSound` and `MapLoadingSound`. The folder also holds
+`UI_SND\DRAW.WAV` (1.458 s, 22.05 kHz mono) and spoken mode names
+(`ELIMINATION.WAV` 1.385 s, `ONEMANARMY.WAV` 1.308 s, `SEARCHANDDESTROY.WAV`,
+`CAPTURETHEFLAG.WAV`) that no key of the code read plays; a draw plays no
+sound (Section 4).
 
 ### 8. Volume channels
 
@@ -435,6 +476,46 @@ There are two output channels, not five:
   the Quarantine and Seize and Secure cues (from the client's own round and
   capture clocks), perk cues, result-screen silence and sounds, every
   volume, every fade, and whether a music file exists.
+
+### 10. Cues by event (for another kind of match)
+
+What Combat Arms plays for each kind of moment, with who hears it, so that
+a match that is not one of its modes (Chimera's gun game, for one) can
+raise the same moments and get Combat Arms' cues. The left column is the
+moment in general terms; the second says which Combat Arms moment it is.
+Everything is client-side once the client knows the moment; "interface
+sound" is Section 4's.
+
+| Moment | Combat Arms' moment | Who hears | Sound | Music |
+|---|---|---|---|---|
+| going into a match | leaving the room for the game server | the client going | — | stop; `LoadingScreenBGM` (`Map_Loading.mp3`, 2.0 s), once, full volume |
+| warm-up start | warm-up round start | each client, if alive | `FirstSpawnSound` | none |
+| start of play | first real round start (alive), Section 4 | each client, if alive | `RoundStartSound` | stop; the mode's start track (Arms Race: `modebgm\weaponrace_start.mp3`, inferred), full volume, looping per `LoopBGM` |
+| a later round start | later real round starts | each client, if alive | `RoundStartSound` | none |
+| own step up the ladder, while alive | Arms Race weapon replaced in life | that player only | `weapon_change_sound` | none |
+| own step on (re)spawn | Arms Race loadout at spawn | — | none | none |
+| a player reaches the last step | Arms Race last stage (sent to everyone) | everyone, the player included | `last_stage_sound` and a red chat line for 10 s (one text for the player, another with the player's name for the rest; both texts keyed) | stop; `last_stage_bgm` (`modebgm\weaponrace_last.mp3`, inferred), looping, full volume, unless it already plays |
+| another player reaches it too | the same | everyone | the same sound and line | unchanged (keeps its position) |
+| nobody is on the last step any more (the last such player left) | the same | everyone | — | stop; the start track again from its start, only if `LoopBGM` is set; else silence |
+| respawn countdown | death screen countdown | the dead player | `RespawnCountSound` at each whole second (`death_killcam.md` 9) | none |
+| round result | per-round result | each client | team modes only (Section 4); none without teams | none |
+| match won or lost | result screen | each client | `ResultWinSound` if the local player is first in the final standings (no-team modes) or on the winning team; else `ResultLoseSound`; a draw none | stop on entering it; silent until it is left |
+| back in the menus | leaving the result screen | each client | — | the playlist, 10 s fade-in (Section 3) |
+
+There is **no** Combat Arms cue for: a step down the ladder (Arms Race has
+none), a new leader or a lost or tied lead, a generic "last minute" or
+time running out (only Quarantine's last 20 s and Seize and Secure's
+capture countdown, Section 4, which are those modes' own), or the match
+start beyond the round start. A pack for such moments has to borrow or
+leave them silent.
+
+Order when one kill puts a player on the last step: the server announces
+the last stage at once to everyone, and replaces the player's weapon on
+that player's next server update; so every client gets the last-stage
+sound and music first, and the player's own client then also plays
+`weapon_change_sound` over it. (On the last-stage message the player's own
+client stops a `weapon_change_sound` that is still playing from an earlier
+step; the new one comes after and is not stopped.)
 
 ## Order of events at phase changes
 
@@ -557,9 +638,12 @@ music master × slot gain unless stated):
    volume; no music at the second round start.
 7. **Warm-up.** A mode with a warm-up: warm-up start → only
    `FirstSpawnSound`; mode music only at the first real round.
-8. **Dead at round start.** Player dead when the first real round starts →
-   no `RoundStartSound`, no mode music; it does not start later in that
-   map.
+8. **Dead at round start** (corrected 2026-10-28). Elimination Pro, the
+   player dead when round 1's real start arrives → no `RoundStartSound`,
+   no mode music; alive at round 2's real start → `RoundStartSound` and
+   the mode track then; round 3 → `RoundStartSound` only. In a one-round
+   mode (One Man Army, Arms Race) a player dead at that start gets no mode
+   music in that match.
 9. **Quarantine end cue.** Real round, round clock passes 21.0 s left →
    music cut, `QuarantineModeEndBGM` at full volume, once; the warm-up never
    triggers it.
@@ -614,6 +698,34 @@ Install cases (coordinator's Linux box, Steam build id 25595979):
     Dark Hills trigger names `BGM\Hunted_DarkHill_BGM.mp3`, `GameType`
     `HungerGame`, `FadingTime` 1.0, `Loop` false.
 
+23. **Arms Race step up.** G 15, alive player A reaches 4 kills → only A's
+    client plays `weapon_change_sound` (1.54 s); no other client plays
+    anything; the music is unchanged. A then dies and respawns with the
+    same step's weapon → no sound.
+24. **Arms Race last stage.** G 15, A reaches 14 kills while the start
+    track plays → every client: `last_stage_sound` once, a red chat line
+    for 10 s (A's client: the own-player text; others: the text with A's
+    name), music cut and `last_stage_bgm` looping at gain 1 from its start
+    (music 100); A's client then plays `weapon_change_sound` as the frag
+    arrives.
+25. **Second last-stage player.** B reaches 14 kills 20 s later → the
+    sound and a line again; `last_stage_bgm` is not restarted (it is at
+    20 s into its 36.03 s pass).
+26. **Last-stage players leave.** A leaves → music unchanged (B is on the
+    last stage); B leaves → music stopped; with `LoopBGM` set the start
+    track starts from its beginning at full volume, else silence.
+27. **Result, no teams.** Arms Race ends; the local player is first in
+    the final standings → result screen, music stopped, `ResultWinSound`
+    once; the player in second place hears `ResultLoseSound`.
+28. **Rank-up popup.** The account's rank rises while in the menus →
+    `LevelUpSound` as the popup opens; an Arms Race step never plays it.
+29. **`UI_SND.rez`** (Steam build): title `LithTech Resource File`, 246
+    entries; `UI_SND\VWRM\WEAPONRACE_CHANGE.WAV` 136 202 bytes, 1.543 s;
+    `UI_SND\VWRM\WEAPONRACE_LASTCHANGE.WAV` 247 432 bytes, 2.804 s;
+    `UI_SND\WIN.WAV` 548 366 bytes, 3.108 s, stereo; `UI_SND\LOSE.WAV`
+    652 088 bytes, 3.696 s; `UI_SND\ROUNDSTART.WAV` 153 430 bytes,
+    1.721 s; all 16-bit PCM WAV.
+
 ## Open questions
 
 1. **Keyed data not read.** `BGM_Setting.txt`, `clientbutes.txt` (the
@@ -623,6 +735,12 @@ Install cases (coordinator's Linux box, Steam build id 25595979):
    playlist entries (names, paths, default ticks, version), the value of
    every key in Section 4, each mode's start track and loop flag. Every
    "inferred" in Section 1 should be replaced by these values.
+   Narrowed (2026-10-28): the interface keys of Sections 4 and 7 are
+   matched by name to their `UI_SND.rez` files (Section 7 table); still
+   needed from the keyed data: those values themselves, `FirstSpawnSound`,
+   `GameStartSound`, `GameOverSound`, `MapLoadingSound`, the two Arms Race
+   chat texts, each mode's `StartBGM` and `LoopBGM` (Arms Race's start
+   track and whether it loops back after the last stage).
 2. **Menu track list and paths.** Whether the playlist's paths start with
    `Game\BGM\` (the file-exists test is relative to the program's working
    folder) and which of `BGM_LOOP`, `UIBGM_LOOP`, `WAITINGROOM_LOOP`,
