@@ -58,6 +58,8 @@ pub(super) struct World<'w, 's> {
     targets: Query<'w, 's, Target>,
     colliders: Query<'w, 's, &'static ColliderOf>,
     damage: MessageWriter<'w, Damage>,
+    /// A hit's full region beside its damage (`core::RegionHit`).
+    regions: Option<ResMut<'w, Messages<crate::core::RegionHit>>>,
     armor: super::HitArmor<'w, 's>,
     props: Query<'w, 's, &'static PropSurface>,
     prop_entities: Query<'w, 's, (), With<crate::map::PropEntity>>,
@@ -576,6 +578,9 @@ impl Shot<'_, '_, '_> {
                 covered,
                 helmet,
             });
+        }
+        if let Some(regions) = self.w.regions.as_mut() {
+            regions.write(crate::core::RegionHit { target, region });
         }
         self.w.damage.write(damage);
         self.w.event(self.owner, self.weapon, WeaponEventKind::Hit {

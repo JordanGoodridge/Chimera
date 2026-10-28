@@ -1,0 +1,49 @@
+# Combat Arms' announcer pack (chimera_core::announcer; the numbers and
+# file names are specs/combat_arms/kill_streaks.md Part B's). The files are
+# paths in the player's own install, loaded at run time.
+id = "combat_arms"
+name = "Combat Arms"
+game = "combat_arms"
+# B1: enemy kills each less than 5 s after the previous one.
+window_ms = 5000
+# Not in the spec ("killed them repeatedly", A1): two kills unanswered.
+revenge_after = 2
+
+# B1: the steps by multi-kill count (the thresholds inferred, Open
+# question 1); level 4, a streak step's (B4).
+steps = [
+    { count = 2, key = "double_kill", name = "DOUBLE KILL", banner = "UI_HUD_Message/Effect/DoubleKill.dtx", voice = "UI_SND/doublekill.wav", level = 4 },
+    { count = 3, key = "multi_kill", name = "MULTI KILL", banner = "UI_HUD_Message/Effect/MultiKill.dtx", voice = "UI_SND/multikill.wav", level = 4 },
+    { count = 4, key = "ultra_kill", name = "ULTRA KILL", banner = "UI_HUD_Message/Effect/UltraKill.dtx", voice = "UI_SND/ultrakill.wav", level = 4 },
+    { count = 5, key = "fantastic", name = "FANTASTIC", banner = "UI_HUD_Message/Effect/fantastic.dtx", voice = "UI_SND/fantastic.wav", level = 4 },
+    { count = 6, key = "unbelievable", name = "UNBELIEVABLE", banner = "UI_HUD_Message/Effect/Unbelievable.dtx", voice = "UI_SND/Unbelievable.wav", level = 4 },
+    # Quirk 6: the same voice as Unbelievable.
+    { count = 7, key = "unbelievable_plus", name = "UNBELIEVABLE+", banner = "UI_HUD_Message/Effect/Unbelievable_plus.dtx", voice = "UI_SND/Unbelievable.wav", level = 4 },
+]
+
+# B2: the special kills. First kill at a step's level (inferred); head and
+# groin shots at the special shots' (5); revenge 3, with no voice.
+first_kill = { key = "first_kill", name = "FIRST KILL", banner = "UI_HUD_Message/Effect/FirstKill.dtx", voice = "UI_SND/FirstKill.wav", level = 4 }
+headshot = { key = "headshot", name = "HEADSHOT", banner = "UI_HUD_Message/Effect/HeadShot.dtx", top = "UI_HUD_Message/Effect/Head.dtx", voice = "UI_SND/headshot.wav", level = 5 }
+# The voice by the victim's body (inferred, Open question 10).
+groin = { key = "nutshot", name = "NUTSHOT", banner = "UI_HUD_Message/Effect/NutShot.dtx", top = "UI_HUD_Message/Effect/Nut.dtx", voice = "UI_SND/NutShot_Male.wav", voice_female = "UI_SND/NutShot_Female.wav", level = 5 }
+revenge = { key = "revenge", name = "REVENGE", banner = "UI_HUD_Message/Effect/Revenge.dtx", level = 3 }
+
+# B3: the 1024 x 768 reference screen, each axis stretched.
+[layout]
+reference = [1024.0, 768.0]
+banner = [256.0, 76.0, 512.0, 256.0]
+top = [256.0, 93.0, 512.0, 256.0]
+
+# B4 (and A5's shake, -5..5 screen pixels).
+[timing]
+total = 1.4
+start = 0.0
+creating = 0.1
+blowing = 0.15
+end = 1.2
+destroying = 0.2
+start_size = 5.0
+blow_size = 3.0
+last_size = 5.0
+shake = 5

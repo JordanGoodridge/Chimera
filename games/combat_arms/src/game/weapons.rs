@@ -1936,6 +1936,8 @@ struct Delivery<'w, 's> {
     grenades: Query<'w, 's, (Entity, &'static super::grenades::CaGrenade)>,
     objects: Query<'w, 's, (Entity, &'static super::special::CaTarget)>,
     damage: MessageWriter<'w, Damage>,
+    /// The hit's full region beside its damage (`core::RegionHit`).
+    regions: Option<ResMut<'w, Messages<crate::core::RegionHit>>>,
     /// Rounds' pushes on physics objects (`weapon::impact`).
     impulses: MessageWriter<'w, crate::weapon::impact::BulletImpulse>,
     rules: DamageRules<'w, 's>,
@@ -3130,6 +3132,12 @@ fn hurt(
     // The rules' friendly-fire step scales the message again (S8): it
     // carries the amount before that step.
     damage.amount /= ff;
+    if let Some(regions) = w.regions.as_mut() {
+        regions.write(crate::core::RegionHit {
+            target: b.entity,
+            region: shape.region,
+        });
+    }
     w.damage.write(damage);
 }
 

@@ -1079,6 +1079,24 @@ pub struct DamageTaken {
     pub directed: bool,
 }
 
+/// Where on a body a gun's hit landed, in full (`BodyRegion`; its
+/// `Damage` carries only the coarse `Hitgroup`, so a groin hit reads as
+/// the stomach there): written by a gun's hit beside its `Damage`, on the
+/// server, for what tells regions apart after the fact (the announcer's
+/// headshot and groin-shot callouts, `chimera_sim::announce`).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct RegionHit {
+    pub target: Entity,
+    pub region: BodyRegion,
+}
+
+/// The characters whose body is a woman's (Combat Arms' female
+/// skeleton), as the game that knows keeps them: what picks a gendered
+/// line (the announcer's groin-shot voice). A resource, not a marker, so
+/// a body's sex never moves its character to another archetype.
+#[derive(Resource, Default, Clone, Debug, PartialEq, Eq)]
+pub struct FemaleBodies(pub std::collections::BTreeSet<Entity>);
+
 /// Something's health reached zero.
 #[derive(Message, Clone, Debug)]
 pub struct Died {
@@ -2128,6 +2146,7 @@ impl Plugin for CorePlugin {
             .add_message::<Explosion>()
             .add_message::<Deafened>()
             .add_message::<Died>()
+            .add_message::<RegionHit>()
             .add_message::<DamageTaken>()
             .add_message::<Radio>()
             .init_resource::<FriendlyFire>()
