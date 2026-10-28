@@ -25,7 +25,8 @@
 //! chunks) don't collide with other debris, pieces or ragdolls, as Source's
 //! debris group; built headless too), `BrushPanes` (a broken
 //! window's unbroken panes: a collider of pane boxes that shots hit and bodies
-//! pass; render clips the node's meshes to them), falling pane
+//! pass, on `core::TRACE_ONLY_LAYER` so no game's characters meet it;
+//! render clips the node's meshes to them), falling pane
 //! pieces (`FallingPane`: a body of the `PANE_PIECES` list that shatters on
 //! what it touches), `GlassShatter` messages for games to draw shards; at a
 //! round restart gibs and particles go and windows are whole again.
@@ -482,9 +483,12 @@ pub fn update_panes(nodes: Query<(Entity, &BrushPanes), Changed<BrushPanes>>, mu
                 .entity(node)
                 .insert((
                     Collider::compound(shapes),
-                    // Non-solid once broken: shots still hit the panes,
-                    // physics bodies pass (and shatter them by touch).
-                    CollisionLayers::new(LayerMask::DEFAULT, LayerMask::NONE),
+                    // Non-solid once broken: shots still hit the panes;
+                    // physics bodies and every game's characters pass
+                    // (and shatter them by touch). Traces only: movement
+                    // that sweeps colliders (`CHARACTER_FILTER`, Combat
+                    // Arms') stopped at a cracked window.
+                    CollisionLayers::new(crate::core::TRACE_ONLY_LAYER, LayerMask::NONE),
                 ))
                 .remove::<ColliderDisabled>();
         }

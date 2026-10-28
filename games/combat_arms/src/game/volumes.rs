@@ -42,8 +42,10 @@
 //!
 //! A Source map's ladder brushes (`MapBrush::ladder`, any game's map) become
 //! `Ladder` volumes too (`BrushLadder`, upward faces lowered 2 cm so
-//! standing on top doesn't grab), so Combat Arms' movement climbs every
-//! map's ladders (the spec is silent on Source maps; our choice).
+//! standing on top doesn't grab, side faces pushed out 2 Source units so
+//! a hull stopped by the solid brush touches it), so Combat Arms' movement
+//! climbs every map's ladders from any side (the spec is silent on Source
+//! maps; our choice).
 //!
 //! A Source map's water (`MapWater`, any game's map) becomes `Water`
 //! volumes too (`BrushWater`), so Combat Arms' movement swims in it. The
@@ -494,14 +496,28 @@ pub struct BrushLadder;
 /// as Source's movement ignores such faces (cs_source `movement.rs`).
 const LADDER_TOP_INSET: f32 = 0.02;
 
+/// How far (m) a brush ladder's side faces reach out: a Source map's
+/// ladder brush is solid, so the hull stops a skin short of its face and
+/// its box never touches the brush itself (head-on; at a slant only the
+/// box's corners, past the round hull, did). Source's own ladder probe
+/// reaches 2 units (cs_source `movement.rs`, `LADDER_REACH`); ours, the
+/// spec is silent on solid ladders.
+pub const LADDER_SIDE_REACH: f32 = 2.0 * 0.0254;
+
 /// The `Ladder` volume of a ladder brush: the brush's planes, upward
-/// faces lowered by `LADDER_TOP_INSET`.
+/// faces lowered by `LADDER_TOP_INSET`, side faces (less than 0.7
+/// vertical) pushed out by `LADDER_SIDE_REACH`.
 pub fn ladder_from_brush(b: &crate::core::MapBrush) -> CaVolume {
-    let mut v = CaVolume::class_box("Ladder", b.min, b.max).expect("the Ladder class");
+    let reach = Vec3::new(LADDER_SIDE_REACH, 0.0, LADDER_SIDE_REACH);
+    let mut v = CaVolume::class_box("Ladder", b.min - reach, b.max + reach).expect("the Ladder class");
     v.planes = b
         .planes
         .iter()
-        .map(|&(n, d)| if n.y >= 0.7 { (n, d - LADDER_TOP_INSET) } else { (n, d) })
+        .map(|&(n, d)| match n.y {
+            y if y >= 0.7 => (n, d - LADDER_TOP_INSET),
+            y if y > -0.7 => (n, d + LADDER_SIDE_REACH),
+            _ => (n, d),
+        })
         .collect();
     v.max.y = (v.max.y - LADDER_TOP_INSET).max(v.min.y);
     v

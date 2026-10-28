@@ -7,6 +7,7 @@
 mod announcer;
 mod controls;
 mod cross_game;
+mod cross_glass;
 mod cross_water_ladders;
 mod cs_parts;
 mod death_view;
@@ -28,5 +29,6 @@ mod switches;
 mod heavy {
     mod cs_decals;
     mod cross_hits;
+    mod css_map_moves;
     mod impacts;
 }

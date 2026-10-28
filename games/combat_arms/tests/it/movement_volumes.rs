@@ -953,6 +953,44 @@ fn a_map_ladder_brush_is_climbed_down_looking_down() {
     assert!(t.pos().y < high - 20.0, "went down from {high} to {}", t.pos().y);
 }
 
+/// A Source map's ladder brush is solid too (the map's collision stops
+/// the hull a skin short of its face): walking into it head-on, from the
+/// left or from the right, looking up, climbs it. Head-on the hull never
+/// overlapped the brush (the user's cs_office ladder, 2026-10-28); at a
+/// slant only the hull box's corners did.
+#[test]
+fn a_solid_map_ladder_brush_is_climbed_from_any_side() {
+    use chimera_core::core::{MapBrush, MapBrushes};
+    // A ladder 100 u wide and 16 u thick against nothing, 600 u tall.
+    let (lo, hi) = (Vec3::new(-50.0, 0.0, -216.0), Vec3::new(50.0, 600.0, -200.0));
+    let solid = block((lo + hi) / 2.0, (hi - lo) / 2.0);
+    // Toward it head-on (-Z), from its left (-X side, moving +X) and from
+    // its right (+X side, moving -X), each square to the face it meets.
+    for (name, at, dir) in [
+        ("head-on", Vec3::new(0.0, 0.0, 0.0), Vec3::NEG_Z),
+        ("from the left", Vec3::new(-200.0, 0.0, -208.0), Vec3::X),
+        ("from the right", Vec3::new(200.0, 0.0, -208.0), Vec3::NEG_X),
+    ] {
+        let mut t = T::new(vec![floor(), solid], on(at.x, 0.0, at.z));
+        t.tick();
+        let mut b = MapBrush::from_box(lo * s(), hi * s());
+        b.ladder = true;
+        t.sim.app.world_mut().insert_resource(MapBrushes(vec![b]));
+        t.ticks(2);
+        t.keys().yaw = (-dir.x).atan2(-dir.z);
+        t.keys().pitch = UP / 2.0;
+        t.forward(true);
+        let start = t.pos().y;
+        let mut grabbed = false;
+        for _ in 0..200 {
+            t.tick();
+            grabbed |= t.mv().on_ladder;
+        }
+        assert!(grabbed, "{name}: never on the ladder, at {}", t.pos());
+        assert!(t.pos().y - start > 100.0, "{name}: climbed {} u, at {}", t.pos().y - start, t.pos());
+    }
+}
+
 /// Standing on top of a ladder brush (its upward face carries the flag)
 /// does not grab it, as with Source's movement.
 #[test]

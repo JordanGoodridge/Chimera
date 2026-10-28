@@ -9,7 +9,9 @@
 //! `LogicSet::Damage` after weapons (weapon `Damage` on breakable nodes); moves
 //! mover nodes and their `core::MovingSolid` (those riding a physics body
 //! again after the physics step, `follow_bodies`), disables the collider of what
-//! isn't there, gives broken windows `map::BrushPanes`, hides nodes of removed
+//! isn't there, gives broken windows `map::BrushPanes` (on
+//! `core::TRACE_ONLY_LAYER`: shots hit them, no game's characters meet them),
+//! hides nodes of removed
 //! entities, pairs prop nodes (`map::PropEntity`) with logic props (weapon
 //! damage with its push and attacker, physics impacts on props, breakables and
 //! players after the physics step (crush damage by the spec's tables, from each
@@ -1208,7 +1210,12 @@ fn sync_movers(world: &mut World, logic: &mut Logic) {
         };
         let transform = Transform::from_translation(entity_to_engine(origin, logic.scale))
             .with_rotation(rotation_to_engine(entity_rotation(angles)));
-        let layers = if rides {
+        // A broken window's panes are for shots only
+        // (`map::breakables::update_panes`): every game's characters pass
+        // them, and touching them shatters them (`touch_breakables`).
+        let layers = if panes.is_some() {
+            CollisionLayers::new(crate::core::TRACE_ONLY_LAYER, LayerMask::NONE)
+        } else if rides {
             CollisionLayers::new(LayerMask::DEFAULT, LayerMask::NONE)
         } else {
             CollisionLayers::default()

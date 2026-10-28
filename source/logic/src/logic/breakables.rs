@@ -6,7 +6,9 @@
 //! Both are pushers that never move, so they get a mover node: the host
 //! hides the node and drops its collider when the brush stops being
 //! solid, and draws and collides only the unbroken panes of a window
-//! (`LogicWorld::window`). Hits come in through `LogicWorld::damage`.
+//! (`LogicWorld::window`; for shots only, `core::TRACE_ONLY_LAYER`: every
+//! game's characters walk through and shatter them by touch). Hits come in
+//! through `LogicWorld::damage`.
 //!
 //! Covers: specs/source/breakables.md: func_breakable health, material, damage
 //! scaling, break sounds, gib pieces, OnBreak, removal; func_breakable_surf
@@ -55,7 +57,12 @@
 //! players never impact breakables (touch flags do that); a broken window
 //! doesn't collide with bodies at all and loose physics props shatter its panes
 //! by touch with no push (their speed isn't in the logic; tile never breaks by
-//! a prop). Break on pressure ignores flag 1. Tile windows' blast diamond is
+//! a prop). Break on touch takes the player's velocity this tick as the
+//! spec's "smoothed speed" (the smoothing isn't specced): a movement that
+//! clips its velocity at the brush (CS:S's) touches it with none, so a CS:S
+//! player walking into touch glass doesn't break it; Combat Arms' keeps its
+//! speed into what stops it and does (party_kit `cross_glass`). Break on
+//! pressure ignores flag 1. Tile windows' blast diamond is
 //! centred on the hit, not the attacker. Gibs bounce 0.5 (glass 0.3), rest when
 //! slow; their bounce sound (the spec says only that the break flag picks it)
 //! is the material's `Bounce.Glass/Wood/Metal/Flesh/Concrete` entry (ceiling
