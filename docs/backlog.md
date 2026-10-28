@@ -70,9 +70,15 @@ the user's go-ahead: no Actions runs unless asked.
 - **Hide the radars in the party apps** (setting to bring them back):
   Combat Arms' radar over a CS:S map's overview doesn't match either
   style, and many maps have no overview.
-- **Combat Arms' radar draws as two boxes**: the radar and its
-  background are drawn apart instead of over each other (plain Combat
-  Arms too).
+- **Combat Arms' radar draws as two boxes: fixed, confirm in a
+  playtest.** Cause: the frame image `bg.dtx` is 256 x 256 with its box
+  (186 x 186) in the middle, but it was drawn at the spec table's
+  227 x 226, shrinking the box to 165 x 164 and leaving it apart from the
+  window. Now drawn at 256 x 256 (x 783, y -30) so the box is the window;
+  the spec's table size is off (spec session to correct). A test checks
+  frame, map quad and window at 1024x768, 1920x1080 and 2560x1440. Not
+  part of this: the map picture is blank where the texture window leaves
+  the image (spec open question 3), e.g. the Warehouse spawn.
 - **Headshot on a kill streak plays two voices: fixed, confirm in a
   playtest** (spec corrections 2026-10-28). One kill raises one event by
   the spec's priority (first kill, revenge, then at count 1 headshot or
