@@ -481,12 +481,14 @@ fn receive_hurts(
     }
 }
 
-/// Deaths, to every client (kill feed, ragdolls), with the announcer's
-/// facts of each enemy kill.
+/// Deaths, to every client (kill feed, ragdolls), with the gun that
+/// killed (`weapon::DamageWeapons`) and the announcer's facts of each
+/// enemy kill.
 fn send_deaths(
     mut died: MessageReader<Died>,
     replicated: Query<(), With<Replicated>>,
     registry: Res<WeaponRegistry>,
+    held: Option<Res<crate::weapon::DamageWeapons>>,
     mut announced: MessageReader<chimera_core::announcer::KillAnnounced>,
     mut out: MessageWriter<ToClients<Killed>>,
 ) {
@@ -505,7 +507,13 @@ fn send_deaths(
             message: Killed {
                 victim: d.entity,
                 attacker: d.attacker.filter(|a| replicated.contains(*a)),
-                weapon: damage.weapon.and_then(|w| registry.index(w)).map(|i| i as u16),
+                // The gun that killed, held or not (`DamageWeapons`: the
+                // killer may hold the next rung's already).
+                weapon: held
+                    .as_deref()
+                    .map_or(damage.weapon, |h| h.of(damage))
+                    .and_then(|w| registry.index(w))
+                    .map(|i| i as u16),
                 hitgroup: hitgroup_number(damage.hitgroup),
                 kind: kind_number(damage.kind),
                 point: damage.point.to_array(),

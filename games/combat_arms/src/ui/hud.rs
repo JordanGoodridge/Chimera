@@ -25,7 +25,9 @@
 //! The kill feed draws another game's gun (a party app's) with that game's
 //! icon from `client::weapon_icons::WeaponIcons`, else its display name
 //! (`GunNames`); the install's kill icons are registered there for the
-//! other games' feeds.
+//! other games' feeds, its headshot badge as the headshot mark. While the
+//! app draws one feed for every HUD (`client::kill_feed::SharedKillFeed`,
+//! the party apps) this one stays empty.
 //!
 //! Inputs: the viewed player (the local one, or whom it watches in first
 //! person), its `core::Health`, its armour (`weapon::Armor`: Combat
@@ -596,7 +598,11 @@ fn track(
     characters: Query<(Entity, &Health, Option<&Team>, Has<Dead>), With<Intent>>,
     (names, settings): (Query<NameParts>, Option<Res<NetSettings>>),
     (held, ids, carry, npcs): (Query<&Inventory>, Query<&Weapon>, Query<&CaCarry>, Query<(), With<CaNpc>>),
-    (rounds, view): (Option<Res<RoundRestarts>>, Option<Res<CaMatchView>>),
+    (rounds, view, shared): (
+        Option<Res<RoundRestarts>>,
+        Option<Res<CaMatchView>>,
+        Option<Res<crate::client::kill_feed::SharedKillFeed>>,
+    ),
 ) {
     let (ms, now) = clocks(&real, &time, sim.as_deref());
     let memory = &mut *memory;
@@ -674,6 +680,11 @@ fn track(
         memory.damage = None;
     }
     // The kill feed (D5, Corrections 7): a self-kill names its killer.
+    // None while the app draws one feed for every HUD (`client::kill_feed`).
+    if shared.is_some() {
+        died.clear();
+        memory.feed.lines.clear();
+    }
     for d in died.read() {
         let mate = |e: Entity| Some(e) == me || !enemies(my_team.as_ref(), team_of(e).as_ref());
         let killer = d.attacker;
@@ -2136,6 +2147,13 @@ fn register_icons(art: Option<Res<draw::CaArt>>, mut icons: ResMut<WeaponIcons>)
         .filter(|(k, _)| k.contains("/killdeath/weapon/"))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+    if let Some((image, size)) = badge_art(Badge::Headshot).and_then(|k| art.get(&k)) {
+        icons.register_mark(
+            crate::game::GAME,
+            crate::client::kill_feed::HEADSHOT,
+            WeaponIcon::Image { image: image.clone(), size: size.as_vec2() },
+        );
+    }
     icons.register(crate::game::GAME, move |id| {
         let (image, size) = kills.get(&crate::ui::install::texture_key(&crate::ui::install::kill_icon(id)))?;
         Some(WeaponIcon::Image { image: image.clone(), size: size.as_vec2() })

@@ -401,6 +401,27 @@ Ultimate Gun Game's ladder and maps are made, not written
   `GameParts::map_patterns` match (CS:S's `de_*`, `cs_*`). Lucker Party's
   hand-made minigames keep the default, in turn.
 
+### One HUD layer over several games' HUDs
+
+In the party apps the HUD follows the gun in hand, so anything that
+must survive a swap or look the same on every HUD is the shell's, not a
+game's:
+
+- **The kill feed is Chimera's** (`chimera_client::client::kill_feed`):
+  its entries (killer, victim, weapon id, headshot, suicide, team kill,
+  time) come from `core::Died` on host and clients alike (a client's
+  from `net::Killed`), held by no HUD, so a kill just before a rung swap
+  is still listed after it. The shell draws them in one place (top
+  right), each gun with its own game's icon (`weapon_icons::
+  WeaponIcons`, which games fill with their art: icons and kill marks)
+  or its name. An app asks for it with `SharedKillFeed`, and the games'
+  own feeds stay empty while it is in; plain CS:S and Combat Arms keep
+  theirs.
+- **Radars are an app setting** (`client::hud::Radars`, `hud_radar`):
+  one game's radar over another game's map matches neither style and
+  many maps have no overview, so the party apps start it at 0 and
+  `hud_radar 1` brings both games' radars back.
+
 ## Multiplayer
 
 Same principles as the main game: the server owns the loadout, rules and

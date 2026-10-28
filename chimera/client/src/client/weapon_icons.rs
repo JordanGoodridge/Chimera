@@ -2,7 +2,7 @@
 //! in another game's HUD, and a HUD draws only its own art. Each game
 //! registers, in `WeaponIcons`, how its weapon ids (`game:name`) resolve to
 //! an icon it can hand over as plain data (`WeaponIcon`: a glyph of an icon
-//! font, or an image), and any HUD asks the registry for an id of another
+//! font, or an image), and its kill marks (the headshot's: `mark`), and any HUD asks the registry for an id of another
 //! game and draws what comes back with `spawn_weapon_icon`. A HUD that
 //! gets none shows the gun's display name instead (`gun_name`). No game
 //! crate knows another: the registry is keyed by the id's game part, and
@@ -31,9 +31,9 @@ pub enum WeaponIcon {
 type Resolver = Arc<dyn Fn(&str) -> Option<WeaponIcon> + Send + Sync>;
 
 /// The games' icon resolvers by game name (the id's part before `:`, lower
-/// case).
+/// case), and their kill marks (`mark`).
 #[derive(Resource, Default, Clone)]
-pub struct WeaponIcons(HashMap<String, Resolver>);
+pub struct WeaponIcons(HashMap<String, Resolver>, HashMap<(String, String), WeaponIcon>);
 
 impl WeaponIcons {
     /// Registers (or replaces) `game`'s resolver for its weapon ids.
@@ -46,6 +46,17 @@ impl WeaponIcons {
     pub fn icon(&self, id: &str) -> Option<WeaponIcon> {
         let (game, _) = id.split_once(':')?;
         self.0.get(&game.to_ascii_lowercase())?(id)
+    }
+
+    /// Registers (or replaces) `game`'s kill mark `name` (`"headshot"`).
+    pub fn register_mark(&mut self, game: &str, name: &str, icon: WeaponIcon) {
+        self.1.insert((game.to_ascii_lowercase(), name.to_string()), icon);
+    }
+
+    /// `game`'s kill mark `name`, if it registered one: a feed drawing
+    /// that game's gun draws the mark in the same art.
+    pub fn mark(&self, game: &str, name: &str) -> Option<WeaponIcon> {
+        self.1.get(&(game.to_ascii_lowercase(), name.to_string())).cloned()
     }
 }
 

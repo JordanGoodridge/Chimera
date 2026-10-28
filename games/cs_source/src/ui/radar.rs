@@ -11,6 +11,8 @@
 //! opacity, 200 of 255 as CS:S), team-coloured dots (enemies while you see
 //! them; hostages grey; spectating, centred on the watched player), the planted
 //! bomb (and for terrorists a loose one) in orange, your nav place name below.
+//! `hud_radar 0` (`client::hud::Radars`; the party apps' default) puts it
+//! away.
 
 use avian3d::prelude::*;
 use bevy::{
@@ -39,12 +41,25 @@ impl Plugin for RadarPlugin {
                 teardown.run_if(resource_removed::<ActiveOverview>),
                 update.run_if(resource_exists::<ActiveOverview>),
             )
-                .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
+                .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME))
+                .distributive_run_if(radars_shown),
         )
         // Another game's HUD up (a party app's player holding that game's
-        // gun): the radar is put away until CS:S's is back.
-        .add_systems(Update, put_away.run_if(not(crate::gameplay::hud_is(crate::game::GAME))));
+        // gun), or the radars hidden (`hud_radar 0`): the radar is put away
+        // until CS:S's is back.
+        .add_systems(Update, put_away.run_if(not(radar_up)));
     }
+}
+
+/// Whether the radars draw (`client::hud::Radars`, `hud_radar`; without
+/// it they do).
+fn radars_shown(radars: Option<Res<crate::client::hud::Radars>>) -> bool {
+    radars.is_none_or(|r| r.shown())
+}
+
+/// CS:S's HUD the gameplay's and the radars shown.
+fn radar_up(gameplay: Option<Res<crate::gameplay::Gameplay>>, radars: Option<Res<crate::client::hud::Radars>>) -> bool {
+    gameplay.is_none_or(|g| g.hud == crate::game::GAME) && radars_shown(radars)
 }
 
 /// The overview is new, or the radar isn't built yet (it was up while

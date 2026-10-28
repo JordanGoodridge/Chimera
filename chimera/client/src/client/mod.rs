@@ -36,6 +36,7 @@ pub mod hud_minimal;
 pub mod minigame_scoreboard;
 pub mod hud_text;
 pub mod input;
+pub mod kill_feed;
 pub mod interp;
 pub mod map_screen;
 pub mod match_end;
@@ -414,6 +415,7 @@ impl PluginGroup for ClientPlugins {
             .add(spectate::SpectatePlugin)
             .add(respawn_countdown::RespawnCountdownPlugin)
             .add(match_end::MatchEndPlugin)
+            .add(kill_feed::KillFeedPlugin)
             .add(callouts::CalloutsPlugin)
             .add(hdr::HdrPlugin)
             .add(video::VideoPlugin)
