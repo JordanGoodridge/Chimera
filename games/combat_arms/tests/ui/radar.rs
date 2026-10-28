@@ -715,6 +715,43 @@ fn an_ally_wedge_at_16_9() {
     assert!(win.min.x >= frame.min.x && win.min.y >= frame.min.y && win.max.x <= frame.max.x && win.max.y <= frame.max.y);
 }
 
+/// The frame and the map over the window at any resolution (the backlog's
+/// "two boxes"): the map quad is the layout's (725, -88) 372 x 372, twice
+/// the window (818, 5) 186 x 186 about its centre (911, 98); the frame is
+/// `bg.dtx` at its own 256 x 256, its 186 x 186 box (centred in it) over
+/// the window, so the frame's centre is the window's.
+#[test]
+fn the_frame_and_the_map_sit_over_the_window_at_any_resolution() {
+    for (w, h) in [(1024.0, 768.0), (1920.0, 1080.0), (2560.0, 1440.0)] {
+        let (mut sim, me) = live("TDM");
+        sim.app.world_mut().insert_resource(HudScreen(Screen::new(w, h)));
+        sim.app.world_mut().resource_mut::<CaRadarRound>().image = showdown();
+        place(&mut sim, me, &[]);
+        let r = radar(&sim);
+        let (xr, yr) = (w / 1024.0, h / 768.0);
+        let near = |a: f32, b: f32| assert!((a - b).abs() < 0.5, "{w}x{h}: {a} vs {b}");
+        let win = r.window.expect("window");
+        near(win.min.x, 818.0 * xr);
+        near(win.min.y, 5.0 * yr);
+        near(win.size().x, 186.0 * xr);
+        near(win.size().y, 186.0 * yr);
+        let q = r.map.as_ref().expect("map quad").corners;
+        near(q[0].x, 725.0 * xr);
+        near(q[0].y, -88.0 * yr);
+        near(q[2].x, (725.0 + 372.0) * xr);
+        near(q[2].y, (-88.0 + 372.0) * yr);
+        let (fx, fy, fw, fh) = combat_arms::ui::hud::radar::FRAME_AT;
+        assert_eq!((fw, fh), (256.0, 256.0));
+        let frame = r.screen.rect(Vec2::new(fx, fy), Vec2::new(fw, fh));
+        let (c, d) = ((frame.min + frame.max) / 2.0, (win.min + win.max) / 2.0);
+        near(c.x, d.x);
+        near(c.y, d.y);
+        // The frame's box (186 of 256 in the middle) is the window.
+        near(frame.size().x * 186.0 / 256.0, win.size().x);
+        near(frame.size().y * 186.0 / 256.0, win.size().y);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Corrections 2026-10-22
 

@@ -62,9 +62,13 @@ use crate::{
 
 /// The radar map's alpha (R-constants).
 pub const MAP_ALPHA: u8 = 190;
-/// The frame's place (R-constants: layout `bg`), the zoom bar's track and
-/// knob, ref px.
-pub const FRAME_AT: (f32, f32, f32, f32) = (782.0, -30.0, 227.0, 226.0);
+/// The frame's place (layout `bg`), the zoom bar's track and knob, ref px.
+/// `bg.dtx` is 256 x 256 with its box (186 x 186, the window's size) in
+/// the middle, so it is drawn at its own size with the box over the
+/// window: x 783, y -30 (centre (911, 98)). The spec's constants table
+/// says 227 x 226 at (782, -30); that squeezes the box to 165 x 164 and
+/// leaves it apart from the window ("two boxes").
+pub const FRAME_AT: (f32, f32, f32, f32) = (783.0, -30.0, 256.0, 256.0);
 pub const TRACK_AT: (f32, f32, f32, f32) = (1004.0, 4.0, 16.0, 192.0);
 pub const KNOB_SIZE: (f32, f32) = (16.0, 10.0);
 
