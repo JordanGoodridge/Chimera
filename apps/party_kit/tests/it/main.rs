@@ -15,6 +15,7 @@ mod gun_game;
 mod hud;
 mod identity;
 mod identity_sounds;
+mod kill_feed;
 mod kill_icons;
 mod last_shot;
 mod net_gun_game;

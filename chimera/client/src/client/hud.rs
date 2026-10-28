@@ -16,6 +16,9 @@
 //! (`HudDraws`); the map's own HUD look (`map::hud::ActiveHud`) is put
 //! away while another game's HUD draws (`HudLookOwner`: its game's HUD
 //! takes its parts down when it goes and builds them when it is back).
+//! `Radars` (`hud_radar`) says whether the games' radars draw; an app with
+//! one kill feed for all its HUDs (`kill_feed::SharedKillFeed`) has this
+//! HUD's left out too.
 
 use bevy::prelude::*;
 
@@ -61,7 +64,9 @@ pub struct HudSwitchPlugin;
 
 impl Plugin for HudSwitchPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<GameDraws>().init_resource::<PutAway>().add_systems(
+        app.init_resource::<GameDraws>().init_resource::<PutAway>();
+        radar_cvar(app);
+        app.add_systems(
             Update,
             (
                 show_active_huds,
@@ -97,6 +102,46 @@ pub struct HudRoot(pub &'static str);
 #[derive(Resource, Clone, Debug, Default)]
 pub struct HudDraws(pub Vec<(&'static str, GameDraws)>);
 
+/// Whether the games' radars draw (`hud_radar`, archived; 1 unless the
+/// app starts it at 0: the party apps, where one game's radar over
+/// another's map matches neither and many maps have no overview). CS:S's
+/// radar and Combat Arms' corner map read it.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Radars {
+    pub shown: u8,
+}
+
+impl Default for Radars {
+    fn default() -> Self {
+        Self { shown: 1 }
+    }
+}
+
+impl Radars {
+    pub fn shown(&self) -> bool {
+        self.shown != 0
+    }
+}
+
+/// `hud_radar` (`Radars`).
+fn radar_cvar(app: &mut App) {
+    app.init_resource::<Radars>();
+    if app.world().get_resource::<crate::console::Console>().is_some_and(|c| c.cvar("hud_radar").is_some()) {
+        return;
+    }
+    crate::console::resource_cvar::<Radars, u8>(app, "hud_radar", "1: the games' radars draw; 0: hidden.", |r| &mut r.shown);
+    app.world_mut().resource_mut::<crate::console::Console>().archive("hud_radar");
+}
+
+/// Starts `hud_radar` (`Radars`) at `shown` in this app, as its default
+/// (a config that says otherwise wins when it is read).
+pub fn default_radars(app: &mut App, shown: bool) {
+    radar_cvar(app);
+    let v = shown as u8;
+    app.insert_resource(Radars { shown: v });
+    app.world_mut().resource_mut::<crate::console::Console>().set_default("hud_radar", &v.to_string());
+}
+
 /// Whose HUD the map's own HUD look (`map::hud::ActiveHud`) is, in an app
 /// with several HUDs: while another game's HUD is the gameplay's the look
 /// is put away (removed: its game's HUD takes its parts down, this HUD
@@ -107,7 +152,15 @@ pub struct HudLookOwner(pub &'static str);
 
 /// The look put away, and the map it is of (`map::LoadedMapName`).
 #[derive(Resource, Default)]
-struct PutAway(Option<(crate::map::hud::ActiveHud, Option<String>)>);
+pub struct PutAway(Option<(crate::map::hud::ActiveHud, Option<String>)>);
+
+impl PutAway {
+    /// The look put away while another game's HUD draws (its game still
+    /// registers its icons from it: `weapon_icons`).
+    pub fn look(&self) -> Option<&crate::map::hud::ActiveHud> {
+        self.0.as_ref().map(|(l, _)| l)
+    }
+}
 
 /// Roots of a HUD that isn't the gameplay's hidden; the active one's shown
 /// as it becomes active (or appears), then left to its game.
@@ -977,9 +1030,11 @@ fn killfeed(
     time: Res<Time>,
     game_hud: Option<Res<crate::map::hud::ActiveHud>>,
     own: Res<GameDraws>,
+    shared: Option<Res<super::kill_feed::SharedKillFeed>>,
 ) {
-    // The game's own HUD shows its death notices instead.
-    if game_hud.is_some() || own.killfeed {
+    // The game's own HUD shows its death notices instead, or the app's
+    // one feed (`kill_feed`).
+    if game_hud.is_some() || own.killfeed || shared.is_some() {
         died.clear();
         text.0.clear();
         return;

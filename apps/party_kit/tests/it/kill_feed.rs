@@ -1,0 +1,228 @@
+//! The party's one kill feed (`chimera_client::client::kill_feed`,
+//! `party_kit::client::PartyHudPlugin`) and its radars: a kill just
+//! before a rung swap is still in the feed after it, whatever HUD is up;
+//! only the shell's feed has rows (CS:S's death notices and Combat Arms'
+//! feed stay empty); without the party's flag the games' own feeds are as
+//! before; a network client's feed has the server's entries; the radars
+//! are hidden until `hud_radar 1`. Headless, on `hud::party_with_huds`.
+
+use std::{sync::Arc, time::Duration};
+
+use bevy::prelude::*;
+use chimera_client::client::kill_feed::{KillFeed, KillFeedPlugin, KillFeedRow, KillFeedStatePlugin, SharedKillFeed};
+use chimera_core::{
+    console::Console,
+    core::{Damage, DamageKind, Died, God, Hitgroup},
+};
+use chimera_net::{harness::NetSim, net::memory::LinkConditions};
+use chimera_sim::minigame;
+use chimera_world::{
+    greybox::GreyboxMapPlugin,
+    harness::Sim,
+    map::hud::{ActiveHud, HudCoord, HudPanel},
+};
+use combat_arms::{
+    game::TICK_INTERVAL,
+    harness::CaSim,
+    ui::hud::{CaHud, radar::CaRadar},
+};
+use cs_source::ui::game_hud::Part;
+use party_kit::{DEFAULT_MINIGAME, PartyHudPlugin, PartyPartsPlugin};
+
+use crate::hud::{hud, party_with_huds_and, swap_to};
+
+/// The party with both HUDs, a CS:S notices panel to draw into, a window,
+/// the shell's feed widget and, with `party`, the party's HUD settings.
+fn feed_sim(party: bool) -> (Sim, Entity, Entity) {
+    let (mut sim, me, other) = party_with_huds_and(|app| {
+        app.add_plugins(KillFeedPlugin);
+        if party {
+            app.add_plugins(PartyHudPlugin);
+        }
+    });
+    let w = sim.app.world_mut();
+    w.spawn(Window::default());
+    let mut look = w.resource_mut::<ActiveHud>();
+    Arc::make_mut(&mut look.0).panels.insert(
+        "HudDeathNotice".into(),
+        HudPanel {
+            x: HudCoord::Start(0.0),
+            y: HudCoord::Start(0.0),
+            wide: 300.0,
+            tall: 100.0,
+            background: None,
+            icon: Vec2::ZERO,
+            digit: Vec2::ZERO,
+            digit2: Vec2::ZERO,
+            keys: Default::default(),
+        },
+    );
+    sim.seconds(0.2);
+    (sim, me, other)
+}
+
+fn kill(sim: &mut Sim, victim: Entity, killer: Entity, weapon: &'static str, hitgroup: Hitgroup) {
+    sim.app.world_mut().write_message(Died {
+        entity: victim,
+        attacker: Some(killer),
+        damage: Damage {
+            target: victim,
+            attacker: Some(killer),
+            amount: 1.0,
+            point: Vec3::ZERO,
+            dir: Vec3::NEG_Z,
+            hitgroup,
+            kind: DamageKind::Bullet,
+            weapon: Some(weapon),
+            force: Vec3::ZERO,
+        },
+    });
+}
+
+/// The feed's entries as (victim, weapon, headshot).
+fn entries(sim: &Sim) -> Vec<(Entity, Option<&'static str>, bool)> {
+    let feed = sim.app.world().resource::<KillFeed>();
+    feed.entries.iter().map(|e| (e.victim.entity, e.weapon, e.headshot)).collect()
+}
+
+/// Rows drawn by the shell's feed, CS:S's death notices and Combat Arms'
+/// feed lines.
+fn drawn(sim: &mut Sim) -> (usize, usize, usize) {
+    let w = sim.app.world_mut();
+    let shell = w.query::<&KillFeedRow>().iter(w).count();
+    let notices = w
+        .query::<(Entity, &Part)>()
+        .iter(w)
+        .find(|(_, p)| **p == Part::Notices)
+        .map_or(0, |(e, _)| w.get::<Children>(e).map_or(0, |c| c.len()));
+    let ca = w.resource::<CaHud>().feed.len();
+    (shell, notices, ca)
+}
+
+#[test]
+fn a_kill_just_before_a_swap_is_still_in_the_one_feed_after_it() {
+    let (mut sim, me, other) = feed_sim(true);
+    assert_eq!(hud(&sim), cs_source::game::GAME, "the Glock: CS:S's HUD");
+    kill(&mut sim, other, me, cs_source::game::weapons::GLOCK, Hitgroup::Head);
+    sim.seconds(0.1);
+    // The kill made the rung: Combat Arms' gun, Combat Arms' HUD.
+    swap_to(&mut sim, me, 1);
+    assert_eq!(hud(&sim), combat_arms::game::GAME);
+    assert_eq!(
+        entries(&sim),
+        [(other, Some(cs_source::game::weapons::GLOCK), true)],
+        "the kill made with CS:S's HUD up, after the swap"
+    );
+    assert_eq!(drawn(&mut sim), (1, 0, 0), "one row, the shell's; no game's own");
+    // A Combat Arms kill now, and back to CS:S's HUD: both rows still
+    // there, CS:S's notices still empty.
+    kill(&mut sim, other, me, "combat_arms:beretta_m92fs", Hitgroup::Chest);
+    sim.seconds(0.3);
+    swap_to(&mut sim, me, 2);
+    assert_eq!(hud(&sim), cs_source::game::GAME);
+    assert_eq!(entries(&sim).len(), 2);
+    assert_eq!(drawn(&mut sim), (2, 0, 0), "two rows, the shell's only");
+    let feed = sim.app.world().resource::<KillFeed>();
+    let first = &feed.entries[0];
+    assert!(first.killer.as_ref().is_some_and(|k| k.local) && !first.suicide && !first.team_kill);
+    // Gone after its lifetime.
+    sim.seconds(f64::from(chimera_client::client::kill_feed::LIFETIME) + 0.5);
+    assert!(entries(&sim).is_empty());
+    assert_eq!(drawn(&mut sim).0, 0);
+}
+
+#[test]
+fn without_the_partys_flag_the_games_feeds_are_their_own() {
+    let (mut sim, me, other) = feed_sim(false);
+    assert!(!sim.app.world().contains_resource::<SharedKillFeed>());
+    // The local player killed (its rung, so its HUD, stays).
+    kill(&mut sim, me, other, cs_source::game::weapons::GLOCK, Hitgroup::Chest);
+    sim.seconds(0.3);
+    assert_eq!(hud(&sim), cs_source::game::GAME);
+    // (Combat Arms' HUD state runs whatever HUD is up here: its drawing
+    // is what `CaHudPlugin` keeps to its own HUD.)
+    let (shell, notices, _) = drawn(&mut sim);
+    assert_eq!((shell, notices), (0, 1), "CS:S's death notice; the shell's feed not drawn");
+    swap_to(&mut sim, me, 1);
+    assert_eq!(hud(&sim), combat_arms::game::GAME);
+    kill(&mut sim, me, other, "combat_arms:beretta_m92fs", Hitgroup::Chest);
+    sim.seconds(0.3);
+    assert_eq!(drawn(&mut sim).2, 2, "Combat Arms' own feed lines");
+    assert_eq!(drawn(&mut sim).0, 0);
+}
+
+#[test]
+fn the_radars_are_hidden_in_the_party_until_hud_radar_1() {
+    // Plain: Combat Arms' corner map shows (the local player alive).
+    let (mut sim, me, _) = feed_sim(false);
+    swap_to(&mut sim, me, 1);
+    assert_eq!(hud(&sim), combat_arms::game::GAME);
+    assert!(sim.app.world().resource::<CaRadar>().visible, "the radar without the party's setting");
+    // The party: hidden, and back with `hud_radar 1`.
+    let (mut sim, me, _) = feed_sim(true);
+    swap_to(&mut sim, me, 1);
+    assert!(!sim.app.world().resource::<CaRadar>().visible, "no radar in the party");
+    sim.app.world_mut().resource_mut::<Console>().submit("hud_radar 1");
+    sim.seconds(0.2);
+    assert!(sim.app.world().resource::<CaRadar>().visible, "hud_radar 1 brings it back");
+}
+
+#[test]
+fn a_network_client_has_the_servers_entries() {
+    let setup = |app: &mut App| {
+        app.add_plugins((GreyboxMapPlugin, PartyPartsPlugin, KillFeedStatePlugin));
+    };
+    let mut sim = NetSim::new(
+        CaSim,
+        LinkConditions {
+            latency: Duration::from_millis(20),
+            jitter: Duration::ZERO,
+            loss: 0.0,
+        },
+        7,
+        2,
+        setup,
+    );
+    sim.set_frame(TICK_INTERVAL);
+    minigame::start(sim.server.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+    sim.until_joined(900);
+    sim.ticks(300);
+    let (a, b) = (sim.character_of(0).unwrap(), sim.character_of(1).unwrap());
+    assert!(sim.until(600, |s| s.server.app.world().get::<God>(b).is_none()));
+    let at = sim.server.position(b);
+    sim.server.app.world_mut().write_message(Damage {
+        target: b,
+        attacker: Some(a),
+        amount: 500.0,
+        point: at,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Head,
+        kind: DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.ticks(20);
+    let view = |w: &World| -> Vec<(String, String, Option<&'static str>, bool)> {
+        w.resource::<KillFeed>()
+            .entries
+            .iter()
+            .map(|e| {
+                (
+                    e.killer.as_ref().map(|k| k.name.clone()).unwrap_or_default(),
+                    e.victim.name.clone(),
+                    e.weapon,
+                    e.headshot,
+                )
+            })
+            .collect()
+    };
+    let server = view(sim.server.app.world());
+    assert_eq!(server.len(), 1, "the server's kill: {server:?}");
+    assert!(server[0].2.is_some() && server[0].3, "the gun in hand, a headshot: {server:?}");
+    for i in 0..2 {
+        assert_eq!(view(sim.clients[i].app.world()), server, "client {i}'s feed");
+    }
+    // The killer's own client marks its row as the local player's.
+    let w = sim.clients[0].app.world();
+    assert!(w.resource::<KillFeed>().entries[0].killer.as_ref().is_some_and(|k| k.local));
+}

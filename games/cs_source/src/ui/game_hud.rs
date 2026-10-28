@@ -13,7 +13,9 @@
 //! it drops: the game's `HealthTookDamage` animation); death notices with team
 //! colours and weapon/headshot icons (another game's gun: its own game's
 //! icon from `client::weapon_icons::WeaponIcons`, else its display name;
-//! CS:S registers its glyphs there for the other games' feeds); the round's end: the win panel
+//! CS:S registers its glyphs there for the other games' feeds, its
+//! headshot glyph as the headshot mark; none while the app draws one feed
+//! for every HUD, `client::kill_feed::SharedKillFeed`); the round's end: the win panel
 //! (`win_panel.rs`), or a centre print without its layout.
 //!
 //! Known shortcuts (docs/tech-debt.md): CS:S HUD parity (`client/game_hud.rs`,
@@ -325,7 +327,17 @@ fn death_notices(
     time: Res<Time>,
     demo: Option<Res<crate::game::demo::DemoClock>>,
     mut clock: Local<NoticeClock>,
+    shared: Option<Res<crate::client::kill_feed::SharedKillFeed>>,
 ) {
+    // The app draws one feed for every HUD (`client::kill_feed`): none here.
+    if shared.is_some() {
+        died.clear();
+        if !notices.0.is_empty() {
+            notices.0.clear();
+            notices.1 += 1;
+        }
+        return;
+    }
     // A demo's jump leaves no notice of the time jumped from.
     let Some(dt) = clock.step(demo.as_deref(), time.delta_secs()) else {
         died.clear();
@@ -404,12 +416,24 @@ fn is_own(id: &str) -> bool {
 }
 
 /// Registers CS:S's guns' icons for other games' HUDs (`WeaponIcons`):
-/// the look's glyphs with their fonts resolved, as it and the fonts load.
-fn register_icons(hud: Option<Res<ActiveHud>>, fonts: Res<UiFonts>, mut icons: ResMut<WeaponIcons>) {
-    let Some(hud) = hud else { return };
-    if !(hud.is_changed() || fonts.is_changed()) {
-        return;
-    }
+/// the look's glyphs with their fonts resolved, as it and the fonts load
+/// (the look in, or put away: `client::hud::PutAway`).
+fn register_icons(
+    hud: Option<Res<ActiveHud>>,
+    put_away: Option<Res<crate::client::hud::PutAway>>,
+    fonts: Res<UiFonts>,
+    mut icons: ResMut<WeaponIcons>,
+) {
+    // The look in, or put away while another game's HUD draws (a party
+    // app that starts on another game's gun: its fonts load meanwhile).
+    let hud = match (&hud, &put_away) {
+        (Some(h), _) if h.is_changed() || fonts.is_changed() => &**h,
+        (None, Some(p)) if p.is_changed() || fonts.is_changed() => match p.look() {
+            Some(l) => l,
+            None => return,
+        },
+        _ => return,
+    };
     let glyphs: HashMap<String, WeaponIcon> = hud
         .0
         .icons
@@ -421,6 +445,9 @@ fn register_icons(hud: Option<Res<ActiveHud>>, fonts: Res<UiFonts>, mut icons: R
         .collect();
     if glyphs.is_empty() {
         return;
+    }
+    if let Some(mark) = glyphs.get("d_headshot") {
+        icons.register_mark(crate::game::GAME, crate::client::kill_feed::HEADSHOT, mark.clone());
     }
     icons.register(crate::game::GAME, move |id| kill_icon(id, &glyphs));
 }

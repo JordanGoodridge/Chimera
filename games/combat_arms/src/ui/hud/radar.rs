@@ -11,6 +11,8 @@
 //!   (`CaRadarProfile::scale`); entering a world (`MapLoads`) shows it,
 //!   restores the zoom (clamped) and latches the rotate option (R10: a
 //!   change mid-map waits for the next).
+//! - Not shown at all with `hud_radar 0` (`client::hud::Radars`: the
+//!   party apps' default).
 //! - R3: `+incradarscale` / `+decradarscale` (`=` and `-`) change the zoom
 //!   by 0.01 per rendered frame while held and no chat line is open.
 //! - R4 to R8: in-range things at their pixel, wedges for characters, the
@@ -191,6 +193,7 @@ pub fn update_radar(
     offset: Res<CaWorldOffset>,
     round: Res<CaRadarRound>,
     screen: Res<HudScreen>,
+    radars: Option<Res<crate::client::hud::Radars>>,
     mut profile: ResMut<CaRadarProfile>,
     mut memory: ResMut<RadarMemory>,
     mut radar: ResMut<CaRadar>,
@@ -209,7 +212,8 @@ pub fn update_radar(
     let visible = me.is_some_and(|m| m.alive);
     // The HUD on/off key hides the panels, the radar among them (its zoom
     // is kept and doesn't change meanwhile: the radar isn't shown).
-    let visible_now = visible && switch.is_none_or(|w| w.panels());
+    // `hud_radar 0` (`client::hud::Radars`, the party apps' default) too.
+    let visible_now = visible && switch.is_none_or(|w| w.panels()) && radars.is_none_or(|r| r.shown());
     if !visible && memory.was_visible {
         // Hiding saves the zoom to the profile.
         profile.scale = memory.zoom;

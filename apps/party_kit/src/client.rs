@@ -15,8 +15,9 @@
 //! `hud_sprites`, `weapon_select`), from the map's CS:S HUD look (kept on
 //! CS:S's maps, `MapSources::players`; put away while Combat Arms' HUD
 //! draws: `client::hud::HudLookOwner`), with the shell's crosshair, and
-//! the minigame's panel (`ui::minigame_hud`). Known shortcuts: not its
-//! radar, spectator panel or overview (Combat Arms' radar is the party's);
+//! the minigame's panel (`ui::minigame_hud`). Over both: one kill feed, the
+//! shell's, and no radars unless `hud_radar 1` (`PartyHudPlugin`). Known
+//! shortcuts: not CS:S's spectator panel or overview;
 //! on Combat Arms' maps there is no CS:S HUD look (the shell's plain HUD
 //! with CS:S's guns).
 
@@ -97,9 +98,29 @@ impl Plugin for ClientPlugin {
         // game's own.
         .add_plugins(crate::controls::ControlsPlugin)
         .add_plugins(PartyMousePlugin)
+        .add_plugins(PartyHudPlugin)
         .add_plugins(chimera_client::client::minigame_scoreboard::MinigameScoreboardPlugin)
         .add_systems(Startup, (cs_source_names, mount_doctor))
         .add_systems(Update, sync_gun_names);
+    }
+}
+
+/// The party's HUD settings over both games' HUDs: one kill feed, the
+/// shell's (`client::kill_feed`, `SharedKillFeed`: the games' own feeds
+/// stay empty), drawn in one place whichever game's HUD is up, so a kill
+/// just before a rung swap is still in it after; and the games' radars
+/// hidden (`hud_radar` starts at 0; `hud_radar 1` brings CS:S's radar and
+/// Combat Arms' corner map back).
+pub struct PartyHudPlugin;
+
+impl Plugin for PartyHudPlugin {
+    fn build(&self, app: &mut App) {
+        use chimera_client::client::{hud, kill_feed};
+        app.insert_resource(kill_feed::SharedKillFeed);
+        if !app.is_plugin_added::<kill_feed::KillFeedStatePlugin>() {
+            app.add_plugins(kill_feed::KillFeedStatePlugin);
+        }
+        hud::default_radars(app, false);
     }
 }
 

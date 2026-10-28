@@ -48,15 +48,20 @@ the user's go-ahead: no Actions runs unless asked.
   other maps untested): climbing works from the ladder's left and right
   sides, not head-on. Check the Source ladder's facing/normal as Combat
   Arms' movement uses it (`core::LadderZone`).
-- **One generic kill feed in the party apps**: a kill made just before a
-  rung swap shows only in the previous game's feed, and the two games'
-  feeds sit on opposite sides. Keep the feed's entries in Chimera
-  (authoritative, not in any game's HUD) and draw one generic feed in
-  one place in the party apps, with each gun's own icon (the
-  `WeaponIcons` registry); plain CS:S and Combat Arms keep theirs.
-- **Hide the radars in the party apps** (setting to bring them back):
-  Combat Arms' radar over a CS:S map's overview doesn't match either
-  style, and many maps have no overview.
+- **One generic kill feed in the party apps: fixed, confirm in a
+  playtest.** A kill made just before a rung swap showed only in the
+  previous game's feed, and the two games' feeds sat on opposite sides.
+  The entries are now Chimera's (`client::kill_feed::KillFeed`, from
+  `core::Died` on host and clients, in no HUD) and the shell draws one
+  feed at the top right with each gun's own icon (`WeaponIcons`, its
+  game's headshot mark) or name; the party apps set `SharedKillFeed`,
+  which empties CS:S's and Combat Arms' own feeds. Plain CS:S and Combat
+  Arms keep theirs.
+- **Hide the radars in the party apps: fixed, confirm in a playtest.**
+  Combat Arms' radar over a CS:S map's overview matched neither style,
+  and many maps have no overview. `hud_radar` (`client::hud::Radars`)
+  starts at 0 in the party apps; `hud_radar 1` brings CS:S's radar and
+  Combat Arms' corner map back. Plain games unchanged.
 - **Combat Arms' radar draws as two boxes**: the radar and its
   background are drawn apart instead of over each other (plain Combat
   Arms too).
