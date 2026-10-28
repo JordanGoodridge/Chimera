@@ -204,7 +204,7 @@ fn duel(shooter: usize, target: usize, bodies: Option<fn(&mut App)>) -> (Sim, En
 }
 
 /// Where the centre of `b`'s first hitbox of `region` is in the world.
-fn shape_at(sim: &Sim, b: Entity, region: chimera_core::core::BodyRegion) -> Vec3 {
+pub(crate) fn shape_at(sim: &Sim, b: Entity, region: chimera_core::core::BodyRegion) -> Vec3 {
     let w = sim.app.world();
     let boxes = w.get::<chimera_core::core::Hitboxes>(b).expect("hitboxes");
     let shape = boxes.0.iter().find(|h| h.region == region).unwrap_or_else(|| panic!("no {region:?}"));

@@ -331,8 +331,8 @@ Part B Combat Arms' pack).
 - **Counting is the server's, for any gun on any body**
   (`chimera_sim::announce`): from every enemy kill, the killer's
   multi-kill count (the pack's window), the round's first kill, the
-  killing hit's place (head; groin, from the gun's full `BodyRegion`,
-  `core::RegionHit`, since `Damage`'s hitgroup reads a groin as the
+  killing hit's place (head; groin, from the gun's or knife's full
+  `BodyRegion`, `core::RegionHit`, since `Damage`'s hitgroup reads a groin as the
   stomach), revenge and the victim's body (`core::FemaleBodies`). These
   `KillFacts` travel with the kill (`net::Killed`); every client decides
   what to show from them.

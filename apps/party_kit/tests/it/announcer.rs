@@ -3,7 +3,9 @@
 //! default pack is Combat Arms', drawn by the shell whatever the local
 //! player's game, so a soldier holding a CS:S gun (CS:S's identity and
 //! HUD) gets Combat Arms' FIRST KILL, then DOUBLE KILL with its voice;
-//! with `sv_announcer none`, nothing. Headless, on the party's simulation
+//! with `sv_announcer none`, nothing. A real groin hit (one round from a
+//! CS:S gun through the shared hit code, one from a Combat Arms gun) that
+//! kills is a nutshot, with the female voice on a woman's body. Headless, on the party's simulation
 //! with both HUDs (`hud::party_with_huds`).
 
 use bevy::prelude::*;
@@ -11,12 +13,13 @@ use chimera_client::client::announcer::{AnnouncerPlugin, AnnouncerView};
 use chimera_core::{
     announcer::ActiveAnnouncer,
     console::Console,
-    core::{Damage, DamageKind, Hitgroup},
+    core::{BodyRegion, Damage, DamageKind, Hitgroup},
 };
 use chimera_world::harness::Sim;
 
 use crate::{
-    gun_game::held,
+    cross_game::shape_at,
+    gun_game::{held, place},
     hud::{hud, party_with_huds_and, swap_to},
 };
 
@@ -87,4 +90,116 @@ fn no_announcer_when_the_server_says_none() {
     let [one, two] = double_kill(&mut sim, me, other, third);
     assert_eq!(one, (None, Vec::new()));
     assert_eq!(two, (None, Vec::new()));
+}
+
+/// The centre of `victim`'s groin sphere ("Nuts") in the world, on its
+/// body's table.
+fn groin_of(sim: &Sim, victim: Entity) -> Vec3 {
+    use combat_arms::game::weapons::{FEMALE, MALE, body_geometry};
+    let w = sim.app.world();
+    let table = *w.resource::<chimera_core::core::FemaleBodies>().0.contains(&victim).then_some(&*FEMALE).unwrap_or(&*MALE);
+    let (_, _, spheres) = body_geometry(
+        w.get::<Transform>(victim).unwrap(),
+        w.get::<chimera_core::core::Intent>(victim).unwrap(),
+        w.get::<chimera_core::core::MovementState>(victim).unwrap(),
+        w.get::<avian3d::prelude::ColliderAabb>(victim),
+        table,
+    )
+    .expect("a body");
+    spheres[table.iter().position(|s| s.location == combat_arms::game::weapons::Location::Groin).expect("the groin sphere")].0
+}
+
+/// One real round from `me` at the centre of `victim`'s groin sphere,
+/// the victim a round from dead; the kills announced so far.
+fn groin_round(sim: &mut Sim, me: Entity, victim: Entity, region: chimera_core::core::BodyRegion) -> Vec<chimera_core::announcer::KillAnnounced> {
+    sim.app.world_mut().get_mut::<chimera_core::core::Health>(victim).unwrap().current = 0.001;
+    let at = shape_at(sim, victim, region);
+    chimera_sim::testkit::aim_at(sim, me, at);
+    sim.ticks(1);
+    sim.intent(me).fire = true;
+    sim.ticks(1);
+    sim.intent(me).fire = false;
+    sim.ticks(6);
+    std::mem::take(&mut sim.app.world_mut().resource_mut::<Announced>().0)
+}
+
+#[derive(Resource, Default)]
+struct Announced(Vec<chimera_core::announcer::KillAnnounced>);
+
+fn note(mut kills: MessageReader<chimera_core::announcer::KillAnnounced>, mut out: ResMut<Announced>) {
+    out.0.extend(kills.read().cloned());
+}
+
+/// A party with the announcer, `me` (the local player) at rung `rung`
+/// and `other` a woman's body when `female`.
+fn groin_party(rung: usize, female: bool) -> (Sim, Entity, Entity) {
+    let (mut sim, me, other) = party_with_huds_and(|app| {
+        app.add_plugins(AnnouncerPlugin).init_resource::<Announced>().add_systems(Last, note);
+    });
+    if rung != 0 {
+        swap_to(&mut sim, me, rung);
+    }
+    // The victim in Combat Arms' body (a Combat Arms gun in hand: the
+    // body follows the gun's game), with its hit spheres as hitboxes.
+    swap_to(&mut sim, other, 1);
+    if female {
+        sim.app.world_mut().entity_mut(other).insert(combat_arms::game::characters::records::Selection { face: 6, ..default() });
+    }
+    // Standing on the floor 3 m apart (the spawns are far apart).
+    place(&mut sim, me, Vec3::new(0.0, 1.0, 0.0));
+    place(&mut sim, other, Vec3::new(0.0, 1.0, -3.0));
+    sim.intent(other).yaw = std::f32::consts::PI;
+    sim.seconds(1.5);
+    let w = sim.app.world();
+    assert_eq!(w.resource::<chimera_core::core::FemaleBodies>().0.contains(&other), female);
+    (sim, me, other)
+}
+
+fn nutshot(sim: &Sim, kills: &[chimera_core::announcer::KillAnnounced], female: bool) {
+    use chimera_core::announcer::SpecialShot;
+    assert_eq!(kills.len(), 1, "one kill announced");
+    assert_eq!(kills[0].facts.shot, SpecialShot::Groin);
+    assert_eq!(kills[0].facts.victim_female, female);
+    let (banner, voices) = shown(sim);
+    assert_eq!(banner.as_deref(), Some("UI_HUD_Message/Effect/NutShot.dtx"));
+    let voice = if female { "UI_SND/NutShot_Female.wav" } else { "UI_SND/NutShot_Male.wav" };
+    assert!(voices.iter().any(|v| v == voice), "{voice} among {voices:?}");
+}
+
+#[test]
+fn a_cs_sources_gun_in_the_groin_is_a_nutshot() {
+    let (mut sim, me, other) = groin_party(0, false);
+    assert_eq!(held(&sim, me), Some(cs_source::game::weapons::GLOCK));
+    let kills = groin_round(&mut sim, me, other, BodyRegion::Groin);
+    nutshot(&sim, &kills, false);
+}
+
+#[test]
+fn a_combat_arms_gun_in_the_groin_is_a_nutshot() {
+    let (mut sim, me, other) = groin_party(1, false);
+    assert!(held(&sim, me).is_some_and(|g| g.starts_with("combat_arms:")));
+    let kills = groin_round(&mut sim, me, other, BodyRegion::Groin);
+    nutshot(&sim, &kills, false);
+}
+
+/// Combat Arms' female skeleton has no groin sphere (its data has none),
+/// so no real hit there is a groin one: a real kill on her body says the
+/// body is a woman's, and the same kill as a groin shot, sent on to the
+/// shell, plays the female line.
+#[test]
+fn a_kill_on_a_womans_body_plays_the_female_groin_voice() {
+    use chimera_core::announcer::{KillAnnounced, SpecialShot};
+    let (mut sim, me, other) = groin_party(1, true);
+    let kills = groin_round(&mut sim, me, other, BodyRegion::Head);
+    assert_eq!(kills.len(), 1);
+    assert!(kills[0].facts.victim_female, "her body");
+    assert_eq!(kills[0].facts.shot, SpecialShot::Head);
+    let mut groin: KillAnnounced = kills[0].clone();
+    groin.facts.shot = SpecialShot::Groin;
+    sim.app.world_mut().write_message(groin);
+    sim.ticks(2);
+    let (banner, voices) = shown(&sim);
+    assert_eq!(banner.as_deref(), Some("UI_HUD_Message/Effect/NutShot.dtx"));
+    assert!(voices.iter().any(|v| v == "UI_SND/NutShot_Female.wav"), "{voices:?}");
+    assert!(!voices.iter().any(|v| v == "UI_SND/NutShot_Male.wav"), "{voices:?}");
 }

@@ -1264,6 +1264,40 @@ fn t43_knife_ray_and_zones() {
     assert_eq!(ap, 100.0, "the default body gear: melee uses no armour");
 }
 
+/// The knife's hit writes the full region (`core::RegionHit`) beside its
+/// damage, as a gun's does: a groin hit reads as the stomach in the
+/// damage, and the announcer's nutshot needs the groin.
+#[test]
+fn t43b_knife_hit_writes_its_full_region() {
+    use chimera_core::core::{BodyRegion, RegionHit};
+    #[derive(Resource, Default)]
+    struct Regions(Vec<BodyRegion>);
+    let (mut sim, p) = knife_out(STOCK);
+    sim.app.init_resource::<Regions>().add_systems(
+        FixedPostUpdate,
+        |mut r: MessageReader<RegionHit>, mut out: ResMut<Regions>| out.0.extend(r.read().map(|h| h.region)),
+    );
+    let k = carried(&sim, p, KNIFE);
+    sim.app.world_mut().get_mut::<Knife>(k).unwrap().spread = 0.0;
+    let target = sim.spawn_character(sim.position(p) - Vec3::Z * 70.0 * UNIT, movement::ID);
+    sim.intent(target).yaw = std::f32::consts::PI;
+    sim.app.world_mut().get_mut::<Health>(target).unwrap().current = 10.0;
+    sim.seconds(0.5);
+    for (name, want, group) in [("Nuts", BodyRegion::Groin, Hitgroup::Stomach), ("Face_Eyelid1", BodyRegion::Head, Hitgroup::Head)] {
+        sim.app.world_mut().resource_mut::<Regions>().0.clear();
+        let d = super::aim_points::point(sim.app.world(), p, target, name) - (sim.position(p) + sim.state(p).eye_offset);
+        let mut i = sim.intent(p);
+        i.yaw = (-d.x).atan2(-d.z);
+        i.pitch = d.y.atan2(d.xz().length());
+        sim.ticks(1);
+        assert!(one_hit(&mut sim, p, target, false) > 0.0, "{name} hit");
+        // (The held trigger may swing again before the next read.)
+        let seen = &sim.app.world().resource::<Regions>().0;
+        assert!(!seen.is_empty() && seen.iter().all(|r| *r == want), "{name}: {seen:?}");
+        assert_eq!(want.hitgroup(), group);
+    }
+}
+
 /// 44. Drop positions: the death drop exactly at the left foot (the
 /// spec's skeleton, characters.md 3; the hull's bottom centre without
 /// one); the swap drop within 0.5 x the half-extents
