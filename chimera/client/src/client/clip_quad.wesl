@@ -34,9 +34,8 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
     let t = params.uv.xy + vec2<f32>(a, b) * params.uv.zw;
-    if t.x < 0.0 || t.y < 0.0 || t.x > 1.0 || t.y > 1.0 {
-        discard;
-    }
-    let c = textureSample(image, image_sampler, t);
+    // Outside the image: clamp-to-edge, the outermost texel row or column
+    // repeated (radar_minimap.md Corrections 2026-10-28, 2), not a border.
+    let c = textureSample(image, image_sampler, clamp(t, vec2<f32>(0.0), vec2<f32>(1.0)));
     return vec4<f32>(params.color.rgb * c.rgb, params.color.a * c.a);
 }

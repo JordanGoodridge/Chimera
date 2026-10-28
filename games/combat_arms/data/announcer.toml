@@ -32,6 +32,19 @@ headshot = { key = "headshot", name = "HEADSHOT", banner = "UI_HUD_Message/Effec
 groin = { key = "nutshot", name = "NUTSHOT", banner = "UI_HUD_Message/Effect/NutShot.dtx", top = "UI_HUD_Message/Effect/Nut.dtx", voice = "UI_SND/NutShot_Male.wav", voice_female = "UI_SND/NutShot_Female.wav", level = 5 }
 revenge = { key = "revenge", name = "REVENGE", banner = "UI_HUD_Message/Effect/Revenge.dtx", level = 6 }
 
+# B2a: the plain kill, level 1 (B4): "KILL" for a match kill total of 1 or
+# less, "KILLS" above, with the total in digits: one image per digit
+# (`digit_prefix` + digit + ".dtx"), the ones, tens and hundreds slots of
+# B3 (`Num_One`, `Num_Ten`, `Num_Hun`). No top image; "KILL"'s voice
+# (`OneKillSound`) is not in the install, so none is named; "KILLS" has no
+# key. The Graffiti skin's "KILL" names a missing file (Quirk 5) and is not
+# modelled.
+[plain_kill]
+one = { key = "kill", name = "KILL", banner = "UI_HUD_Message/Effect/Kill.dtx", level = 1 }
+many = { key = "kills", name = "KILLS", banner = "UI_HUD_Message/Effect/Kills.dtx", level = 1 }
+digit_prefix = "UI_HUD_Message/Effect/Number_"
+digits = [[425.0, 175.0, 64.0, 128.0], [385.0, 175.0, 64.0, 128.0], [345.0, 175.0, 64.0, 128.0]]
+
 # B3: the 1024 x 768 reference screen, each axis stretched.
 [layout]
 reference = [1024.0, 768.0]

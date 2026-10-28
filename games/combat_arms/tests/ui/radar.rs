@@ -716,10 +716,13 @@ fn an_ally_wedge_at_16_9() {
 }
 
 /// The frame and the map over the window at any resolution (the backlog's
-/// "two boxes"): the map quad is the layout's (725, -88) 372 x 372, twice
-/// the window (818, 5) 186 x 186 about its centre (911, 98); the frame is
-/// `bg.dtx` at its own 256 x 256, its 186 x 186 box (centred in it) over
-/// the window, so the frame's centre is the window's.
+/// "two boxes"; Corrections 2026-10-28, 1, cases 53-55): the map quad is
+/// the layout's (725, -88) 372 x 372, twice the window (818, 5) 186 x 186
+/// about its centre (911, 98); the frame is `bg.dtx` unstretched at one
+/// texel per ref px from (782, -30), so its outline (texel columns 35 and
+/// 221, rows 34 and 220) lands on pixels 817 and 1003 across, 4 and 190
+/// down at 1024 x 768: one pixel outside the window's left and top, on
+/// its last column and row.
 #[test]
 fn the_frame_and_the_map_sit_over_the_window_at_any_resolution() {
     for (w, h) in [(1024.0, 768.0), (1920.0, 1080.0), (2560.0, 1440.0)] {
@@ -741,15 +744,55 @@ fn the_frame_and_the_map_sit_over_the_window_at_any_resolution() {
         near(q[2].x, (725.0 + 372.0) * xr);
         near(q[2].y, (-88.0 + 372.0) * yr);
         let (fx, fy, fw, fh) = combat_arms::ui::hud::radar::FRAME_AT;
-        assert_eq!((fw, fh), (256.0, 256.0));
+        assert_eq!((fx, fy, fw, fh), (782.0, -30.0, 256.0, 256.0), "the image at its own size");
         let frame = r.screen.rect(Vec2::new(fx, fy), Vec2::new(fw, fh));
-        let (c, d) = ((frame.min + frame.max) / 2.0, (win.min + win.max) / 2.0);
-        near(c.x, d.x);
-        near(c.y, d.y);
-        // The frame's box (186 of 256 in the middle) is the window.
-        near(frame.size().x * 186.0 / 256.0, win.size().x);
-        near(frame.size().y * 186.0 / 256.0, win.size().y);
+        // One texel per ref px: the image is scaled by the screen's stretch only.
+        near(frame.size().x, 256.0 * xr);
+        near(frame.size().y, 256.0 * yr);
+        let ((c0, c1), (r0, r1)) = combat_arms::ui::hud::radar::FRAME_OUTLINE;
+        // Case 55: the outline's left/top are one ref px outside the window,
+        // its right/bottom on the window's last column and row.
+        near(frame.min.x + c0 * xr, win.min.x - xr);
+        near(frame.min.y + r0 * yr, win.min.y - yr);
+        near(frame.min.x + c1 * xr, win.max.x - xr);
+        near(frame.min.y + r1 * yr, win.max.y - yr);
+        if (w, h) == (1024.0, 768.0) {
+            // Case 53: pixels 817 and 1003, 4 and 190.
+            near(frame.min.x + c0, 817.0);
+            near(frame.min.x + c1, 1003.0);
+            near(frame.min.y + r0, 4.0);
+            near(frame.min.y + r1, 190.0);
+        }
     }
+}
+
+/// Case 54: at 1920 x 1080 the control (782, -30) 227 x 226 is the quad
+/// x 1466.25, y -42.1875, 425.625 x 317.8125 (the visible part of the
+/// image: the rest of the 256 x 256 is transparent).
+#[test]
+fn the_frame_control_at_1920_x_1080() {
+    let s = Screen::new(1920.0, 1080.0);
+    let r = s.rect(Vec2::new(782.0, -30.0), Vec2::new(227.0, 226.0));
+    let near = |a: f32, b: f32| assert!((a - b).abs() < 1e-2, "{a} vs {b}");
+    near(r.min.x, 1466.25);
+    near(r.min.y, -42.1875);
+    near(r.size().x, 425.625);
+    near(r.size().y, 317.8125);
+}
+
+/// Case 57: Warehouse (Showdown's data: top-left z 2966, 4784.897 tall,
+/// world offset z 1216), zoom 1: the window's top edge samples
+/// v = (2902.112 - 2966) / 4784.897 = -0.01335, clamped to the image's
+/// first row, not wrapped or dropped.
+#[test]
+fn case_57_the_window_may_reach_above_the_image() {
+    use combat_arms::game::radar::maths::{Corners, Frame, window};
+    let c = Corners { lt: (-2000.0, 2902.112), rb: (2784.897, 2902.112 - 4784.897) };
+    // The window's top edge is 2966 in the formula's terms (z + W_r + O_z).
+    let f = Frame { x: 0.0, z: 250.0, y: 0.0, yaw: 0.0, zoom: 1.0, rotate: false };
+    let w = window(&f, (0.0, 1216.0), &c);
+    assert!((w.v0 - (-0.01335)).abs() < 1e-4, "{}", w.v0);
+    assert!(w.v0 < 0.0, "outside [0, 1]: the shader clamps it");
 }
 
 // ---------------------------------------------------------------------------

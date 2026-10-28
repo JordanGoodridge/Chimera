@@ -114,4 +114,14 @@ mod tests {
         let off = [Vec2::new(500.0, 0.0), Vec2::new(600.0, 0.0), Vec2::new(600.0, 50.0), Vec2::new(500.0, 50.0)];
         assert!(quad_node(off, clip, Color::WHITE, None, Vec4::ONE).is_none());
     }
+
+    /// Radar corrections 2026-10-28, case 58/59: outside the image the
+    /// sampler repeats the edge texel (clamp-to-edge); the shader neither
+    /// wraps nor drops those samples.
+    #[test]
+    fn the_shader_clamps_texture_coordinates() {
+        let src = include_str!("clip_quad.wesl");
+        assert!(src.contains("clamp(t, vec2<f32>(0.0), vec2<f32>(1.0))"), "clamps the coordinate");
+        assert!(!src.contains("t.x < 0.0"), "no dropping outside [0, 1]");
+    }
 }

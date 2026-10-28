@@ -71,14 +71,18 @@ the user's go-ahead: no Actions runs unless asked.
   Combat Arms' radar over a CS:S map's overview doesn't match either
   style, and many maps have no overview.
 - **Combat Arms' radar draws as two boxes: fixed, confirm in a
-  playtest.** Cause: the frame image `bg.dtx` is 256 x 256 with its box
-  (186 x 186) in the middle, but it was drawn at the spec table's
-  227 x 226, shrinking the box to 165 x 164 and leaving it apart from the
-  window. Now drawn at 256 x 256 (x 783, y -30) so the box is the window;
-  the spec's table size is off (spec session to correct). A test checks
-  frame, map quad and window at 1024x768, 1920x1080 and 2560x1440. Not
-  part of this: the map picture is blank where the texture window leaves
-  the image (spec open question 3), e.g. the Warehouse spawn.
+  playtest** (spec corrections 2026-10-28, 1 and 2). The frame `bg.dtx`
+  (256 x 256, outline 187 x 187 at texels 35..221 x 34..220) is a
+  227 x 226 control at (782, -30) showing its top-left texels at one texel
+  per ref px, so the outline lands on pixels 817/1003 across and 4/190
+  down at 1024 x 768, around the window. Drawn as the whole image at
+  (782, -30) (the same picture); the zoom track is cropped to its top
+  192 rows, not squeezed. The map picture's texture window outside the
+  image now clamps to the edge texel (`clip_quad.wesl`), as the spec says
+  the stock game does; confirm by screenshot at a map corner (Warehouse
+  spawn: blank by the transparent margin; an opaque-edged image such as
+  `map_lastvegas` streaks). A test checks frame, map quad and window at
+  1024x768, 1920x1080 and 2560x1440.
 - **Headshot on a kill streak plays two voices: fixed, confirm in a
   playtest** (spec corrections 2026-10-28). One kill raises one event by
   the spec's priority (first kill, revenge, then at count 1 headshot or
@@ -86,9 +90,12 @@ the user's go-ahead: no Actions runs unless asked.
   headshot, else groin by the killer's body); the skull or nut goes over
   a step, first kill or revenge, not over a single kill's own HEADSHOT;
   levels: steps and head/groin 5, first kill and revenge 6; the groin
-  voice follows the killer's body (`KillFacts::killer_female`). Not done:
-  the plain-kill "KILL" / "N KILLS" banner (needs the local kill total,
-  its art names and digits), VIP kill, ice crush, lucky shot, side log.
+  voice follows the killer's body (`KillFacts::killer_female`). The plain-kill
+  "KILL" / "N KILLS" banner is in (spec B2a; pack `plain_kill`, the
+  server's per-map kill total in `KillFacts::total`, per-digit images in
+  three fixed slots, level 1; silent, the install has no `OneKillSound`
+  file); the number is the server's count, not a scoreboard entry. Not
+  done: VIP kill, ice crush, lucky shot, side log, co-op digits.
 - **Combat Arms scopes don't fill the screen: fixed, confirm in a
   playtest.** Per the spec (weapon_classes.md 7.10) Combat Arms does NOT
   stretch the picture to the screen: it is a card of `ZoomSpriteScale`

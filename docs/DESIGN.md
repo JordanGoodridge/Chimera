@@ -344,12 +344,16 @@ Part B Combat Arms' pack).
   revenge, then at count 1 a headshot or groin shot, else the step), at
   most one voice (the event's, else headshot, else groin by the killer's
   body), the skull or nut over a step, first kill or revenge. Which
-  priority levels, art and voices is the pack's data.
+  priority levels, art and voices is the pack's data. A kill with none of
+  those is a **plain kill** when the pack has a `plain_kill` section:
+  "KILL" / "KILLS" (by the killer's match kill total, `KillFacts::total`,
+  counted by the server for the map) with the total in per-digit images,
+  level 1, no top image; a pack without the section announces none.
 - **An announcer pack is data** (`chimera_core::announcer::AnnouncerPack`,
   a TOML document): step names and thresholds, art and voice files (paths
   in the pack's game's install, loaded at run time), layout on its
   reference screen, the banner animation's timings, priority levels,
-  weapon skins. A game contributes its pack as one of its parts
+  the plain-kill banner and its digit slots, weapon skins. A game contributes its pack as one of its parts
   (`GameParts::announcer`; Combat Arms' is `data/announcer.toml`).
 - **The shell draws it** (`chimera_client::client::announcer`), above
   whichever HUD is up, so in the party apps a CS:S-identity player gets

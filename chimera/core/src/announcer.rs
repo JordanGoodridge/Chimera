@@ -8,7 +8,8 @@
 //!   contributes (`game_parts::GameParts::announcer`,
 //!   `AnnouncerAppExt::register_announcer`): its multi-kill window, the
 //!   streak steps by count, the special kills (first kill, headshot, groin
-//!   shot, revenge), each callout's banner art, top image, voice and
+//!   shot, revenge), the plain-kill banner (`PlainKill`: "KILL" / "KILLS"
+//!   with per-digit images in fixed slots; optional), each callout's banner art, top image, voice and
 //!   priority level, the banner's layout on its reference screen, the
 //!   animation's timings, and weapon skins (a weapon's own art and
 //!   voices). Its files are paths in the install of the pack's `game`,
@@ -18,7 +19,8 @@
 //!   per map; or a pack's id), resolved by the server
 //!   (`AnnouncerSetting::resolve`) into `ActiveAnnouncer`.
 //! - **What a kill was** (`KillFacts`): the killer's multi-kill count,
-//!   first kill, a head or groin shot, revenge, the killer's body: worked
+//!   first kill, a head or groin shot, revenge, the killer's match kill
+//!   total (the plain-kill banner's number), the killer's body: worked
 //!   out by the server for an enemy kill and sent with the kill
 //!   (`KillAnnounced`); every client decides from it what to show.
 
@@ -71,6 +73,32 @@ pub struct Layout {
     pub reference: [f32; 2],
     pub banner: Rect,
     pub top: Rect,
+}
+
+/// The plain-kill banner (kill_streaks.md B2a): an enemy kill by the local
+/// player that is no step, first kill, revenge, headshot or groin shot
+/// shows "KILL" (the killer's match kill total N <= 1) or "KILLS" (N > 1)
+/// with N in digits, one image per digit in three fixed slots. A pack
+/// without one announces no plain kills.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PlainKill {
+    /// "KILL" (its `voice`, if the pack has one, plays; B2a).
+    pub one: Callout,
+    /// "KILLS" (no voice).
+    pub many: Callout,
+    /// A digit's image is this followed by the digit and `.dtx`.
+    pub digit_prefix: String,
+    /// The ones, tens and hundreds digit slots on the layout's reference
+    /// screen, each showing its whole digit image.
+    pub digits: [Rect; 3],
+}
+
+impl PlainKill {
+    /// The image file of a digit.
+    pub fn digit_file(&self, digit: u8) -> String {
+        format!("{}{digit}.dtx", self.digit_prefix)
+    }
 }
 
 /// The banner's animation (kill_streaks.md A5; seconds, sizes as scales).
@@ -141,6 +169,8 @@ pub struct AnnouncerPack {
     #[serde(default)]
     pub revenge: Option<Callout>,
     #[serde(default)]
+    pub plain_kill: Option<PlainKill>,
+    #[serde(default)]
     pub skins: Vec<Skin>,
 }
 
@@ -180,6 +210,13 @@ impl AnnouncerPack {
             images.extend(c.top.clone());
             sounds.extend(c.voice.clone());
             sounds.extend(c.voice_female.clone());
+        }
+        if let Some(p) = &self.plain_kill {
+            for c in [&p.one, &p.many] {
+                images.push(c.banner.clone());
+                sounds.extend(c.voice.clone());
+            }
+            images.extend((0..10).map(|d| p.digit_file(d)));
         }
         for s in &self.skins {
             images.extend(s.images.values().cloned());
@@ -266,6 +303,10 @@ pub struct KillFacts {
     pub shot: SpecialShot,
     /// The victim had killed the killer `revenge_after` times since.
     pub revenge: bool,
+    /// The killer's match kill total, this kill included (enemy kills
+    /// since the map began, not reset by a round): the plain-kill
+    /// banner's number (B2a).
+    pub total: u32,
     /// The killer's body is a woman's (`core::FemaleBodies`): the groin
     /// shot's voice goes by it (kill_streaks.md Corrections 6).
     pub killer_female: bool,

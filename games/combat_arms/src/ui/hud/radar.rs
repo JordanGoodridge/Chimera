@@ -24,13 +24,13 @@
 //! shader: the wedges, arrows and guide are turned in square space
 //! (`upright`: the angle follows the view's, no shear on a screen that
 //! isn't 4:3), the map picture is the exact stretched quad so it keeps to
-//! the icons' places.
+//! the icons' places. The picture's texture window outside the image
+//! (near the map's edge) is clamp-to-edge (Corrections 2026-10-28, 2:
+//! `clip_quad.wesl`), not empty.
 //!
 //! Known shortcuts: the radar hides while the local player is dead (the
 //! death camera, item 26, isn't there); letterbox, video and AI freeze
-//! never hide it; the image's texture window outside the picture (near the
-//! map's edge) shows nothing (Open question 3: the addressing mode wasn't
-//! traced); the co-op HUD mode's second look (R12) isn't there; icons that
+//! never hide it; the co-op HUD mode's second look (R12) isn't there; icons that
 //! cross the window's edge are clipped, the zoom bar and frame drawn over
 //! them.
 
@@ -63,12 +63,14 @@ use crate::{
 /// The radar map's alpha (R-constants).
 pub const MAP_ALPHA: u8 = 190;
 /// The frame's place (layout `bg`), the zoom bar's track and knob, ref px.
-/// `bg.dtx` is 256 x 256 with its box (186 x 186, the window's size) in
-/// the middle, so it is drawn at its own size with the box over the
-/// window: x 783, y -30 (centre (911, 98)). The spec's constants table
-/// says 227 x 226 at (782, -30); that squeezes the box to 165 x 164 and
-/// leaves it apart from the window ("two boxes").
-pub const FRAME_AT: (f32, f32, f32, f32) = (783.0, -30.0, 256.0, 256.0);
+/// The control is (782, -30) 227 x 226, which shows the top-left 227 x 226
+/// texels of the 256 x 256 `bg.dtx` at one texel per ref px (Corrections
+/// 2026-10-28, 1); the rest of the texture is transparent, so the whole
+/// image drawn at (782, -30) 256 x 256 is the same picture. Its outline's
+/// columns are texels 35 and 221 and its rows 34 and 220 (`OUTLINE`).
+pub const FRAME_AT: (f32, f32, f32, f32) = (782.0, -30.0, 256.0, 256.0);
+/// The outline in `bg.dtx`: columns, rows (texels, both ends included).
+pub const FRAME_OUTLINE: ((f32, f32), (f32, f32)) = ((35.0, 221.0), (34.0, 220.0));
 pub const TRACK_AT: (f32, f32, f32, f32) = (1004.0, 4.0, 16.0, 192.0);
 pub const KNOB_SIZE: (f32, f32) = (16.0, 10.0);
 
@@ -602,7 +604,30 @@ pub fn draw_radar(
             spawn_box(p, Vec2::ZERO, look::FRAME, rect(fx, fy, fw, fh), [255; 4], art);
         }
         let (tx, ty, tw, th) = TRACK_AT;
-        spawn_box(p, Vec2::ZERO, look::ZOOM_TRACK, rect(tx, ty, tw, th), [255; 4], art);
+        // The track is 16 x 256 in a 16 x 192 rect: its top 192 rows at one
+        // texel per ref px, not squeezed (Corrections 2026-10-28, 1).
+        match art.and_then(|a| a.get(look::ZOOM_TRACK)) {
+            Some((image, size)) => {
+                let r = rect(tx, ty, tw, th);
+                p.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: px(r.min.x),
+                        top: px(r.min.y),
+                        width: px(r.size().x),
+                        height: px(r.size().y),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: image.clone(),
+                        rect: Some(bevy::math::Rect::new(0.0, 0.0, tw.min(size.x as f32), th.min(size.y as f32))),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            }
+            None => spawn_box(p, Vec2::ZERO, look::ZOOM_TRACK, rect(tx, ty, tw, th), [255; 4], art),
+        }
         spawn_box(
             p,
             Vec2::ZERO,
