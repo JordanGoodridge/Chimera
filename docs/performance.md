@@ -1563,6 +1563,94 @@ query states and Combat Arms' animation are small (8, 11). A party
 above). On the Windows PC: `scripts\profile.ps1 lucker_party` gives the
 span version of these pictures (`tracesum --folded`, `profsum --unit
 us`).
+## Map changes that slowed the tick (2026-10-28)
+
+Playtest report: the gun game's de_dust2 started at ~240 fps and ran much
+slower after a few map changes in one session; more bots seemed slower
+too. Measured with `chimera_census` (OBSERVABILITY.md 3c: entities by
+archetype, observers, systems per schedule, resources, assets; `diff`
+lists new archetypes and tables) after each of N map changes, the
+readout's load-independent columns, and the tick's instructions per
+system (`metrics::span_cost`, with `trace`) and gdb samples of a
+headless run.
+
+**What grew: archetypes and tables, nothing else.** Entities (4,200-4,400
+on dust2), observers (239), systems (1,475), resources and the asset
+stores stayed flat over 30 map changes (Images +8 a load, small: not
+looked into); GPU memory and RSS too. Bevy never frees an archetype or
+a table, and the party's characters carry ~130 components, dozens of
+which come and go (spawn protection's `Protected`, `SpawnProtected`,
+`God`; avian's `Sleeping`; the body model `map::unload_map` takes off and
+the next map puts back; the movement and view parts of the gun's game,
+CS:S's or Combat Arms', switched with every rung): each map change and
+death visits component sets never seen, so a session made ~50 new
+archetypes and ~30 tables per round trip, nearly all characters', nearly
+all empty (2,250 archetypes and 950 tables at the start, 3,070 and 1,690
+after ten dust2 -> cs_office -> dust2 trips).
+
+**What it cost: the tick.** `world.query::<..>()` builds a new
+`QueryState`, which walks every archetype holding the query's rarest
+component; exclusive systems that build their queries each tick (the
+minigame runtime's `players`, `join`, `end_protection`, `respawn_dead`;
+Combat Arms' perks and bot roster; the local player's lookup in a dozen
+places) paid that every tick, a character query ~700k instructions at
+2,600 archetypes. The fix is the kept query states ("Party frame-rate
+pass" above, `chimera_core::query_cache`, found the same day from the
+frame's side), which look only at archetypes made since their last use;
+this pass added the minigame HUD's and moments' lookups, and the test
+and tools to watch the growth. The real app (playtest build, the default 3 bots, `map` between de_dust2 and
+cs_office, each row 65 s after arriving on dust2; tick instructions p50
+over the last 4,096 ticks, main world's instructions less ticks p50):
+
+| round trips | before: archetypes / tables | tick instr | main instr | after: archetypes / tables | tick instr | main instr |
+|---|---|---|---|---|---|---|
+| 0 | 2,256 / 951 | 7.30M | 10.27M | 2,253 / 947 | 5.26M | 10.19M |
+| 1 | 2,523 / 1,191 | 8.70M | 11.10M | 2,530 / 1,197 | 5.84M | 10.85M |
+| 3 | 2,834 / 1,478 | 10.91M | 12.04M | 2,719 / 1,372 | 6.05M | 9.58M |
+| 5 | 2,964 / 1,596 | 11.80M | 12.29M | 2,860 / 1,504 | 6.12M | 9.73M |
+| 10 | 3,071 / 1,692 | 13.00M | 11.98M | 2,973 / 1,608 | 6.60M | 9.41M |
+
+(The render world's instructions stayed at 19-27M in both.) The tick
+cost 78% more after ten trips before, 25% after, and 28% less from the
+start; after ten trips it is half what it was. At 240 fps a frame's main
+thread does its own work plus 0.28 ticks: 12.3M -> 15.6M instructions a
+frame after ten trips before (about 240 -> 190 fps where the main thread
+is the limit), 11.7M -> 11.2M now. Frame rates on this box (60 Hz
+display, load 15-20, another agent profiling) said nothing; the user's
+playtest will. Headless, `party_kit` `archetypes`: eight bots playing
+while their component sets go through 2,047 new combinations, as
+sparse-set markers (archetypes, no tables) 5.3M -> 13.4M instructions a
+tick before (2.5x), 4.4M -> 5.2M now (1.19x, the test's limit 1.3x); as
+table markers, 24.6M a tick at 4,800 archetypes and 2,400 tables before,
+8.4M now.
+
+What still grows (`query_cache`'s known shortcuts): a kept query steps
+over every empty table it matches each time it runs (avian's solver,
+transform propagation and every character system: +25-70k instructions
+per call with 2,000 more character tables), and each new archetype
+makes it look again at those with its rarest component. Fewer tables
+would need the characters' optional components as sparse sets, or
+fewer of them (a backlog item).
+
+Per bot (`party_kit` `heavy::bot_cost`: de_dust2, the gun game, 600
+ticks; instructions per tick on the schedules' thread, this build):
+
+| bots | tick instr | per bot over 2 |
+|---|---|---|
+| 2 | 5.43M | |
+| 4 | 11.37M | 2.97M |
+| 8 | 17.17M | 1.96M |
+| 16 | 23.41M | 1.28M |
+
+Roughly linear, about 1.3M a bot at 16 (the 2 -> 4 step also starts the
+fights). What grows with the bots (`--features dev,trace`, instructions
+per tick from 2 to 16 bots): Combat Arms' animation
+(`characters::drive`, 0.76M -> 5.15M: `Rig::posed`, the "Left" item of
+"Lucker Party (2026-10-24)"), the bots' brains (`brain::think`, 0.35M ->
+2.77M), the grenades' server frames (`grenades::server_frames`, 0.29M ->
+1.69M: every character's body shapes each frame), the narrow phase
+(0.03M -> 0.71M), CS:S's push-away (0.13M -> 0.62M), hit boxes (0.02M ->
+0.39M). No single obvious per-bot hot spot outside the animation.
 
 ### Second pass: the cameras (2026-10-29)
 

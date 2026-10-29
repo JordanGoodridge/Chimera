@@ -5,6 +5,7 @@
 //! where tests go: docs/OBSERVABILITY.md, section 1.
 
 mod announcer;
+mod archetypes;
 mod bodies_drawn;
 mod controls;
 mod cross_game;
@@ -32,6 +33,7 @@ mod swap_effect;
 mod switches;
 
 mod heavy {
+    mod bot_cost;
     mod cs_decals;
     mod cross_hits;
     mod css_map_moves;
