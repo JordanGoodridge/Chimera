@@ -66,9 +66,12 @@ with its own `Trigger`, `Magazine` and `ShellReload` (not sent: only clip
 and reserve are). Both sides build the weapon from the same document and
 read the same install file, so they get the same numbers before the
 first shot; the scenario test checks prediction stays error-free.
-If one side can't read the model (no install, or no V2 key for the
-rifle, SMG and sniper archives) it keeps the template's timing and the
-client mispredicts: see open question 1.
+If the client can't read the model (no install, or no V2 key for the
+rifle, SMG and sniper archives), or reads another version, the server's
+numbers win: the hook leaves what it settled on the weapon
+(`CaTimingValues`), the server sends it once per weapon id per client
+(`weapon::params`, `net::weapon_params`) and the client's weapons of
+that id take it over their own (open question 1, answered).
 
 ## Cost
 
@@ -109,10 +112,13 @@ combat_arms --features dev --test it heavy::timings -- --nocapture`):
 
 ## Open questions
 
-1. Should the server send a weapon's timing with the weapon (a client
-   without the V2 key would then predict right), or should a client that
-   can't read the model fall back to "not predicted"? Today both sides
-   compute it.
+1. Answered 2026-10-29 (user: "help the clients as much as possible
+   by pushing from the server where there are desyncs"): the server
+   sends each weapon's settled timing once per weapon id per client
+   (`weapon::params` codec `combat_arms:timing`, `WeaponParams`, net32);
+   a client's own read never overrides it. Tests:
+   `weapon_timings::a_client_without_the_models_predicts_on_the_servers_timing`,
+   `a_client_with_its_own_models_takes_the_servers_timing`.
 2. The third-person reload window (weapon_classes.md, server reload
    bookkeeping) is the third-person reload animation's length per stance;
    we use the first-person `reload` for it, as before.

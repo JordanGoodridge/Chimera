@@ -67,6 +67,7 @@ pub mod hits;
 pub mod impact;
 pub mod lagcomp;
 pub mod notice;
+pub mod params;
 mod pass_data;
 pub mod random;
 pub mod remote;
@@ -78,6 +79,7 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+pub use params::ParamsAppExt;
 pub use sync::{CarriedAppExt, NetPart};
 
 pub use deliver::{aim_of, armor_split, falloff, hitgroup_at, pellet_dirs, quantize, spread_dir};
@@ -603,6 +605,8 @@ pub fn spawn_weapon(world: &mut World, id: &str, owner: Entity) -> Option<Entity
     if let Some(mut w) = world.get_mut::<Weapon>(weapon) {
         w.owner = Some(owner);
     }
+    // A network client: the server's parameters over what the build derived.
+    params::apply_pushed(world, weapon);
     Some(weapon)
 }
 

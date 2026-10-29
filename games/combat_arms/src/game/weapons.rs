@@ -225,7 +225,7 @@ use crate::{
     },
     map::{SurfaceNames, sound::SurfaceGrid},
     weapon::{
-        AltModes, Burst, CarriedAppExt, Hitscan, Inventory, NetPart, SpreadShape, ViewPunch, WeaponEvent,
+        AltModes, Burst, CarriedAppExt, Hitscan, ParamsAppExt, Inventory, NetPart, SpreadShape, ViewPunch, WeaponEvent,
         Armor, ArmorPieces, WeaponEventKind, WeaponFrame, Zoom, aim_of,
         hits,
         data::{WeaponData, WeaponDataAppExt},
@@ -1707,7 +1707,9 @@ impl Plugin for CaWeaponsPlugin {
         .register_weapon_hook::<CaAltFire>(ALT_FIRE, |e, _, p| {
             e.insert((*p, p.burst()));
         })
-        .register_weapon_hook::<timing::TimingParams>(timing::TIMING, timing::apply);
+        .register_weapon_hook::<timing::TimingParams>(timing::TIMING, timing::apply)
+        // The server's timing goes to its clients (`weapon::params`).
+        .weapon_param(timing::TIMING, timing::encode, timing::push);
         let data = super::data::CaData::of(app);
         if let Err(e) = app.add_weapon_set(data.weapon_set()) {
             panic!("Combat Arms weapon data: {e}");

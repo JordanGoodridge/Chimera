@@ -696,6 +696,22 @@ the user's go-ahead: no Actions runs unless asked.
   install weapon takes its `HHSkin#`, `HHRenderStyle#` and `AniType`.
   Tests: `held_on_demand::tests`, chimera_present
   `bodies::late_held_models_are_built` and the attribute test above.
+- **Push timing and other derived values from the server: fixed, confirm
+  in a playtest.** Decision 2026-10-29: help clients by pushing from the
+  server where they would desync. A client that couldn't read a Combat
+  Arms copy's view model (no V2 key, a missing file) or read another
+  version fired, reloaded and drew on other numbers than the server and
+  mispredicted. Now a weapon's server-decided parameters go to a client
+  once per weapon id per connection (Chimera's `weapon::params`,
+  chimera_net's `net::weapon_params`, `WeaponParams`, net32) and its
+  weapons of that id take them over their own, rebuilt ones too; Combat
+  Arms' timing (`combat_arms:timing`, `CaTimingValues`) is the first.
+  The audit of other values a client derives from its install is in
+  docs/plans/active/multiplayer.md "Server-pushed weapon parameters"
+  (the weapon registry and the attribute file's numbers are the open
+  risk). Tests: `weapon_timings::a_client_without_the_models_predicts_on_the_servers_timing`
+  (0 prediction errors over a burst, sent once per id, rebuilt weapons
+  keep it), `a_client_with_its_own_models_takes_the_servers_timing`.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 

@@ -61,7 +61,8 @@
 //! (`motd.rs`), `SayRequest`, `RadioRequest`, `Notice`, `ChatMessage`,
 //! `RadioCall`, `ServerSound`, `CvarValues`, `NameRequest`, `NameChanged`,
 //! `decals::Decals`, voice (`voice::VoiceData`, `VoiceRelay`), votes' `CallVote`,
-//! `CastVote`, `VoteNews` (`vote`); then the parts' (`parts`, in name order: `minigame_net`'s
+//! `CastVote`, `VoteNews` (`vote`), `weapon_params::WeaponParams` (a weapon id's
+//! server-decided parameters, once per id per client); then the parts' (`parts`, in name order: `minigame_net`'s
 //! `NetMinigame`, `MinigameNews`, `InMinigame` and `Rung`; CS:S's
 //! `NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`, `ClassRequest`,
 //! `ObjectiveNews`, `RoundOver`; Source's logic's `NetMover`, `MapHud`); `OwnState` also carries
@@ -226,6 +227,7 @@ pub mod udp;
 pub mod upnp;
 pub mod voice;
 pub mod vote;
+pub mod weapon_params;
 pub mod weapons;
 
 use std::net::SocketAddr;
@@ -254,7 +256,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net31");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net32");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -1285,6 +1287,9 @@ impl Plugin for NetPlugin {
             // The net graph's server numbers (`stats`).
             .add_server_message::<stats::ServerStats>(Channel::Unreliable)
             .make_message_independent::<stats::ServerStats>()
+            // Weapon parameters the server decides (net32).
+            .add_server_message::<weapon_params::WeaponParams>(Channel::Ordered)
+            .make_message_independent::<weapon_params::WeaponParams>()
             .init_resource::<NetSettings>()
             .init_resource::<NetVersion>()
             .init_resource::<NetHooks>()
@@ -1317,6 +1322,7 @@ impl Plugin for NetPlugin {
         memory::plugin(app);
         vote::plugin(app);
         stats::plugin(app);
+        weapon_params::plugin(app);
         commands(app);
     }
 
