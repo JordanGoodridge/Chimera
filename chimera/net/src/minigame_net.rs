@@ -831,8 +831,9 @@ pub struct NextMatchHooks(pub Vec<fn(&mut World, &str, &str)>);
 /// The map `def`'s next match plays on, among those every player can
 /// play (`minigame::rotation::MapHistory::next`: the pool's next in turn,
 /// or with `rotation = "random"` a random one but the last played, the
-/// host's history kept); with `rotate = false`, or none playable, this
-/// one.
+/// host's history kept; the host's `rotation` and `avoid_recent`
+/// overrides, `minigame::overrides`, over the definition's); with
+/// `rotate = false`, or none playable, this one.
 fn next_map(world: &mut World, def: &'static MinigameDef) -> String {
     let here = crate::net::current_map(world);
     if !def.rotate {
@@ -841,7 +842,9 @@ fn next_map(world: &mut World, def: &'static MinigameDef) -> String {
     let pool: Vec<String> = def.maps.iter().map(|m| crate::net::normalize_map(m)).collect();
     let ok: Vec<String> = pool.iter().filter(|m| playable_on(world, def, Some(m)).ok()).cloned().collect();
     let mut history = world.remove_resource::<MapHistory>().unwrap_or_default();
-    let chosen = history.next(def, &pool, &here, &|m| ok.iter().any(|o| o == m));
+    // The host's rotation settings (`minigame::overrides`) count from now.
+    let rule = minigame::overrides::effective(world, def);
+    let chosen = history.next(&rule, &pool, &here, &|m| ok.iter().any(|o| o == m));
     world.insert_resource(history);
     chosen.unwrap_or(here)
 }

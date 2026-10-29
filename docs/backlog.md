@@ -53,6 +53,33 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Rung attachments may not fit their gun, or not show (user, 2026-10-29).**
+  In the Escape-menu screenshots, the FMG-9's rung listed a holosight and
+  the Luger P08's a silencer, but neither shows on the gun, and the user
+  doubts they fit. Check, with the real install:
+  - *The accepted list:* where each gun's list comes from. The
+    modification file's `Weapon#` record is linked by position
+    (attachments.md Q13), and a mismatched name is only logged. Count the
+    mismatches over the pool; check skin variants (the `_Gold` and `_Red`
+    parts on gold and red guns).
+  - *What the draw takes:* `rungs::draw_parts`, against each slot's
+    rules: requirements, conflicts, the slot's `Kinds`.
+  - *What's drawn on screen:* are fitted parts drawn on the view and held
+    models (copies included)?
+  Fix the draw to take only parts that fit, and draw fitted parts on the
+  models; questions the specs leave open go to a spec session.
+  With it, odds for the draw (user, 2026-10-29). Each slot keeps the
+  gun's stock part most of the time (about 70-80%). Odds per kind:
+  sights and scopes most often, then silencers, power parts (ammo,
+  magazines) least (about 10%). At most two non-stock parts per gun. The
+  odds live in the ladder rules as data. Fitted parts can add to a gun's
+  power score once the power curve exists.
+- **The rung line lists raw attachment ids.** With rung extras on, the
+  gun game panel's top line reads like "Rung 1/12: FMG-9
+  (Silencer_A_SMG_Gold, DotSight_Holosight_SMG_Gold, ...)". It runs
+  across the whole screen and shows record ids. Show the attachments'
+  display names from the install's string table, shortened (or icons),
+  and wrap or cap the line.
 - **A natural power curve for the random ladder (user idea, 2026-10-29).**
   Weak guns first, power rising, then the hard-hitting ones, then
   specials, a grenade, melee last. Proposed design, waiting on the
@@ -90,10 +117,12 @@ the user's go-ahead: no Actions runs unless asked.
   grenades pass through the player to what is behind (both games'
   deliveries), blasts leave it out; any attack (fire key, a knife's
   stab, a throw) ends the protection. Its blob shadow stays as dark.
-- **CS:S rungs get a character too (user, 2026-10-29).** As for Combat
-  Arms rungs, the ladder maps a CS:S player model to each CS:S rung (from
-  every T and CT model the install has), the same for everyone on it.
-  Extend the rung extras hook (`RungExtrasHook`) with CS:S's.
+- **CS:S rungs get a character too (user, 2026-10-29): fixed, confirm in
+  a playtest.** As for Combat Arms rungs, each CS:S rung draws one of
+  CS:S's eight player models (the stock T and CT ones; no other is
+  loaded), the same for everyone on it (`cs_source::game::rungs`; the
+  `character` option covers both games). Not compared: whether the eight
+  models' hitboxes are identical.
 - **Later: let individual players stand out (user ideas).**
   - Clearer name tags when you aim at someone (their name and more),
     kept unobtrusive.
@@ -368,7 +397,9 @@ the user's go-ahead: no Actions runs unless asked.
   tracer start (the view model's muzzle, the eye, a point ahead of it),
   and is it drawn at all while scoped? Ours starts at the view model's
   flash point, which keeps its camera offset when zoomed.
-- **Ultimate Gun Game's Escape menu (user, 2026-10-29).** It's
+- **Ultimate Gun Game's Escape menu (user, 2026-10-29): fixed, confirm
+  in a playtest** (`party_kit::esc_menu`, `party_kit::host`; DESIGN.md
+  "The party apps' Escape menu"). It's
   Ultimate Gun Game's own, not Combat Arms', drawn above the match-end
   screen. Entries:
   - **Resume.**
@@ -383,6 +414,9 @@ the user's go-ahead: no Actions runs unless asked.
   - **Quit.**
   - No scoreboard entry, since Tab opens it. No Disconnect until there is
     a main menu to go back to.
+- **RCON admins for the Escape menu's host settings.** Today only the
+  host (a listen server's player) sees them; a dedicated server's admin
+  sets the same cvars on its console.
 - **A main menu for Ultimate Gun Game (and the other party apps).**
   Scope it after the Escape menu: play (host or join), server browser
   or direct connect, options, quit. Then add Disconnect to the Escape

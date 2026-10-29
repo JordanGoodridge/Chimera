@@ -9,7 +9,8 @@
 //! firing on the left button going down with their sounds.
 //!
 //! - Esc opens and closes it (not while the console is open or chat is
-//!   being typed: those take the Esc); every other key is swallowed
+//!   being typed: those take the Esc; never in an app with a menu of its
+//!   own, `front_end::AppMenu`, which also counts in `MenuStatus::open`); every other key is swallowed
 //!   while it is open. The game doesn't pause (no pause online), the
 //!   mouse shows while it is open (`MenuStatus::open`, which the shell
 //!   reads: binds and the mouse grab wait), and is taken back when it
@@ -298,13 +299,19 @@ fn sync_status(
     menu: Res<InGameMenu>,
     options: Option<Res<crate::game::options::CaOptions>>,
     lobby: Option<Res<super::lobby::LobbyScreen>>,
+    app_menu: Option<Res<crate::client::front_end::AppMenu>>,
     mut status: ResMut<MenuStatus>,
 ) {
     let options_open = options.as_ref().is_some_and(|o| o.open);
     let lobby_open = lobby.as_ref().is_some_and(|l| l.open);
-    if menu.is_changed() || options.is_some_and(|o| o.is_changed()) || lobby.is_some_and(|l| l.is_changed()) {
+    let app_open = app_menu.as_ref().is_some_and(|a| a.open);
+    if menu.is_changed()
+        || options.is_some_and(|o| o.is_changed())
+        || lobby.is_some_and(|l| l.is_changed())
+        || app_menu.is_some_and(|a| a.is_changed())
+    {
         status.set_if_neq(MenuStatus {
-            open: menu.open || options_open || lobby_open,
+            open: menu.open || options_open || lobby_open || app_open,
             in_game: true,
             ..default()
         });
@@ -319,8 +326,13 @@ fn keys(
     options: Option<Res<crate::game::options::CaOptions>>,
     talk: Option<Res<crate::game::chat::CaChat>>,
     lobby: Option<Res<super::lobby::LobbyScreen>>,
+    app_menu: Option<Res<crate::client::front_end::AppMenu>>,
     mut menu: ResMut<InGameMenu>,
 ) {
+    // An app's own menu takes Esc (the party apps' Escape menu).
+    if app_menu.is_some() {
+        return;
+    }
     let busy = console.is_some_and(|c| c.open)
         || lobby.is_some_and(|l| l.open)
         || chat.is_some_and(|c| c.open.is_some())

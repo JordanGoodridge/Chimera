@@ -466,7 +466,10 @@ that):
   (specialists and mercenaries too; without the install the stock six;
   a body no stock group has loads when first worn), and a melee weapon
   of its own (knives, the shovel, the machete, ...); the knife finale
-  keeps its knife, CS:S's rungs draw nothing. Each part turns off by key
+  keeps its knife. CS:S's rungs (`cs_source::game::rungs`) each draw one
+  of its eight player models (four T, four CT; a `PlayerClass`, which a
+  free-for-all player's body follows too) for everyone on the rung, named
+  in the rung's HUD line. Each part turns off by key
   (`rung_extras = { attachments = false, character = false, melee =
   false }`), all with `rung_extras = false`. The apps seed them anew at
   each launch (Ultimate Gun Game with its launch seed).
@@ -530,6 +533,32 @@ game's:
   change of game is a hard cut by default. On, the local player's screen
   flashes and fades over 0.3 s while the new gun draws, and another
   player's body gets a brief puff, generic, no game's look.
+
+### The party apps' Escape menu
+
+Ultimate Gun Game and Lucker Party have a menu of their own
+(`party_kit::esc_menu`), not one game's: Combat Arms' in-game menu
+yields Esc to it (`chimera_client::client::front_end::AppMenu`), and it
+draws above everything but the console, the match-end screen and the
+Tab scoreboard included. While it is open the game gets no input (the
+shell sees a menu open; keys pressed are captured until let go). Its
+pages are data (apps/party_kit/data/options.toml, host_settings.toml):
+
+- **Options** set the player's own cvars (video, audio, mouse, the
+  party's opt-in settings), saved in the config; "Binds" is the
+  Controls page.
+- **Host settings**, for the host only (a listen server's player; RCON
+  admins later): existing server cvars that apply at once (bots,
+  `party_even_footsteps`, votes allowed) and host overrides of every
+  minigame's definition (`chimera_sim::minigame::overrides`: rung extras
+  by part, demote on suicide, the knife finale, the map rotation,
+  spawn protection), which apply from the next match, as the page says.
+- **Vote to skip the map** is one of the engine's votes (`net::vote`,
+  issue `skipmap`): server-decided, a majority of the people (bots never
+  vote), 20 s, one at a time, a wait per caller; passed, the server
+  goes to the rotation's next map. Everyone sees a small vote panel
+  (F1 yes, F2 no).
+- No scoreboard entry (Tab) and no Disconnect until there is a main menu.
 
 ## Multiplayer
 

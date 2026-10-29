@@ -111,6 +111,10 @@ fn yes() -> bool {
     true
 }
 
+fn two_seconds() -> f32 {
+    2.0
+}
+
 fn ten() -> usize {
     10
 }
@@ -259,7 +263,8 @@ impl Default for SpawnDef {
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Respawn {
-    #[serde(deserialize_with = "seconds")]
+    /// Default 2 s (`Respawn::default`'s).
+    #[serde(deserialize_with = "seconds", default = "two_seconds")]
     pub delay: f32,
     #[serde(default)]
     pub protection: Protection,
