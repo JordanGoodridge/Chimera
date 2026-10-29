@@ -27,6 +27,27 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **The gun game's title names Dust II on every map.** On de_aztec the
+  panel reads "Gun Game: Dust II": the definition's title is fixed while
+  the map rotates. Show the map actually played.
+- **Bots' generated nav reaches outside de_aztec.** Spawns no longer use
+  it, but its 0.8 m jump ledges climb the walls onto the jungle outside,
+  so a bot can still walk there. Bound the generated mesh to the map's
+  playable leaves, as spawns now are.
+- **`combat_arms:junkflea` is in the map pool but doesn't load**
+  ("no such map (worlds*/junkflea.dat)"): check the pool's name for it.
+- **Some Combat Arms bodies draw grey pieces** when loaded for a rung
+  (a ghillie-suit specialist; the Ice Mas Knight is fine). See
+  `characters/bodies_on_demand.rs`.
+- **A rung's character also sets armour and movement** (a Combat Arms
+  body is its vest). It's the same for everyone on the rung, but a
+  network client corrects its movement once at the swap. Ask the user
+  whether the look should leave stats alone.
+- **Tool runs write the user's config.** A long `--frames` run of
+  `lucker_party` wrote `config.cfg` on exit. Only `--screenshot` and
+  `--views` skip the write, while OBSERVABILITY.md treats `--frames` runs
+  as tool runs too. Skip it for `--frames` as well, or give tool runs a
+  throwaway config dir.
 - **Firing animation on the match-end screen: fixed, confirm in a
   playtest** (user). The rules hold a frozen player's intent only at the
   simulation's tick (`FreezeTime`, the end freeze), but the input writes
