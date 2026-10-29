@@ -23,6 +23,30 @@ the user's go-ahead: no Actions runs unless asked.
   checking (docs/tech-debt.md). And `bevy_replicon_renet` back to a
   crates.io release once one supports Bevy 0.20.
 
+## Roadmap after the gun game settles (user, 2026-10-29)
+
+- **Next two games: Half-Life 2: Deathmatch, then Team Fortress 2.** Not
+  full remakes: take what Ultimate Gun Game needs from each, meaning the
+  character controller, HUD, weapons, player models and maps. Both are
+  Source games, so most loaders exist (VPK, BSP, MDL); the work is each
+  game's movement, weapons and HUD as specs, then games-as-libraries
+  crates. Plan in docs/plans/active/ when started.
+- **Then more modern games:** Call of Duty: Modern Warfare 1 or the
+  earlier Call of Duties (new engines and formats: plan first).
+- **Smaller installs.** Needing every whole game installed gets big fast.
+  Idea: package assets per round: the server sends only what the current
+  round uses, and clients cache it. **Open decision (user):** sending
+  game assets from server to client is distributing them, against
+  DESIGN.md's "never ship other games' assets; players load from their
+  own install". Options:
+  (a) per-round loading from each player's own install, reading only the
+  needed files, with a cache built locally from that install;
+  (b) partial installs, where the client fetches only the needed files
+  from the store it owns the game on (e.g. SteamCMD's per-depot or
+  per-file downloads, where a game allows);
+  (c) server-to-client transfer, the user's idea, which changes the legal
+  model.
+
 ## 0. Playtest feedback (2026-10-07), top priority
 
 ### Gun game playtest, 2026-10-28 (user)
