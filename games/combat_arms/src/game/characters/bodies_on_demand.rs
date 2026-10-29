@@ -16,7 +16,10 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): a body that doesn't load is tried
 //! once per session (its warning says why); a specialist loads its own
-//! copy of its sex's animation library (a few megabytes each).
+//! copy of its sex's animation library (a few megabytes each); some
+//! install bodies draw pieces untextured (a ghillie suit showed grey
+//! leaves on the dev box: skins outside the body record's upper, legs and
+//! mark slots, not looked into yet).
 
 use std::collections::{BTreeMap, BTreeSet};
 
