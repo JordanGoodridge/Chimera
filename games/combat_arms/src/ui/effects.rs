@@ -5,8 +5,9 @@
 //! - Decals (6): flat quads of the surface's bullet-hole sprite, 64·k u
 //!   wide, spun about the normal, grey `MarkColorRatio`, lit by the scene,
 //!   alpha α(t) (`rules::mark_alpha`).
-//! - Tracers (4): a strip `Width` wide from tail to head facing the camera,
-//!   the record's texture and colour, alpha from `InitialAlpha` to
+//! - Tracers (4): a strip `Width` wide from tail to head, each end turned
+//!   about the strip's axis to face the camera from its own place (a
+//!   mesh rebuilt every frame: `strip_corners`), the record's texture and colour, alpha from `InitialAlpha` to
 //!   `FinalAlpha`, not additive, drawn without depth test (Quirk 1:
 //!   `OnTop`).
 //! - Casings (8): the FireFX's casing model and skin (`guns_sc`) at
@@ -38,7 +39,12 @@
 //! game's `MarksClip` 0) and lie 0.2 cm off the surface (their point is
 //! the impact's, 1 u back along the ray: 0.5 u off a wall hit at 60°, Open
 //! question 19); several jitters add up (`CaFx::jitter_at`, Open question
-//! 24).
+//! 24); the spec doesn't say how the tracer strip is oriented, so it is
+//! turned about its axis toward the eye at each end (our choice, the usual
+//! line-strip tracer; Open question in the backlog), its width is the
+//! record's in world units at any zoom, and your own starts at the view
+//! model's flash point, which stays at the same offset from the camera
+//! when zoomed.
 
 use std::collections::HashMap;
 
@@ -256,48 +262,67 @@ fn decals(
 #[derive(Component)]
 struct TracerQuad(usize);
 
+/// The four corners (metres) of a tracer's strip from `a` (tail) to `b`
+/// (head): `width` wide, each end turned about the strip's axis to face
+/// `eye` from its own place (a line-strip tracer; one facing for the whole
+/// strip would lie flat when the eye is near one end, as for your own
+/// shots). Order: tail left, head left, head right, tail right.
+fn strip_corners(a: Vec3, b: Vec3, eye: Vec3, width: f32) -> [Vec3; 4] {
+    let along = (b - a).normalize_or(Vec3::Z);
+    let side = |at: Vec3| {
+        along
+            .cross(eye - at)
+            .try_normalize()
+            .unwrap_or_else(|| along.any_orthonormal_vector())
+            * (width / 2.0)
+    };
+    let (sa, sb) = (side(a), side(b));
+    [a + sa, b + sb, b - sb, a - sa]
+}
+
+/// A tracer's mesh: a strip, u along it (0 tail, 1 head), v across.
+fn strip_mesh(corners: [Vec3; 4]) -> Mesh {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, corners.to_vec())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 1.0, 0.0]; 4])
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
+        .with_inserted_indices(Indices::U32(vec![0, 1, 2, 0, 2, 3]))
+}
+
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn tracers(
     list: Res<CaTracers>,
     camera: Option<Single<&GlobalTransform, With<FirstPersonCamera>>>,
-    mut drawn: Query<(&TracerQuad, &mut Transform, &MeshMaterial3d<OnTopMaterial>, &mut Visibility)>,
+    mut drawn: Query<(&TracerQuad, &Mesh3d, &MeshMaterial3d<OnTopMaterial>, &mut Visibility)>,
     server: Res<AssetServer>,
     mut fx_images: ResMut<FxImages>,
     mut materials: ResMut<Assets<OnTopMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut mesh: Local<Option<Handle<Mesh>>>,
     mut commands: Commands,
 ) {
-    let mesh = mesh.get_or_insert_with(|| quad(&mut meshes)).clone();
     let eye = camera.map_or(Vec3::ZERO, |c| c.translation());
-    let mut slots: HashMap<usize, (Mut<Transform>, Handle<OnTopMaterial>, Mut<Visibility>)> = drawn
-        .iter_mut()
-        .map(|(d, t, m, v)| (d.0, (t, m.0.clone(), v)))
-        .collect();
+    let mut slots: HashMap<usize, (Handle<Mesh>, Handle<OnTopMaterial>, Mut<Visibility>)> =
+        drawn.iter_mut().map(|(d, g, m, v)| (d.0, (g.0.clone(), m.0.clone(), v))).collect();
     for (i, tr) in list.0.iter().enumerate() {
         let Some((tail, head)) = tr.path.ends(tr.age) else { continue };
         let (a, b) = (
             (tr.path.from + tr.path.dir * tail) * UNIT,
             (tr.path.from + tr.path.dir * head) * UNIT,
         );
-        let mid = (a + b) / 2.0;
-        let along = (b - a).normalize_or(Vec3::Z);
-        let to_eye = (eye - mid).normalize_or(Vec3::Y);
-        let side = along.cross(to_eye).normalize_or(Vec3::X);
-        let normal = side.cross(along);
-        let rot = Quat::from_mat3(&Mat3::from_cols(along, side, normal));
-        let pose = Transform::from_translation(mid)
-            .with_rotation(rot)
-            .with_scale(Vec3::new((b - a).length().max(1e-4), tr.look.width * UNIT, 1.0));
+        let corners = strip_corners(a, b, eye, tr.look.width * UNIT);
         let life = tr.path.life().max(1e-4);
         let alpha = tr.look.initial_alpha + (tr.look.final_alpha - tr.look.initial_alpha) * (tr.age / life).min(1.0);
         let [r, g, bl] = tr.look.color.map(|c| c / 255.0);
         let color = Color::srgba(r, g, bl, alpha);
         let tex = fx_images.get(&tr.look.texture, &server);
         match slots.remove(&i) {
-            Some((mut t, mat, mut v)) => {
-                *t = pose;
+            Some((mesh, mat, mut v)) => {
                 *v = Visibility::Inherited;
+                if let Some(mut m) = meshes.get_mut(&mesh) {
+                    m.insert_attribute(Mesh::ATTRIBUTE_POSITION, corners.to_vec());
+                }
                 if let Some(mut m) = materials.get_mut(&mat) {
                     m.base.base_color = color;
                     if m.base.base_color_texture != tex {
@@ -309,7 +334,7 @@ fn tracers(
                 commands.spawn((
                     Name::new("Tracer"),
                     TracerQuad(i),
-                    Mesh3d(mesh.clone()),
+                    Mesh3d(meshes.add(strip_mesh(corners))),
                     MeshMaterial3d(materials.add(OnTopMaterial {
                         base: StandardMaterial {
                             base_color: color,
@@ -322,14 +347,41 @@ fn tracers(
                         },
                         extension: OnTop {},
                     })),
-                    pose,
+                    Transform::default(),
                     bevy::light::NotShadowCaster,
+                    // Its mesh moves every frame, its bounds were taken once.
+                    bevy::camera::visibility::NoFrustumCulling,
                 ));
             }
         }
     }
     for (_, (_, _, mut v)) in slots {
         *v = Visibility::Hidden;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_contains_the_shot_axis_faces_the_eye_and_keeps_its_width() {
+        let (a, b) = (Vec3::new(0.0, 1.5, 0.0), Vec3::new(0.0, 1.5, -10.0));
+        // Eyes: beside the strip, above it, and next to its tail (own shot).
+        for eye in [Vec3::new(5.0, 1.5, -5.0), Vec3::new(0.0, 9.0, -5.0), Vec3::new(0.2, 1.4, 0.5)] {
+            let [tl, hl, hr, tr] = strip_corners(a, b, eye, 0.4);
+            let along = (b - a).normalize();
+            for (l, r, at) in [(tl, tr, a), (hl, hr, b)] {
+                // Centred on the axis, constant width, across the axis.
+                assert!(((l + r) / 2.0 - at).length() < 1e-5);
+                assert!(((l - r).length() - 0.4).abs() < 1e-5);
+                assert!((l - r).dot(along).abs() < 1e-5);
+                // The strip's plane at this end contains the axis and
+                // faces the eye: the width edge is across the eye's line.
+                let to_eye = (eye - at).normalize();
+                assert!((l - r).dot(to_eye).abs() < 1e-4, "width edge turned to the eye");
+            }
+        }
     }
 }
 

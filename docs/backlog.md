@@ -204,14 +204,22 @@ the user's go-ahead: no Actions runs unless asked.
   whether CS:S bounces off the "grenade" surface property's elasticity
   (not the flat 1.0). Measured data in the spec (Q7: an HE dropped on tile
   stops in 4 contacts, a smoke in 3) is the thing to compare ours with.
-- **Combat Arms tracers look flat and wide**, worst through a sniper
-  scope. The spec (effects_sounds.md section 4) gives a flat strip of
-  constant `Width` (15-30 u) with depth test off. It doesn't say how the
-  strip faces the camera (turned about its own axis toward the eye, or
-  fixed), nor whether the width changes while zoomed. Check ours against
-  the spec first, since a strip that doesn't turn toward the eye looks
-  flat. Then ask a spec session on the Windows PC how Combat Arms
-  orients the strip and what it does with the zoomed field of view.
+- **Combat Arms tracers look flat and wide** (fixed 2026-10-29, confirm
+  in a playtest, esp. through a sniper scope). Ours already turned the
+  strip toward the eye, but once for the whole strip (by its midpoint):
+  for your own shot, with the eye beside the muzzle, the near end lay
+  flat across the view. Now each end turns about the strip's axis toward
+  the eye from its own place (`ui::effects::strip_corners`, a mesh
+  rebuilt per frame; width constant `Width` u = 1.8 cm each, texture u
+  along the strip). Not checked live: a sniper's scope (no sniper
+  without the V2 key on this box). Open questions for a spec session on
+  the Windows PC (effects_sounds.md section 4): how does Combat Arms
+  orient the strip (turned about its axis toward the eye, fixed, or
+  something else)? Does its width change with the zoomed field of view
+  or with distance (a floor or cap)? Where does a scoped shooter's own
+  tracer start (the view model's muzzle, the eye, a point ahead of it),
+  and is it drawn at all while scoped? Ours starts at the view model's
+  flash point, which keeps its camera offset when zoomed.
 - **Ultimate Gun Game's Escape menu.** It shows Combat Arms' menu. It
   should be Ultimate Gun Game's own, drawn above the match-end screen
   (it's drawn under it now), and offer better options. Proposed: resume,
