@@ -1041,8 +1041,9 @@ fn autoexec(
 
 /// Save binds and changed cvars when the game closes.
 fn save_on_exit(mut exits: MessageReader<AppExit>, args: Res<super::ClientArgs>, mut commands: Commands) {
-    // Automated runs (screenshots, view captures) leave the config alone.
-    let automated = args.0.screenshot.is_some() || args.0.views.is_some();
+    // Tool runs (`Args::tool_run`: --screenshot, --views, --frames, --bench)
+    // leave the user's config alone.
+    let automated = args.0.tool_run();
     if exits.read().next().is_some() && !automated {
         commands.queue(|w: &mut World| {
             if w.resource::<Console>().dirty {
@@ -2577,6 +2578,33 @@ mod tests {
 
     use super::*;
     use crate::console::ConsolePlugin;
+
+    /// Exit with changed settings: a play session writes `config.cfg`, every
+    /// tool run leaves it alone. (`CHIMERA_CFG_DIR` is only read by this test
+    /// and `cfg_dir`, so the other tests don't care.)
+    #[test]
+    fn tool_runs_do_not_write_the_config_on_exit() {
+        let dir = std::env::temp_dir().join(format!("chimera_toolrun_cfg_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: no other test in this binary reads or writes this variable.
+        unsafe { std::env::set_var("CHIMERA_CFG_DIR", &dir) };
+        let exits_with = |flags: &str| {
+            let args = crate::client::Args::parse_from(flags.split_whitespace().map(String::from)).unwrap();
+            let mut app = App::new();
+            app.add_plugins(ConsolePlugin)
+                .insert_resource(crate::client::ClientArgs(args))
+                .add_systems(Last, save_on_exit);
+            app.world_mut().resource_mut::<Console>().dirty = true;
+            app.world_mut().write_message(AppExit::Success);
+            app.update();
+            dir.join("config.cfg").exists()
+        };
+        for flags in ["--screenshot a.png", "--views v.json", "--frames 10", "--bench"] {
+            assert!(!exits_with(flags), "{flags} wrote the config");
+        }
+        assert!(exits_with("+map de_dust2"), "a play session saves the config");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn map_names_with_and_without_their_game() {

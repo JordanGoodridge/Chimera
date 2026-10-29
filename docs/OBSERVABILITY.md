@@ -310,6 +310,12 @@ unless `CHIMERA_REMOTE_PORT` names one. Headless tests use the in-memory
 link or loopback ports the system picks. Check with `ss -lunp` / `ss
 -ltnp` while runs are going.
 
+Config: tool runs never write the user's `config.cfg` on exit (the one
+seam is `Args::tool_run()`, checked by the client's exit save, so every
+app). A normal session does. An explicit `host_writeconfig` still writes;
+`CHIMERA_CFG_DIR=<dir>` points the config folder (read and write) at a
+throwaway one.
+
 ## 3. Live ECS over HTTP (Bevy Remote Protocol)
 
 With `--features dev`, the game serves JSON-RPC on `localhost:15702`

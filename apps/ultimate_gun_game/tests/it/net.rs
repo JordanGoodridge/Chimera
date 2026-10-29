@@ -98,7 +98,7 @@ fn two_clients_play_the_servers_ladder_made_for_what_they_have() {
     let def = sim.server.app.world().resource::<Minigames>().get(MINIGAME).unwrap();
     assert_eq!(
         def.maps,
-        ["combat_arms:warehouse", "combat_arms:junkflea", "combat_arms:darkhills", "combat_arms:bloodmoney"],
+        ["combat_arms:warehouse", "combat_arms:junk_flea", "combat_arms:darkhills", "combat_arms:bloodmoney"],
         "Combat Arms' maps only"
     );
     assert_clients_play_the_servers(&sim, &[full, partial]);
