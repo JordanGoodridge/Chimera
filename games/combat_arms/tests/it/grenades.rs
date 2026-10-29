@@ -1776,7 +1776,7 @@ fn t64_pin_sound_source() {
     assert_eq!(m67.key_sound(12), None);
     let xm84 = fx(&docs[1]).unwrap();
     assert_eq!(xm84.key_sound(10).map(|k| k.0), Some("guns_snd_throwing/xm-84/fire.wav"));
-    assert!(fx(&docs[2]).is_none(), "a record without MiscSound1: silence, no fallback by file name");
+    assert!(fx(&docs[2]).unwrap().key_sound(10).is_none(), "a record without MiscSound1: silence, no fallback by file name");
     // The call-out switch: Guntype 7 with PlayAutoThrowSound on.
     for d in &docs {
         assert_eq!(d["hooks"]["combat_arms:grenade"]["call_out"].as_bool(), Some(true));

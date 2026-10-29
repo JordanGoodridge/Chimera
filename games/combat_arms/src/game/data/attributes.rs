@@ -79,6 +79,11 @@ pub fn find_by_name<'a, T>(items: &'a [T], name: &str, name_of: impl Fn(&T) -> &
     })
 }
 
+/// The string field `<base><n>` (empty when missing or not a string).
+fn numbered(s: &Section, base: &str, n: usize) -> String {
+    s.string(&format!("{base}{n}")).map(text).unwrap_or_default()
+}
+
 fn text(bytes: &[u8]) -> String {
     bytes.iter().map(|&b| b as char).collect()
 }
@@ -189,6 +194,12 @@ pub struct AmmoRecord {
     /// (`FX.TXT` `ImpactFX#`, effects_sounds.md); None when the key is
     /// missing (no effect), empty when present but empty (`BulletFmj`).
     pub impact_fx: Option<String>,
+    /// `FireFXName` (casings, the shooter's muzzle group) and
+    /// `TracerFXName`: None when the key is missing (no effect); a
+    /// present but empty tracer name is `Standard`, an empty impact name
+    /// `BulletFmj` (effects_sounds.md, "Effect tables").
+    pub fire_fx: Option<String>,
+    pub tracer_fx: Option<String>,
 }
 
 impl AmmoRecord {
@@ -231,6 +242,8 @@ impl AmmoRecord {
             health: s.number("Health", 0.0),
             projectile_fx: s.string("ProjectileFXName").map(text).unwrap_or_default(),
             impact_fx: s.string("ImpactFXName").map(text),
+            fire_fx: s.string("FireFXName").map(text),
+            tracer_fx: s.string("TracerFXName").map(text),
         }
     }
 }
@@ -329,6 +342,20 @@ pub struct WeaponRecord {
     pub wide_fire_angle_degree: i32,
     /// `FireSnd` (empty: none).
     pub fire_snd: String,
+    /// `SilencedFireSnd1..10` (silencer level l plays entry l - 1),
+    /// `DryFireSnd`, `ReloadSnd1..3`, `SelectSnd`, `DeselectSnd` (empty
+    /// when missing: none).
+    pub silenced_fire_snd: [String; 10],
+    pub dry_fire_snd: String,
+    pub reload_snd: [String; 3],
+    pub select_snd: String,
+    pub deselect_snd: String,
+    /// `PVMuzzleFXName` and `HHMuzzleFXName` (empty: no flash), and the
+    /// flash-hider groups `PVFlashHiderFXName1..10`, `HHFlashHiderFXName1..10`.
+    pub pv_muzzle_fx: String,
+    pub hh_muzzle_fx: String,
+    pub pv_flash_hider_fx: [String; 10],
+    pub hh_flash_hider_fx: [String; 10],
     pub fire_snd_radius: i32,
     pub reload_snd_radius: i32,
     pub select_snd_radius: i32,
@@ -473,6 +500,15 @@ impl WeaponRecord {
             wide_fire_max_num: i("WideFireMaxNum", 0),
             wide_fire_angle_degree: i("WideFireAngleDegree", 0),
             fire_snd: s.string("FireSnd").map(text).unwrap_or_default(),
+            silenced_fire_snd: std::array::from_fn(|k| numbered(s, "SilencedFireSnd", k + 1)),
+            dry_fire_snd: s.string("DryFireSnd").map(text).unwrap_or_default(),
+            reload_snd: std::array::from_fn(|k| numbered(s, "ReloadSnd", k + 1)),
+            select_snd: s.string("SelectSnd").map(text).unwrap_or_default(),
+            deselect_snd: s.string("DeselectSnd").map(text).unwrap_or_default(),
+            pv_muzzle_fx: s.string("PVMuzzleFXName").map(text).unwrap_or_default(),
+            hh_muzzle_fx: s.string("HHMuzzleFXName").map(text).unwrap_or_default(),
+            pv_flash_hider_fx: std::array::from_fn(|k| numbered(s, "PVFlashHiderFXName", k + 1)),
+            hh_flash_hider_fx: std::array::from_fn(|k| numbered(s, "HHFlashHiderFXName", k + 1)),
             fire_snd_radius: i("FireSndRadius", 1000),
             reload_snd_radius: i("ReloadSndRadius", 300),
             select_snd_radius: i("SelectSndRadius", 300),
