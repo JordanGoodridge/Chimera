@@ -97,10 +97,12 @@ fn self_icon(
     };
     let (w, h) = window_size(&window);
     let r = panel_rect(panel, w, h);
-    node.left = px(r.min.x);
-    node.top = px(r.min.y);
-    node.width = px(r.width());
-    node.height = px(r.height());
+    crate::client::ui_write::edit(&mut node, |node| {
+        node.left = px(r.min.x);
+        node.top = px(r.min.y);
+        node.width = px(r.width());
+        node.height = px(r.height());
+    });
     vis.set_if_neq(if activity.local { Visibility::Inherited } else { Visibility::Hidden });
 }
 

@@ -494,6 +494,7 @@ fn body_group(
         list: lithtech_formats::anim::AnimList {
             entries: loaded.list.entries.iter().take(1).cloned().collect(),
             offsets: vec![Some(0)],
+            ..Default::default()
         },
     };
     let mut m = model::convert(&own, scale, &|_| String::new());

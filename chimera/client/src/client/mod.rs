@@ -59,6 +59,7 @@ pub mod view;
 pub mod voice;
 pub mod weapon_icons;
 pub mod weapon_menu;
+pub mod ui_write;
 pub mod widgets;
 
 

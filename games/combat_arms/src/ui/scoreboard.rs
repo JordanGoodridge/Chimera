@@ -174,11 +174,11 @@ impl Plugin for CaScoreboardStatePlugin {
 fn update(world: &mut World) {
     let view = world.resource::<CaMatchView>().clone();
     let mode = view.mode();
-    let mine = world
-        .query_filtered::<&crate::core::Team, With<crate::core::LocalPlayer>>()
-        .iter(world)
-        .next()
-        .map(|t| t.0);
+    // A kept query state (`query_cache`): this runs every frame.
+    let mine = chimera_core::query_cache::cached_query::<&crate::core::Team, With<crate::core::LocalPlayer>, _>(
+        world,
+        |q, world| q.iter(world).next().map(|t| t.0),
+    );
     // The result: from the round's result message until the next round's
     // setup (Corrections 1); its banner and sound fixed when it came in.
     let showing = mode.is_some() && result_showing(view.phase);

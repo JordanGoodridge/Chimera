@@ -24,7 +24,10 @@
 
 use bevy::prelude::*;
 
-use super::FirstPersonCamera;
+use super::{
+    FirstPersonCamera,
+    ui_write::{edit, set_text},
+};
 use crate::{
     core::{Dead, Died, Health, Intent, LocalPlayer, Score, Team},
     weapon::{Hitscan, Inventory, Magazine, Weapon, Zoomed},
@@ -722,7 +725,9 @@ fn draw_hud(
         None => String::new(),
     };
     // (With the game's HUD, kills and deaths belong on a scoreboard.)
-    health_text.0 = if !plain {
+    // Written only on a change (`ui_write`): an unchanged text marked
+    // changed is laid out again.
+    let health = if !plain {
         String::new()
     } else {
         format!(
@@ -732,7 +737,8 @@ fn draw_hud(
             score.deaths
         )
     };
-    ammo_text.0 = if !plain {
+    set_text(&mut health_text, &health);
+    let ammo = if !plain {
         String::new()
     } else {
         match inv.and_then(|i| i.active).and_then(|w| weapons.get(w).ok()) {
@@ -741,11 +747,15 @@ fn draw_hud(
             None => String::new(),
         }
     };
-    center.0 = if dead.is_some() && !spectating {
-        "You died. Respawning...".into()
-    } else {
-        String::new()
-    };
+    set_text(&mut ammo_text, &ammo);
+    set_text(
+        &mut center,
+        if dead.is_some() && !spectating {
+            "You died. Respawning..."
+        } else {
+            ""
+        },
+    );
 }
 
 /// `cs_source:weapon_ak47` -> `ak47`.
@@ -836,12 +846,16 @@ fn draw_crosshair(
                 image.image = handle.clone();
                 image.rect = Some(*rect);
             }
-            image.color = color.color();
+            if image.color != color.color() {
+                image.color = color.color();
+            }
             let (w, h) = (rect.width(), rect.height());
-            node.left = px((size.x / 2.0 - w / 2.0).round());
-            node.top = px((size.y / 2.0 - h / 2.0).round());
-            node.width = px(w);
-            node.height = px(h);
+            edit(&mut node, |node| {
+                node.left = px((size.x / 2.0 - w / 2.0).round());
+                node.top = px((size.y / 2.0 - h / 2.0).round());
+                node.width = px(w);
+                node.height = px(h);
+            });
         }
     }
     // Without the sprite, five dots drawn with the lines' nodes.
@@ -863,30 +877,34 @@ fn draw_crosshair(
     let centre = size / 2.0;
     for (line, mut node, mut vis, mut bg, _) in &mut lines {
         bg.set_if_neq(BackgroundColor(color.color()));
-        *vis = if visible {
+        vis.set_if_neq(if visible {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         let d = line.0;
         // The line on that side (UI y grows downward).
         let side = Vec2::new(d.x, -d.y);
         if dots {
             let c = (centre + side * DEFAULT_DOT_SPREAD).round();
-            node.left = px(c.x - 1.0);
-            node.top = px(c.y - 1.0);
-            node.width = px(2.0);
-            node.height = px(2.0);
+            edit(&mut node, |node| {
+                node.left = px(c.x - 1.0);
+                node.top = px(c.y - 1.0);
+                node.width = px(2.0);
+                node.height = px(2.0);
+            });
             continue;
         }
         let Some(&(offset, Vec2 { x: w, y: h })) = shapes.iter().find(|(o, _)| o.normalize_or_zero() == side) else {
             continue;
         };
         let c = centre + offset;
-        node.left = px(c.x - w / 2.0);
-        node.top = px(c.y - h / 2.0);
-        node.width = px(w);
-        node.height = px(h);
+        edit(&mut node, |node| {
+            node.left = px(c.x - w / 2.0);
+            node.top = px(c.y - h / 2.0);
+            node.width = px(w);
+            node.height = px(h);
+        });
     }
 }
 
@@ -1068,7 +1086,7 @@ fn killfeed(
     // one feed (`kill_feed`).
     if game_hud.is_some() || own.killfeed || shared.is_some() {
         died.clear();
-        text.0.clear();
+        set_text(&mut text, "");
         return;
     }
     let name = |e: Entity| match names.get(e) {
@@ -1092,7 +1110,7 @@ fn killfeed(
         let extra = feed.0.len() - 6;
         feed.0.drain(..extra);
     }
-    text.0 = feed.0.iter().map(|(l, _)| l.as_str()).collect::<Vec<_>>().join("\n");
+    set_text(&mut text, &feed.0.iter().map(|(l, _)| l.as_str()).collect::<Vec<_>>().join("\n"));
 }
 
 /// A character drawn as a capsule (`character_bodies`).

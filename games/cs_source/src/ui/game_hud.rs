@@ -794,9 +794,13 @@ fn update(
             let Some(panel) = hud.panels.get("HudDeathNotice") else {
                 continue;
             };
-            node.right = px(w - (panel.x.resolve(w, scale) + panel.wide * scale));
-            // Below the spectator's top bar while it shows.
-            node.top = px(panel.y.resolve(h, scale).max(bars_top.map_or(0.0, |t| t + 4.0 * scale)));
+            // Written only on a change (`ui_write`): an unchanged node
+            // marked changed is laid out again.
+            crate::client::ui_write::edit(&mut node, |node| {
+                node.right = px(w - (panel.x.resolve(w, scale) + panel.wide * scale));
+                // Below the spectator's top bar while it shows.
+                node.top = px(panel.y.resolve(h, scale).max(bars_top.map_or(0.0, |t| t + 4.0 * scale)));
+            });
             if *built != (notices.1, scale) {
                 *built = (notices.1, scale);
                 rebuild_notices(entity, &notices, hud, &fonts, scale, &mut commands);
@@ -804,18 +808,20 @@ fn update(
             continue;
         }
         let item = drawn.iter().find(|(p, _)| p == part).map(|(_, d)| d);
-        *vis = if item.is_some() {
+        vis.set_if_neq(if item.is_some() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         match item {
             Some(Drawn::Box(r, c, radius)) => {
-                node.left = px(r.min.x);
-                node.top = px(r.min.y);
-                node.width = px(r.width());
-                node.height = px(r.height());
-                node.border_radius = BorderRadius::all(px(*radius));
+                crate::client::ui_write::edit(&mut node, |node| {
+                    node.left = px(r.min.x);
+                    node.top = px(r.min.y);
+                    node.width = px(r.width());
+                    node.height = px(r.height());
+                    node.border_radius = BorderRadius::all(px(*radius));
+                });
                 if let Some(mut b) = background
                     && b.0 != *c
                 {

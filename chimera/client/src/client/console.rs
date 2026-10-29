@@ -1633,7 +1633,8 @@ fn draw_overlays(
         lines.push(o.watch_text.clone());
     }
     let _ = console;
-    text.0 = lines.join("\n");
+    // Only a change marks the text for layout again (`ui_write`).
+    crate::client::ui_write::set_text(&mut text, &lines.join("\n"));
 }
 
 /// Sounds marked on screen for `snd_show`.

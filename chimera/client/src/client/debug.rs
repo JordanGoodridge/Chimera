@@ -320,7 +320,7 @@ fn update_hud(
             text.push_str(&format!("\n{d:5.1} m  {:7.1} kg  {:?}  {s}", p.mass, p.push));
         }
     }
-    hud.0 = text;
+    crate::client::ui_write::set_text(&mut hud, &text);
 }
 
 #[cfg(test)]

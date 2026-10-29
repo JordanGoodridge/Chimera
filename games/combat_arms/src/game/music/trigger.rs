@@ -107,7 +107,10 @@ fn broadcast(world: &mut World, msg: CaMusicOn) {
 
 /// A client came in: it gets the one trigger that is on and looping.
 pub fn late_join(world: &mut World) {
-    let joiners: Vec<Entity> = world.query_filtered::<Entity, Added<Player>>().iter(world).collect();
+    // A kept query state (`query_cache`; `Added` reads the world's ticks,
+    // not the state's): this runs every tick.
+    let joiners: Vec<Entity> =
+        chimera_core::query_cache::cached_query::<Entity, Added<Player>, _>(world, |q, world| q.iter(world).collect());
     if joiners.is_empty() {
         return;
     }

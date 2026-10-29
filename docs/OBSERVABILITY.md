@@ -1127,7 +1127,9 @@ Details and baseline numbers: [performance.md](performance.md).
   are awake, the modified meshes and materials by an entity drawing them
   (`assets modified by user: PropMaterial Body: 13.9, Mesh Rope : 5.0`),
   and the UI trees `bevy_ui` lays out (`ui: N nodes in M roots, K in
-  hidden roots; trees: ...; changed per frame by root: ...`): anything
+  hidden roots; trees: ...; changed per frame by root: ...`; an unnamed
+  root by its first named node, else by its own component types,
+  `<HudRoot+InstallRoot>`): anything
   writing every frame for nothing costs transform propagation, layout
   and GPU re-preparation.
 - Load times: a Source map load logs `<map>: loaded in <total> s

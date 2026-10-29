@@ -23,6 +23,10 @@
 //!   caller's.
 //! - Vertex animation (the mesh positions of vertex-animated pieces) is
 //!   sampled by `vertex_frame`; nothing here builds the mesh.
+//! - `AnimList::find` looks names up in an index made on its first call
+//!   (a character driver finds several names a tick per body); entries
+//!   renamed in place after that aren't seen (a change in their count
+//!   falls back to a scan). Lists are built once and then shared.
 
 use crate::ltb::{Animation, Mat4, Model, NODE_ROTATION_ONLY, Quat, Vec3};
 
@@ -181,12 +185,22 @@ impl Entry {
 
 /// "Building a model's animation list": the model's own animations, then
 /// each loaded child's, in child order.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct AnimList {
     pub entries: Vec<Entry>,
     /// Per child slot, its first entry ("animation offset"); None for a
     /// child that did not load.
     pub offsets: Vec<Option<usize>>,
+    /// `find`'s index, made on its first call: the entry count it was made
+    /// for and each ASCII-lowercased name's first entry (a game's
+    /// character driver looks names up several times a tick per body).
+    pub by_name: std::sync::OnceLock<(usize, std::collections::HashMap<String, usize>)>,
+}
+
+impl PartialEq for AnimList {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries == other.entries && self.offsets == other.offsets
+    }
 }
 
 impl AnimList {
@@ -227,9 +241,31 @@ impl AnimList {
         list
     }
 
-    /// The first entry named `name` (case ignored).
+    /// The first entry named `name` (case ignored, ASCII). Through an
+    /// index made on the first call; a list whose entry count changed
+    /// since is scanned instead (entries renamed in place after a `find`
+    /// would not be seen: lists are built once, then shared).
     pub fn find(&self, name: &str) -> Option<usize> {
-        self.entries.iter().position(|e| e.name().eq_ignore_ascii_case(name))
+        let (n, index) = self.by_name.get_or_init(|| {
+            let mut index = std::collections::HashMap::new();
+            for (i, e) in self.entries.iter().enumerate() {
+                index.entry(e.name().to_ascii_lowercase()).or_insert(i);
+            }
+            (self.entries.len(), index)
+        });
+        if *n != self.entries.len() {
+            return self.entries.iter().position(|e| e.name().eq_ignore_ascii_case(name));
+        }
+        let b = name.as_bytes();
+        let mut buf = [0u8; 64];
+        if b.len() > buf.len() {
+            return index.get(&name.to_ascii_lowercase()).copied();
+        }
+        let lower = &mut buf[..b.len()];
+        lower.copy_from_slice(b);
+        lower.make_ascii_lowercase();
+        // ASCII lowercasing keeps UTF-8 valid.
+        index.get(std::str::from_utf8(lower).ok()?).copied()
     }
 
     /// The stand and crouch half-extents ("Bounds and dimensions"): the

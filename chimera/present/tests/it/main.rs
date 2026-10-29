@@ -12,6 +12,7 @@
 mod bc_textures;
 mod body_bounds;
 mod camera_outputs;
+mod idle_lights;
 mod map_unload;
 mod prop_fade;
 mod prop_lods;

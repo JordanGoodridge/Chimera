@@ -25,7 +25,7 @@ use combat_arms::{
             driver::{self, Driver, Inputs, Jump, Posture},
             models,
             records::{self, Selection},
-            skeleton::{self, Posed, Rig},
+            skeleton::{self, Posed, Rig, Shape},
         },
         inventory::{self, UNIT},
         movement,
@@ -496,10 +496,12 @@ fn aim_chain() -> Posed {
         ("Face", Some(4), [0.0, 40.0, 5.0]),
     ];
     Posed {
-        names: names.iter().map(|n| n.0.to_string()).collect(),
-        parents: names.iter().map(|n| n.1).collect(),
+        shape: std::sync::Arc::new(Shape::new(
+            names.iter().map(|n| n.0.to_string()).collect(),
+            names.iter().map(|n| n.1).collect(),
+            Vec::new(),
+        )),
         globals: names.iter().map(|n| (Vec3::from(n.2), Quat::IDENTITY)).collect(),
-        sockets: Vec::new(),
         feet: -50.0,
     }
 }
