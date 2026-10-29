@@ -604,3 +604,66 @@ fn the_aug_zoom_keeps_the_view_model() {
     let v = sim.app.world().get::<ViewAnimator>(p).unwrap();
     assert!(!v.hidden, "the AUG has no scope overlay");
 }
+
+/// The freeze reaches the view (a round's freeze time, the match's end
+/// screen): the raw trigger the input writes every frame (`Update`) is
+/// held by the client (`predict::hold_view`) before the view model reads
+/// it, so holding fire plays no fire activity, sends no muzzle flash or
+/// brass and fires no round; lifted, the same trigger shoots.
+/// Whether the test holds the player (the round rules clear the freeze).
+#[derive(Resource, Default)]
+struct Frozen(bool);
+
+#[test]
+fn a_held_player_holding_fire_shows_nothing() {
+    let mut sim = sim();
+    let p = holding(&mut sim, AK47);
+    sim.app.init_resource::<Frozen>();
+    sim.app
+        .world_mut()
+        .entity_mut(p)
+        .insert(crate::stack::core::LocalPlayer);
+    sim.app.add_systems(
+        Update,
+        (
+            // The round rules (here with rounds off) put the freeze out
+            // each tick; the end screen's hold is on until the match
+            // restarts, so each frame has it on.
+            (|mut i: Single<&mut crate::stack::core::Intent, With<crate::stack::core::LocalPlayer>>,
+              on: Res<Frozen>,
+              mut commands: Commands| {
+                if on.0 {
+                    commands.insert_resource(crate::stack::core::FreezeTime(true));
+                }
+                i.fire = true;
+                i.secondary = true;
+                i.move_axis = Vec2::Y;
+            }),
+            chimera_net::net::predict::hold_view,
+        )
+            .chain()
+            .before(DriveAnimation),
+    );
+    sim.seconds(1.0);
+    assert_eq!(activity(&sim, p), "ACT_VM_PRIMARYATTACK", "control: free, it fires");
+    // Rest the view, then freeze.
+    sim.app.world_mut().resource_mut::<Effects>().0.clear();
+    sim.app.world_mut().resource_mut::<Frozen>().0 = true;
+    sim.seconds(3.0);
+    sim.app.world_mut().resource_mut::<Effects>().0.clear();
+    let clip = sim.app.world().get::<Magazine>(active(&sim, p)).unwrap().clip;
+    sim.seconds(1.0);
+    assert_eq!(
+        sim.app.world().get::<Magazine>(active(&sim, p)).unwrap().clip,
+        clip,
+        "no round"
+    );
+    assert_eq!(activity(&sim, p), "ACT_VM_IDLE");
+    assert!(sim.app.world().resource::<Effects>().0.is_empty(), "no flash or brass");
+    let v = sim.velocity(p);
+    assert!(Vec2::new(v.x, v.z).length() < 0.01, "not walking: {v}");
+    sim.app.world_mut().resource_mut::<Frozen>().0 = false;
+    sim.app.insert_resource(crate::stack::core::FreezeTime(false));
+    sim.seconds(0.5);
+    assert!(sim.app.world().get::<Magazine>(active(&sim, p)).unwrap().clip < clip);
+}

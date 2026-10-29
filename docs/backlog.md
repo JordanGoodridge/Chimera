@@ -27,6 +27,23 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Firing animation on the match-end screen: fixed, confirm in a
+  playtest** (user). The rules hold a frozen player's intent only at the
+  simulation's tick (`FreezeTime`, the end freeze), but the input writes
+  the raw trigger every frame and the view-model drivers (Chimera's
+  `view_anim::drive`, CS:S's activities, Combat Arms' `CaViewKey`
+  machine) and the effects read `Intent` in `Update`, so every gun's
+  first-person fire animation (muzzle flash, brass, the Combat Arms
+  machine's fire keys) played with the trigger held, though no round was
+  fired. All of CS:S's and Combat Arms' guns read it alike. Now
+  `predict::hold_view` (after `write_local_intent`, before the drivers)
+  applies the same hold to the local intent (`FreezeTime` or the server's
+  freeze for a network client): the end screen and a round's freeze time.
+  The same hold fixes the user's second report (footsteps, bob and
+  other movement effects while pressing WASD on the end screen, Combat
+  Arms): the move keys are cleared too.
+  Tests: cs_source `view_models::a_held_player_holding_fire_shows_nothing`,
+  combat_arms `effects_sounds::a_held_player_holding_fire_shows_and_sounds_nothing`.
 - **Round music loops and gets stale: fixed, confirm in a playtest.** In
   a party match the start track plays once, then a shuffled playlist of
   Combat Arms' menu tracks (each once before any repeats, cross-faded);

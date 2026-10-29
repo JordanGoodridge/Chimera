@@ -26,6 +26,9 @@
 //!   state (`OwnState::alive` changed: a spawn point, the loadout, a
 //!   death drop) its state is taken the same way but counted as a restart
 //!   (`NetGraph::resyncs`), not an error: no command led to it.
+//! - **Held view.** `hold_view` (client `Update`, after the input writes
+//!   the local `Intent`) applies the freeze's hold to the drawn side too:
+//!   view models and effects read the raw trigger every frame.
 //! - **Readout.** `NetGraph` (the perf overlay and the debug UI's Perf tab):
 //!   ping, loss, lead, server buffer, missed commands, prediction errors.
 //!   `cl_showerror 1` logs each error.
@@ -52,7 +55,7 @@ use bevy_replicon_renet::RenetClient;
 use super::{CMD_BACKUP, NetCmd, OwnState, OwnStateDelta, UserCmds};
 use crate::{
     console::resource_cvar,
-    core::{FirstTimePredicted, Intent, LocalPlayer, NetRole, PredictedComponents, Seed, SimClock, SimSet},
+    core::{FirstTimePredicted, FreezeTime, Intent, LocalPlayer, NetRole, PredictedComponents, Seed, SimClock, SimSet},
     map::interp::{InterpSystems, Interpolated, RenderedView, SNAP_SPEED},
     slots::{MovementRegistry, MovementSlot, set_movement},
 };
@@ -238,7 +241,7 @@ impl OwnStateBases {
 /// the server's tick, known in advance). Arming or defusing the bomb
 /// holds it as predicted (`objectives::bomb::hold_still`).
 #[derive(Resource, Default)]
-struct Held {
+pub struct Held {
     dead: bool,
     frozen_until: Option<u64>,
 }
@@ -987,6 +990,32 @@ fn hold_local(
             ..default()
         };
     } else if frozen {
+        let frozen = holds.map_or_else(|| super::Holds::default().frozen, |h| h.frozen);
+        **intent = frozen(intent);
+    }
+}
+
+/// The held player's drawn side (`Update`, after the input writes the
+/// local `Intent`, before the animation drivers): the view models, muzzle
+/// flashes and sounds read the raw `Intent` every frame, but the rules
+/// hold it only at the simulation's tick, so a frozen player's trigger
+/// (the freeze time of a round, a match's end screen) still played the
+/// fire animation. Applies the same hold: the rules' `FreezeTime` (the
+/// server and a lone game) or the server's freeze for a network client,
+/// kept to what `Holds::frozen` keeps.
+pub fn hold_view(
+    freeze: Option<Res<FreezeTime>>,
+    held: Option<Res<Held>>,
+    holds: Option<Res<super::Holds>>,
+    clock: Option<Res<CommandClock>>,
+    mut player: Option<Single<&mut Intent, With<LocalPlayer>>>,
+) {
+    let Some(intent) = player.as_deref_mut() else { return };
+    let predicted = held.is_some_and(|h| {
+        h.frozen_until
+            .is_some_and(|until| clock.is_none_or(|c| c.tick.is_none_or(|t| t < until)))
+    });
+    if predicted || freeze.is_some_and(|f| f.0) {
         let frozen = holds.map_or_else(|| super::Holds::default().frozen, |h| h.frozen);
         **intent = frozen(intent);
     }

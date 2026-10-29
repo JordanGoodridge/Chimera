@@ -98,7 +98,7 @@ impl Plugin for LocalInputPlugin {
             .init_resource::<WheelJump>()
             .init_resource::<FreeLook>()
             .register_type::<MouseSettings>()
-            .add_systems(Update, ((grab_cursor, write_local_intent).chain(), drop_key))
+            .add_systems(Update, ((grab_cursor, write_local_intent, chimera_net::net::predict::hold_view).chain(), drop_key))
             .add_systems(FixedPreUpdate, apply_wheel_jump);
         mouse_cvars(app);
     }

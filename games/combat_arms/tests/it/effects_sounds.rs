@@ -1895,3 +1895,59 @@ fn shaded_keys_draw_nothing() {
     assert_eq!(count("Plain"), 1, "an ordinary key emits");
     assert_eq!(count("Refract"), 0, "a shaded key draws nothing");
 }
+
+// ---------------------------------------------------------------------------
+// The freeze reaches the view (the match's end screen, a round's freeze)
+
+/// The raw trigger as the input writes it every frame (`Update`), then
+/// the hold the client applies to it (`predict::hold_view`).
+fn trigger_held_down(sim: &mut Sim) {
+    sim.app.add_systems(
+        Update,
+        (
+            (|mut i: Single<&mut chimera_core::core::Intent, With<LocalPlayer>>| {
+                i.fire = true;
+                i.secondary = true;
+                i.move_axis = Vec2::Y;
+            }),
+            chimera_net::net::predict::hold_view,
+        )
+            .chain()
+            .before(chimera_world::map::DriveAnimation),
+    );
+}
+
+/// Once the match has ended (or in a freeze time) holding fire plays
+/// nothing: no round, no shot sound, no muzzle flash or tracer, no fire
+/// animation; the same trigger fires when nothing holds the player.
+#[test]
+fn a_held_player_holding_fire_shows_and_sounds_nothing() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let w = arm(&mut sim, me, "combat_arms:m4a1");
+    type_everything(&mut sim, 20);
+    trigger_held_down(&mut sim);
+    let clip = |sim: &Sim| sim.app.world().get::<weapon::Magazine>(w).unwrap().clip;
+    let before = clip(&sim);
+    let spot = sim.position(me);
+    heard(&mut sim);
+    fx_requests(&mut sim);
+    sim.app.insert_resource(chimera_core::core::FreezeTime(true));
+    sim.seconds(1.0);
+    assert_eq!(clip(&sim), before, "no round");
+    assert!(heard(&mut sim).is_empty(), "no sound, no footsteps");
+    assert!(sim.position(me).distance(spot) < 0.01, "held where it stood");
+    assert!(fx_requests(&mut sim).is_empty(), "no flash, tracer or brass");
+    let view = sim.app.world().get::<chimera_world::map::ViewAnimator>(me);
+    assert!(
+        view.is_none_or(|v| !v.activity().is_some_and(|a| a.contains("ATTACK") || a.contains("FIRE"))),
+        "no fire animation"
+    );
+    // Control: lifted, the same keys shoot and walk.
+    sim.app.insert_resource(chimera_core::core::FreezeTime(false));
+    sim.seconds(0.5);
+    assert!(clip(&sim) < before, "fires when free");
+    assert!(sim.position(me).distance(spot) > 0.1, "walks when free");
+    assert!(!heard(&mut sim).is_empty());
+}
