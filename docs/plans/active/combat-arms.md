@@ -435,6 +435,44 @@ Notes:
   bomb's fire key with movement locked; the mission files read (item
   21). Live checks left in windows-captures.md, Sitting 5, items 17-30.
 
+## Weapon skins: open questions for a spec session (2026-10-29)
+
+From the 2026-10-28 gun game playtest's grey and scrambled guns (docs/
+backlog.md). Sprite skins now draw their first frame; these need the
+reference and the install on the Windows PC (keyed archives):
+
+1. **Sprite files (`.spr`) as model skins.** Their layout: we read five
+   32-bit fields, then each frame as a 16-bit length and a texture path;
+   what are the five fields (frame count, frame time in ms, looping,
+   flags), and is there anything after the frames? When a weapon's
+   `PVSkin#` / `HHSkin#` names a sprite (121 in the gun archives, e.g.
+   `GUNS_T_PV_AR\PV_AR_RINBOW_M416.SPR`, `GUNS_T_PV_AR\PV_AR_ARX_160_LINE.SPR`
+   whose frames are `PV_AR_ARX_160_LINE-1..5.DTX`), how does the model
+   draw it: which frame when, from which clock (per model since it was
+   created, or the game's), looping or once, blended between frames or
+   not? Same for characters' and attachments' sprite skins
+   (`ATTACH_T\GODSET.SPR`). Test cases: one sprite's fields and frame
+   list, and the frame shown at a few times.
+2. **Render styles of those weapons.** What `PVRenderStyle#` /
+   `HHRenderStyle#` the sprite-skinned and other special skins name
+   (e.g. "Dragunov SVD Obsidian Dragon", which drew one flat grey:
+   unlit), and what each such `RS\*.LTB` does (the render-style files'
+   format is still uncovered: models_ltb.md "Other files"): lighting,
+   blending, an environment map or a second texture stage?
+3. **Pieces with two texture slots.** models_ltb.md says T is 1 or 2;
+   what does the second slot do (a second stage: detail, environment
+   map, a normal map such as the ASW338LM's `_nmg` skins?) and which
+   slot carries the colour? "Neon Outlaw ASW338LM" draws its texture
+   scrambled with slot 0 only.
+4. **Upgrade levels and limited editions** ("M14 Cyanide Echo
+   lv.4(limit)", "Red Dominion ARX60 Lv.1 limit"): is each level its
+   own weapon record with its own skins, or does a level pick a skin
+   (a sprite frame, a texture name suffix) at run time?
+
+Implementation sessions can first run `cargo test -p combat_arms
+--features dev --test it heavy::weapon_skins -- --nocapture` on the
+Windows PC: every install weapon's pieces and skins, grouped by cause.
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the

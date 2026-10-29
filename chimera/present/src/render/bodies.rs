@@ -12,7 +12,9 @@
 //! posed from the character's `Animator`, culled by their posed bounds
 //! (`DynamicSkinnedMeshBounds`, not the bind pose's), lit where they are
 //! (`probe_lit`); `PlayModels`/`HeldAssets` are built when the map
-//! spawns (`render::spawn`); `adopt_bodies`/`pose_ragdolls` hand a dead
+//! spawns (`render::spawn`), held models a game adds later
+//! (`map::add_held_model`) on the next frame and again on each map
+//! (`build_late_held`); `adopt_bodies`/`pose_ragdolls` hand a dead
 //! character's body to its ragdoll and pose it from the ragdoll's bodies.
 //!
 //! Known shortcuts (docs/tech-debt.md): Frame-time shortcuts
@@ -67,6 +69,79 @@ pub struct HeldParts {
     pub own: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
     pub muzzle: Option<Transform>,
     pub merged: Vec<(String, Vec<(Handle<Mesh>, Handle<PropMaterial>)>)>,
+}
+
+/// What held models added after the map spawned (`map::LateHeldModels`)
+/// are built with: the spawned map's fog and look, whether it lights
+/// models from a light field, its debug view, and its first character
+/// model's root (their loose form's frame: `map::loose::asset`).
+#[derive(Resource)]
+pub struct HeldLateBase {
+    pub data: MapData,
+    pub lit: bool,
+    pub view: MapDebugView,
+    pub root: Option<Transform>,
+}
+
+/// Build the held models added after the map spawned
+/// (`map::add_held_model`) that the map's `HeldAssets` lack (none at
+/// first after each map spawn): their own textures as images, their
+/// meshes and materials as the spawn builds the kit's, and their loose
+/// (dropped) form.
+#[allow(clippy::too_many_arguments)]
+pub fn build_late_held(
+    late: Option<Res<LateHeldModels>>,
+    base: Option<Res<HeldLateBase>>,
+    held: Option<ResMut<HeldAssets>>,
+    loose: Option<ResMut<crate::map::loose::LooseAssets>>,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    materials: Option<ResMut<Assets<PropMaterial>>>,
+    compressed: Option<Res<bevy::image::CompressedImageFormatSupport>>,
+) {
+    let (Some(late), Some(base), Some(mut held), Some(mut materials)) = (late, base, held, materials) else {
+        return;
+    };
+    let mut loose = loose;
+    let missing: Vec<_> = late.0.iter().filter(|(h, _)| !held.0.contains_key(&h.key)).collect();
+    for (h, own) in missing {
+        let bc = super::images::bc_wanted(compressed.as_deref());
+        let textures: Vec<Handle<Image>> = own
+            .iter()
+            .map(|t| images.add(super::images::to_image(t, &base.data.look, bc)))
+            .collect();
+        let mut build = |model: &MapModel| -> Vec<(Handle<Mesh>, Handle<PropMaterial>)> {
+            model
+                .meshes
+                .iter()
+                .map(|m| {
+                    let mut material = super::lit_prop_material(m, &textures, &base.data, base.view, false);
+                    if !m.unlit && base.view != MapDebugView::Albedo && base.lit {
+                        material.params.set_probe(&crate::map::LightProbe::default(), 1.0);
+                    }
+                    (meshes.add(build_mesh(m, false)), materials.add(material))
+                })
+                .collect()
+        };
+        let whole = build(&h.model);
+        let own_parts = h.own.as_ref().map_or_else(|| whole.clone(), &mut build);
+        let merged = h.merged.iter().map(|(b, m)| (b.clone(), build(m))).collect();
+        held.0.insert(
+            h.key.clone(),
+            HeldParts {
+                bone: h.bone.clone(),
+                whole,
+                own: own_parts,
+                muzzle: h.muzzle,
+                merged,
+            },
+        );
+        if let (Some(loose), Some(root)) = (loose.as_mut(), base.root)
+            && !loose.0.contains_key(&h.key)
+        {
+            loose.0.insert(h.key.clone(), crate::map::loose::asset(h, root));
+        }
+    }
 }
 
 pub struct BodyAssets {
@@ -769,5 +844,71 @@ mod pose_tests {
         let mut app = app(false);
         let unseen = spawn_character(&mut app, false);
         assert_eq!(posed_frames(&mut app, unseen, 8), 8);
+    }
+}
+
+#[cfg(test)]
+mod late_held_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    /// A held model added after the map spawned (`map::add_held_model`)
+    /// is built into the map's `HeldAssets` with its own texture, and its
+    /// loose form into `LooseAssets`; on the next map (new, empty
+    /// `HeldAssets`) it is built again.
+    #[test]
+    fn late_held_models_are_built() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<PropMaterial>>()
+            .insert_resource(HeldAssets(HashMap::new()))
+            .init_resource::<crate::map::loose::LooseAssets>()
+            .insert_resource(HeldLateBase {
+                data: MapData::default(),
+                lit: false,
+                view: MapDebugView::Normal,
+                root: Some(Transform::IDENTITY),
+            })
+            .add_systems(Update, build_late_held);
+        let mesh = MapMesh {
+            positions: vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            normals: vec![[0.0, 0.0, 1.0]; 3],
+            uvs: vec![[0.0; 2]; 3],
+            indices: vec![0, 1, 2],
+            texture: Some(0),
+            ..default()
+        };
+        let model = MapHeldModel {
+            key: "game:gun".into(),
+            model: MapModel {
+                meshes: vec![mesh],
+                ..default()
+            },
+            bone: "hand".into(),
+            muzzle: None,
+            merged: Vec::new(),
+            own: None,
+        };
+        let texture = MapTexture {
+            name: "gun.dtx".into(),
+            srgb: true,
+            mips: Vec::new(),
+            width: 1,
+            height: 1,
+            rgba8: vec![255, 0, 0, 255],
+            bc: None,
+        };
+        crate::map::add_held_model(app.world_mut(), model, Arc::new(vec![texture]));
+        app.update();
+        let parts = &app.world().resource::<HeldAssets>().0["game:gun"];
+        assert_eq!((parts.bone.as_str(), parts.whole.len(), parts.own.len()), ("hand", 1, 1));
+        let material = app.world().resource::<Assets<PropMaterial>>().get(&parts.whole[0].1).unwrap();
+        assert!(material.base.is_some(), "drawn with its own texture");
+        assert!(app.world().resource::<crate::map::loose::LooseAssets>().0.contains_key("game:gun"));
+        // The next map's spawn replaces `HeldAssets`.
+        app.world_mut().insert_resource(HeldAssets(HashMap::new()));
+        app.update();
+        assert!(app.world().resource::<HeldAssets>().0.contains_key("game:gun"));
     }
 }

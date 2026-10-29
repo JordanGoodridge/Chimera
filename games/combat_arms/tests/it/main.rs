@@ -87,6 +87,7 @@ mod heavy {
     mod radio;
     mod radar;
     mod view_model;
+    mod weapon_skins;
     mod world;
     mod world_objects;
 }

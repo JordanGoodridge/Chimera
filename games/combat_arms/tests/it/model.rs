@@ -217,3 +217,60 @@ fn placed_prop_animates() {
     let t = app.world().get::<Transform>(joints[1]).unwrap().translation;
     assert!(t.abs_diff_eq(Vec3::new(10.0, 0.0, 0.0), 1e-5), "{t}");
 }
+
+/// A 4 x 4 32-bit texture (specs/combat_arms/textures_dtx.md, "Synthetic
+/// fixtures": the header, then 16 pixels), all one colour.
+fn dtx(bgra: [u8; 4]) -> Vec<u8> {
+    let mut f = vec![0u8; 164];
+    f[4] = 4;
+    f[6] = 4;
+    f[8..12].copy_from_slice(&(-5i32).to_le_bytes());
+    f[12] = 1;
+    f[16] = 8;
+    f[25] = 1;
+    f[26] = 3;
+    for _ in 0..16 {
+        f.extend(bgra);
+    }
+    f
+}
+
+/// A sprite file naming `frames` (five 32-bit fields, then each frame's
+/// path with its 16-bit length: `effects::library::sprite_texture`'s
+/// reading).
+fn sprite(frames: &[&str]) -> Vec<u8> {
+    let mut w = W::default();
+    // What the five fields mean isn't in the specs; the reader skips them.
+    w.u32(0).u32(0).u32(0).u32(0).u32(0);
+    for f in frames {
+        w.s(f);
+    }
+    w.0
+}
+
+/// A model skin that is a sprite (`.spr`: the animated weapon skins,
+/// e.g. the "Prismatic" M416's) draws its first frame's texture, not the
+/// untextured grey; a skin that isn't there stays untextured.
+#[test]
+fn a_sprite_skin_draws_its_first_frame() {
+    let base = files();
+    let red = dtx([0, 0, 255, 255]);
+    let sprite = sprite(&["GUNS_T_HH\\HH_TEST_00.DTX", "GUNS_T_HH\\HH_TEST_01.DTX"]);
+    let file = move |p: &str| match p {
+        "guns_t_hh/hh_test.spr" => Some(sprite.clone()),
+        "guns_t_hh/hh_test_00.dtx" => Some(red.clone()),
+        _ => base(p),
+    };
+    let loaded = model::load("props/test/parent.ltb", &file).unwrap();
+    for (skin, textured) in [("GUNS_T_HH\\HH_TEST.spr", true), ("GUNS_T_HH\\HH_GONE.spr", false)] {
+        let mut data = MapData::default();
+        let i = props::place(&mut data, &loaded, &[skin.to_string()], &[], "Test", Vec3::ONE, Quat::IDENTITY, None, SCALE, &file);
+        let mesh = &data.models[data.props[i].model].meshes[0];
+        assert_eq!(mesh.texture.is_some(), textured, "{skin}");
+        if textured {
+            let t = &data.textures[mesh.texture.unwrap()];
+            assert_eq!((t.width, t.height), (4, 4));
+            assert_eq!(&t.rgba8[..4], &[255, 0, 0, 255], "the first frame's red");
+        }
+    }
+}

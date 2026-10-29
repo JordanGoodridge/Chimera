@@ -206,6 +206,46 @@ the user's go-ahead: no Actions runs unless asked.
   (the rest: kits, smoke and flash grenades, a missing snowball file).
   The text fallback is the plain name, no brackets. Tests: combat_arms'
   `heavy::kill_icons` (install), `kill_feed::tests` in chimera_client.
+- **Grey Combat Arms gun skins: fixed (first frame), confirm in a
+  playtest** ("Prismatic Eco M416", "Drakeveil SIG550", "Dragunov SVD
+  Obsidian Dragon" (flat), "M14 Cyanide Echo lv.4(limit)", "Red
+  Dominion ARX60 Lv.1 limit"). The animated skins are sprites: their
+  `PVSkin#` / `HHSkin#` name a `.spr` (an animated texture sequence,
+  world_dat.md), and our skin lists kept `.dtx` names only, so the
+  piece had no texture and drew the untextured grey (lit; flat where
+  its render style is unlit). The install's gun archives hold 121
+  such sprites (`GUNS_T_HH\HH_AR_RINBOW_M416.SPR`, `..._ARX_160_LINE`,
+  `..._ID_SIG550_BC`, `..._SG_VARIANTS_DRAGUNOV_SVD`, `..._M14REDLIGHT`,
+  lava-crystal, golden, starlight, kraken ...; names from the archive
+  directories, the weapons file needs the V1 key, so which weapon names
+  which is the Windows PC's to confirm with `heavy::weapon_skins`). A
+  sprite skin now draws its first frame, as map surfaces and effects
+  already did (`data::skin_paths`, `world::textures`); it doesn't
+  animate: the sprite's timing isn't in the specs (open question in
+  docs/plans/active/combat-arms.md, "Weapon skins"). The textures are
+  in V2-keyed archives: grey on this box regardless, on the Windows PC
+  only through the bug. Tests: `attribute_data::
+  sprite_skins_and_an_added_weapons_held_look`, `model::
+  a_sprite_skin_draws_its_first_frame`; the install sweep (every
+  weapon's view and held model, each piece's skin by cause: no entry,
+  missing or locked, undecodable, sprite, second texture slot, unknown
+  render style): `cargo test -p combat_arms --features dev --test it
+  heavy::weapon_skins -- --nocapture` on the Windows PC. Left: the
+  sprites' animation; the "Neon Outlaw ASW338LM" scrambled texture
+  (its skins come as `_albedo`, `_nmg` and camo sets; the sweep lists
+  its pieces' slots, a second slot isn't drawn: open question).
+- **Combat Arms install guns had no gun in third person (the R870):
+  fixed, confirm in a playtest.** A map carries the held models of our
+  own weapon documents only; the install's guns (the ladder's most,
+  e.g. the R870 MCS variants) had none, so characters' hands were empty
+  and a dropped one never drew, and their look (skins, render styles,
+  animation class) was the default. Their held model now loads in the
+  background the first time a character holds one or it lies loose
+  (`characters::held_on_demand`, Chimera's `map::add_held_model` /
+  `render::bodies::build_late_held`, kept across map changes), and every
+  install weapon takes its `HHSkin#`, `HHRenderStyle#` and `AniType`.
+  Tests: `held_on_demand::tests`, chimera_present
+  `bodies::late_held_models_are_built` and the attribute test above.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 

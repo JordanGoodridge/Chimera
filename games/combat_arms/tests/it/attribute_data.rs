@@ -553,6 +553,41 @@ fn models_and_names_from_the_install() {
     assert_eq!(grenade.models.view.as_deref(), Some("guns_m_pv_throwing/pv_throwing_m18smoke_sh.ltb"));
 }
 
+/// An install weapon's sprite skins (`.spr`, an animated texture
+/// sequence: world_dat.md; the rainbow, lava-crystal and light-up guns'
+/// `PVSkin#` / `HHSkin#`) are texture files, not empty slots: the
+/// playtest's grey "Prismatic" M416 had its skin dropped. A weapon the
+/// install adds (not one of ours) gets its held look too: its `HHSkin#`,
+/// `HHRenderStyle#` and `AniType` (characters.md, "Third-person weapon
+/// model and animation class").
+#[test]
+fn sprite_skins_and_an_added_weapons_held_look() {
+    use combat_arms::game::data::CaData;
+    let text = r#"[Ammo0] Name="a"
+        [Weapon0] Name="M4A1" Guntype=2 AmmoName0="a" AniType=3
+        [Weapon1] Name="M416 Prismatic" Guntype=2 AmmoName0="a" AniType=4
+          PVModelNormal="GUNS_M_PV_AR\PV_AR_M416_SH.ltb"
+          PVSkin0="Hands" PVSkin1="GUNS_T_PV_AR\PV_AR_RINBOW_M416.SPR" PVSkin2="GUNS_T_PV_AR\PV_M416.dtx"
+          HHModel="GUNS_M_HH\HH_AR_M416_SH.ltb" HHSkin0="GUNS_T_HH\HH_AR_RINBOW_M416.spr" HHRenderStyle0="RS\GLOW.LTB""#;
+    let ca = CaData::with_attributes(InstallAttributes {
+        weapons: Some(weapons(text).unwrap()),
+        ..Default::default()
+    });
+    let id = format!("combat_arms:{}", slug("M416 Prismatic"));
+    let w = ca.weapon_set().get(&id).unwrap_or_else(|| panic!("{id} merged"));
+    assert_eq!(
+        w.models.view_skins,
+        ["", "guns_t_pv_ar/pv_ar_rinbow_m416.spr", "guns_t_pv_ar/pv_m416.dtx"]
+    );
+    assert_eq!(w.models.world.as_deref(), Some("guns_m_hh/hh_ar_m416_sh.ltb"));
+    let look = ca.characters().weapon(Some(&id));
+    assert_eq!(look.skins, ["guns_t_hh/hh_ar_rinbow_m416.spr"]);
+    assert_eq!(look.render_styles, ["RS\\GLOW.LTB"]);
+    assert_eq!(look.ani_type, 4);
+    // Ours keeps the install's class as before.
+    assert_eq!(ca.characters().weapon(Some("combat_arms:m4a1")).ani_type, 3);
+}
+
 /// A grenade's projectile record (`ProjectileFX#` in `FX.TXT`, linked by
 /// its ammo's `ProjectileFXName`; grenades.md "Data"): its speed, fuse,
 /// drop speed, `CanHitSameKind` and thrown model (`Model`, `ModelScale`,
