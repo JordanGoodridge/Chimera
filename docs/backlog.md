@@ -27,6 +27,12 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Can Combat Arms guns shoot through glass?** Check that a Combat Arms
+  round goes through (and breaks) glass the way Combat Arms does: CS:S
+  maps' breakable glass, and Combat Arms maps' glass surfaces. The specs
+  have a surface 41, Bullet-Proof Glass, with its own impact. What
+  Combat Arms does to rounds at glass (pass, stop, lose damage) may need
+  a spec session on the Windows PC.
 - **Random attachments on Combat Arms rungs (user idea).** Some Combat
   Arms guns come bare. When the ladder is made, give each Combat Arms
   rung a random fitted set from that gun's accepted attachments
