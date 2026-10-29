@@ -27,6 +27,29 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Combat Arms launchers: the boss flame launcher hurt nobody, every
+  rocket was a grey ball: fixed, confirm in a playtest; the looks in
+  flight need a spec.** The "Hephaestus" is the install's
+  `Powered_Suit_Boss_Launcher` (`Guntype` 9; its ammo fires the flame
+  puff `Yellow_Flame` with a burning sphere, 10 HP/s, 999 rounds,
+  infinite: the 999 is its data). Install weapons we have no document for
+  were copied from the first of our documents of their `Guntype`, the
+  rocket launcher, so its puffs flew as rockets with no blast and no
+  sphere. Now a copy takes the document whose weapon fires the same
+  projectile record (the flamethrower), and every impact projectile
+  weapon takes from the install its record's speed, lifetime, gravity and
+  model (drawn in flight: the LAW and its NPC copy `LAW_npc` show the
+  missile, not a ball or the launcher), its ammo's sphere, its `FireSnd`
+  and its ImpactFX (the rocket's `gren.wav` and `Grenade_Dirt` at the
+  blast, the M32 family's `M32_EXPLOSION.wav` and `M32_Dirt`). Tests:
+  combat_arms `install_launchers`. Same fix for every `Guntype` 9 and 15
+  copy (the flamethrower skins and `HQRAID_BOSS_FLAME`, the LAW, RPG-7,
+  AT4 and RMS12 skins, the boss missile, the M79/MZP-1 family). Left for
+  a spec session (docs/plans/active/combat-arms.md, brief 24b): the
+  projectile record's trail group (`FXName`), flight sound (`FlySound`),
+  flare and light; a model-less flame puff is still the placeholder ball
+  and the flame weapons have no fire sound in their data.
+
 - **Frame rate drops after a few map changes: fixed, confirm in a
   playtest.** What grew was archetypes and tables (Bevy frees none; the
   characters' optional components make new ones at every map change and

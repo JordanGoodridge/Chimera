@@ -571,6 +571,50 @@ hooks. Then `git pull --rebase` and `git push` to main (or to
 `specs-incoming` if I say so).
 ```
 
+### 24b. Projectile looks and sounds in flight (follow-up, 2026-10-29)
+
+From the 2026-10-28 gun game playtest (docs/backlog.md): impact
+projectiles now fly, hurt and explode by the data (the projectile record's
+speed, lifetime, gravity and model; the ammo's blast and lasting sphere;
+the weapon's `FireSnd`; the ammo's ImpactFX sound and group at the blast),
+but special_weapons.md and effects_sounds.md leave out what the projectile
+record's own presentation fields do, so flame puffs show as a placeholder
+ball and rockets fly silent with no trail. The session answers, as an
+addition to specs/combat_arms/special_weapons.md (a "Corrections" or
+"Follow-up" section; change nothing else):
+
+1. `FXName` (rockets `Smoky_Tail01`, the flame `Flame_Yellow`, launcher
+   shells `M32_Tail`) with `FxSmoothShutdown`: is the group attached to
+   the projectile and moved with it every frame, started once at launch,
+   or re-emitted? Its frame (facing the flight?), what happens to it at
+   the detonation (stops emitting, particles live out), on every client or
+   only some, at which effect detail.
+2. `FlySound` and `SoundRadius` (rockets `Grenade.wav`, 1200; the flame
+   none): looped while it flies and following it? Volume, inner radius,
+   when it stops (detonation, sky), whether `Sound` (a second field, empty
+   in the stock records) is another one.
+3. `Flare`, `FlareSprite`, `FlareScale`, `Light`, `LightRadius`,
+   `LightColor`, `SmokeTrail`, `SmokeTrailType`: drawn or not in the
+   release build; what each looks like.
+4. A model-less projectile (the flame puff): is anything drawn besides
+   the `FXName` group?
+5. The world model's orientation in flight (which model axis faces the
+   flight), its pose (animation name) and whether `Skin0` is the only skin.
+6. The fire sound of the flamethrower and the boss flame launcher
+   (`Powered_Suit_Boss_Launcher`), whose records have no `FireSnd`: does a
+   view-model sound key, a looping sound or the projectile record play it?
+7. A launcher's `FireFXName` (`M136_Rocket`, `NoShell`): the own-muzzle
+   group and casings as for guns (effects_sounds.md 1, 8)?
+8. For launched (not thrown) ammo, whether `DoSurfaceFX` plays the
+   surface's `GrenadeFXName` or its `ImpactFXName` (effects_sounds.md 6
+   names thrown ammo only).
+9. The flame launcher copies: a copied flame weapon's fire keys (ours are
+   the flamethrower's 8 per 734 ms loop): read from its own `fire_0`?
+   Give the boss flame launcher's numbers.
+
+Same rules as brief 24 (identity, UTC, no code, no machine paths, test
+cases with numbers, "Open questions").
+
 ### 25. Radar and minimap
 
 ```text
