@@ -43,6 +43,10 @@ the user's go-ahead: no Actions runs unless asked.
   2026-10-29: per rung, the same for everyone on it), drawn from every
   character model the install has, specialists included, not only the
   default set.
+  And the melee slot too (user, 2026-10-29): each Combat Arms rung
+  draws a random Combat Arms melee weapon (knives and the rest of the
+  melee class), the same for everyone on the rung. The ladder's knife
+  finale keeps its own knife.
 - **Frame rate drops after a few map changes: fixed, confirm in a
   playtest.** What grew was archetypes and tables (Bevy frees none; the
   characters' optional components make new ones at every map change and
