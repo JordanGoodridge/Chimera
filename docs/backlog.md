@@ -53,6 +53,27 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **A rung's character: stats only when intrinsic (user, 2026-10-29).**
+  A drawn Combat Arms character changes armour or movement only if that
+  character has them by default in Combat Arms (its own movement, its
+  own built-in armour). Otherwise players keep a balanced baseline, so
+  Combat Arms players are no harder to kill than CS:S ones. Today a
+  body counts as its vest, so its armour and movement apply. Fix: take
+  only the body's intrinsic values, never a random vest's.
+- **Zombies: a character tied to its weapon (user idea, 2026-10-29).**
+  Some Combat Arms characters can only use certain weapons: the infected
+  (zombies) fight with their hands. Make them a special class. A rung
+  that gives the infected hands turns the player into the zombie, and a
+  zombie never draws a normal weapon.
+  - *Hook:* a "becoming the next character" hook in the gun game, so a
+    game can play its moment: Combat Arms' infection sound, its
+    screen effect (a red tint or a vignette, per the spec), the
+    zombies' glowing eyes with trails.
+  - *Not copied:* the zombies' large health and their heavy slowdown
+    from bullets. Keep the gun game's baseline, so it stays fair.
+  - *Specs:* game_modes.md (Quarantine M8, infected knock-back S14),
+    gear_perks.md 15 (infection-mode perks), missions.md F4.1; anything
+    the specs lack goes to a spec session.
 - **A client without the Combat Arms key, or with another install
   version, builds other weapons than the server: fixed, confirm in a
   playtest.** The ~2,300 install copies come from the attribute file
@@ -125,10 +146,6 @@ the user's go-ahead: no Actions runs unless asked.
     read. Open questions: docs/plans/active/combat-arms.md, "Body
     skins". Tests: models `body_texture_slots`, attribute_data
     `body_additional_skins`, `heavy::body_skins`.
-- **A rung's character also sets armour and movement** (a Combat Arms
-  body is its vest). It's the same for everyone on the rung, but a
-  network client corrects its movement once at the swap. Ask the user
-  whether the look should leave stats alone.
 - **Tool runs write the user's config: fixed.** `--frames` and `--bench`
   skipped nothing; now the exit write checks `Args::tool_run()` (all four
   options), in every app. `CHIMERA_CFG_DIR` names a throwaway config
