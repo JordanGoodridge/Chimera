@@ -15,8 +15,8 @@
 //! mesh's data, `MeshExtraction` keeps the copies and the meshes announced
 //! changed after their data was taken: Bevy's "already been extracted"
 //! error); `system_order` lists every schedule's systems;
-//! `single_threaded_schedules` puts the main world's schedules on one
-//! thread (the game, the dedicated server, `perfgate`, and every `Sim`:
+//! `single_threaded_schedules` puts every schedule of the main world on
+//! one thread (`set_executors`; the game, the dedicated server, `perfgate`, and every `Sim`:
 //! tests run the executors that ship; `Sim::multi_threaded` or
 //! `CHIMERA_EXECUTOR=multi` puts them back on Bevy's multi-threaded one);
 //! `Sim`'s task pools are capped (`SIM_TASK_THREADS`) so parallel test
@@ -126,11 +126,7 @@ impl Sim {
     /// a test of the other opts out here (`CHIMERA_EXECUTOR=multi` does it
     /// for every `Sim`).
     pub fn multi_threaded(&mut self) {
-        for label in main_schedules() {
-            self.app.edit_schedule(label, |s| {
-                s.set_executor(bevy::ecs::schedule::MultiThreadedExecutor::new());
-            });
-        }
+        set_executors(self.app.world_mut(), || bevy::ecs::schedule::MultiThreadedExecutor::new());
     }
 
     /// Spawn `n` empty entities and a resource: every entity spawned
@@ -307,41 +303,36 @@ pub fn system_order(world: &mut World) -> String {
     out
 }
 
-/// Run the main world's per-frame and fixed schedules on one thread each
-/// instead of Bevy's multi-threaded executor: the games (whose shell
-/// does the render world's too), the dedicated server and `perfgate`.
+/// Run every schedule of the main world on one thread instead of Bevy's
+/// multi-threaded executor: the per-frame and fixed schedules, and the
+/// ones they run (prediction's `core::Predict` stages every tick and each
+/// replayed command, `StateTransition`, `SpawnScene`, egui's passes); the
+/// games (whose shell does the render world's too), the dedicated server
+/// and `perfgate`.
 ///
 /// A tick runs a few hundred systems, nearly all tiny: handing each to a
 /// worker thread and waking the next cost more than the systems did, and
 /// much more on a busy machine (docs/performance.md, "Frame time pass";
 /// a 32-player server spent half its CPU time on it: multiplayer.md,
 /// "Capacity"). Systems that iterate many entities still spread over the
-/// task pool themselves.
+/// task pool themselves. Schedules a plugin made without setting an
+/// executor get Bevy's multi-threaded one: the prediction stages ran on
+/// it until "Party frame-rate pass", third pass (docs/performance.md),
+/// their unordered systems in whatever order the workers took them.
+/// Every schedule is set, so one added later is too; call this once the
+/// plugins are in (schedules made after that keep their own).
 pub fn single_threaded_schedules(app: &mut App) {
-    use bevy::ecs::schedule::SingleThreadedExecutor;
-    for label in main_schedules() {
-        app.edit_schedule(label, |s| {
-            s.set_executor(SingleThreadedExecutor::new());
-        });
-    }
+    set_executors(app.world_mut(), bevy::ecs::schedule::SingleThreadedExecutor::new);
 }
 
-/// The main world's per-frame and fixed schedules: what
-/// `single_threaded_schedules` puts on one thread.
-fn main_schedules() -> [bevy::ecs::schedule::InternedScheduleLabel; 10] {
-    use bevy::ecs::schedule::ScheduleLabel;
-    [
-        First.intern(),
-        PreUpdate.intern(),
-        Update.intern(),
-        PostUpdate.intern(),
-        Last.intern(),
-        FixedFirst.intern(),
-        FixedPreUpdate.intern(),
-        FixedUpdate.intern(),
-        FixedPostUpdate.intern(),
-        FixedLast.intern(),
-    ]
+/// Every schedule in `world` on a new executor from `make`. (A render
+/// world's extract schedule also needs `set_apply_final_deferred(false)`
+/// again: chimera_client's `single_threaded_schedules`.)
+pub fn set_executors<E: bevy::ecs::schedule::SystemExecutor + 'static>(world: &mut World, make: impl Fn() -> E) {
+    let Some(mut schedules) = world.get_resource_mut::<bevy::ecs::schedule::Schedules>() else { return };
+    for (_, s) in schedules.iter_mut() {
+        s.set_executor(make());
+    }
 }
 
 /// `label`'s systems by name in the order the single-threaded executor

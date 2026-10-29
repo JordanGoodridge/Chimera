@@ -3,6 +3,11 @@
 //! weight sets (`Rig::layered`), the aim's bone rotations after the
 //! animation (`Posed::aim`), and what sits on the posed nodes: hit-sphere
 //! centres (a node of the entry's name, else a socket of it) and sockets.
+//! Every pose of a rig shares its names, parents and sockets (`Shape`,
+//! made once in `Rig::new`), and names are found through a case-blind
+//! index: posing cloned every name and each lookup scanned them all (the
+//! largest per-bot cost in a party match: docs/performance.md, "Party
+//! frame-rate pass", third pass).
 //!
 //! Everything here is LithTech's frame: left-handed (+X right, +Y up, +Z
 //! forward), world units, model space relative to the hull centre (the
@@ -53,15 +58,71 @@ pub fn from_aim_byte(b: i8) -> f32 {
     b as f32 / AIM_BYTE_SCALE
 }
 
+/// A skeleton's names and sockets, shared by every pose of it (a rig's
+/// once, `Rig::new`; `fallback`'s per call), with the names looked up
+/// case-blind through an index instead of a scan per lookup.
+#[derive(Clone, Debug, Default)]
+pub struct Shape {
+    pub names: Vec<String>,
+    pub parents: Vec<Option<usize>>,
+    /// Name, parent node, offset and rotation in the parent's space.
+    pub sockets: Vec<(String, usize, Vec3, Quat)>,
+    /// ASCII-lowercased name -> its first node, its first socket.
+    nodes_by_name: bevy::platform::collections::HashMap<String, usize>,
+    sockets_by_name: bevy::platform::collections::HashMap<String, usize>,
+}
+
+impl Shape {
+    pub fn new(names: Vec<String>, parents: Vec<Option<usize>>, sockets: Vec<(String, usize, Vec3, Quat)>) -> Self {
+        let index = |names: &mut dyn Iterator<Item = &String>| {
+            let mut by = bevy::platform::collections::HashMap::default();
+            for (i, n) in names.enumerate() {
+                by.entry(n.to_ascii_lowercase()).or_insert(i);
+            }
+            by
+        };
+        Self {
+            nodes_by_name: index(&mut names.iter()),
+            sockets_by_name: index(&mut sockets.iter().map(|s| &s.0)),
+            names,
+            parents,
+            sockets,
+        }
+    }
+
+    /// A node by name (case ignored, ASCII as `eq_ignore_ascii_case`;
+    /// the first of that name).
+    pub fn node(&self, name: &str) -> Option<usize> {
+        lowered(name, |l| self.nodes_by_name.get(l).copied())
+    }
+
+    /// A socket's index by name (case ignored; the first of that name).
+    pub fn socket(&self, name: &str) -> Option<usize> {
+        lowered(name, |l| self.sockets_by_name.get(l).copied())
+    }
+}
+
+/// `f` of `name` ASCII-lowercased, without allocating for a short name.
+fn lowered<T>(name: &str, f: impl FnOnce(&str) -> T) -> T {
+    let b = name.as_bytes();
+    let mut buf = [0u8; 64];
+    if b.len() > buf.len() {
+        return f(&name.to_ascii_lowercase());
+    }
+    let out = &mut buf[..b.len()];
+    out.copy_from_slice(b);
+    out.make_ascii_lowercase();
+    // ASCII lowercasing keeps UTF-8 valid.
+    f(std::str::from_utf8(out).expect("lowercased UTF-8"))
+}
+
 /// A posed skeleton: global transforms per node, and the sockets on them.
 #[derive(Clone, Debug, Default)]
 pub struct Posed {
-    pub names: Vec<String>,
-    pub parents: Vec<Option<usize>>,
+    /// Names, parents and sockets (shared with the rig's other poses).
+    pub shape: std::sync::Arc<Shape>,
     /// Model space (position, rotation).
     pub globals: Vec<(Vec3, Quat)>,
-    /// Name, parent node, offset and rotation in the parent's space.
-    pub sockets: Vec<(String, usize, Vec3, Quat)>,
     /// The feet's height in model space.
     pub feet: f32,
 }
@@ -69,12 +130,12 @@ pub struct Posed {
 impl Posed {
     /// A node by name (case ignored).
     pub fn node(&self, name: &str) -> Option<usize> {
-        self.names.iter().position(|n| n.eq_ignore_ascii_case(name))
+        self.shape.node(name)
     }
 
     /// A socket's transform by name (case ignored).
     pub fn socket(&self, name: &str) -> Option<(Vec3, Quat)> {
-        let (_, parent, offset, rotation) = self.sockets.iter().find(|s| s.0.eq_ignore_ascii_case(name))?;
+        let (_, parent, offset, rotation) = &self.shape.sockets[self.shape.socket(name)?];
         let (p, q) = self.globals[*parent];
         Some((p + q * *offset, q * *rotation))
     }
@@ -94,7 +155,7 @@ impl Posed {
     }
 
     fn descends(&self, mut j: usize, k: usize) -> bool {
-        while let Some(p) = self.parents[j] {
+        while let Some(p) = self.shape.parents[j] {
             if p == k {
                 return true;
             }
@@ -142,7 +203,7 @@ impl Posed {
         (0..self.globals.len())
             .map(|j| {
                 let (p, q) = self.globals[j];
-                let (lp, lq) = match self.parents[j] {
+                let (lp, lq) = match self.shape.parents[j] {
                     Some(parent) => {
                         let (pp, pq) = self.globals[parent];
                         let inv = pq.inverse();
@@ -171,33 +232,34 @@ pub const STAND_FEET: f32 = -50.0;
 /// their parent, every height squashed towards the feet by `squash` (1
 /// standing; the crouched hull's height over the standing one).
 pub fn fallback(skel: &SkeletonRecord, squash: f32) -> Posed {
-    let mut posed = Posed {
-        feet: STAND_FEET,
-        ..default()
-    };
+    let (mut names, mut parents, mut globals): (Vec<String>, Vec<Option<usize>>, Vec<(Vec3, Quat)>) = (Vec::new(), Vec::new(), Vec::new());
     let squashed = |a: [f32; 3]| Vec3::new(a[0], STAND_FEET + (a[1] - STAND_FEET) * squash, a[2]);
-    let push = |posed: &mut Posed, name: &str, parent: Option<&str>, at: Option<[f32; 3]>| {
-        let parent = parent.and_then(|p| posed.node(p));
+    let mut push = |name: &str, parent: Option<&str>, at: Option<[f32; 3]>| {
+        let parent = parent.and_then(|p| names.iter().position(|n| n.eq_ignore_ascii_case(p)));
         let at = match at {
             Some(a) => squashed(a),
-            None => parent.map_or(Vec3::ZERO, |p| posed.globals[p].0),
+            None => parent.map_or(Vec3::ZERO, |p| globals[p].0),
         };
-        posed.names.push(name.to_string());
-        posed.parents.push(parent);
-        posed.globals.push((at, Quat::IDENTITY));
+        names.push(name.to_string());
+        parents.push(parent);
+        globals.push((at, Quat::IDENTITY));
     };
     for n in &skel.nodes {
-        push(&mut posed, &n.name, n.parent.as_deref(), n.at);
+        push(&n.name, n.parent.as_deref(), n.at);
     }
     for s in &skel.spheres {
         if let Some(place) = &s.socket {
-            push(&mut posed, &s.name, Some(&place.parent), s.at);
+            push(&s.name, Some(&place.parent), s.at);
         }
     }
     for s in &skel.sockets {
-        push(&mut posed, &s.name, Some(&s.parent), s.at);
+        push(&s.name, Some(&s.parent), s.at);
     }
-    posed
+    Posed {
+        shape: std::sync::Arc::new(Shape::new(names, parents, Vec::new())),
+        globals,
+        feet: STAND_FEET,
+    }
 }
 
 /// A body model loaded for posing: its nodes, sockets, weight sets and
@@ -211,16 +273,33 @@ pub struct Rig {
     pub lower: Option<usize>,
     /// Standing and crouched half-heights (the `LST` and `LC` boxes).
     pub half_heights: (f32, f32),
+    /// The model's node and socket names, parents and sockets, as every
+    /// pose shares them (`Posed::shape`; made once, not per pose).
+    pub shape: std::sync::Arc<Shape>,
 }
 
 impl Rig {
     pub fn new(model: ltb::Model, list: AnimList) -> Self {
         let set = |name: &str| model.weight_sets.iter().position(|w| w.name.eq_ignore_ascii_case(name));
         let (stand, crouch) = list.hull_boxes();
+        let shape = Shape::new(
+            model.nodes.iter().map(|n| n.name.clone()).collect(),
+            model.parents(),
+            model
+                .sockets
+                .iter()
+                .map(|s| {
+                    let q = Quat::from_array(s.rotation);
+                    let q = if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY };
+                    (s.name.clone(), s.node as usize, Vec3::from(s.position), q)
+                })
+                .collect(),
+        );
         Self {
             upper: set("upper"),
             lower: set("lower"),
             half_heights: (stand[1], crouch[1]),
+            shape: std::sync::Arc::new(shape),
             model,
             list,
         }
@@ -254,19 +333,8 @@ impl Rig {
             .collect();
         let (hs, hc) = self.half_heights;
         Posed {
-            names: self.model.nodes.iter().map(|n| n.name.clone()).collect(),
-            parents: self.model.parents(),
+            shape: self.shape.clone(),
             globals,
-            sockets: self
-                .model
-                .sockets
-                .iter()
-                .map(|s| {
-                    let q = Quat::from_array(s.rotation);
-                    let q = if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY };
-                    (s.name.clone(), s.node as usize, Vec3::from(s.position), q)
-                })
-                .collect(),
             feet: -(hs + (hc - hs) * r),
         }
     }
@@ -287,6 +355,23 @@ impl Rig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shape_lookups_match_a_case_blind_scan() {
+        let names: Vec<String> = ["Torso", "Left_foot", "left_FOOT", "Héad", "Neck", &"x".repeat(80)]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let sockets = vec![("RightHand".to_string(), 0, Vec3::ZERO, Quat::IDENTITY), ("righthand".to_string(), 1, Vec3::X, Quat::IDENTITY)];
+        let shape = Shape::new(names.clone(), vec![None; names.len()], sockets.clone());
+        let long = "X".repeat(80);
+        for q in ["torso", "TORSO", "Left_Foot", "left_foot", "Héad", "HéAD", "hÉad", "neck", "nope", "", &long] {
+            assert_eq!(shape.node(q), names.iter().position(|n| n.eq_ignore_ascii_case(q)), "{q}");
+        }
+        for q in ["RIGHTHAND", "righthand", "RightHand", "left"] {
+            assert_eq!(shape.socket(q), sockets.iter().position(|s| s.0.eq_ignore_ascii_case(q)), "{q}");
+        }
+    }
 
     #[test]
     fn aim_bytes() {

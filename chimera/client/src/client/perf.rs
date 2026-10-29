@@ -642,7 +642,9 @@ fn name_modified<C: bevy::asset::AsAssetId>(
 /// `chimera_perf 3`: the UI trees laid out each frame (`bevy_ui` lays out
 /// every root's tree, hidden or not), logged once a second: roots and their
 /// nodes, of them in hidden trees, and nodes whose `Node` or text changed
-/// this frame (each is synced to the layout again), by root name.
+/// this frame (each is synced to the layout again), by root name (an
+/// unnamed root by its first named node, else by its own component types,
+/// `<HudRoot>`).
 #[allow(clippy::type_complexity)]
 fn count_ui(
     roots: Query<(Entity, Option<&Name>, &InheritedVisibility), (With<Node>, Without<ChildOf>)>,
@@ -652,9 +654,24 @@ fn count_ui(
     parents: Query<&ChildOf>,
     names: Query<&Name>,
     texts: Query<&Text>,
+    (entities, archetypes, components): (&bevy::ecs::entity::Entities, &bevy::ecs::archetype::Archetypes, &bevy::ecs::component::Components),
     mut at: Local<Option<Instant>>,
     mut changes: Local<(u32, std::collections::HashMap<String, u32>)>,
 ) {
+    // An unnamed node by its own component types (not Bevy's): which
+    // HUD or panel it is.
+    let types = |e: Entity| -> String {
+        let Ok(loc) = entities.get_spawned(e) else { return format!("{e}") };
+        let ours: Vec<String> = archetypes[loc.archetype_id]
+            .iter_components()
+            .filter_map(|id| components.get_info(id))
+            .map(|i| i.name().to_string())
+            .filter(|n| !n.starts_with("bevy_"))
+            .map(|n| n.rsplit("::").next().unwrap_or(&n).to_string())
+            .take(2)
+            .collect();
+        if ours.is_empty() { format!("{e}") } else { format!("<{}>", ours.join("+")) }
+    };
     changes.0 += 1;
     for e in &changed {
         // The nearest name up the tree, else the root; and the text, if any.
@@ -665,7 +682,7 @@ fn count_ui(
                 label = names.get(at).ok().map(|n| n.as_str().to_string());
             }
         }
-        let mut label = label.unwrap_or_else(|| format!("root {at}"));
+        let mut label = label.unwrap_or_else(|| format!("root {}", types(at)));
         if let Ok(t) = texts.get(e) {
             label.push_str(&format!(" {:?}", t.0.chars().take(24).collect::<String>()));
         }
@@ -685,11 +702,10 @@ fn count_ui(
             hidden += n;
             hidden_roots += 1;
         }
-        // Unnamed roots by their first named node.
-        let label = name.or_else(|| children.iter_descendants(root).find_map(|c| names.get(c).ok())).map_or_else(
-            || format!("{root}"),
-            |n| n.as_str().to_string(),
-        );
+        // Unnamed roots by their first named node, else their own types.
+        let label = name
+            .or_else(|| children.iter_descendants(root).find_map(|c| names.get(c).ok()))
+            .map_or_else(|| types(root), |n| n.as_str().to_string());
         trees.push((label, n, vis.get()));
     }
     trees.sort_by(|a, b| b.1.cmp(&a.1));

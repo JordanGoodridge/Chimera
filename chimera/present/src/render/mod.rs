@@ -29,6 +29,7 @@ pub mod fog;
 pub mod dust;
 pub mod fish;
 pub mod glow;
+pub mod idle_lights;
 mod images;
 pub use images::*;
 pub mod light_styles;

@@ -55,6 +55,7 @@
 //! the lead"; the HUD's notices (`notice`) stay the small text.
 
 use bevy::prelude::*;
+use chimera_core::query_cache::cached_query;
 use serde::Deserialize;
 
 use super::{
@@ -401,27 +402,30 @@ fn refill(world: &mut World) {
         return;
     }
     let rungs = ladder.rungs.clone();
-    let mut guns = world.query::<(&Weapon, &mut Magazine)>();
-    for (w, mut m) in guns.iter_mut(world) {
-        if w.owner.is_some() && m.reserve < m.reserve_max && rungs.contains(&w.id) {
-            m.reserve = m.reserve_max;
+    // Kept query states (`query_cache`): this runs every tick.
+    cached_query::<(&Weapon, &mut Magazine), (), _>(world, |guns, world| {
+        for (w, mut m) in guns.iter_mut(world) {
+            if w.owner.is_some() && m.reserve < m.reserve_max && rungs.contains(&w.id) {
+                m.reserve = m.reserve_max;
+            }
         }
-    }
+    });
     // A grenade rung's grenade comes back once thrown (kept in the hand
     // meanwhile: `KeepSpent`), so a player throws until a kill.
-    let mut thrown = world.query_filtered::<(Entity, &Weapon, &mut Throwable), Without<KeepSpent>>();
-    let keep: Vec<Entity> =
-        thrown.iter(world).filter(|(_, w, _)| w.owner.is_some() && rungs.contains(&w.id)).map(|(e, ..)| e).collect();
+    let keep: Vec<Entity> = cached_query::<(Entity, &Weapon, &Throwable), Without<KeepSpent>, _>(world, |thrown, world| {
+        thrown.iter(world).filter(|(_, w, _)| w.owner.is_some() && rungs.contains(&w.id)).map(|(e, ..)| e).collect()
+    });
     for e in keep {
         world.entity_mut(e).insert(KeepSpent);
     }
-    let mut grenades = world.query::<(&Weapon, &mut Throwable)>();
-    for (w, mut t) in grenades.iter_mut(world) {
-        let full = t.max.max(1);
-        if w.owner.is_some() && t.count < full && rungs.contains(&w.id) {
-            t.count = full;
+    cached_query::<(&Weapon, &mut Throwable), (), _>(world, |grenades, world| {
+        for (w, mut t) in grenades.iter_mut(world) {
+            let full = t.max.max(1);
+            if w.owner.is_some() && t.count < full && rungs.contains(&w.id) {
+                t.count = full;
+            }
         }
-    }
+    });
 }
 
 /// Everyone back to the first rung as the match starts.

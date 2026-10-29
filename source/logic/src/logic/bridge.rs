@@ -671,36 +671,39 @@ fn set_prop_look(world: &mut World, node: Entity, state: &super::props::PropStat
 fn sync_visuals(world: &mut World, logic: &Logic) {
     let mut states = logic.world.part_states();
     states.sort_by_key(|s| s.0);
-    let mut parts = world.query::<&mut EntityPart>();
-    for mut part in parts.iter_mut(world) {
-        let want = match states.binary_search_by_key(&part.entity, |s| s.0) {
-            Ok(i) => (states[i].2, true),
-            Err(_) => (false, false),
-        };
-        if (part.on, part.exists) != want {
-            part.on = want.0;
-            part.exists = want.1;
+    // Kept query states (`query_cache`): this runs every tick.
+    cached_query::<&mut EntityPart, (), _>(world, |parts, world| {
+        for mut part in parts.iter_mut(world) {
+            let want = match states.binary_search_by_key(&part.entity, |s| s.0) {
+                Ok(i) => (states[i].2, true),
+                Err(_) => (false, false),
+            };
+            if (part.on, part.exists) != want {
+                part.on = want.0;
+                part.exists = want.1;
+            }
         }
-    }
+    });
     // Steam jets' value inputs (meters; the Rate input does nothing).
     let mut jets = logic.world.steam_jets();
     jets.sort_by_key(|j| j.0);
     let scale = logic.scale;
-    let mut parts = world.query::<(Entity, &EntityPart, Option<&crate::map::SteamInputs>)>();
     let mut changes = Vec::new();
-    for (e, part, have) in parts.iter(world) {
-        let want = jets
-            .binary_search_by_key(&part.entity, |j| j.0)
-            .ok()
-            .map(|i| crate::map::SteamInputs {
-                length: jets[i].1.length.map(|v| v * scale),
-                spread: jets[i].1.spread.map(|v| v * scale),
-                speed: jets[i].1.speed.map(|v| v * scale),
-            });
-        if want.as_ref() != have {
-            changes.push((e, want));
+    cached_query::<(Entity, &EntityPart, Option<&crate::map::SteamInputs>), (), _>(world, |parts, world| {
+        for (e, part, have) in parts.iter(world) {
+            let want = jets
+                .binary_search_by_key(&part.entity, |j| j.0)
+                .ok()
+                .map(|i| crate::map::SteamInputs {
+                    length: jets[i].1.length.map(|v| v * scale),
+                    spread: jets[i].1.spread.map(|v| v * scale),
+                    speed: jets[i].1.speed.map(|v| v * scale),
+                });
+            if want.as_ref() != have {
+                changes.push((e, want));
+            }
         }
-    }
+    });
     for (e, want) in changes {
         match want {
             Some(w) => world.entity_mut(e).insert(w),

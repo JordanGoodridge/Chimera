@@ -1,8 +1,8 @@
 //! What every game binary does with its app once its plugins are in,
-//! shared by the apps (apps/cs_source, apps/combat_arms): `run` puts the
-//! per-frame schedules on single-threaded executors
-//! (`single_threaded_schedules`; `CHIMERA_EXECUTOR=multi` keeps Bevy's
-//! default), writes the systems' order instead of running when
+//! shared by the apps (apps/cs_source, apps/combat_arms): `run` puts
+//! every schedule of the main and render worlds on single-threaded
+//! executors (`single_threaded_schedules`; `CHIMERA_EXECUTOR=multi` keeps
+//! Bevy's default), writes the systems' order instead of running when
 //! `CHIMERA_SYSTEM_DUMP=<file>` is set (`dump_systems`,
 //! docs/OBSERVABILITY.md), and runs the app.
 //!
@@ -10,13 +10,7 @@
 //! build script's: chimera/core/build_stamp.rs, which each app's build.rs
 //! includes.
 
-use bevy::{
-    ecs::{
-        intern::Interned,
-        schedule::{ScheduleLabel, SingleThreadedExecutor},
-    },
-    prelude::*,
-};
+use bevy::{ecs::schedule::SingleThreadedExecutor, prelude::*};
 
 /// Run a game's app as its binary does: the executors
 /// (`single_threaded_schedules`, unless `CHIMERA_EXECUTOR=multi`), then
@@ -79,8 +73,8 @@ pub fn dump_systems(app: &mut App, path: &std::path::Path) {
     }
 }
 
-/// Run the per-frame schedules on one thread each instead of Bevy's
-/// multi-threaded executor: the main world's (chimera_world's
+/// Run every schedule on one thread each instead of Bevy's multi-threaded
+/// executor: the main world's (chimera_world's
 /// `harness::single_threaded_schedules`, which the dedicated server uses
 /// alone) and the render world's.
 ///
@@ -104,17 +98,17 @@ pub fn single_threaded_schedules(app: &mut App) {
     if cfg!(any(target_os = "macos", target_os = "ios")) {
         return;
     }
-    let render: [Interned<dyn ScheduleLabel>; 4] = [
-        bevy::render::Render.intern(),
-        bevy::render::renderer::RenderGraph.intern(),
-        bevy::core_pipeline::Core3d.intern(),
-        bevy::core_pipeline::Core2d.intern(),
-    ];
+    // Every render-world schedule: `Render` and the graph's, and the
+    // ones Bevy left on its multi-threaded executor: the sub-app's own
+    // update schedule (one system that runs `Render`; a task handed to a
+    // worker and waited for every frame), its `First`, and the extract
+    // schedule, which runs on the main thread while the main world waits.
     if let Some(sub) = app.get_sub_app_mut(bevy::render::RenderApp) {
-        for label in render {
-            sub.edit_schedule(label, |s| {
-                s.set_executor(SingleThreadedExecutor::new());
-            });
-        }
+        chimera_world::harness::set_executors(sub.world_mut(), SingleThreadedExecutor::new);
+        // Its commands are applied on the render thread, later
+        // (`ExtractCommands`): a new executor would apply them at its end.
+        sub.edit_schedule(bevy::render::ExtractSchedule, |s| {
+            s.set_apply_final_deferred(false);
+        });
     }
 }

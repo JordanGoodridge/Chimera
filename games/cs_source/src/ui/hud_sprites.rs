@@ -306,13 +306,18 @@ fn update(
                 }
                 let r = super::game_hud::panel_rect(panel, w, h);
                 let at = r.min + Vec2::new(scaled(panel.icon.x, scale), scaled(panel.icon.y, scale));
-                node.left = px(at.x);
-                node.top = px(at.y);
-                node.width = px(scaled(s.rect[2], scale));
-                node.height = px(scaled(s.rect[3], scale));
-                *vis = Visibility::Inherited;
+                // Written only on a change (`ui_write`).
+                crate::client::ui_write::edit(&mut node, |node| {
+                    node.left = px(at.x);
+                    node.top = px(at.y);
+                    node.width = px(scaled(s.rect[2], scale));
+                    node.height = px(scaled(s.rect[3], scale));
+                });
+                vis.set_if_neq(Visibility::Inherited);
             }
-            None => *vis = Visibility::Hidden,
+            None => {
+                vis.set_if_neq(Visibility::Hidden);
+            }
         }
     }
     // The damage indicator's bars at the screen's sides.
@@ -321,14 +326,19 @@ fn update(
     };
     for (p, mut node, mut img) in &mut pains {
         let r = bars.rect(p.0, w, h);
-        node.left = px(r.min.x);
-        node.top = px(r.min.y);
-        node.width = px(r.width());
-        node.height = px(r.height());
+        crate::client::ui_write::edit(&mut node, |node| {
+            node.left = px(r.min.x);
+            node.top = px(r.min.y);
+            node.width = px(r.width());
+            node.height = px(r.height());
+        });
         // Fading out over `PAIN_SECONDS` from its full strength (ours).
         let alpha = if dead { 0.0 } else { (p.1 / PAIN_SECONDS).clamp(0.0, 1.0) };
         let [r, g, b] = bars.color;
-        img.color = Color::srgba_u8(r, g, b, 255).with_alpha(alpha * 0.8);
+        let color = Color::srgba_u8(r, g, b, 255).with_alpha(alpha * 0.8);
+        if img.color != color {
+            img.color = color;
+        }
     }
 }
 

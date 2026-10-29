@@ -432,11 +432,33 @@ pub fn parts(line: &str) -> Vec<String> {
 pub fn keys_for<'a>(binds: &'a BTreeMap<String, String>, command: &str) -> Vec<&'a str> {
     binds
         .iter()
-        .filter(|(_, v)| {
-            same_command(v, command) || (v.contains(';') && parts(v).iter().any(|p| same_command(p, command)))
-        })
+        .filter(|(_, v)| runs(v, command))
         .map(|(k, _)| k.as_str())
         .collect()
+}
+
+/// Whether a bind's line is `command` or holds it among its `;` parts.
+fn runs(line: &str, command: &str) -> bool {
+    same_command(line, command) || (line.contains(';') && parts(line).iter().any(|p| same_command(p, command)))
+}
+
+/// Whether a key or button in `down` (held, or gone down this frame) is
+/// bound to `command`: the keys down looked up by name (usually none or
+/// a few) instead of every bind compared with the command, as
+/// `keys_for` would (input polls this several times a frame; the names
+/// are unique, `key_names_are_unique`).
+fn bound_down(
+    binds: &BTreeMap<String, String>,
+    keys: impl Iterator<Item = KeyCode>,
+    buttons: impl Iterator<Item = MouseButton>,
+    command: &str,
+) -> bool {
+    let bound = |name: &str| binds.get(name).is_some_and(|line| runs(line, command));
+    keys.flat_map(|k| KEY_NAMES.iter().filter(move |(c, _)| *c == k))
+        .any(|(_, n)| bound(n))
+        || buttons
+            .flat_map(|b| MOUSE_NAMES.iter().filter(move |(c, _)| *c == b))
+            .any(|(_, n)| bound(n))
 }
 
 /// `norm(a) == norm(b)` without the two new strings.
@@ -465,17 +487,6 @@ pub fn key_held(name: &str, keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<Mou
             .is_some_and(|(b, _)| mouse.pressed(*b))
 }
 
-fn key_just_pressed(name: &str, keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>) -> bool {
-    KEY_NAMES
-        .iter()
-        .find(|(_, n)| *n == name)
-        .is_some_and(|(k, _)| keys.just_pressed(*k))
-        || MOUSE_NAMES
-            .iter()
-            .find(|(_, n)| *n == name)
-            .is_some_and(|(b, _)| mouse.just_pressed(*b))
-}
-
 /// Whether a key bound to `command` is held.
 pub fn pressed(
     binds: &BTreeMap<String, String>,
@@ -483,7 +494,7 @@ pub fn pressed(
     mouse: &ButtonInput<MouseButton>,
     command: &str,
 ) -> bool {
-    keys_for(binds, command).into_iter().any(|k| key_held(k, keys, mouse))
+    bound_down(binds, keys.get_pressed().copied(), mouse.get_pressed().copied(), command)
 }
 
 /// Whether a key bound to `command` went down this frame.
@@ -493,9 +504,7 @@ pub fn just_pressed(
     mouse: &ButtonInput<MouseButton>,
     command: &str,
 ) -> bool {
-    keys_for(binds, command)
-        .into_iter()
-        .any(|k| key_just_pressed(k, keys, mouse))
+    bound_down(binds, keys.get_just_pressed().copied(), mouse.get_just_pressed().copied(), command)
 }
 
 /// Wheel notches this frame on wheel directions bound to `command`.
@@ -855,5 +864,54 @@ bind "MOUSE1" "+attack"
         assert_eq!(first_pressed(&keys, &mouse, None), None);
         keys.press(KeyCode::Numpad5);
         assert_eq!(first_pressed(&keys, &mouse, None), Some("kp_5"));
+    }
+
+    #[test]
+    fn key_names_are_unique() {
+        // `pressed` looks a held key's bind up by its name; `key_held`
+        // finds a name's first key: the same only with one key per name.
+        let names: Vec<&str> = KEY_NAMES.iter().map(|(_, n)| *n).chain(MOUSE_NAMES.iter().map(|(_, n)| *n)).collect();
+        let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
+        assert_eq!(unique.len(), names.len());
+    }
+
+    #[test]
+    fn pressed_is_any_bound_key_held() {
+        // As before: the keys bound to the command (`keys_for`), any held.
+        let b = binds(&[
+            ("w", "+forward"),
+            ("uparrow", " +FORWARD"),
+            ("q", "+reload; lastinv"),
+            ("mouse1", "+attack"),
+            ("e", "say \"+use; x\""),
+            ("mwheelup", "invprev"),
+        ]);
+        let commands = ["+forward", "+reload", "lastinv", "+attack", "+use", "invprev", "+jump"];
+        let old = |keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, c: &str| {
+            keys_for(&b, c).into_iter().any(|k| key_held(k, keys, mouse))
+        };
+        let (mut keys, mut mouse) = (ButtonInput::<KeyCode>::default(), ButtonInput::<MouseButton>::default());
+        let check = |keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>| {
+            for c in commands {
+                assert_eq!(pressed(&b, keys, mouse, c), old(keys, mouse, c), "{c}");
+            }
+        };
+        check(&keys, &mouse);
+        keys.press(KeyCode::ArrowUp);
+        assert!(pressed(&b, &keys, &mouse, "+forward"));
+        assert!(just_pressed(&b, &keys, &mouse, "+forward"));
+        check(&keys, &mouse);
+        keys.clear();
+        assert!(pressed(&b, &keys, &mouse, "+forward"), "still held");
+        assert!(!just_pressed(&b, &keys, &mouse, "+forward"), "not new");
+        keys.press(KeyCode::KeyQ);
+        keys.press(KeyCode::KeyE);
+        mouse.press(MouseButton::Left);
+        check(&keys, &mouse);
+        assert!(pressed(&b, &keys, &mouse, "lastinv") && pressed(&b, &keys, &mouse, "+attack"));
+        assert!(!pressed(&b, &keys, &mouse, "+use"), "quoted: one command");
+        keys.release_all();
+        mouse.release_all();
+        check(&keys, &mouse);
     }
 }
