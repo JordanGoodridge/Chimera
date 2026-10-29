@@ -19,7 +19,8 @@
 //! shell's, and no radars unless `hud_radar 1` (`PartyHudPlugin`); with
 //! `party_swap_effect 1` (default 0) a short flash when the local
 //! player's gun changes game, a puff at others' (`client::swap_effect`). Known
-//! shortcuts: not CS:S's spectator panel or overview;
+//! The Escape menu is the party's own (`esc_menu`), titled by the app.
+//! Known shortcuts: not CS:S's spectator panel or overview;
 //! on Combat Arms' maps there is no CS:S HUD look (the shell's plain HUD
 //! with CS:S's guns).
 
@@ -99,6 +100,8 @@ impl Plugin for ClientPlugin {
         // The key binds page (F6, `controls`): shared binds and each
         // game's own.
         .add_plugins(crate::controls::ControlsPlugin)
+        // The party's own Escape menu (Combat Arms' yields Esc to it).
+        .add_plugins(crate::esc_menu::EscMenuPlugin)
         .add_plugins(PartyMousePlugin)
         .add_plugins(PartyHudPlugin)
         .add_plugins(chimera_client::client::minigame_scoreboard::MinigameScoreboardPlugin)
@@ -269,6 +272,7 @@ pub fn client_app(args: Args, title: &str) -> App {
     // line) takes the rules slot and names the others.
     .set_gameplay(Gameplay::of(&combat_arms::game::INFO))
     .insert_resource(chimera_core::core::BuildVersion(super::VERSION))
+    .insert_resource(crate::esc_menu::EscMenuTitle(title.into()))
     // A ladder's rung extras differ every launch.
     .insert_resource(super::launch_rung_seed())
     // Network play: a listen server, or a client (`connect`).

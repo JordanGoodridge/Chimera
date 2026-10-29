@@ -1,0 +1,41 @@
+# The player's options: the Escape menu's "Options" page (party_kit::
+# esc_menu), a tab per [[tab]], each [[tab.setting]] an existing cvar of
+# the player's (archived, so config.cfg keeps it). `range` = [min, max,
+# step] (a `-` and a `+`), or `choices` = [[value, label], ...] (a click
+# takes the next). The "Binds" tab is the Controls page (F6).
+
+[[tab]]
+name = "Video"
+setting = [
+  { label = "Field of view", cvar = "fov_desired", range = [75, 90, 1] },
+  { label = "Display", cvar = "chimera_fullscreen", choices = [["0", "Windowed"], ["1", "Full screen"], ["2", "Borderless"]] },
+  { label = "Vertical sync", cvar = "mat_vsync", choices = [["0", "Off"], ["1", "On"]] },
+  { label = "Frame limit", cvar = "fps_max", choices = [["0", "None"], ["60", "60"], ["144", "144"], ["240", "240"], ["300", "300"]] },
+  { label = "Brightness (gamma)", cvar = "mat_monitorgamma", range = [1.6, 2.6, 0.1] },
+]
+
+[[tab]]
+name = "Audio"
+setting = [
+  { label = "Game volume", cvar = "volume", range = [0, 1, 0.05] },
+  { label = "Music volume", cvar = "snd_musicvolume", range = [0, 1, 0.05] },
+  { label = "Mute when unfocused", cvar = "snd_mute_losefocus", choices = [["0", "Off"], ["1", "On"]] },
+]
+
+[[tab]]
+name = "Mouse"
+setting = [
+  { label = "Sensitivity", cvar = "sensitivity", range = [0.1, 20, 0.1] },
+  { label = "Zoomed sensitivity", cvar = "zoom_sensitivity_ratio", range = [0.1, 3, 0.1] },
+  { label = "Mouse filter", cvar = "m_filter", choices = [["0", "Off"], ["1", "On"]] },
+  { label = "Acceleration", cvar = "m_customaccel", choices = [["0", "Off"], ["3", "On"]] },
+]
+
+[[tab]]
+name = "Party"
+setting = [
+  { label = "Hit marker", cvar = "cl_hitmarker", choices = [["0", "Off"], ["1", "On"]] },
+  { label = "Swap effect", cvar = "party_swap_effect", choices = [["0", "Off"], ["1", "On"]] },
+  { label = "Music", cvar = "party_music", choices = [["1", "Party playlist"], ["2", "The game's loop"], ["0", "None"]] },
+  { label = "Radar", cvar = "hud_radar", choices = [["0", "Off"], ["1", "On"]] },
+]

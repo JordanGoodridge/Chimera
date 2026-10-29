@@ -23,8 +23,12 @@ use crate::switches::set_rung;
 
 /// A party whose first soldier is the local player, read from the keyboard
 /// as the client reads it (`write_local_intent`, the wheel's jumps).
-fn local_party() -> (Sim, Entity) {
-    let mut sim = party();
+pub(crate) fn local_party() -> (Sim, Entity) {
+    local_party_with(party())
+}
+
+/// `local_party` on `sim` (the party with a test's plugins too).
+pub(crate) fn local_party_with(mut sim: Sim) -> (Sim, Entity) {
     let a = soldier(&mut sim);
     let _b = soldier(&mut sim);
     let app = &mut sim.app;

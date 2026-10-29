@@ -361,7 +361,9 @@ the user's go-ahead: no Actions runs unless asked.
   tracer start (the view model's muzzle, the eye, a point ahead of it),
   and is it drawn at all while scoped? Ours starts at the view model's
   flash point, which keeps its camera offset when zoomed.
-- **Ultimate Gun Game's Escape menu (user, 2026-10-29).** It's
+- **Ultimate Gun Game's Escape menu (user, 2026-10-29): fixed, confirm
+  in a playtest** (`party_kit::esc_menu`, `party_kit::host`; DESIGN.md
+  "The party apps' Escape menu"). It's
   Ultimate Gun Game's own, not Combat Arms', drawn above the match-end
   screen. Entries:
   - **Resume.**
@@ -376,6 +378,9 @@ the user's go-ahead: no Actions runs unless asked.
   - **Quit.**
   - No scoreboard entry, since Tab opens it. No Disconnect until there is
     a main menu to go back to.
+- **RCON admins for the Escape menu's host settings.** Today only the
+  host (a listen server's player) sees them; a dedicated server's admin
+  sets the same cvars on its console.
 - **A main menu for Ultimate Gun Game (and the other party apps).**
   Scope it after the Escape menu: play (host or join), server browser
   or direct connect, options, quit. Then add Disconnect to the Escape

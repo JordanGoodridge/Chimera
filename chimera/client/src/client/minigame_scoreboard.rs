@@ -86,6 +86,9 @@ pub struct ScoreboardRow {
     pub local: bool,
 }
 
+/// Where it draws: over the HUDs and the match-end screen.
+pub const SCOREBOARD_Z: i32 = 80;
+
 const COLOR: Color = Color::srgb(0.95, 0.95, 0.95);
 const LOCAL: Color = Color::srgb(1.0, 0.85, 0.3);
 /// Name, Kills, Deaths, Gun, Ping, Wins.
@@ -101,7 +104,7 @@ fn spawn(mut commands: Commands) {
     commands.spawn((
         ScoreboardRoot,
         Visibility::Hidden,
-        GlobalZIndex(80),
+        GlobalZIndex(SCOREBOARD_Z),
         BackgroundColor(Color::srgb(0.04, 0.04, 0.05)),
         Node {
             position_type: PositionType::Absolute,

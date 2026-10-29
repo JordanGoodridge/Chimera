@@ -2,7 +2,8 @@
 //! panels (CS:S's: `games::cs_source::ui`, added by the app) are a part
 //! of that game; the shell (console, input, network glue, debug tools)
 //! never names them. It tells them what happened through `FrontEnd`'s
-//! hooks and reads what they show through `MenuStatus` and `KeyPanels`,
+//! hooks and reads what they show through `MenuStatus` and `KeyPanels`
+//! (an app's own menu over them: `AppMenu`),
 //! which the game's UI keeps in step with its own state (`FrontEndSync`).
 //! Without a game UI the hooks do nothing and the resources are absent or
 //! empty: the shell plays with no menus.
@@ -97,6 +98,16 @@ pub struct MenuStatus {
     pub loading: bool,
     /// The dialog shows why joining (or the game) failed.
     pub failed: bool,
+}
+
+/// An app's own menu over the game's (the party apps' Escape menu,
+/// `party_kit::esc_menu`): with this resource in, the app owns Esc (the
+/// game UI's own Esc menu stays shut), and while `open` the game UI
+/// counts it in `MenuStatus::open`, so the mouse and the binds are the
+/// menu's as they are under the game's own.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct AppMenu {
+    pub open: bool,
 }
 
 /// The game's panels open now (CS:S's `buy`, `team`, `radio` and

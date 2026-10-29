@@ -11,7 +11,7 @@
 //!   game's own binds first, then the shared ones (`Console::
 //!   effective_binds`), before the intent is sent, so prediction is not
 //!   involved. A later game adds a row list (`GAMES`) and ships binds.
-//! - The page (`F6`, or `controls [tab]`): a tab for "Shared" first, then
+//! - The page (`F6`, `controls [tab]`, or the Escape menu's Options > Binds): a tab for "Shared" first, then
 //!   one for each game; a row is an action and its keys; clicking the keys
 //!   waits for the next key, mouse button or wheel notch (the wheel is a
 //!   bind like any: `mwheeldown` on Jump bunny hops in both games); Esc
@@ -246,6 +246,11 @@ pub enum Action {
 #[derive(Component)]
 struct PageRoot;
 
+/// The page's systems (the Escape menu's run before them: Esc is the
+/// page's while it is open).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ControlsSystems;
+
 pub struct ControlsPlugin;
 
 impl Plugin for ControlsPlugin {
@@ -262,7 +267,7 @@ impl Plugin for ControlsPlugin {
                 page.capture = None;
                 Ok(None)
             })
-            .add_systems(Update, (toggle, refresh_values, capture, click, show).chain());
+            .add_systems(Update, (toggle, refresh_values, capture, click, show).chain().in_set(ControlsSystems));
     }
 }
 
