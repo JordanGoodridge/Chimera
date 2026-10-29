@@ -1758,6 +1758,139 @@ Pictures (ms of CPU a frame, before grey, after blue; per thread by
 crate family; flame graphs before and after): `top.svg`, `families.svg`,
 `flame.svg` from `profsum --baseline`.
 
+### Third pass: the schedules, the HUD, per-bot animation (2026-10-29)
+
+Same scenes, `--spawn`/`--look` and `+sv_cheats 1 +god` as the second
+pass (de_dust2 `--spawn -10.69,0.0,-52.07 --look 90,0`, cs_office
+`--spawn -28.24,-8.43,39.42 --look 0,0`), "before" main at 19418530.
+The box ran at load 12-40 the whole session (other agents building), so
+the game's wall times swung 3x between runs of one build: read the
+instruction columns and the headless tick numbers, which ran
+interleaved with the same inputs.
+
+**Executors (item 7 of the hot spots).** What was structural: schedules
+nobody had put on the single-threaded executor ran on Bevy's
+multi-threaded one, which hands every system to a worker and wakes the
+next: prediction's `Predict::Select`, `Movement` and `Weapons` (every
+tick, and per replayed command on a client: 13, ~10 and 17 systems in
+the party), `StateTransition`, `SpawnScene`, egui's passes, and the
+render sub-app's update schedule (one system that runs `Render`) and
+its `First`. `harness::set_executors` now sets every schedule of a world
+(`single_threaded_schedules`; the client does the render world's too);
+`Sim::multi_threaded` and `CHIMERA_EXECUTOR=multi` still put Bevy's back
+on all of them. It also makes the prediction stages' unordered systems
+run in one order, the topological sort's, where the workers took them in
+any (the schedule ratchets' pairs are unchanged; prediction's still have
+no pair the server and client order differently). The extract schedule
+stays on Bevy's executor: on one thread its ~150 systems added ~0.6 ms a
+frame to the main thread (perf, both maps), which sets the frame.
+The rest of the executor's cost is per system and real: about 0.6-0.8
+ms a frame of `SingleThreadedExecutor::run`, `system_type`,
+`run_without_applying_deferred`, `apply_deferred` and run conditions on
+the main thread (perf self time), i.e. the ~600 systems a tick each
+touched once. Cutting that needs fewer systems (merging them changes the
+order of their unordered neighbours: 718 ambiguous pairs in Combat Arms'
+`FixedUpdate` alone, `tests/it/schedules.rs`), not done here.
+
+Headless, all threads (`perfgate`, playtest build; and `party_kit`
+`heavy::bot_cost`, a dev build; medians of 3 before and 2 after rounds,
+interleaved):
+
+| scenario | instructions per tick, all threads | main thread p50 | cpu ms p50 | wall ms p50 | wall ms p99 |
+|---|---|---|---|---|---|
+| perfgate de_dust2 (CS:S, 10 bots), before | 13.14G / 2000 ticks | 4.24M | 2.35 | 2.18 | 5.67 |
+| perfgate de_dust2, after | 12.93G | 5.60M | 1.34 | 1.19 | 2.43 |
+| perfgate greybox, before | 1.34G / 2000 | 543k | 0.66 | 0.59 | 1.95 |
+| perfgate greybox, after | 1.24G | 583k | 0.33 | 0.25 | 0.31 |
+
+| party gun game on de_dust2 (`bot_cost`) | 2 bots | 4 | 8 | 16 |
+|---|---|---|---|---|
+| wall ms per tick, before | 2.70 | 3.81 | 4.91 | 7.14 |
+| wall ms per tick, after | 1.58 | 1.96 | 2.73 | 4.70 |
+| schedules thread's instructions per tick, before | 5.46M | 12.88M | 18.49M | 27.18M |
+| the same, after | 5.56M | 11.52M | 17.76M | 30.41M |
+
+Instructions hardly move in all (2-8% fewer) while CPU and wall time
+per tick halve: the multi-threaded executor's cost was waking and
+waiting (low-IPC handoffs, syscalls), not instructions. The prediction
+stages' systems now count on the main thread (`main thread p50` up, the
+party's per-thread instructions flat to +10% with 16 bots) and the
+fights make the per-bot rows noisy (±10% between rounds of one build).
+
+**Bevy's own per-frame `QueryState`s.** `check_dir_light_mesh_visibility`
+queued a command every frame that built a new query over
+`ViewVisibility` (all 2,000+ archetypes), with no shadow-casting light
+in the scene: 0.13 ms a frame. `render::idle_lights` runs it only while
+a directional light casts shadows or still lists cascade entities (the
+same results). Left, also Bevy's: bevy_audio's `cleanup_finished_audio`
+(`despawn_all_where`, ~0.10 ms; its system is private), the screenshot
+plugin's `clear_screenshots` (~0.04). Ours, now kept states: the
+ladder's ammo refill, the logic bridge's `sync_visuals`, Combat Arms'
+scoreboard and music `late_join`.
+
+**The HUD (item 9).** `chimera_perf 3` names an unnamed root by its
+own component types: the trees were Combat Arms' HUD (`InstallRoot`,
+163 nodes, and `MinigameRoot`, 91, hidden while a CS:S gun is held),
+its scope overlay, the match-end, crosshair, callout, console, net
+graph and respawn panels. Changed every frame for nothing: the shell's
+HUD texts (`HealthText`, `AmmoText`, `CenterText`, `KillfeedText` set
+to "" again), the crosshair's lines (`CrosshairLine`, 5 a frame), CS:S's
+HUD parts (`GameHudPart`, 5) and damage bars (`Pain`, 2), the voice icon,
+`OverlayText` and the debug HUD. `client::ui_write` (`set_text`, `edit`)
+writes only a change; now only the perf overlay itself changes a frame.
+`ui_layout_system` stayed at 0.25-0.30 ms: its cost is two walks over
+every node every frame (taffy's `round_layout` and Bevy's
+`update_uinode_geometry_recursive`, 70% of it), changed or not, and
+`Display::None` skips neither in Bevy 0.20, so hidden trees didn't get
+it. What would cut it: fewer nodes laid out (Combat Arms' 254 hidden
+nodes despawned while its HUD is away) or fewer roots (Bevy inserts
+`Propagate` into every root every frame: 73 roots, ~0.07 ms of
+commands). No visible change: the warm-up scenes (`+host_timescale 0`,
+Combat Arms' HUD, the minigame panel, the scoreboard, cs_office) are
+identical to the pixel before and after; live captures with an AK-47
+(CS:S's HUD) and an M4A1 (Combat Arms') show the same HUDs, the
+differences being the live game's (kill feed, chat, blood, the health
+panel's flash).
+
+**Per bot (item 11, and the "biggest per-bot grower").** Combat Arms'
+posed skeletons share their rig's names, parents and sockets
+(`skeleton::Shape`, made once in `Rig::new`) instead of cloning every
+name per pose, and look names up through a case-blind index; the
+driver's animation names (`AnimList::find`, several a tick per body,
+each a scan of a few hundred entries) too. In the perf rounds
+(load 12-13, ms of main-thread CPU a frame): `characters::drive`
+0.16 -> 0.11 (de_dust2) and 0.21 -> 0.10 (cs_office),
+`eq_ignore_ascii_case` 0.08 -> 0.01 and 0.11 -> 0.03. One probe per body instead of a copy in each
+of its 8 materials (`probe_lit::relight`) was not done: it needs the
+probe moved out of `PropMaterial` into a per-entity uniform the prop
+shader reads, a change to every probe-lit draw, not a safe one here.
+
+**Binds.** `binds::pressed` and `just_pressed` compared every bind with
+the command per call, several calls a frame (0.09-0.13 ms); they now look up
+the binds of the keys down (none or a few). Same answers
+(`pressed_is_any_bound_key_held`, `key_names_are_unique`).
+
+The game, perf rounds at load 12-26 (`chimera_perf_log` window of each
+round; instructions p50, main thread):
+
+| map | build | main world w/o ticks | tick (main thread) | render world |
+|---|---|---|---|---|
+| de_dust2 | before | 10.16M (9.73-10.69) | 7.52M (7.15-7.80) | 10.20M |
+| de_dust2 | after | 9.25M (8.66-9.31) | 6.97M (6.92-7.02) | 10.61M |
+| cs_office | before | 13.38M (13.18-14.60) | 10.91M (10.80-11.27) | 10.57M |
+| cs_office | after | 12.39M (11.92-13.05) | 11.32M (11.23-11.37) | 10.56M |
+
+The main world's frame without ticks runs 7-10% fewer instructions
+(the light check, the HUD writes, binds); the tick's main-thread count
+fell on de_dust2 and rose 4% on cs_office although the prediction
+stages' work moved onto that thread (it was on the workers). Frame
+rates on the loaded box said nothing either way (77-217 fps in rounds
+of the same build); a quiet-box or Windows run is the check.
+
+Pictures (`perf/pass3` of the session; profsum `--baseline`, before grey,
+after blue): `top`, `families`, `flame` per map; the headless ticks'
+wall time; the frozen and live HUD captures.
+
 ## See a frame yourself
 
 Three features, on every app with a window (`cs_source` at the root,
