@@ -32,6 +32,12 @@ the user's go-ahead: no Actions runs unless asked.
   Find which spawn picker chose it (the map's own spawn points, or our
   generated gun game spawns), and why that spot passed; check every
   stock map's spawns for points outside the playable space.
+- **de_aztec's barrels ride on top of the water.** Physics barrels in
+  water bob up and down sitting on the surface instead of floating
+  partly under it (`map::buoyancy`). Compare with CS:S: how deep a
+  barrel of that mass and volume floats, and the damping. Check the
+  water surface height used, the submerged-volume estimate (a hull, not
+  the bounding box) and the density.
 - **Kill feed: Combat Arms gun icons sit at the top of the line.** The
   generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
   icons vertically, with every line the same height (widths may vary).
