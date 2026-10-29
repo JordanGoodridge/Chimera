@@ -103,12 +103,16 @@ impl Plugin for GameHudPlugin {
             .add_systems(
                 Update,
                 (
+                    // Before the parts' updates: a rebuild's despawns are
+                    // applied before `update` touches the parts (else it
+                    // rebuilt the notices of a part just despawned).
                     build.run_if(resource_exists_and_changed::<ActiveHud>),
                     (remember_hits, death_notices, update)
                         .chain()
                         .run_if(resource_exists::<ActiveHud>),
                     round_banner,
                 )
+                    .chain()
                     .distributive_run_if(crate::gameplay::hud_is(crate::game::GAME)),
             )
             // Whatever the HUD: the look gone (a map without one, or put

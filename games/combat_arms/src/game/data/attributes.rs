@@ -1060,8 +1060,9 @@ impl MarksFile {
 
 /// A body record's look (`Model<N>`, characters.md 1 and 2): its file
 /// (`ModelFile`), skins by camouflage index (`UpperSkin0..`,
-/// `LowerSkin0..`), render styles (`RenderStyle0..`) and face redirects
-/// (`FaceRelationModel0..`, -1 none).
+/// `LowerSkin0..`), render styles (`RenderStyle0..`), face redirects
+/// (`FaceRelationModel0..`, -1 none), skeleton (`Skeleton`) and gear
+/// (`GearID`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BodyLook {
     pub file: String,
@@ -1071,6 +1072,11 @@ pub struct BodyLook {
     pub faces: Vec<i32>,
     /// `FootprintSndVolume`: a share added to the footstep volume.
     pub footprint_volume: f32,
+    /// `Skeleton`: the hit table and skeleton index (0 male, 1 female in
+    /// the player set).
+    pub skeleton: i32,
+    /// `GearID`.
+    pub gear: i32,
 }
 
 impl BodyLook {
@@ -1083,6 +1089,8 @@ impl BodyLook {
             render_styles: list("RenderStyle"),
             faces: s.int_list("FaceRelationModel"),
             footprint_volume: s.number("FootprintSndVolume", 0.0) as f32,
+            skeleton: s.int("Skeleton", 0),
+            gear: s.int("GearID", -1),
         }
     }
 }

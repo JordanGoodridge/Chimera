@@ -7,7 +7,9 @@
 //! and the head piece a face comes with (2). With the V1 key the
 //! install's models and attachments files give every head piece's,
 //! face's, goggle's and backpack's files and
-//! skins (`merge_install_pieces`); a client's selection is checked by
+//! skins (`merge_install_pieces`), and its body records we have none of
+//! join ours (its specialists and mercenaries: `rung_bodies` is the
+//! wearable player bodies); a client's selection is checked by
 //! `CharacterData::validated`.
 
 use std::collections::BTreeMap;
@@ -383,6 +385,36 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
         }
         m.footprint_volume = r.footprint_volume;
     }
+    // The install's other bodies (named mercenaries and specialists,
+    // cosmetics, NPCs: characters.md 1 counts 431 records), each `Model#`
+    // we have no record of, by its index: wearable (`model`, `effective`,
+    // `validated`) and in the rungs' pool when a player body
+    // (`rung_bodies`).
+    for (i, r) in models.bodies.iter().enumerate() {
+        let id = i as i32;
+        if r.file.is_empty() || data.model.iter().any(|m| m.id == id) {
+            continue;
+        }
+        let wear = models.models.get(i);
+        let dtx = |l: &[String]| -> Vec<String> {
+            l.iter()
+                .map(|s| if super::super::data::is_skin_file(s) { s.clone() } else { String::new() })
+                .collect()
+        };
+        data.model.push(ModelRecord {
+            id,
+            name: wear.map(|w| w.name.clone()).unwrap_or_default(),
+            file: r.file.clone(),
+            skeleton: usize::try_from(r.skeleton).unwrap_or(0),
+            figure: wear.and_then(|w| usize::try_from(w.figure_type).ok()).unwrap_or(0),
+            gear: r.gear,
+            faces: r.faces.clone(),
+            upper_skins: dtx(&r.upper_skins),
+            lower_skins: dtx(&r.lower_skins),
+            render_styles: r.render_styles.clone(),
+            footprint_volume: r.footprint_volume,
+        });
+    }
     for (i, r) in models.hair_pieces.iter().enumerate() {
         let id = i as i32;
         let head = HeadRecord {
@@ -478,6 +510,20 @@ impl Default for Selection {
 impl CharacterData {
     pub fn model(&self, id: i32) -> Option<&ModelRecord> {
         self.model.iter().find(|m| m.id == id)
+    }
+
+    /// The bodies a ladder rung may dress its players in
+    /// (`game::rungs`): every player body record (one with upper skins,
+    /// the two-texture vest and legs scheme, characters.md 1) on the two
+    /// player skeletons (0 male, 1 female), the install's specialists and
+    /// mercenaries with it; without the install's models file, ours (the
+    /// stock six).
+    pub fn rung_bodies(&self) -> Vec<i32> {
+        self.model
+            .iter()
+            .filter(|m| !m.file.is_empty() && m.skeleton <= 1 && m.upper_skins.iter().any(|s| !s.is_empty()))
+            .map(|m| m.id)
+            .collect()
     }
 
     /// Model 0, the default.

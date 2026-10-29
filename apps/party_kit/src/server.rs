@@ -371,7 +371,9 @@ pub fn run(options: &Options, more: impl FnOnce(&mut App)) {
     // Ctrl+C exits as `quit` does (AppExit: `net::udp` hangs up on every
     // client).
     app.add_plugins((bevy::log::LogPlugin::default(), bevy::app::TerminalCtrlCHandlerPlugin))
-        .add_plugins(ServerPlugin::new(start, options));
+        .add_plugins(ServerPlugin::new(start, options))
+        // A ladder's rung extras differ every launch.
+        .insert_resource(crate::launch_rung_seed());
     more(&mut app);
     app.add_systems(Update, (read_stdin, start_serving, print_console).chain());
     let (tx, rx) = std::sync::mpsc::channel();

@@ -17,10 +17,11 @@
 //! - Spawning (`respawn`): at a spawn point the definition's `points`
 //!   pick (`spawn_point`), revived (`spawning::revive`), the definition's
 //!   movement set, the weapons taken and the life's given (the kit, then
-//!   the rules module's `loadout`, the last drawn; no kit when the module
-//!   says so, `RulesModule::no_kit`; a kit by game is the
-//!   loadout's last weapon's game's, `refit_kit` when the rules swap
-//!   that weapon); with `identity =
+//!   the rules module's `loadout`, the last drawn, after its `arming`;
+//!   no kit when the module says so, `RulesModule::no_kit`; a kit by game
+//!   is the loadout's last weapon's game's, `refit_kit` when the rules
+//!   swap that weapon; a `KitMelee` on the player, a ladder rung's, is
+//!   its kit's weapon of that slot, the knife's); with `identity =
 //!   "weapon"` the player follows its weapon's game (`slots::
 //!   FollowsWeapon`; `identity::follow` at once for the drawn one),
 //!   protected (`Protected`, with `core::SpawnProtected`'s two windows:
@@ -180,8 +181,9 @@ pub fn respawn(world: &mut World, e: Entity) {
         crate::identity::unfollow(world, e);
     }
     crate::weapon::equip::strip(world, e);
+    (active.rules.arming)(world, e);
     let loadout = (active.rules.loadout)(world, e);
-    let kit = if (active.rules.no_kit)(world, e) { Vec::new() } else { kit_for(world, def, loadout.last().copied()) };
+    let kit = if (active.rules.no_kit)(world, e) { Vec::new() } else { kit_for(world, def, e, loadout.last().copied()) };
     for id in kit.into_iter().chain(loadout) {
         give(world, e, id);
     }
@@ -286,24 +288,47 @@ pub fn spawn_point_in(world: &mut World, e: Entity, points: Points, min_distance
 
 /// The kit (`SpawnDef::kit`) that goes with the rules' weapon `gun`: the
 /// list, or `gun`'s game's.
-fn kit_for(world: &World, def: &MinigameDef, gun: Option<&str>) -> Vec<&'static str> {
+/// A melee weapon in place of the kit's on this player (a ladder rung's,
+/// `ladder::RungExtras::melee`): the kit's weapon of its slot (the
+/// knife's) is this one; a kit with none in that slot gets none.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KitMelee(pub &'static str);
+
+/// `e`'s kit for a life whose rules weapon is `gun` (a kit by game: that
+/// gun's game's), its weapon of `KitMelee`'s slot that one.
+fn kit_for(world: &World, def: &MinigameDef, e: Entity, gun: Option<&str>) -> Vec<&'static str> {
     let empty = crate::weapon::data::WeaponCatalog::default();
     let catalog = world.get_resource::<crate::weapon::data::WeaponCatalog>().unwrap_or(&empty);
     let game = gun.and_then(|g| g.split_once(':')).map(|(g, _)| g);
-    def.spawn.kit.for_game(game).into_iter().filter_map(|id| super::weapon(def, catalog, id).ok()).collect()
+    let swap = world.get::<KitMelee>(e).map(|m| m.0);
+    let slot = |id: &str| catalog.get(id).map(|w| w.slot);
+    let mut out: Vec<&'static str> = Vec::new();
+    for id in def.spawn.kit.for_game(game).into_iter().filter_map(|id| super::weapon(def, catalog, id).ok()) {
+        let id = match swap {
+            Some(m) if slot(m).is_some() && slot(id) == slot(m) => m,
+            _ => id,
+        };
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
 }
 
-/// A kit by game (`Kit::ByGame`) changed to go with `e`'s new rules weapon
-/// `gun` (the ladder's swap): the other games' kit weapons taken, the new
-/// game's given (before the rules give `gun`, which is then drawn). A kit
-/// list stays as it is.
-pub fn refit_kit(world: &mut World, e: Entity, gun: &str) {
+/// `e`'s kit changed to go with its new rules weapon `gun` (the ladder's
+/// swap): with a kit by game (`Kit::ByGame`), the other games' kit
+/// weapons taken and the new game's given; a melee weapon in place of the
+/// kit's (`KitMelee`) given, and the ones `also` names (the other rungs'
+/// melee weapons) taken when not wanted now; all before the rules give
+/// `gun`, which is then drawn. A kit list without either stays as it is.
+pub fn refit_kit(world: &mut World, e: Entity, gun: &str, also: &[&'static str]) {
     let Some(def) = world.get_resource::<ActiveMinigame>().map(|a| a.def) else { return };
-    if !matches!(def.spawn.kit, Kit::ByGame(_)) {
+    if !matches!(def.spawn.kit, Kit::ByGame(_)) && world.get::<KitMelee>(e).is_none() && also.is_empty() {
         return;
     }
-    let wanted = kit_for(world, def, Some(gun));
-    let any = def.spawn.kit.all();
+    let wanted = kit_for(world, def, e, Some(gun));
+    let mut any = def.spawn.kit.all();
+    any.extend(also.iter().copied());
     let have: Vec<(Entity, &'static str)> = world
         .get::<Inventory>(e)
         .map(|i| i.weapons.iter().filter_map(|w| world.get::<crate::weapon::Weapon>(*w).map(|x| (*w, x.id))).collect())

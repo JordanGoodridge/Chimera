@@ -23,11 +23,21 @@ use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim};
 use combat_arms::{game::movement, harness::CaSim};
 use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
-/// The party's simulation on the greybox, the gun game started.
+/// The party's simulation on the greybox, the gun game started (its
+/// rung extras off: `plain_rungs`).
 pub(crate) fn party() -> Sim {
     let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, PartyPartsPlugin));
+    plain_rungs(sim.app.world_mut());
     minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     sim
+}
+
+/// The ladders this world makes from now on draw no rung extras (no
+/// game's hook: `ladder::RungExtrasHooks` gone), as before them: for the
+/// tests of everything else (the kit's knife, one's own look and the
+/// guns' own parts on every rung); rung_extras.rs tests them.
+pub(crate) fn plain_rungs(world: &mut World) {
+    world.remove_resource::<chimera_sim::minigame::ladder::RungExtrasHooks>();
 }
 
 /// A Combat Arms soldier, not yet in the game (the minigame takes it in).

@@ -14,6 +14,8 @@
 //!   (grenades.md, implemented);
 //! - `attachments`: weapon attachments: the parts a weapon accepts, their
 //!   fitting and effects (attachments.md, implemented);
+//! - `rungs`: a gun game ladder's Combat Arms rungs' extras (a fitted
+//!   set, a character, a melee weapon, the same for everyone on a rung);
 //! - `hud`: the weapon data the HUD reads (`combat_arms:hud`: crosshair
 //!   fields and the weapon panel's class; hud_crosshair.md);
 //! - `data`: Combat Arms' data files (games/combat_arms/data/) and, later,
@@ -96,6 +98,7 @@ pub mod props;
 pub mod radar;
 pub mod render_style;
 pub mod rules;
+pub mod rungs;
 pub mod special;
 pub mod view_model;
 pub mod volumes;
@@ -254,6 +257,7 @@ impl PluginGroup for CombatArmsPlugins {
             .add(radar::CaRadarPlugin)
             .add(options::CaOptionsPlugin)
             .add(attachments::CaAttachmentsPlugin)
+            .add(rungs::CaRungsPlugin)
             .add(view_model::CaViewModelPlugin)
             .add(effects::CaEffectsPlugin)
             .add(weapons::CaWeaponsPlugin)
@@ -289,6 +293,7 @@ impl PluginGroup for CombatArmsGunsPlugins {
             .add(special::CaSpecialPlugin)
             .add(radar::CaScannerHook)
             .add(attachments::CaAttachmentsPlugin)
+            .add(rungs::CaRungsPlugin)
             .add(view_model::CaViewModelPlugin)
             .add(effects::CaEffectsPlugin)
             .add(weapons::CaWeaponsPlugin)

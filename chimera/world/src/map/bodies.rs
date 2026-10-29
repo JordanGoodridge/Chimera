@@ -10,7 +10,9 @@
 //!
 //! `CharacterModels`, `BodyModel`, `BodyName`, `BodySkin`, `BodyNumber`, `Corpse`, `Held`,
 //! `ShowLocalBody`; held models a game adds after the map spawned
-//! (`add_held_model`, `LateHeldModels`: one the map's kit lacks);
+//! (`add_held_model`, `LateHeldModels`: one the map's kit lacks), and
+//! character models likewise (`add_character_model`,
+//! `LateCharacterModels`, appended to each map's `CharacterModels`);
 //! hitboxes on the skeleton (also headless), `SimAnimator`/`SimPose`.
 //!
 //! Known shortcuts (docs/tech-debt.md): Maps without character models fall back
@@ -54,6 +56,54 @@ pub fn add_held_model(world: &mut World, model: MapHeldModel, textures: std::syn
     let mut late = world.get_resource_or_init::<LateHeldModels>();
     late.0.retain(|(m, _)| m.key != model.key);
     late.0.push((std::sync::Arc::new(model), textures));
+}
+
+/// Character models added after the map spawned (`add_character_model`):
+/// a game's body the map's kit doesn't carry (Combat Arms' install bodies
+/// a ladder rung dresses its players in, loaded the first time one is
+/// worn), each with its own textures (its meshes' texture indices name
+/// them). Kept across map changes: appended to each map's
+/// `CharacterModels` (`append_late_characters`, after the map's own, so
+/// their indices stay) on a map that has a model of the same game, and
+/// drawn by `render::bodies::build_late_bodies`.
+#[derive(Resource, Clone, Default)]
+pub struct LateCharacterModels(pub Vec<(Arc<MapCharacterModel>, Arc<Vec<MapTexture>>)>);
+
+impl LateCharacterModels {
+    /// The model named `name` and its textures.
+    pub fn get(&self, name: &str) -> Option<&(Arc<MapCharacterModel>, Arc<Vec<MapTexture>>)> {
+        self.0.iter().find(|(m, _)| m.name.as_deref() == Some(name))
+    }
+}
+
+/// Add character model `model` (named: `MapCharacterModel::name`), its
+/// textures `textures`, from the next tick on this map and the next ones;
+/// one of the same name is replaced.
+pub fn add_character_model(world: &mut World, model: MapCharacterModel, textures: Arc<Vec<MapTexture>>) {
+    let mut late = world.get_resource_or_init::<LateCharacterModels>();
+    late.0.retain(|(m, _)| m.name != model.name);
+    late.0.push((Arc::new(model), textures));
+}
+
+/// The late character models (`LateCharacterModels`) the map's
+/// `CharacterModels` lack, appended: each on a map with a model of its
+/// game (where that game's bodies are worn).
+pub fn append_late_characters(late: Option<Res<LateCharacterModels>>, models: Option<ResMut<CharacterModels>>) {
+    let (Some(late), Some(mut models)) = (late, models) else { return };
+    let missing: Vec<MapCharacterModel> = late
+        .0
+        .iter()
+        .filter(|(m, _)| {
+            !models.0.iter().any(|x| x.name == m.name) && models.0.iter().any(|x| x.game.is_some() && x.game == m.game)
+        })
+        .map(|(m, _)| (**m).clone())
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+    let mut all = (*models.0).clone();
+    all.extend(missing);
+    models.0 = Arc::new(all);
 }
 
 /// A body drawn on an entity that is not a character: the corpse a game

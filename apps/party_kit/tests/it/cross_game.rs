@@ -181,6 +181,7 @@ fn duel(shooter: usize, target: usize, bodies: Option<fn(&mut App)>) -> (Sim, En
                 ),
             );
             setup(&mut sim.app);
+            crate::gun_game::plain_rungs(sim.app.world_mut());
             chimera_sim::minigame::start(sim.app.world_mut(), party_kit::DEFAULT_MINIGAME).expect("the gun game starts");
             sim
         }

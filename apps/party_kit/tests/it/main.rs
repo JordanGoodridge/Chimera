@@ -28,6 +28,7 @@ mod persist;
 mod net_party;
 mod results_hud;
 mod rotation;
+mod rung_extras;
 mod startup;
 mod swap_effect;
 mod switches;

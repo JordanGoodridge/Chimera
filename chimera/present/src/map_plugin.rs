@@ -194,6 +194,7 @@ impl MapLayers for Present {
                 )
                     .chain(),
                 (
+                    render::bodies::build_late_bodies.before(render::bodies::attach_bodies),
                     render::bodies::attach_bodies,
                     render::bodies::show_local_body,
                     render::bodies::turn_bodies.after(DriveAnimation),

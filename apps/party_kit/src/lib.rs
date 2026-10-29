@@ -69,6 +69,11 @@
 //!   short flash on a rung's swap and a puff at others' bodies:
 //!   `chimera_client::client::swap_effect`).
 //!
+//! - A gun game's rung extras (`chimera_sim::minigame::ladder::RungExtras`:
+//!   Combat Arms' rungs' fitted parts, character and melee weapon,
+//!   `combat_arms::game::rungs`) are seeded anew at every launch of the
+//!   apps (`launch_rung_seed`); the plugins alone (the tests) keep seed 0.
+//!
 //! Known shortcuts: maps load by id only (no downloaded map files); the
 //! minigame's map pool isn't rotated (its first map plays); the bots fight
 //! with whatever their ladder gives but keep the reach of their first
@@ -571,4 +576,15 @@ mod tests {
         assert!(s.loader("cs_source").is_some() && s.loader("combat_arms").is_some());
         assert_eq!(s.gameplay.map(|g| g.game), Some(combat_arms::game::GAME));
     }
+}
+
+/// A fresh seed for the ladders' rung extras (the clock's and the
+/// process's, mixed): the apps' at launch.
+pub fn launch_rung_seed() -> chimera_sim::minigame::ladder::RungSeed {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos() as u64);
+    chimera_sim::minigame::ladder::RungSeed(
+        chimera_sim::minigame::auto::Rng::new(nanos ^ ((std::process::id() as u64) << 32)).next(),
+    )
 }
