@@ -27,6 +27,20 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **In progress (agents working, 2026-10-29):**
+  - Hephaestus and the LAW NPC fire grey balls (999 ammo, no damage, no
+    explosion or sounds): Combat Arms launcher projectiles.
+  - Grey Combat Arms skins: Prismatic Eco M416, Drakeveil SIG550, M14
+    Cyanide Echo lv.4 (limit), and Dragunov SVD Obsidian Dragon (flat,
+    unshaded grey). The R870 isn't visible in Combat Arms characters'
+    hands (install-only guns may have no held model).
+  - Round music loops one short track: a party playlist instead.
+  - On the end screen, guns still play their firing animation and WASD
+    still plays footsteps.
+  - Combat Arms guns' sounds and scopes may be templates, not each gun's
+    own: an audit.
+  - de_piranesi's sky draws blank, showing only through some
+    transparent edges.
 - **Spawned outside de_aztec.** In a party match the user spawned outside
   the map at `setpos 2519.69 2283.46 210.62; setang 20.09 233.12 0.00`.
   Find which spawn picker chose it (the map's own spawn points, or our
