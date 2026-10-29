@@ -1141,8 +1141,12 @@ fn builtins(app: &mut App) {
 
 /// Where configs live: the user's data folder (Linux ~/.local/share/chimera/cfg,
 /// Windows %APPDATA%\\chimera\\cfg; the old `mashup` folder while only it
-/// exists, `env::user_folder`).
+/// exists, `env::user_folder`). `CHIMERA_CFG_DIR` names another folder
+/// (a throwaway one for tests and agents).
 pub fn cfg_dir() -> Option<std::path::PathBuf> {
+    if let Some(dir) = crate::env::var_os("CHIMERA_CFG_DIR") {
+        return Some(dir.into());
+    }
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("APPDATA").map(std::path::PathBuf::from))

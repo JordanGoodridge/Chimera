@@ -34,8 +34,10 @@ the user's go-ahead: no Actions runs unless asked.
   it, but its 0.8 m jump ledges climb the walls onto the jungle outside,
   so a bot can still walk there. Bound the generated mesh to the map's
   playable leaves, as spawns now are.
-- **`combat_arms:junkflea` is in the map pool but doesn't load**
-  ("no such map (worlds*/junkflea.dat)"): check the pool's name for it.
+- **`combat_arms:junkflea` is in the map pool but doesn't load: fixed.**
+  The install's world is `junk_flea` (the lobby's key `junkflea` is
+  another name); the pool says `combat_arms:junk_flea` now. Test
+  (party_kit `heavy::pools`): every map in every pool resolves.
 - **Some Combat Arms bodies draw grey pieces** when loaded for a rung
   (a ghillie-suit specialist; the Ice Mas Knight is fine). See
   `characters/bodies_on_demand.rs`.
@@ -43,11 +45,10 @@ the user's go-ahead: no Actions runs unless asked.
   body is its vest). It's the same for everyone on the rung, but a
   network client corrects its movement once at the swap. Ask the user
   whether the look should leave stats alone.
-- **Tool runs write the user's config.** A long `--frames` run of
-  `lucker_party` wrote `config.cfg` on exit. Only `--screenshot` and
-  `--views` skip the write, while OBSERVABILITY.md treats `--frames` runs
-  as tool runs too. Skip it for `--frames` as well, or give tool runs a
-  throwaway config dir.
+- **Tool runs write the user's config: fixed.** `--frames` and `--bench`
+  skipped nothing; now the exit write checks `Args::tool_run()` (all four
+  options), in every app. `CHIMERA_CFG_DIR` names a throwaway config
+  folder. Test: chimera_client `tool_runs_do_not_write_the_config_on_exit`.
 - **Firing animation on the match-end screen: fixed, confirm in a
   playtest** (user). The rules hold a frozen player's intent only at the
   simulation's tick (`FreezeTime`, the end freeze), but the input writes

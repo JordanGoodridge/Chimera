@@ -42,7 +42,7 @@ pub static PARTS: GameParts = GameParts {
     // with spawns for a free-for-all, but HGOILRIG (our conversion has no
     // decks under its spawns: combat-arms.md). Not every installed world
     // (missions, training, the lobby's own): none by pattern.
-    maps: &["combat_arms:warehouse", "combat_arms:junkflea", "combat_arms:darkhills", "combat_arms:bloodmoney"],
+    maps: &["combat_arms:warehouse", "combat_arms:junk_flea", "combat_arms:darkhills", "combat_arms:bloodmoney"],
     map_patterns: &[],
     announcer: Some(ANNOUNCER),
     // Its result screen's win and lose sounds (`ResultWinSound`,

@@ -77,7 +77,7 @@ fn the_ladder_spreads_across_both_games_and_keeps_its_seed() {
             "cs_source:de_dust2",
             "combat_arms:warehouse",
             "cs_source:cs_office",
-            "combat_arms:junkflea",
+            "combat_arms:junk_flea",
             "combat_arms:darkhills",
             "combat_arms:bloodmoney"
         ],

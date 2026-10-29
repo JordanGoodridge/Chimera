@@ -237,7 +237,7 @@ fn every_pool_map_s_spawn_spots_are_inside_it() {
         .unwrap_or_default();
     maps.sort();
     maps.extend(
-        ["warehouse", "junkflea", "darkhills", "bloodmoney"].map(|m| format!("combat_arms:{m}")),
+        ["warehouse", "junk_flea", "darkhills", "bloodmoney"].map(|m| format!("combat_arms:{m}")),
     );
     let only = std::env::var("CHIMERA_SPAWN_SWEEP").ok();
     for map in maps.iter().filter(|m| only.as_ref().is_none_or(|o| m.contains(o.as_str()))) {
