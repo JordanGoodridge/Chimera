@@ -4,7 +4,10 @@
 //! (`CameraOutputMode::Skip`); a camera turned off, one drawing into an
 //! image (a capture), one with other HDR or MSAA settings (other
 //! intermediate textures) or a part of the target (a viewport) changes who
-//! copies; a camera with its own output mode keeps it. And every camera is
+//! copies; a camera with its own output mode keeps it. The camera left
+//! copying for skipped ones replaces the target instead of Bevy's blend
+//! over it (else the frame's alpha shows the clear colour: de_piranesi's
+//! grey sky, 2026-10-28 playtest). And every camera is
 //! batched on the CPU (`NoIndirectDrawing`, `render::cameras::CamerasPlugin`).
 
 use bevy::{
@@ -23,16 +26,14 @@ fn app() -> App {
 }
 
 fn camera(app: &mut App, order: isize) -> Entity {
-    app.world_mut()
-        .spawn(Camera {
-            order,
-            ..default()
-        })
-        .id()
+    app.world_mut().spawn(Camera { order, ..default() }).id()
 }
 
 fn skipped(app: &App, camera: Entity) -> bool {
-    matches!(app.world().get::<Camera>(camera).unwrap().output_mode, CameraOutputMode::Skip)
+    matches!(
+        app.world().get::<Camera>(camera).unwrap().output_mode,
+        CameraOutputMode::Skip
+    )
 }
 
 fn set(app: &mut App, camera: Entity, f: impl FnOnce(&mut Camera)) {
@@ -42,7 +43,12 @@ fn set(app: &mut App, camera: Entity, f: impl FnOnce(&mut Camera)) {
 #[test]
 fn only_the_last_camera_on_the_window_copies_out() {
     let mut app = app();
-    let (sky, world, view_model, ui) = (camera(&mut app, -1), camera(&mut app, 0), camera(&mut app, 1), camera(&mut app, 100));
+    let (sky, world, view_model, ui) = (
+        camera(&mut app, -1),
+        camera(&mut app, 0),
+        camera(&mut app, 1),
+        camera(&mut app, 100),
+    );
     app.update();
     assert!(skipped(&app, sky) && skipped(&app, world) && skipped(&app, view_model));
     assert!(!skipped(&app, ui), "the UI camera copies the whole frame out");
@@ -57,6 +63,63 @@ fn only_the_last_camera_on_the_window_copies_out() {
     set(&mut app, ui, |c| c.is_active = true);
     app.update();
     assert!(skipped(&app, world) && !skipped(&app, ui));
+}
+
+fn replaces(app: &App, camera: Entity) -> bool {
+    matches!(
+        app.world().get::<Camera>(camera).unwrap().output_mode,
+        CameraOutputMode::Write { blend_state: Some(b), .. } if b == BlendState::REPLACE
+    )
+}
+
+fn bevy_default(app: &App, camera: Entity) -> bool {
+    matches!(
+        app.world().get::<Camera>(camera).unwrap().output_mode,
+        CameraOutputMode::Write {
+            blend_state: None,
+            clear_color: ClearColorConfig::Default
+        }
+    )
+}
+
+/// Bevy alpha-blends the copy of every camera but a target's bottom one
+/// over what the target holds (its clear colour, the bottom copies being
+/// skipped): the one copying must replace it.
+#[test]
+fn the_camera_copying_for_skipped_ones_replaces_the_target() {
+    let mut app = app();
+    let (sky, world, view_model, ui) = (
+        camera(&mut app, -1),
+        camera(&mut app, 0),
+        camera(&mut app, 1),
+        camera(&mut app, 100),
+    );
+    app.update();
+    assert!(
+        replaces(&app, ui),
+        "the UI camera copies the sky's, world's and view model's frame"
+    );
+    set(&mut app, ui, |c| c.is_active = false);
+    app.update();
+    assert!(replaces(&app, view_model) && bevy_default(&app, ui));
+    // The sky camera off (a leaf that sees no sky): the world's is the bottom.
+    set(&mut app, sky, |c| c.is_active = false);
+    set(&mut app, view_model, |c| c.is_active = false);
+    app.update();
+    assert!(
+        bevy_default(&app, world) && bevy_default(&app, view_model) && bevy_default(&app, sky),
+        "one camera: Bevy's own copy"
+    );
+    set(&mut app, sky, |c| c.is_active = true);
+    set(&mut app, ui, |c| c.is_active = true);
+    app.update();
+    assert!(skipped(&app, sky) && skipped(&app, world) && replaces(&app, ui));
+    // A lower camera on the target still copying its own (other textures):
+    // the copy over it blends, as Bevy's.
+    app.world_mut().entity_mut(sky).insert(Hdr);
+    app.update();
+    assert!(!skipped(&app, sky) && skipped(&app, world));
+    assert!(bevy_default(&app, ui), "blends over the sky camera's copy");
 }
 
 #[test]
@@ -104,7 +167,10 @@ fn a_camera_with_its_own_output_mode_keeps_it() {
     app.update();
     assert!(matches!(
         app.world().get::<Camera>(blended).unwrap().output_mode,
-        CameraOutputMode::Write { blend_state: Some(_), .. }
+        CameraOutputMode::Write {
+            blend_state: Some(_),
+            ..
+        }
     ));
 }
 
