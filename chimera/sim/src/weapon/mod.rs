@@ -14,7 +14,9 @@
 //!
 //! Weapons as parts (README, "Weapons and items"): `Trigger` (a per-pull
 //! limit; `latency`: updates from entering the firing state to a pull's
-//! first round, which goes even if let go), `Magazine` (cost; `ShellReload`: one round at a time, a shot stops
+//! first round, which goes even if let go; `postfire`: a closing part
+//! after a pull's last cycle that reloads and an automatic's next round
+//! wait for, a semi-automatic's press cuts short), `Magazine` (cost; `ShellReload`: one round at a time, a shot stops
 //! it, optionally back to back with a closing part; `auto_reload`: an empty
 //! clip reloads, held or not; `WeaponState::reload_held`: a game holds
 //! reloads), `Hitscan` (pellets
@@ -774,6 +776,15 @@ pub struct Trigger {
     /// round goes even if the trigger is let go; while firing (fire held,
     /// or the last cycle not over) later rounds keep the cycle alone.
     pub latency: u32,
+    /// Seconds of a closing part after the last cycle of a pull (0: none;
+    /// Combat Arms' `postfire` animation, specs/combat_arms/view_models.md
+    /// 7 and Corrections 1): it starts on the update that sees the cycle
+    /// over with the trigger let go (or the clip empty) and keeps the
+    /// firing state. A press during it fires at once on a semi-automatic
+    /// (`automatic` false: the press cancels it, no latency); an automatic
+    /// waits for its end and fires on the update that sees it over, with
+    /// no latency either. Reloads wait for it (`WeaponState::postfire_end`).
+    pub postfire: f32,
 }
 
 /// How refire times are kept (spec 3.2).
@@ -1434,6 +1445,8 @@ pub struct WeaponState {
     /// whether that round is still to come.
     pub arming: u32,
     pub armed_round: bool,
+    /// The trigger's closing part (`Trigger::postfire`) plays until then.
+    pub postfire_end: Option<f64>,
 }
 
 impl WeaponState {
@@ -1807,11 +1820,19 @@ fn weapon_frame(
         // The firing state (`Trigger::latency`) ends with a draw or a
         // reload: the update that sees either end starts the chain again.
         let latency = w.trigger.map_or(0, |t| t.latency);
-        if latency > 0 && (due < inv.next_attack || w.state.reloading()) && (w.state.firing || w.state.armed_round) {
+        let postfire = w.trigger.map_or(0.0, |t| t.postfire);
+        if (latency > 0 || w.state.postfire_end.is_some())
+            && (due < inv.next_attack || w.state.reloading())
+            && (w.state.firing || w.state.armed_round || w.state.postfire_end.is_some())
+        {
             w.state.firing = false;
             w.state.arming = 0;
             w.state.armed_round = false;
+            w.state.postfire_end = None;
         }
+        // The closing part plays (`Trigger::postfire`): reloads wait, and
+        // an automatic's next round.
+        let in_postfire = |st: &WeaponState| st.postfire_end.is_some_and(|end| end > due);
         // Busy (drawing, reloading): only the timers run.
         if due < inv.next_attack {
             continue;
@@ -1984,12 +2005,21 @@ fn weapon_frame(
             && w.state.next_primary <= due
             && w.state.next_secondary <= due
             && !w.state.reloading()
+            && !in_postfire(&w.state)
         {
             try_reload(&mut w, &mut inv, now, owner, ctx.w);
         }
 
         // 4. Primary attack (or the chain's round, `Trigger::latency`).
-        if (intent.fire || w.state.armed_round) && !blocked && w.state.next_primary <= due && w.state.arming == 0 {
+        // An automatic waits for the closing part; a semi-automatic's press
+        // cuts it short.
+        let held_by_postfire = in_postfire(&w.state) && w.trigger.is_some_and(|t| t.automatic);
+        if (intent.fire || w.state.armed_round)
+            && !blocked
+            && w.state.next_primary <= due
+            && w.state.arming == 0
+            && !held_by_postfire
+        {
             let chain_round = std::mem::take(&mut w.state.armed_round);
             let automatic = w.trigger.is_none_or(|t| t.automatic);
             let per_press = w.trigger.map_or(0, |t| t.per_press);
@@ -2035,6 +2065,7 @@ fn weapon_frame(
                     // so does the chain's first round.
                     w.state.next_primary = now;
                 }
+                w.state.postfire_end = None;
                 // A shot stops a one-at-a-time reload.
                 w.state.shells = ShellStage::Idle;
                 if let Some(swing) = w.melee.map(|m| m.primary.clone()) {
@@ -2085,13 +2116,33 @@ fn weapon_frame(
         }
 
         // The firing state ends once the trigger is let go, no chain
-        // round is pending and the last cycle is over.
-        if w.state.firing && !intent.fire && !w.state.armed_round && w.state.next_primary <= due {
-            w.state.firing = false;
+        // round is pending and the last cycle is over; with a closing
+        // part (`Trigger::postfire`) when that is over too (it starts
+        // here, also with the trigger held on an empty clip).
+        let empty = w.magazine.as_ref().is_some_and(|m| m.clip == 0);
+        let let_go = !intent.fire || (postfire > 0.0 && empty);
+        if w.state.firing && let_go && !w.state.armed_round && w.state.next_primary <= due {
+            if postfire > 0.0 {
+                match w.state.postfire_end {
+                    None => w.state.postfire_end = Some(now + postfire as f64),
+                    Some(end) if end <= due => {
+                        w.state.firing = false;
+                        w.state.postfire_end = None;
+                    }
+                    Some(_) => {}
+                }
+            } else {
+                w.state.firing = false;
+            }
         }
 
         // 5. Reload key.
-        if intent.reload && !w.state.reload_held && w.state.next_primary <= due && !w.state.reloading() {
+        if intent.reload
+            && !w.state.reload_held
+            && w.state.next_primary <= due
+            && !w.state.reloading()
+            && !in_postfire(&w.state)
+        {
             try_reload(&mut w, &mut inv, now, owner, ctx.w);
             w.state.fire_duration = 0.0;
         }
@@ -2104,6 +2155,7 @@ fn weapon_frame(
                 && w.state.next_primary <= due
                 && w.state.next_secondary <= due
                 && !w.state.reloading()
+                && !in_postfire(&w.state)
             {
                 try_reload(&mut w, &mut inv, now, owner, ctx.w);
             }

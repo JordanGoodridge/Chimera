@@ -542,13 +542,19 @@ type WeaponParts<'a> = (
         Option<&'a CaMods>,
         Option<&'a CaItem>,
         Option<&'a Hitscan>,
+        Option<&'a super::gear::CaGearRates>,
     ),
 );
 
 /// The machine's setup for a weapon.
-fn setup_of(parts: &WeaponParts, (model_reload, model_select): (f32, f32)) -> Setup {
-    let (w, magazine, trigger, shells, throwable, (_, _, mods, item, hitscan)) = parts;
+/// `vest`: the character model's reload and select bonuses, for a weapon
+/// without the gear's rates of its own (`gear::CaGearRates`: the vest's
+/// and the sets', the ones its reload and draw times use).
+fn setup_of(parts: &WeaponParts, vest: (f32, f32)) -> Setup {
+    let (w, magazine, trigger, shells, throwable, (_, _, mods, item, hitscan, gear)) = parts;
     let (fire, reload, select) = mods.map_or((0.0, 0.0, 0.0), |m| m.rates());
+    let (gear_fire, model_reload, model_select) = gear.map_or((0.0, vest.0, vest.1), |g| (g.fire, g.reload, g.select));
+    let fire = fire + gear_fire;
     Setup {
         class: class_of(w, hitscan.map_or(1, |h| h.pellets)),
         per_press: trigger.map_or(0, |t| if t.automatic { t.per_press } else { t.per_press.max(1) }),
@@ -647,7 +653,8 @@ fn drive(
             continue;
         };
         let alive = health.is_none_or(|h| h.current > 0.0);
-        // The character model's reload and select bonuses (Corrections 6).
+        // The character model's reload and select bonuses (Corrections 6),
+        // for a weapon without its own `CaGearRates`.
         let model = gear.as_deref().map_or((0.0, 0.0), |g| {
             let vests = &g.0.vests;
             vests

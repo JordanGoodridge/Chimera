@@ -938,10 +938,11 @@ pub(super) fn hands(
         }
         // Sprint and use end the firing state (a held trigger starts the
         // chain again after them).
-        if held && (st.firing || st.armed_round) {
+        if held && (st.firing || st.armed_round || st.postfire_end.is_some()) {
             st.firing = false;
             st.arming = 0;
             st.armed_round = false;
+            st.postfire_end = None;
         }
 
     }

@@ -68,10 +68,12 @@
 //!   their own numbers, after ours in install order (ours keep their
 //!   registry indices); a copy keeps its template's `class` (an
 //!   automatic gun game's) but a grenade's (a smoke copied from a frag
-//!   doesn't kill); a copied gun (a trigger and a view model, not a knife
-//!   or grenade) gets a `combat_arms:timing` table (`timing_table`): its
-//!   fire cycle, reload and draw are its own view model's animations,
-//!   read when it is first built (`weapons::timing`), not the template's;
+//!   doesn't kill); a copied gun or knife (a trigger or a knife table
+//!   and a view model, not a grenade) gets a `combat_arms:timing` table
+//!   (`timing_table`): its fire sequence, reload, draw and swings are its
+//!   own view model's animations, read when it is first built
+//!   (`weapons::timing`), not the template's; a copy with `AccumPreFire`
+//!   gets a `combat_arms:spin` table (its spin's lengths from the model);
 //!   every weapon's `FireAniRate` goes in `combat_arms:inventory` (made
 //!   when the template has none, the record's other item fields with it);
 //! - movement (`merge_movement`): the body type `FigureType0` replaces
@@ -109,13 +111,12 @@
 //!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps it: ours
 //!   are the spec's timings, a copy's its own view model's, `timing`).
 //!   Not mapped (no field
-//!   in our data yet): the trigger's `latency` (the pre-fire's updates:
-//!   ours, 3 or a primary shotgun's 2, copied with the class's document),
-//!   a projectile's box (its model's first animation box x `ModelScale`:
-//!   the template's stays), `AltVelocity`, the projectile record's
-//!   `FXName` and `FlySound` (unspecified: docs/backlog.md), a copied
-//!   flame weapon's fire keys (the flamethrower's, not read from its own
-//!   view model), `TripleShot*` timing,
+//!   in our data yet): a projectile's box (its model's first animation
+//!   box x `ModelScale`: the template's stays), `AltVelocity`, the
+//!   projectile record's `FXName` and `FlySound` (unspecified:
+//!   docs/backlog.md), `TripleShot*` timing (the trigger's `latency`, a
+//!   flame copy's fire keys and a knife copy's swings come from the
+//!   copy's view model: `timing`),
 
 //!   `ContinuousFire`, render styles,
 //!   armour, `[Perturb]`, `[Player]` (the client's
@@ -511,7 +512,12 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
         set(&["hooks", ZOOM, "sway"], sway(&w.camera_sway)),
         set(&["hooks", ZOOM, "reload_after_fire"], w.reload_after_fire != 0),
         set(&["hooks", ZOOM, "zoomed_move_penalty"], w.zoomed_move_penalty),
-        set(&["hooks", SPIN, "reversible"], w.accum_pre_fire != 0),
+        // weapon_classes.md 3.3: `AccumPreFire` marks the spinning guns;
+        // the spin's lengths are the copy's view model's (`timing`).
+        Set {
+            when: if w.accum_pre_fire != 0 { When::Create } else { When::Table },
+            ..set(&["hooks", SPIN, "reversible"], w.accum_pre_fire != 0)
+        },
     ];
     if w.triple_shot_mode != 0 {
         out.extend([
@@ -1081,18 +1087,16 @@ pub fn merge_weapon_docs_with_mods(
         .collect()
 }
 
-/// A copy's own fire cycle, reload and draw: the `combat_arms:timing`
+/// A copy's own fire sequence, reload and draw: the `combat_arms:timing`
 /// table (`weapons::timing`, read from its view model when built) on a
-/// gun with a trigger and a view model; not on a knife or grenade (their
-/// own hooks time them).
+/// gun with a trigger and a view model, and on a knife (its swings and
+/// hit keys); not on a grenade (its own hook times it).
 fn timing_table(doc: &mut Table) {
     use super::weapons::timing::TIMING;
     let has_view = doc.get("models").and_then(|m| m.get("view")).is_some();
     let Some(Value::Table(hooks)) = doc.get("hooks") else { return };
-    let timed_elsewhere = [super::inventory::KNIFE_HOOK, super::grenades::HOOK]
-        .iter()
-        .any(|h| hooks.contains_key(*h));
-    if !has_view || !doc.contains_key("trigger") || timed_elsewhere {
+    let knife = hooks.contains_key(super::inventory::KNIFE_HOOK);
+    if !has_view || !(doc.contains_key("trigger") || knife) || hooks.contains_key(super::grenades::HOOK) {
         return;
     }
     if let Some(Value::Table(hooks)) = doc.get_mut("hooks") {

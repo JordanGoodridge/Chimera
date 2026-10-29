@@ -51,6 +51,9 @@ cycle = 0.1                     # s between shots
 # latency = 3                   # updates from entering the firing state to
 #   the first round (0: that update; CA's view-model chain: 3, primary
 #   shotguns 2)
+# postfire = 0.15               # s of a closing part after a pull's last
+#   cycle (with `latency`): reloads and an automatic's next round wait
+#   for it, a semi-automatic's press cuts it short (CA's `postfire`)
 
 [magazine]
 clip = 30
