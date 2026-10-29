@@ -27,6 +27,12 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Random attachments on Combat Arms rungs (user idea).** Some Combat
+  Arms guns come bare. When the ladder is made, give each Combat Arms
+  rung a random fitted set from that gun's accepted attachments
+  (`game/attachments.rs`, each weapon's `combat_arms:attachments`), the
+  same for everyone who reaches the rung, so it stays fair; shown in the
+  HUD's rung text if there's room.
 - **Frame rate drops after a few map changes: fixed, confirm in a
   playtest.** What grew was archetypes and tables (Bevy frees none; the
   characters' optional components make new ones at every map change and
