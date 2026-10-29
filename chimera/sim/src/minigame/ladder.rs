@@ -39,7 +39,7 @@
 //! (`arm`: the melee, then every hook's `apply`, with its own extras or
 //! none) before a life's weapons (`RulesModule::arming`) and at each rung
 //! swap. The knife finale's rung draws none (it keeps its knife), nor
-//! does a rung of a game without a hook (CS:S's). `rung_extras = false`
+//! does a rung of a game without a hook. `rung_extras = false`
 //! turns them all off; a table turns a hook's options off by key
 //! (`rung_extras = { attachments = false }`; every key is on by default;
 //! a key no hook reads is warned about at the start).

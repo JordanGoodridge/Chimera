@@ -83,10 +83,12 @@ the user's go-ahead: no Actions runs unless asked.
     no damage, blood, impact or decal on them. That part is already
     true for damage and effects. Firing already ends the protection
     (`fire_ends`, the default).
-- **CS:S rungs get a character too (user, 2026-10-29).** As for Combat
-  Arms rungs, the ladder maps a CS:S player model to each CS:S rung (from
-  every T and CT model the install has), the same for everyone on it.
-  Extend the rung extras hook (`RungExtrasHook`) with CS:S's.
+- **CS:S rungs get a character too (user, 2026-10-29): fixed, confirm in
+  a playtest.** As for Combat Arms rungs, each CS:S rung draws one of
+  CS:S's eight player models (the stock T and CT ones; no other is
+  loaded), the same for everyone on it (`cs_source::game::rungs`; the
+  `character` option covers both games). Not compared: whether the eight
+  models' hitboxes are identical.
 - **Later: let individual players stand out (user ideas).**
   - Clearer name tags when you aim at someone (their name and more),
     kept unobtrusive.

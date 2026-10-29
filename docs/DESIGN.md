@@ -461,7 +461,10 @@ that):
   (specialists and mercenaries too; without the install the stock six;
   a body no stock group has loads when first worn), and a melee weapon
   of its own (knives, the shovel, the machete, ...); the knife finale
-  keeps its knife, CS:S's rungs draw nothing. Each part turns off by key
+  keeps its knife. CS:S's rungs (`cs_source::game::rungs`) each draw one
+  of its eight player models (four T, four CT; a `PlayerClass`, which a
+  free-for-all player's body follows too) for everyone on the rung, named
+  in the rung's HUD line. Each part turns off by key
   (`rung_extras = { attachments = false, character = false, melee =
   false }`), all with `rung_extras = false`. The apps seed them anew at
   each launch (Ultimate Gun Game with its launch seed).

@@ -2,7 +2,7 @@
 //! on Chimera's `ladder::RungExtrasHook`): on the party's simulation, a
 //! Combat Arms rung gives everyone on it the same fitted parts on its
 //! gun, the same character and the same melee weapon (in place of the
-//! kit's M9), again after a respawn; CS:S's rungs draw none and keep
+//! kit's M9), again after a respawn; CS:S's rungs draw a player model (`cs_source::game::rungs`) and keep
 //! their knife and the players' own looks; another seed draws others;
 //! each option off gives today's (the M9, one's own look, the gun's own
 //! parts); over the network a client's player wears the server's look
@@ -30,9 +30,11 @@ use combat_arms::{
     },
     harness::CaSim,
 };
+use cs_source::game::rungs as css;
+use chimera_core::core::PlayerClass;
 use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 
-use super::gun_game::{alive, soldier};
+use super::gun_game::{alive, rung, soldier};
 
 /// The ladder's M4A1 rung (it accepts parts without the install).
 const M4: usize = 7;
@@ -153,15 +155,84 @@ fn a_combat_arms_rung_gives_everyone_on_it_the_same_parts_character_and_melee() 
 }
 
 #[test]
-fn css_rungs_are_untouched() {
+fn css_rungs_keep_their_knife_and_combat_arms_own_look() {
     let mut sim = party_with("", 3);
     let l = ladder_of(&sim);
     for (i, w) in l.rungs.iter().enumerate() {
-        assert_eq!(l.extras(i).is_some(), w.starts_with("combat_arms:"), "rung {i} ({w})");
+        // Every rung draws now: CS:S's a player model, Combat Arms' more.
+        let x = l.extras(i).unwrap_or_else(|| panic!("rung {i} ({w}) draws"));
+        assert_eq!(x.value(css::CLASS).is_some(), w.starts_with("cs_source:"), "rung {i} ({w}): {x:?}");
+        assert_eq!(x.value(rungs::MODEL).is_some(), w.starts_with("combat_arms:"), "rung {i} ({w}): {x:?}");
     }
     let (a, _b) = two_on(&mut sim, 0);
     assert!(carried(&sim, a).contains(&cs_source::game::weapons::KNIFE), "CS:S's knife: {:?}", carried(&sim, a));
-    assert!(sim.app.world().get::<CaRungLook>(a).is_none(), "one's own look");
+    assert!(sim.app.world().get::<CaRungLook>(a).is_none(), "no Combat Arms look on a CS:S rung");
+}
+
+/// The class rung `rung` draws.
+fn css_class(sim: &Sim, rung: usize) -> u8 {
+    ladder_of(sim).extras(rung).and_then(|x| x.value(css::CLASS)?.parse().ok()).expect("a CS:S rung draws a class")
+}
+
+fn class_of(sim: &Sim, p: Entity) -> Option<u8> {
+    sim.app.world().get::<PlayerClass>(p).map(|c| c.0)
+}
+
+#[test]
+fn a_css_rung_gives_everyone_on_it_the_same_player_model() {
+    let mut sim = party_with("", 3);
+    let class = css_class(&sim, 0);
+    let (a, b) = two_on(&mut sim, 0);
+    assert_eq!(class_of(&sim, a), Some(class));
+    assert_eq!(class_of(&sim, b), Some(class));
+    // A respawn on the rung keeps it.
+    kill(&mut sim, b, a);
+    // (The killer's next rung is a Combat Arms gun's: no CS:S model.)
+    assert_eq!(class_of(&sim, a), None, "the killer's next rung");
+    sim.seconds(4.0);
+    assert!(alive(&sim, b));
+    assert_eq!(class_of(&sim, b), Some(class));
+    // A late joiner arrives on a rung and wears that rung's.
+    let c = soldier(&mut sim);
+    sim.seconds(1.5);
+    let r = rung(&sim, c);
+    assert_eq!(class_of(&sim, c), Some(css_class(&sim, r)), "late join, rung {r}");
+    // A Combat Arms rung takes it off again.
+    let l = ladder_of(&sim);
+    ladder::set_rung(sim.app.world_mut(), b, M4, &l);
+    sim.seconds(1.0);
+    assert_eq!(class_of(&sim, b), None, "a Combat Arms rung has its own look");
+    ladder::set_rung(sim.app.world_mut(), b, 0, &l);
+    sim.seconds(1.0);
+    assert_eq!(class_of(&sim, b), Some(class));
+}
+
+#[test]
+fn another_seed_draws_other_player_models() {
+    let classes = |seed| {
+        let l = ladder_of(&party_with("", seed));
+        (0..l.rungs.len())
+            .filter(|i| l.rungs[*i].starts_with("cs_source:"))
+            .map(|i| l.extras(i).unwrap().value(css::CLASS).unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(classes(3), classes(3));
+    assert_ne!(classes(3), classes(4));
+    assert!(classes(3).iter().all(|c| (1..=8).contains(&c.parse::<u8>().unwrap())));
+}
+
+#[test]
+fn the_character_option_off_keeps_the_players_own_model() {
+    for extra in ["rung_extras = { character = false }", "rung_extras = false"] {
+        let mut sim = party_with(extra, 3);
+        let (a, _) = two_on(&mut sim, 0);
+        assert_eq!(class_of(&sim, a), None, "{extra}");
+    }
+    // The other options off leave it on.
+    let mut sim = party_with("rung_extras = { attachments = false, melee = false }", 3);
+    let class = css_class(&sim, 0);
+    let (a, _) = two_on(&mut sim, 0);
+    assert_eq!(class_of(&sim, a), Some(class));
 }
 
 #[test]
@@ -232,5 +303,88 @@ fn a_network_client_wears_the_servers_look_and_parts() {
         assert_eq!(w.get::<Selection>(me).copied(), server_look, "client {i} wears the rung's look");
         assert_eq!(fitted(w, me, gun).map(|f| f.slots), server_fit, "client {i}'s gun has the rung's parts");
         assert_eq!(w.resource::<Ladder>().extras, l.extras, "client {i} has the server's rung extras");
+    }
+}
+
+#[test]
+fn a_network_client_sees_a_css_rungs_player_model() {
+    let mut sim = NetSim::new(
+        CaSim,
+        LinkConditions {
+            latency: std::time::Duration::from_millis(20),
+            jitter: std::time::Duration::ZERO,
+            loss: 0.0,
+        },
+        7,
+        2,
+        |app| {
+            app.add_plugins((GreyboxMapPlugin, PartyPartsPlugin));
+        },
+    );
+    sim.set_frame(TICK_INTERVAL);
+    sim.server.app.insert_resource(RungSeed(3));
+    minigame::start(sim.server.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+    sim.until_joined(900);
+    sim.ticks(300);
+    let l = sim.server.app.world().resource::<Ladder>().clone();
+    let class: u8 = l.extras(0).and_then(|x| x.value(css::CLASS)?.parse().ok()).expect("a class");
+    let (a, b) = (sim.character_of(0).unwrap(), sim.character_of(1).unwrap());
+    for p in [a, b] {
+        ladder::set_rung(sim.server.app.world_mut(), p, 0, &l);
+    }
+    sim.ticks(120);
+    for p in [a, b] {
+        assert_eq!(sim.server.app.world().get::<PlayerClass>(p).map(|c| c.0), Some(class));
+    }
+    for i in 0..2 {
+        let me = sim.local_player(i).unwrap();
+        let w = sim.clients[i].app.world();
+        assert_eq!(w.get::<PlayerClass>(me).map(|c| c.0), Some(class), "client {i} wears the rung's model");
+    }
+}
+
+/// The bodies `cs_source::game::bsp::add_bodies` loads, as stand-ins with
+/// no mesh: the T default (team 1), the CT default (no team), then
+/// classes 2-4 and 6-8 by their team and class.
+fn css_bodies() -> chimera_world::map::CharacterModels {
+    use chimera_world::map::MapCharacterModel;
+    let body = |team: Option<u8>, class: Option<u8>| MapCharacterModel {
+        game: Some("cs_source"),
+        team: team.map(chimera_core::core::Team),
+        name: None,
+        class,
+        model: default(),
+        hitboxes: Vec::new(),
+        bones: Vec::new(),
+        root: Transform::IDENTITY,
+        animations: None,
+        boxes: Vec::new(),
+        ragdoll: None,
+    };
+    let mut v = vec![body(Some(1), None), body(None, None)];
+    for c in [2u8, 3, 4, 6, 7, 8] {
+        v.push(body(Some(1 + (c - 1) / 4), Some(c)));
+    }
+    chimera_world::map::CharacterModels(std::sync::Arc::new(v))
+}
+
+#[test]
+fn a_css_rungs_player_wears_its_models_body() {
+    use chimera_world::map::{BodyModel, MapSimPlugin};
+    let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, MapSimPlugin::empty(), PartyPartsPlugin));
+    sim.app.insert_resource(css_bodies());
+    sim.app.insert_resource(RungSeed(3));
+    minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+    let (a, b) = two_on(&mut sim, 0);
+    let class = css_class(&sim, 0);
+    // The model for the class: the tagged one, or a side's default.
+    let want = match class {
+        1 => 0,
+        5 => 1,
+        2..=4 => class as usize,
+        _ => class as usize - 1,
+    };
+    for p in [a, b] {
+        assert_eq!(sim.app.world().get::<BodyModel>(p).map(|m| m.0), Some(want), "class {class}");
     }
 }
