@@ -27,6 +27,106 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Combat Arms guns' own sounds, scopes and models: audit** (2026-10-29,
+  with the install's attribute data read: 2,298 weapons, 61 ours and
+  2,237 copies; 1,996 have a `class` and can be given by Ultimate Gun
+  Game: 15 of ours, 1,981 copies). An install weapon none of our
+  documents matches is a copy of our first matched document of its
+  `Guntype` (`game/data.rs`, `merge_weapon_docs`), so the user is right
+  about sounds and most effects. Per field, for the 1,981 given copies
+  (how many play a value other than their own record's; "own" means
+  the record's value reaches the game):
+  - fire sound (`FireSnd`): template's on all; 1,827 play the wrong
+    file (154 variants share the template's). Not parsed at all.
+  - silenced (`SilencedFireSnd#`), dry-fire, reload 1-3, select,
+    deselect: template's. Wrong file on 48, 1,800, 1,836, 1,627 and
+    1,749 copies. Not parsed.
+  - fire-sound radii (`FireSndRadius`, `SilencedFireRadius#`): own, but
+    only in documents with a `combat_arms:attachments` table. The 46
+    copies without one (special weapons) and our 8 launchers, crossbow
+    and grenade use the effects default of 2000. `ReloadSndRadius` and
+    `SelectSndRadius` are parsed but not mapped (every stock value is
+    300, so nothing audible yet).
+  - muzzle flashes (`PVMuzzleFXName`, `HHMuzzleFXName`): template's.
+    Wrong on 339 and 36 copies (water guns, coloured variants; 1,353
+    stock weapons use `AK47_PV_Muzz`, so most match by chance).
+  - the ammo's FireFX (casings), TracerFX and ImpactFX names: the
+    template's. Wrong on 561, 599 and 49 copies. Not parsed.
+  - fitted sight (`DefaultScopeAttach`): own, and the overlay sprite
+    and zoom levels come from the install's attachment record for it.
+    The 46 copies without an attachments table get no sight
+    (`optical_buster_apollo`'s L115 scope), nor does our XM25 (its own
+    XM25 scope is dropped). `DotSightName` (4 given weapons): not read.
+  - view model and skins (`PVModelNormal`, `PVSkin#`, `PVRenderStyle#`):
+    own, loaded on demand (`view_model::on_demand`).
+  - held model (`HHModel`): own in the data, but drawn for none of the
+    1,981 copies: a map loads the held models of our ids only
+    (`characters::models`, `builtin_weapon_ids`). The copies' `AniType`,
+    `LowerAniType` and `HHSkin#` aren't merged either
+    (`characters::records::merge_install_weapons`: ours only). Without
+    the V1 key no Combat Arms weapon has a held model, because none of
+    our documents names one. This covers 11 R870 variants (R870 MCS,
+    R870SE, ...) but not Lucker Party's `combat_arms:remington_870`,
+    which is ours, has its `HHModel` mapped and loads at map load.
+  - rates: `trigger.cycle` (the rate of fire), `magazine.reload` and
+    `draw` are the template's on all 1,981 copies. Every rifle copy
+    cycles at the M4A1's 105 ms; every sniper copy, semi-automatic ones
+    included, at the L96A1's bolt 1.4 s, though the view model plays the
+    copy's own animations. `FireAniRate` is written on 812 copies and dropped
+    on 83 whose template has no `combat_arms:inventory` table.
+  - numbers (clip, damage, `FireDelay`, spread, recoil, zoom fields):
+    own, as `weapon_values` maps them (where the template has the
+    table).
+
+  Our own documents are wrong too. The LAW, RPG-7, M32, M79, MZP-1, XM25,
+  normal crossbow and the M67 have no `combat_arms:effects` table, so
+  they fire silently with no impact effect (their records name sounds,
+  `Rocket`/`M32_Exp`/`HandGrenade` impacts and `WEAPON_HH` flashes). The
+  MP5A4 and Dragunov have no first-person muzzle flash (no view-model
+  table). The M60's FireFX should be `5.56mm`, not `7.62mm`, the R870's
+  `12Gauge_R`, not `_G`. The R870 has no deselect sound.
+
+  Fixes, most audible or visible first:
+  1. Read `FireSnd`, `SilencedFireSnd1..10`, `DryFireSnd`,
+     `ReloadSnd1..3`, `SelectSnd`, `DeselectSnd`, `PVMuzzleFXName`,
+     `HHMuzzleFXName` per weapon, and the ammo's `ImpactFXName`,
+     `FireFXName` and `TracerFXName` with effects_sounds.md's
+     missing/empty fallbacks, into `combat_arms:effects` and
+     `combat_arms:view_model`. Make the effects table for documents
+     without one (the launchers, the crossbow, the grenades). Map
+     `ReloadSndRadius` and `SelectSndRadius` there too. Ready to
+     implement: attribute_data.md's field table and effects_sounds.md
+     "How effects are described as data" and 11.
+  2. Load held models on demand for every Combat Arms weapon (as view
+     models are), not only ours at map load, and merge the copies'
+     `AniType`, `LowerAniType`, `HHSkin#` and `HHRenderStyle#`. Ready to
+     implement: characters.md 2, "Third-person weapon model and
+     animation class". This overlaps the open "R870 not in Combat Arms
+     characters' hands" work.
+  3. Take each copy's rate of fire, reload and draw from its own view
+     model's animations (`fire_0`, `reload` or the shell timings,
+     `select`; at rate 1 + `FireAniRate`), not the template's, and write
+     `FireAniRate` even where the template has no inventory table. Ready
+     to implement: weapon_classes.md "Typical weapons" and view_models.md
+     say the cycle is the fire animation's length. Reading 2,000 models
+     at merge time is too slow, so it needs a small plan (at give time,
+     or cached).
+  4. Correct our documents (M60 and R870 FireFX, R870 deselect, MP5A4
+     and Dragunov muzzle flash). Item 1 makes this automatic with the
+     install; the built-in values still matter without it.
+  5. `DotSightName` reticles. Ready to implement: hud_crosshair.md.
+  6. Special weapons' own scopes (XM25 Scope, L115 scope on specials,
+     `LGB_scope`): needs a spec session. How a special weapon zooms isn't
+     specified (data.rs "Known shortcuts").
+
+  Stale in `game/data.rs`'s "Known shortcuts": "sounds and sound radii"
+  aren't all unmapped (`MiscSound1..5`, `PlayAutoThrowSound`,
+  `FireSndRadius` and `SilencedFireRadius#` are mapped); "render styles"
+  are read, just not into the documents (`PVRenderStyle#` per weapon at
+  view-model load, `HHRenderStyle#` for ours). The claims on
+  `DotSightName`, special weapons' scopes and held models hold. Not
+  listed there: the ammo's effect names, the rates above, the muzzle
+  effect names.
 - **Can Combat Arms guns shoot through glass?** Check that a Combat Arms
   round goes through (and breaks) glass the way Combat Arms does: CS:S
   maps' breakable glass, and Combat Arms maps' glass surfaces. The specs
