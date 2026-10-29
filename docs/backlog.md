@@ -53,6 +53,15 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
+  - The party gun games' protection becomes 2 s (from 1.5 s); retime the
+    tests that assume 1.5 s.
+  - While protected, a character draws about 50% transparent, on every
+    client, so others can see their bullets won't do anything.
+  - Bullets pass through a protected player and hit what's behind:
+    no damage, blood, impact or decal on them. That part is already
+    true for damage and effects. Firing already ends the protection
+    (`fire_ends`, the default).
 - **CS:S rungs get a character too (user, 2026-10-29).** As for Combat
   Arms rungs, the ladder maps a CS:S player model to each CS:S rung (from
   every T and CT model the install has), the same for everyone on it.
