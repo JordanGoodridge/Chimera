@@ -53,6 +53,14 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **CS:S rungs get a character too (user, 2026-10-29).** As for Combat
+  Arms rungs, the ladder maps a CS:S player model to each CS:S rung (from
+  every T and CT model the install has), the same for everyone on it.
+  Extend the rung extras hook (`RungExtrasHook`) with CS:S's.
+- **Later: let individual players stand out (user ideas).**
+  - Clearer name tags when you aim at someone (their name and more),
+    kept unobtrusive.
+  - A flaming aura around the current leader.
 - **A rung's character: stats only when intrinsic (user, 2026-10-29).**
   A drawn Combat Arms character changes armour or movement only if that
   character has them by default in Combat Arms (its own movement, its
