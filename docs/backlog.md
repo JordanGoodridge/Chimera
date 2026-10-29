@@ -45,6 +45,13 @@ the user's go-ahead: no Actions runs unless asked.
   `$radio_message_report_chat_3` instead of the message: resolve it
   through the install's string table in the game's language (and say
   so if the table is in a keyed archive this box can't read).
+- **CS:S grenades bounce too much.** Check our grenade against
+  specs/cs_source/grenades.md section 4: 0.4 x gravity, elasticity 0.45
+  times the surface's (1.0 world, 0.3 player) capped at 0.9, stop below
+  30 in/s, no ground friction, 0.4 x velocity through glass. Measure a
+  throw's bounce heights and slide in a test against those numbers. If
+  ours matches the spec and still looks wrong, the spec needs
+  re-checking against the reference in a spec session on the Windows PC.
 - **Kill feed: Combat Arms gun icons sit at the top of the line.** The
   generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
   icons vertically, with every line the same height (widths may vary).
