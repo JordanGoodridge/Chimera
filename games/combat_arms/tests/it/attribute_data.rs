@@ -347,6 +347,19 @@ fn movement_takes_figure_type_0() {
     assert_eq!(data.character.gear.len(), 1);
 }
 
+/// A body record's `AdditionalSkins#` (texture slots 5 on, characters.md
+/// 2: the ghillie suits' leaves) are read with its upper and leg skins.
+#[test]
+fn body_additional_skins() {
+    let m = ModelsFile::read(&doc(
+        r#"[Model0] ModelFile="CHARS_M_BODY\G.ltb" UpperSkin0="CHARS_T_BODY\G.dtx" LowerSkin0="CHARS_T_BODY\L.DTX"
+          AdditionalSkins0="CHARS_T_BODY\Fur.DTX" AdditionalSkins1="textures\Spec.dtx" ColorSkin1_AdditionalSkins0="x.dtx"
+        [Model1] ModelFile="b.ltb""#,
+    ));
+    assert_eq!(m.bodies[0].additional_skins, ["CHARS_T_BODY\\Fur.DTX", "textures\\Spec.dtx"]);
+    assert!(m.bodies[1].additional_skins.is_empty());
+}
+
 /// A loader with no readable files gets nothing and says why per file.
 #[test]
 fn unreadable_files_are_reported() {

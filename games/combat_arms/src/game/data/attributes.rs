@@ -1060,7 +1060,8 @@ impl MarksFile {
 
 /// A body record's look (`Model<N>`, characters.md 1 and 2): its file
 /// (`ModelFile`), skins by camouflage index (`UpperSkin0..`,
-/// `LowerSkin0..`), render styles (`RenderStyle0..`), face redirects
+/// `LowerSkin0..`), additional skins (`AdditionalSkins0..`: texture
+/// slots 5 on), render styles (`RenderStyle0..`), face redirects
 /// (`FaceRelationModel0..`, -1 none), skeleton (`Skeleton`) and gear
 /// (`GearID`).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1068,6 +1069,9 @@ pub struct BodyLook {
     pub file: String,
     pub upper_skins: Vec<String>,
     pub lower_skins: Vec<String>,
+    /// `AdditionalSkins0..`: texture slot 5 + k (characters.md 2), e.g.
+    /// the ghillie suits' leaves.
+    pub additional_skins: Vec<String>,
     pub render_styles: Vec<String>,
     pub faces: Vec<i32>,
     /// `FootprintSndVolume`: a share added to the footstep volume.
@@ -1086,6 +1090,7 @@ impl BodyLook {
             file: s.string("ModelFile").map(text).unwrap_or_default(),
             upper_skins: list("UpperSkin"),
             lower_skins: list("LowerSkin"),
+            additional_skins: list("AdditionalSkins"),
             render_styles: list("RenderStyle"),
             faces: s.int_list("FaceRelationModel"),
             footprint_volume: s.number("FootprintSndVolume", 0.0) as f32,

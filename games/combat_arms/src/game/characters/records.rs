@@ -39,6 +39,10 @@ pub struct ModelRecord {
     pub upper_skins: Vec<String>,
     #[serde(default)]
     pub lower_skins: Vec<String>,
+    /// `AdditionalSkins#`: texture slot 5 + k (characters.md 2: "the
+    /// record's additional skins"), the same for every camouflage index.
+    #[serde(default)]
+    pub additional_skins: Vec<String>,
     /// `RenderStyle#`: render-style files by a piece's render-style
     /// index (none given: `CharacterData::body_render_styles`).
     #[serde(default)]
@@ -377,6 +381,9 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
             m.upper_skins = dtx(&r.upper_skins);
             m.lower_skins = dtx(&r.lower_skins);
         }
+        if !r.additional_skins.is_empty() {
+            m.additional_skins = dtx(&r.additional_skins);
+        }
         if !r.render_styles.is_empty() {
             m.render_styles = r.render_styles.clone();
         }
@@ -411,6 +418,7 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
             faces: r.faces.clone(),
             upper_skins: dtx(&r.upper_skins),
             lower_skins: dtx(&r.lower_skins),
+            additional_skins: dtx(&r.additional_skins),
             render_styles: r.render_styles.clone(),
             footprint_volume: r.footprint_volume,
         });
@@ -524,6 +532,14 @@ impl CharacterData {
             .filter(|m| !m.file.is_empty() && m.skeleton <= 1 && m.upper_skins.iter().any(|s| !s.is_empty()))
             .map(|m| m.id)
             .collect()
+    }
+
+    /// A body's skin for texture slot `slot` past the five fixed ones
+    /// (characters.md 2: 5 on are the record's additional skins,
+    /// `AdditionalSkins{slot - 5}`); None past its list or empty.
+    pub fn additional_skin<'a>(&self, record: &'a ModelRecord, slot: i32) -> Option<&'a str> {
+        let k = usize::try_from(slot.checked_sub(5)?).ok()?;
+        record.additional_skins.get(k).map(String::as_str).filter(|s| !s.is_empty())
     }
 
     /// Model 0, the default.
