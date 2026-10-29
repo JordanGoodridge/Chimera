@@ -136,5 +136,10 @@ pub fn parse(bytes: &[u8]) -> Result<(NavMesh, NavInfo), String> {
             }
         })
         .collect();
-    Ok((NavMesh { areas, ladders, places }, info))
+    Ok((NavMesh {
+        areas,
+        ladders,
+        places,
+        generated: false,
+    }, info))
 }

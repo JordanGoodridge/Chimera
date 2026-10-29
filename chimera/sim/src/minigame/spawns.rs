@@ -5,14 +5,20 @@
 //! - Spots (`SpawnSpots`, made once per loaded map on the first spawn and
 //!   removed with the map, `MapScopedApp::map_scoped`): points on the
 //!   floors of the map's navigation mesh (`map::nav::NavMesh`, the map's
-//!   own, else one generated from its collision, `map::nav_gen`), a grid
+//!   own file or volumes; else one generated from its collision,
+//!   `map::nav_gen`, with a walking player's step: a mesh someone else
+//!   generated, `NavMesh::generated`, is not used, since bots' own climbs
+//!   0.8 m ledges and so left de_aztec over its walls), a grid
 //!   about `SPOT_GRID` m apart in the areas that can be walked to from the
 //!   spawn points and back (the mesh's main connected region), in a
-//!   seeded random order. Each spot is checked: a floor under it, a
-//!   character's capsule fits there without touching the world, and it is
+//!   seeded random order. Each spot is checked (`spot_ok`): a floor under
+//!   it, a character's capsule fits there without touching the world, it
+//!   is inside the map (on a map with visibility data, its chest in a
+//!   leaf of a cluster: not solid, not the void outside the world), and
 //!   outside water and every zone a game registers as hurting or
 //!   killing (`SpawnHazards`). Without a mesh, or spots, the map's spawn
-//!   points are the spots.
+//!   points are the spots. `candidates` lists every spot without the
+//!   `MAX_SPOTS` cap (the sweep of the stock maps).
 //! - Picking: from a random place in the spots, the first that is at
 //!   least `min_distance` m from every living enemy (a character of
 //!   another team) and out of their sight (rays from each enemy's eye to
@@ -29,7 +35,11 @@
 //! field of view or fog (an enemy facing away still "sees"); the spots are
 //! chosen once, so a door that opens later isn't considered; a map whose
 //! collision isn't built yet at the first spawn gets the spawn points for
-//! up to `BUILD_TRIES` spawns before the result is kept.
+//! up to `BUILD_TRIES` spawns before the result is kept; on a map without
+//! its own mesh the spots are where a player walks from the spawn points
+//! (no jumps, ladders or crouching), so a ledge reached by a jump is never
+//! one; "inside the map" is the visibility tree's clusters, so a map
+//! without visibility data (Combat Arms') relies on the walk alone.
 
 use avian3d::prelude::*;
 use bevy::{ecs::system::SystemState, prelude::*};
@@ -43,6 +53,7 @@ use crate::{
         SPAWN_LIFT,
         nav::{NavMesh, flags},
         nav_gen::{self, NavGenParams},
+        vis::{ActiveVisibility, MapVisibility},
     },
     weapon::random::{Rng, crc32},
 };
@@ -206,7 +217,7 @@ fn ensure_spots(world: &mut World, points: &[Vec3]) {
         return;
     }
     let tries = world.get_resource::<SpawnSpots>().map_or(0, |s| s.tries);
-    let mut spots = build(world, points);
+    let mut spots = build(world, points, MAX_SPOTS);
     spots.tries = tries + 1;
     if spots.spots.is_empty() {
         spots.spots = points.to_vec();
@@ -219,8 +230,31 @@ fn ensure_spots(world: &mut World, points: &[Vec3]) {
     world.insert_resource(spots);
 }
 
-/// The spots of the loaded map (`ready` unset; empty without a mesh).
-fn build(world: &mut World, points: &[Vec3]) -> SpawnSpots {
+/// Every spot of the loaded map, in the order tried (no `MAX_SPOTS`
+/// cap; empty without a mesh): what `pick` may choose from, for checks.
+pub fn candidates(world: &mut World) -> Vec<Vec3> {
+    let mut points: Vec<Vec3> = world
+        .query_filtered::<&Transform, (With<SpawnPoint>, Without<Intent>)>()
+        .iter(world)
+        .map(|t| t.translation - Vec3::Y * SPAWN_LIFT)
+        .collect();
+    points.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)).then(a.z.total_cmp(&b.z)));
+    build(world, &points, usize::MAX).spots
+}
+
+/// The walker that makes the spots' mesh when the map has none of its
+/// own: a player walking (the default step), a little wider than one.
+pub fn walker() -> NavGenParams {
+    NavGenParams {
+        radius: RADIUS,
+        max_drop: 3.0,
+        ..default()
+    }
+}
+
+/// The spots of the loaded map, at most `cap` (`ready` unset; empty
+/// without a mesh).
+fn build(world: &mut World, points: &[Vec3], cap: usize) -> SpawnSpots {
     let seed = seed_of(world);
     let mut hazards: Vec<MapBrush> = Vec::new();
     let sources: Vec<_> = world.get_resource::<SpawnHazards>().map(|h| h.0.clone()).unwrap_or_default();
@@ -230,24 +264,18 @@ fn build(world: &mut World, points: &[Vec3]) -> SpawnSpots {
     if let Some(water) = world.get_resource::<MapWater>() {
         hazards.extend(water.0.iter().map(|v| v.brush.clone()));
     }
+    let vis = world.get_resource::<ActiveVisibility>().map(|v| v.0.clone());
     let characters: Vec<Entity> = world.iter_entities().filter(|r| r.contains::<Intent>()).map(|r| r.id()).collect();
     let mut state = SystemState::<SpatialQuery>::new(world);
     let Ok(q) = state.get(world) else { return SpawnSpots::default() };
     let ignore = |e: Entity| characters.contains(&e);
     let generated;
-    let nav: &NavMesh = match world.get_resource::<NavMesh>() {
+    // The map's own mesh; one generated for another walker (bots') may
+    // climb where a player can't: ours instead.
+    let nav: &NavMesh = match world.get_resource::<NavMesh>().filter(|n| !n.generated) {
         Some(n) => n,
         None => {
-            generated = nav_gen::generate(
-                &q,
-                &ignore,
-                points,
-                &NavGenParams {
-                    radius: RADIUS,
-                    max_drop: 3.0,
-                    ..default()
-                },
-            );
+            generated = nav_gen::generate(&q, &ignore, points, &walker());
             &generated
         }
     };
@@ -282,10 +310,10 @@ fn build(world: &mut World, points: &[Vec3]) -> SpawnSpots {
     let capsule = Collider::capsule(RADIUS, HEIGHT - 2.0 * RADIUS - LIFT);
     let mut spots = Vec::new();
     for (x, z, y) in raw {
-        if spots.len() >= MAX_SPOTS {
+        if spots.len() >= cap {
             break;
         }
-        if let Some(feet) = stand_at(&q, &floor, &capsule, &hazards, Vec3::new(x, y, z)) {
+        if let Some(feet) = spot_ok(&q, &floor, &capsule, &hazards, vis.as_deref(), Vec3::new(x, y, z)) {
             spots.push(feet);
         }
     }
@@ -299,12 +327,14 @@ fn build(world: &mut World, points: &[Vec3]) -> SpawnSpots {
 
 /// The feet of a valid standing spot near the mesh point `p`, if there is
 /// one: a walkable floor within 0.5 m of the mesh's height, the capsule
-/// clear of the world, and no hazard at the feet, chest or head.
-fn stand_at(
+/// clear of the world, inside the map (`vis`: the chest in a cluster's
+/// leaf), and no hazard at the feet, chest or head.
+fn spot_ok(
     q: &SpatialQuery,
     filter: &SpatialQueryFilter,
     capsule: &Collider,
     hazards: &[MapBrush],
+    vis: Option<&MapVisibility>,
     p: Vec3,
 ) -> Option<Vec3> {
     let from = p + Vec3::Y * 0.6;
@@ -313,6 +343,9 @@ fn stand_at(
         return None;
     }
     let feet = Vec3::new(p.x, from.y - hit.distance, p.z);
+    if !inside_map(vis, feet) {
+        return None;
+    }
     let centre = feet + Vec3::Y * (LIFT + (HEIGHT - LIFT) / 2.0);
     let mut blocked = false;
     q.shape_intersections_callback(capsule, centre, Quat::IDENTITY, filter, |_| {
@@ -327,6 +360,13 @@ fn stand_at(
         hazards.iter().any(|b| b.contains(at))
     });
     (!bad).then_some(feet)
+}
+
+/// Whether a character standing at `feet` is inside the map: with
+/// visibility data, its chest is in a leaf of some cluster (not in solid
+/// or the void outside the world); without, anywhere.
+pub fn inside_map(vis: Option<&MapVisibility>, feet: Vec3) -> bool {
+    vis.is_none_or(|v| v.nodes.is_empty() || v.cluster_at(feet + Vec3::Y * 1.0).is_some())
 }
 
 /// The areas of `nav` a player can walk to from the spawn `points` and

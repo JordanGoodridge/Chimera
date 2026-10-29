@@ -22,7 +22,7 @@ use super::architecture::{root, rust_files};
 const BASELINE: &[(&str, usize, usize)] = &[
     ("chimera/core/src", 1, 2),
     ("chimera/sim/src", 10, 0),
-    ("chimera/world/src", 24, 1),
+    ("chimera/world/src", 22, 1),
     ("chimera/net/src", 27, 0),
     ("source/logic/src", 9, 0),
     ("games/cs_source/src", 140, 6),

@@ -2,7 +2,9 @@
 //! greybox: spawns spread over the map and out of the enemy's sight, at
 //! the least distance, the same for a seed, on spots a character can stand
 //! and walk from, in zones' and water's absence, and the map's spawn
-//! points when the mesh has no areas.
+//! points when the mesh has no areas; inside the map only: never on a
+//! mesh generated for another walker (bots' climbs: de_aztec's spawn over
+//! its wall), never in a solid or void leaf.
 
 use avian3d::prelude::*;
 use bevy::{ecs::system::SystemState, prelude::*};
@@ -15,7 +17,14 @@ use chimera_sim::{
     movement::placeholder,
     testkit,
 };
-use chimera_world::{greybox, harness::Sim, map::nav::NavMesh};
+use chimera_world::{
+    greybox,
+    harness::Sim,
+    map::{
+        nav::{NavArea, NavMesh},
+        vis::{ActiveVisibility, MapVisibility},
+    },
+};
 
 const DEF: &str = r#"
 id = "kit:deathmatch"
@@ -227,4 +236,74 @@ fn the_other_options_still_work() {
             "{points}: {at:?}"
         );
     }
+}
+
+/// A level area of `NavMesh` from (x0, z0) to (x1, z1) at height `y`.
+fn area(id: u32, x0: f32, z0: f32, x1: f32, z1: f32, y: f32) -> NavArea {
+    NavArea {
+        id,
+        flags: 0,
+        min: Vec2::new(x0, z0),
+        max: Vec2::new(x1, z1),
+        heights: [y; 4],
+        center: Vec3::new((x0 + x1) / 2.0, y, (z0 + z1) / 2.0),
+        links: Vec::new(),
+        place: None,
+        hiding: Vec::new(),
+        visible: Vec::new(),
+        encounters: Vec::new(),
+    }
+}
+
+/// The top of the south wall (6 m up, 1 m wide): a character fits on it
+/// but can't walk there from the spawns.
+fn wall_top() -> NavMesh {
+    NavMesh {
+        areas: vec![area(1, -20.0, 40.0, 20.0, 41.0, 6.0)],
+        ..default()
+    }
+}
+
+#[test]
+fn a_mesh_generated_for_another_walker_is_not_spawned_on() {
+    // The map's own mesh is taken as it is (its top is a spot)...
+    let mut sim = started(DEF, |app| {
+        app.insert_resource(wall_top());
+    });
+    let (_, _, at) = respawns(&mut sim, 4);
+    assert!(at.iter().all(|p| p.y > 5.0), "the map's own areas: {at:?}");
+    // ...but one a walker made (bots', which climb ledges a player can't)
+    // isn't: the spots are walked from the spawn points.
+    let mut sim = started(DEF, |app| {
+        app.insert_resource(NavMesh {
+            generated: true,
+            ..wall_top()
+        });
+    });
+    let (_, _, at) = respawns(&mut sim, 12);
+    assert!(at.iter().all(|p| p.y < 3.0), "on the floor: {at:?}");
+    let spots = sim.app.world().resource::<SpawnSpots>().clone();
+    assert!(spots.from_nav && spots.spots.len() > 80, "{} spots", spots.spots.len());
+    assert!(spots.spots.iter().all(|s| s.y < 3.0));
+}
+
+#[test]
+fn spots_in_solid_or_void_leaves_are_not_spawned_in() {
+    // Visibility data whose west half (x < 0) is a solid leaf, as the void
+    // outside a map's world is: no spot there.
+    let vis = MapVisibility {
+        planes: vec![(Vec3::X, 0.0)],
+        nodes: vec![(0, [-1, -2])],
+        leaf_clusters: vec![0, -1],
+        cluster_count: 1,
+        visible: vec![vec![1]],
+        ..default()
+    };
+    let mut sim = started(DEF, |app| {
+        app.insert_resource(ActiveVisibility(std::sync::Arc::new(vis)));
+    });
+    let (_, _, at) = respawns(&mut sim, 20);
+    assert!(at.iter().all(|p| p.x >= 0.0), "none in the solid leaf: {at:?}");
+    let spots = sim.app.world().resource::<SpawnSpots>().clone();
+    assert!(spots.spots.len() > 40 && spots.spots.iter().all(|s| s.x >= 0.0));
 }
