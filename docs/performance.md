@@ -32,6 +32,33 @@ Performance").
   3c has the commands); https://ui.perfetto.dev shows the timeline.
 - `REFCMP_OUT=<dir>` keeps refcmp's captures and reports in your own
   folder (the CS:S references stay shared).
+- **Which code takes the time** (Linux): `tools/perf-profile.sh` runs a
+  game build with line tables and frame pointers (the `profiling` profile;
+  build line in the script) under `perf record` (user space only, so
+  `perf_event_paranoid` 2 is enough), vsync off and uncapped, samples
+  from `--after` seconds for `--seconds`, and hands `perf script` to
+  `profsum` (`chimera/tools/src/bin/profsum.rs`), which writes into
+  `--out`: `table.md` (each thread's CPU ms per frame; our code by the
+  deepest frame of ours on the stack, callees included; Bevy's systems
+  where no frame is ours; functions by self and by total time; ms per
+  frame and %), `flame.svg` (a flame graph, the plumbing between a thread
+  and its systems left out, coloured by crate family: ours, Bevy, wgpu
+  and the driver, std and the allocator), `top.svg` (bars of the top
+  rows) and `top.json`. `--baseline <earlier out>/top.json` adds before,
+  after and delta columns and before/after bars: run it on the build
+  before a fix, then after, same scene. `profsum <perf.txt> --focus
+  <function>` shows who calls something (e.g. `QueryState::new`).
+  `rsvg-convert -w 1800 flame.svg -o flame.png` for a picture to post.
+  Windows (no perf): a span trace (`--features trace`, `trace_capture`,
+  `scripts\profile.ps1`), `tracesum <trace> --folded spans.txt` and
+  `profsum spans.txt --unit us --frames <N> --out <dir>`: the same
+  tables and pictures by Bevy span (system, schedule, render pass), with
+  tracing's overhead (frames 2-5x slower). `tracesum` also gives each
+  span's p99 over frames and its share of the main world's frame.
+  Shortcuts: the distribution's glibc has no frame pointers, so samples
+  in malloc, free and memcpy lose their callers (`[libc.so.6] (callers
+  unknown)`); DWARF unwinding (`--call-graph dwarf,65528`) lost most of
+  the main thread's stacks and 15-50% of samples here.
 
 - Load-independent numbers: `chimera_perf`, `chimera_perf_log`, the debug
   UI's Perf tab and `refcmp bench` also give percentiles (p50 to p99.9, 1%
@@ -1407,6 +1434,129 @@ ticks 1.8x, its render world ~15%; frame times on the box sat at the
   `prepare_preprocess_bind_groups` higher than CS:S's.
 - A `perfgate` scenario for the party (it lives in a game's tools crate,
   which can't depend on the app; a party binary of its own).
+
+## Party frame-rate pass (2026-10-28)
+
+Goal: where the Lucker Party gun game's frame time goes, by code, with
+pictures to compare before and after. Scenes: `lucker_party +minigame
+originals:gun_game_dust2 +MaxPlayer 4` on de_dust2 and with `--map
+cs_source:cs_office` (four Combat Arms bots and the idle local player;
+the ladder hands out both games' guns, so identities mix), 1280x720,
+vsync off, no frame cap.
+
+### Method
+
+`tools/perf-profile.sh` ("Measuring"): the `profiling` build (playtest
+plus line tables) with frame pointers, `perf record -e cpu-clock:u
+--call-graph fp -F 499` from 40 s after start for 20 s, then `profsum`.
+"Before" is main at 1aa9e649 plus the readout and `--window` vsync
+changes (no behaviour change), "after" this pass; the two binaries ran
+interleaved, three rounds per map, at load 9-17 on 12 threads (other
+agents building and testing). The per-second `chimera_perf_log`
+readouts of the same window give the frame and instruction numbers.
+DWARF unwinding was tried first and lost most of the main thread's
+stacks; the distribution's glibc has no frame pointers, so samples
+inside malloc, free and memcpy keep no callers (about 1 ms a frame on
+the render thread and 1.8 on the task pool: `[libc.so.6] (callers
+unknown)`, "allocator and memcpy" in the pictures). A span trace
+(`--features trace`, `trace_capture 3`, `tracesum --folded`, `profsum
+--unit us`) gave the same ranking by system with call counts, but
+tracing made frames 5-7x slower (18 fps), so its milliseconds aren't the
+game's.
+
+### Baseline
+
+Medians of the three rounds (range); frame ms from the 4096-frame
+readout, instructions per frame p50 (main world without its ticks, per
+tick, render world), GPU from timestamps:
+
+| map | build | frame p50 ms | frame p99 ms | main CPU p50 ms | render CPU p50 ms | main instr w/o ticks | tick instr | render instr | GPU p50 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| de_dust2 | before | 8.70 (7.64-9.56) | 43.9 (43.6-60.3) | 6.94 (5.98-7.64) | 6.58 (6.17-7.38) | 11.63M (11.58-11.97) | 9.53M (9.23-9.55) | 20.71M (17.87-21.11) | 1.53 |
+| de_dust2 | after | 7.51 (7.34-8.09) | 25.3 (9.8-40.7) | 5.46 (5.45-6.17) | 6.35 (6.19-6.56) | 10.53M (10.47-10.62) | 7.10M (7.04-7.16) | 20.96M (19.27-21.00) | 1.54 |
+| cs_office | before | 9.35 (9.06-9.55) | 36.4 (33.9-55.5) | 7.64 (7.39-7.84) | 7.64 (7.42-7.69) | 15.17M (14.93-15.23) | 12.83M (12.82-12.97) | 25.22M (25.19-25.64) | 1.84 |
+| cs_office | after | 9.46 (7.74-12.74) | 54.4 (10.0-65.0) | 7.41 (6.08-9.53) | 7.95 (6.76-10.56) | 14.78M (13.37-15.06) | 10.77M (10.53-10.79) | 25.26M (25.14-26.29) | 2.04 |
+
+Wall times swung 1.5x between rounds of the same build (cs_office's
+"after" run 1 started at load 9 and ran at 52 fps, its run 3 at 126):
+read the instruction columns. The ticks run 24% (de_dust2) and 16%
+(cs_office) fewer instructions; the main world's frame without ticks
+5-10% fewer; the render world is unchanged. On the quietest runs the
+frame went from 7.64 to 7.34 ms (de_dust2) and 9.06 to 7.74 ms
+(cs_office), 1% lows from 11-16 to 22-87 fps on de_dust2; the GPU took
+1.5-1.9 ms of a 7-9 ms frame, so the game is CPU bound, and with the
+main world's work cut, the **render thread is now the limit** (its CPU
+time per frame is the frame time; the main world waits for it).
+
+Where a frame's CPU went after (de_dust2, perf, 18.1 ms of CPU a frame
+over all threads at ~125 fps): render thread 6.9 ms (Bevy's render
+world 5.2, wgpu and the driver 0.4, unsymbolized and libc 1.1), main
+thread 5.8 (our code 1.9, Bevy 3.5), task pool 5.2 (wgpu's command
+encoding 1.8, Bevy's parallel systems 1.4, libc 1.8), audio 0.15
+(pictures: `families.svg`).
+
+### Hot spots, ranked
+
+ms of CPU a frame (inclusive) in the de_dust2 "after" profile, ~125
+fps; "before" where a fix moved it. Fix ideas with an expected gain and
+effort (S/M/L):
+
+| # | where | ms/frame | why | fix | gain | effort |
+|---|---|---|---|---|---|---|
+| 1 | wgpu command encoding (`CommandEncoder::finish`, task pool and render thread) | 1.93 | every camera's passes encoded and validated each frame (4 cameras drawing) | fewer views: check which of the 4 cameras must draw (the party HUD's?), as "Fewer cameras per frame" did | 0.3-0.5 per camera | M |
+| 2 | `bevy_render::renderer::render_system` (submit, present) | 1.87 (of it `Queue::submit` 0.90) | buffer and bind-group lifetimes, destroying last frame's buffers | follows from 3-5 and fewer views | - | - |
+| 3 | `write_binned_instance_buffers` | 0.63 | instance buffers rewritten per phase per view | fewer views; fewer mesh instances changing (14 meshes and 6 materials modified a frame, `chimera_perf`) | 0.2 | M |
+| 4 | `prepare_preprocess_bind_groups` | 0.56 | Bevy makes the GPU-preprocessing bind groups again every frame for every view | upstream (cache them while the buffers stay the same); fewer views | 0.4 | L (Bevy) |
+| 5 | `prepare_clusters_for_gpu_clustering` | 0.33 | clustering buffers made per view each frame | lights off the views that need none (sky, view model) if Bevy allows | 0.2 | M |
+| 6 | `MeshAllocator` | 0.30 | meshes modified every frame (dust, particles, prop shadows, tracers) reallocate | find the 14 a frame (log them in `chimera_perf 3`), write only real changes | 0.2 | S |
+| 7 | fixed ticks' executor (`run_fixed_main_schedule`, not in a system of ours) | 1.17 (before 1.61) | hundreds of small systems a tick (avian's, both games'), each with the executor's bookkeeping | fewer, larger systems in the per-tick schedules (Select 13, Weapons 17 with both games' guns, "Lucker Party"); run_if on whole sets | 0.3 | M |
+| 8 | new `QueryState`s (`world.query` in exclusive systems) | **before 1.23, after 0.40** | each matches all 2263 archetypes | fixed here (below); left: Bevy's own commands (`check_dir_light_mesh_visibility` 0.09, bevy_audio's `despawn_all_where` 0.12), the minigame HUD, moments and ladder (0.12) | 0.25 more | S |
+| 9 | `bevy_ui` layout | 0.38 | Combat Arms' HUD and the party's panels, laid out every frame | hide or despawn UI trees not shown; fewer nodes | 0.2 | M |
+| 10 | our measurement (`client::perf`, `frame_metrics`, `Percentiles::of`) | 0.33 | the readout's percentiles and mesh counts, with `chimera_perf_log 1` on | only while shown; sort less often | 0.2 (only when measuring) | S |
+| 11 | Combat Arms' animation (`characters::drive`) | 0.18 | `Rig::posed` clones every node's name, `Posed::node` searches names case-blind | names shared, nodes looked up once per rig | 0.1 | S |
+| 12 | glows' ray casts (`glow_visibility`) | 0.10 | five rays per visible glow, as CS:S's occlusion | parity: leave | - | - |
+| 13 | binds (`keys_for`) | **before 0.09, after 0** | a lowercased copy of every bind per lookup, several lookups a frame | fixed here | - | - |
+| 14 | `roster::arm` cloning `BotData` | **before 0.05, after 0** | the bots' whole table cloned whenever a bot re-armed (every level) | fixed here | - | - |
+
+### Fixed
+
+- **Kept query states** (`chimera_core::query_cache`): `cached_query::<D,
+  F, _>(world, |q, world| ..)` lends a `QueryState` kept in the world
+  (one per query type) to the closure, and `first::<F>(world)` is the
+  first entity matching a filter. A new state matches itself against
+  every archetype (2263 in the party: Combat Arms' and CS:S's
+  characters, weapons, props and UI), tens of µs a call. Used in the
+  per-tick and per-frame exclusive systems the profile named: the
+  minigame runtime's `players`, `join` and `end_protection`, the logic
+  bridge's `sync_controls`, `snapshot`, `sync_soundscapes` and
+  `apply_effects`, the bots' `keep_quota` and `arm`,
+  `give_starting_weapons`, the perks' `perk_tick` and `supplies`,
+  Combat Arms' objects, the console's `local_userinfo` and overlay, and
+  the local-player lookups of chat, voice, the death camera, the lobby,
+  music. New `QueryState`s per frame: 1.23 -> 0.40 ms (picture
+  `querystate-callers`); the ticks 24% fewer instructions on de_dust2.
+  Same results as a new state (`query_cache` tests: entities added to
+  known and new archetypes, mutable access, nested calls).
+- `binds::keys_for` compares commands without lowercased copies (0.09
+  ms a frame; a test checks it against `norm` with non-ASCII text).
+- `roster::arm` borrows `BotData` (`resource_scope`) instead of cloning
+  it (0.05 ms).
+
+No behaviour or look changes: the same queries over the same entities,
+the same comparisons. The changed crates' tests pass (pre-commit).
+
+### Left
+
+The render thread sets the frame now. In order: count and cut the
+cameras drawing (1, 3-5: 4 cameras drawing in a party match; each costs
+encoding, a preprocessing bind group set, clustering and instance
+buffers), the meshes and materials modified every frame (6), then the
+per-tick executor cost (7) and the UI layout (9); the remaining new
+query states and Combat Arms' animation are small (8, 11). A party
+`perfgate` scenario would hold the tick instructions ("Lucker Party"
+above). On the Windows PC: `scripts\profile.ps1 lucker_party` gives the
+span version of these pictures (`tracesum --folded`, `profsum --unit
+us`).
 
 ## See a frame yourself
 

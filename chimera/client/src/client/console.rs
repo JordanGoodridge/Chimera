@@ -1304,10 +1304,14 @@ fn overlay_text(world: &mut World) {
     let rows = suggest_rows(world);
     let shown = !rows.is_empty();
     world.resource_mut::<ConsoleUi>().list_shown = shown && suggestions(world).is_some();
-    let mut q = world.query_filtered::<(Entity, &mut Visibility), With<ConsoleSuggest>>();
-    if let Ok((e, mut v)) = q.single_mut(world) {
-        let want = if shown { Visibility::Visible } else { Visibility::Hidden };
-        v.set_if_neq(want);
+    let want = if shown { Visibility::Visible } else { Visibility::Hidden };
+    let suggest = chimera_core::query_cache::cached_query::<(Entity, &mut Visibility), With<ConsoleSuggest>, _>(world, |q, w| {
+        q.single_mut(w).ok().map(|(e, mut v)| {
+            v.set_if_neq(want);
+            e
+        })
+    });
+    if let Some(e) = suggest {
         if world.resource::<ConsoleUi>().suggest_rows != rows {
             let font = console_font(world.resource::<UiFonts>(), OUTPUT_FONT);
             world.entity_mut(e).despawn_related::<Children>();

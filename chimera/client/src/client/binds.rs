@@ -427,13 +427,25 @@ pub fn parts(line: &str) -> Vec<String> {
 }
 
 /// The keys bound to exactly `command`, in key order.
+/// (Polled by input systems several times a frame: compares without
+/// allocating, as `norm` would: trimmed, case ignored.)
 pub fn keys_for<'a>(binds: &'a BTreeMap<String, String>, command: &str) -> Vec<&'a str> {
-    let c = norm(command);
     binds
         .iter()
-        .filter(|(_, v)| norm(v) == c || (v.contains(';') && parts(v).iter().any(|p| norm(p) == c)))
+        .filter(|(_, v)| {
+            same_command(v, command) || (v.contains(';') && parts(v).iter().any(|p| same_command(p, command)))
+        })
         .map(|(k, _)| k.as_str())
         .collect()
+}
+
+/// `norm(a) == norm(b)` without the two new strings.
+fn same_command(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim(), b.trim());
+    if a.is_ascii() && b.is_ascii() {
+        return a.eq_ignore_ascii_case(b);
+    }
+    a.chars().flat_map(char::to_lowercase).eq(b.chars().flat_map(char::to_lowercase))
 }
 
 /// A key name as the options list shows it (`SPACE`, `MOUSE1`).
@@ -769,6 +781,9 @@ bind "MOUSE1" "+attack"
     fn rebinding_moves_the_action_to_the_new_key() {
         let b = binds(&[("w", "+forward"), ("uparrow", "+forward"), ("f", "+use")]);
         assert_eq!(keys_for(&b, "+FORWARD "), ["uparrow", "w"]);
+        for (a, b) in [("+Forward", " +forward"), ("ÄRGER", "ärger"), ("say Ü", "say ü"), ("a", "b"), ("+use", "+used")] {
+            assert_eq!(same_command(a, b), norm(a) == norm(b), "{a} vs {b}");
+        }
         assert_eq!(
             rebind_line(&b, "+forward", "f"),
             "unbind uparrow; unbind w; bind f +forward"

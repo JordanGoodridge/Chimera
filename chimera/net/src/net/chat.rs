@@ -167,7 +167,7 @@ fn forward_map_says(mut says: MessageReader<crate::map::MapSay>, mut commands: C
             continue;
         }
         commands.queue(move |w: &mut World| {
-            let host = w.query_filtered::<Entity, With<LocalPlayer>>().iter(w).next();
+            let host = chimera_core::query_cache::first::<With<LocalPlayer>>(w);
             if let Some(host) = host {
                 deliver_say(w, host, &text, false);
                 return;

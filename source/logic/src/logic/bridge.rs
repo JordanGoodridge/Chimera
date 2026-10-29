@@ -60,6 +60,7 @@ use avian3d::prelude::{
     LayerMask, LinearVelocity, PhysicsSystems, Position, RigidBody, RigidBodyDisabled, Rotation,
 };
 use bevy::{ecs::message::MessageCursor, prelude::*};
+use chimera_core::query_cache::{cached_query, first};
 
 use super::classes::ServerLine;
 use super::hud::{HudEvent, HudMessages, HudShow, ScreenFades};
@@ -771,7 +772,7 @@ fn sync_visuals(world: &mut World, logic: &Logic) {
 /// The trigger_soundscape volumes the local player touches, for the
 /// soundscape selection (`map::SoundscapeTouches`).
 fn sync_soundscapes(world: &mut World, logic: &Logic) {
-    let local = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next();
+    let local = first::<With<LocalPlayer>>(world);
     let touched: Vec<usize> = match local {
         Some(p) => logic
             .world
@@ -977,11 +978,11 @@ fn snapshot(world: &mut World, logic: &Logic) -> Vec<Player> {
             .find(|(_, n)| *n == g)
             .map(|(id, _)| *id)
     };
-    let mut list: Vec<(bool, Player)> = world
-        .query::<CharacterQuery>()
-        .iter(world)
-        .map(|row| (row.9.is_some(), as_player(row, scale, ground_of)))
-        .collect();
+    let mut list: Vec<(bool, Player)> = cached_query::<CharacterQuery, (), _>(world, |q, world| {
+        q.iter(world)
+            .map(|row| (row.9.is_some(), as_player(row, scale, ground_of)))
+            .collect()
+    });
     list.sort_by_key(|(local, p)| (!*local, p.entity));
     list.into_iter().map(|(_, p)| p).collect()
 }
@@ -1067,12 +1068,11 @@ pub fn carry_player(world: &mut World, player: Entity, scale: f32, movers: &[Car
             generation: 0,
         })
     };
-    let before = {
-        let mut q = world.query::<CharacterQuery>();
-        let Ok(row) = q.get(world, player) else {
-            return false;
-        };
-        as_player(row, scale, ground_of)
+    let before = cached_query::<CharacterQuery, (), _>(world, |q, world| {
+        q.get(world, player).ok().map(|row| as_player(row, scale, ground_of))
+    });
+    let Some(before) = before else {
+        return false;
     };
     let mut players = vec![before.clone()];
     let mut solids: Vec<Option<Vec<MapBrush>>> = movers
@@ -1276,7 +1276,7 @@ fn sync_movers(world: &mut World, logic: &mut Logic) {
 
 fn apply_effects(world: &mut World, effects: Vec<Effect>, scale: f32) {
     let now = world.resource::<Time>().elapsed_secs_f64();
-    let local = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next();
+    let local = first::<With<LocalPlayer>>(world);
     for effect in effects {
         match effect {
             Effect::Damage { target, amount, crush } => {
@@ -1780,14 +1780,15 @@ fn sync_controls(world: &mut World, logic: &Logic) {
         world.insert_resource(BodyControllers(list));
     }
     // Players parented to an entity ride it (`core::MapControls::parented`).
-    let players: Vec<(Entity, bool)> = world
-        .query_filtered::<(Entity, Option<&crate::core::MapControls>), With<crate::core::Intent>>()
-        .iter(world)
-        .filter_map(|(e, c)| {
-            let want = logic.world.player_parent(e).is_some();
-            (c.map_or(false, |c| c.parented) != want).then_some((e, want))
-        })
-        .collect();
+    let players: Vec<(Entity, bool)> =
+        cached_query::<(Entity, Option<&crate::core::MapControls>), With<crate::core::Intent>, _>(world, |q, world| {
+            q.iter(world)
+                .filter_map(|(e, c)| {
+                    let want = logic.world.player_parent(e).is_some();
+                    (c.map_or(false, |c| c.parented) != want).then_some((e, want))
+                })
+                .collect()
+        });
     for (e, want) in players {
         with_controls(world, e, |c| c.parented = want);
     }

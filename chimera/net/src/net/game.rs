@@ -260,7 +260,7 @@ fn apply_own(world: &mut World, mut cursor: Local<MessageCursor<OwnState>>) {
         .max_by_key(|s| s.tick)
         .map(|s| s.parts.clone());
     let Some(blob) = newest else { return };
-    let Some(player) = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next() else {
+    let Some(player) = chimera_core::query_cache::first::<With<LocalPlayer>>(world) else {
         return;
     };
     world.resource_scope(|world, parts: Mut<OwnParts>| parts.apply(world, player, &blob));

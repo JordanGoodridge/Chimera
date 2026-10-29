@@ -7,7 +7,8 @@
 //! `fov_desired` (`PlayerFov`: the world camera's unzoomed field of view, 75
 //! to 90, CS:S's 90); the video cvars (`mat_vsync`, `chimera_fullscreen`,
 //! `chimera_resolution`, `mat_antialias`; archived) set the window's present
-//! mode, mode and size when they change (not in `--window` or automated runs;
+//! mode, mode and size when they change (not in automated runs, and only the
+//! present mode given `--window`;
 //! `window_mode`: full screen in the primary monitor's mode of that size,
 //! else of its own size, else borderless; the size only for a window) and
 //! every camera's MSAA; the options' video tab shows the window as it is
@@ -379,9 +380,9 @@ pub fn window_mode(fullscreen: u8, size: Option<UVec2>, monitor: Option<(UVec2, 
     }
 }
 
-/// Set the window as the video cvars say, when they change. Runs given a
-/// window size (`--window`) or automated (screenshots, captures) leave the
-/// window alone.
+/// Set the window as the video cvars say, when they change. Automated runs
+/// (screenshots, captures) leave the window alone; given a window size
+/// (`--window`), only vsync applies.
 fn apply_video(
     settings: Res<VideoSettings>,
     args: Option<Res<crate::client::ClientArgs>>,
@@ -391,7 +392,7 @@ fn apply_video(
     if !settings.is_changed() {
         return;
     }
-    if args.is_some_and(|a| a.0.window.is_some() || a.0.screenshot.is_some() || a.0.views.is_some()) {
+    if args.as_ref().is_some_and(|a| a.0.screenshot.is_some() || a.0.views.is_some()) {
         return;
     }
     let Ok(mut window) = window.single_mut() else { return };
@@ -402,6 +403,11 @@ fn apply_video(
     };
     if window.present_mode != present {
         window.present_mode = present;
+    }
+    // A window size given (`--window`) keeps its size and mode, but
+    // `mat_vsync 0` still uncaps it (profiling runs time frames that way).
+    if args.is_some_and(|a| a.0.window.is_some()) {
+        return;
     }
     let size = parse_resolution(&settings.resolution);
     let monitor = monitors.iter().next();

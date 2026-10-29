@@ -579,6 +579,10 @@ pub struct PerfReport {
     pub lines: Vec<String>,
     at: Option<Instant>,
     logged: Option<Instant>,
+    /// The world's archetype count at the last readout: a count that keeps
+    /// rising means some entity gets a new mix of components all the time,
+    /// and every system's queries then check each new archetype.
+    archetypes: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -601,7 +605,7 @@ fn perf_report(
         Option<Res<crate::metrics::TickMetrics>>,
     ),
     bodies: (crate::map::prop_physics::BodyCounts, Query<&Name>),
-    cameras: Query<&Camera>,
+    (cameras, archetypes): (Query<&Camera>, &bevy::ecs::archetype::Archetypes),
 ) {
     let now = Instant::now();
     let due = report.at.is_none_or(|t| (now - t).as_secs_f32() >= 1.0);
@@ -613,9 +617,13 @@ fn perf_report(
     // Each camera drawing runs its own passes (the view model's only with
     // something on its layer).
     let drawing = cameras.iter().filter(|c| c.is_active).count();
+    let archetypes_before = report.archetypes;
     if let Some(line) = report.lines.iter_mut().find(|l| l.starts_with("entities ")) {
         line.push_str(&format!(", cameras {drawing}/{} drawing", cameras.iter().count()));
+        let n = archetypes.len();
+        line.push_str(&format!(", archetypes {n} (+{})", n.saturating_sub(archetypes_before)));
     }
+    report.archetypes = archetypes.len();
     if let Some(r) = render_time
         && let Some(line) = report.lines.get_mut(1)
     {

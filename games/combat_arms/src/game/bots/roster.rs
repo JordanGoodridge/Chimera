@@ -134,51 +134,55 @@ pub fn kick(world: &mut World, e: Entity) {
 /// maximum times it, the clip included), the ranged and thrown reach
 /// fixed at the first life (8.2, 8.5).
 pub(super) fn arm(world: &mut World) {
-    let fresh: Vec<Entity> = world
-        .query_filtered::<(Entity, &CaBot, &Inventory), Without<Connecting>>()
-        .iter(world)
-        .filter(|(_, b, inv)| !b.armed && !inv.weapons.is_empty())
-        .map(|(e, ..)| e)
-        .collect();
+    let fresh: Vec<Entity> =
+        chimera_core::query_cache::cached_query::<(Entity, &CaBot, &Inventory), Without<Connecting>, _>(world, |q, world| {
+            q.iter(world)
+                .filter(|(_, b, inv)| !b.armed && !inv.weapons.is_empty())
+                .map(|(e, ..)| e)
+                .collect()
+        });
     if fresh.is_empty() {
         return;
     }
-    let data = world.resource::<BotData>().clone();
-    for e in fresh {
-        let template = world.get::<CaBot>(e).unwrap().template;
-        let weapons = world.get::<Inventory>(e).unwrap().weapons.clone();
-        let (mut ranged, mut thrown_kinds) = (0.0f32, Vec::new());
-        for w in weapons {
-            let Some(id) = world.get::<Weapon>(w).map(|w| w.id) else { continue };
-            let Some(gun) = data.gun(id, template) else { continue };
-            let kind = data.gun_type(id).unwrap_or_default().to_string();
-            if let Some(mut m) = world.get_mut::<Magazine>(w) {
-                let total = (m.reserve_max as f32 * gun.ammo).round() as u32;
-                m.reserve = total.saturating_sub(m.clip);
-                if (m.reserve > 0 || m.clip > 0) && kind != "Knife" {
-                    ranged = ranged.max(gun.range.1);
+    // Borrowed, not cloned (the whole table: 0.05 ms a frame in a party
+    // match where bots re-arm at every level).
+    world.resource_scope(|world, data: Mut<BotData>| {
+        for e in fresh {
+            let template = world.get::<CaBot>(e).unwrap().template;
+            let weapons = world.get::<Inventory>(e).unwrap().weapons.clone();
+            let (mut ranged, mut thrown_kinds) = (0.0f32, Vec::new());
+            for w in weapons {
+                let Some(id) = world.get::<Weapon>(w).map(|w| w.id) else { continue };
+                let Some(gun) = data.gun(id, template) else { continue };
+                let kind = data.gun_type(id).unwrap_or_default().to_string();
+                if let Some(mut m) = world.get_mut::<Magazine>(w) {
+                    let total = (m.reserve_max as f32 * gun.ammo).round() as u32;
+                    m.reserve = total.saturating_sub(m.clip);
+                    if (m.reserve > 0 || m.clip > 0) && kind != "Knife" {
+                        ranged = ranged.max(gun.range.1);
+                    }
+                }
+                if let Some(mut t) = world.get_mut::<Throwable>(w) {
+                    t.count *= gun.ammo.max(1.0) as u32;
+                    if t.count > 0 {
+                        thrown_kinds.push(kind.clone());
+                    }
+                }
+                if kind == "Mine" {
+                    thrown_kinds.push(kind);
                 }
             }
-            if let Some(mut t) = world.get_mut::<Throwable>(w) {
-                t.count *= gun.ammo.max(1.0) as u32;
-                if t.count > 0 {
-                    thrown_kinds.push(kind.clone());
-                }
-            }
-            if kind == "Mine" {
-                thrown_kinds.push(kind);
+            let kinds: Vec<&str> = thrown_kinds.iter().map(String::as_str).collect();
+            let thrown = thrown_reach(&data, template, &kinds);
+            let mut b = world.get_mut::<CaBot>(e).unwrap();
+            b.armed = true;
+            if !b.reach_fixed {
+                b.ranged_reach = ranged;
+                b.thrown_reach = thrown;
+                b.reach_fixed = true;
             }
         }
-        let kinds: Vec<&str> = thrown_kinds.iter().map(String::as_str).collect();
-        let thrown = thrown_reach(&data, template, &kinds);
-        let mut b = world.get_mut::<CaBot>(e).unwrap();
-        b.armed = true;
-        if !b.reach_fixed {
-            b.ranged_reach = ranged;
-            b.thrown_reach = thrown;
-            b.reach_fixed = true;
-        }
-    }
+    });
 }
 
 /// The thrown reach (8.5, u): the largest range of the thrown weapons
@@ -202,11 +206,10 @@ pub(super) fn keep_quota(world: &mut World) {
         return;
     }
     let want = settings.quota as usize;
-    let mut bots: Vec<(u64, Entity)> = world
-        .query_filtered::<Entity, (With<CaBot>, Without<crate::core::Npc>)>()
-        .iter(world)
-        .map(|e| (e.to_bits(), e))
-        .collect();
+    let mut bots: Vec<(u64, Entity)> =
+        chimera_core::query_cache::cached_query::<Entity, (With<CaBot>, Without<crate::core::Npc>), _>(world, |q, world| {
+            q.iter(world).map(|e| (e.to_bits(), e)).collect()
+        });
     if bots.len() < want {
         add_bot(world, None);
     } else if bots.len() > want {

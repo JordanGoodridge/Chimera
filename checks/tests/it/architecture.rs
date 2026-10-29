@@ -18,7 +18,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("env", &[]),
     // Performance counters and distributions: Bevy only.
     ("metrics", &[]),
-    ("console", &["core", "env"]),
+    // `world.query` with its state kept between calls: Bevy only.
+    ("query_cache", &[]),
+    ("console", &["core", "env", "query_cache"]),
     // Game events and the server log: what the rules and the network tell
     // plugins and admins happened.
     ("game_log", &["core", "console"]),

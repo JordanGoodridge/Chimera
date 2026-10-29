@@ -1,7 +1,7 @@
 [package]
 name = "chimera_tools"
 version = "0.1.0"
-description = "Chimera's tools: the perf regression gate, image comparison, trace summaries"
+description = "Chimera's tools: the perf regression gate, image comparison, trace summaries, profile tables and flame graphs"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
@@ -27,6 +27,13 @@ workspace-hack.workspace = true
 [[bin]]
 name = "tracesum"
 test = false
+required-features = ["tools"]
+
+# Which code takes the time: a CPU profile (`perf script`) or tracesum's
+# span stacks as a top-N table, a flame graph and before/after bars
+# (docs/performance.md, "Measuring").
+[[bin]]
+name = "profsum"
 required-features = ["tools"]
 
 [features]

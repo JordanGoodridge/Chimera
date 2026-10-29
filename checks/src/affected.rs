@@ -472,6 +472,8 @@ fn is_docs(path: &str) -> bool {
             "tools/clean-worktrees.sh",
             "tools/agent-slot.sh",
             "tools/post-push-tests.sh",
+            // A profiling script (runs built binaries; no crate reads it).
+            "tools/perf-profile.sh",
         ]
         .contains(&path)
 }
