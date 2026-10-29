@@ -321,12 +321,25 @@ the user's go-ahead: no Actions runs unless asked.
   tracer start (the view model's muzzle, the eye, a point ahead of it),
   and is it drawn at all while scoped? Ours starts at the view model's
   flash point, which keeps its camera offset when zoomed.
-- **Ultimate Gun Game's Escape menu.** It shows Combat Arms' menu. It
-  should be Ultimate Gun Game's own, drawn above the match-end screen
-  (it's drawn under it now), and offer better options. Proposed: resume,
-  options (video, audio, mouse, binds, the party settings: hit marker,
-  swap effect, even footsteps, music), scoreboard, change map or vote,
-  disconnect, quit. The user to confirm the list.
+- **Ultimate Gun Game's Escape menu (user, 2026-10-29).** It's
+  Ultimate Gun Game's own, not Combat Arms', drawn above the match-end
+  screen. Entries:
+  - **Resume.**
+  - **Options:** video, audio, mouse and binds, plus each player's own
+    party settings (`cl_hitmarker`, `party_swap_effect`, `party_music`).
+  - **Host settings:** only for the host or an admin. The match's server
+    settings: `party_even_footsteps`, the ladder rules (rung extras,
+    demote on suicide, knife finale), map rotation, bots, spawn
+    protection.
+  - **Vote to skip the map:** on everyone's menu. It passes with a
+    majority of the players, then goes to the next map in the rotation.
+  - **Quit.**
+  - No scoreboard entry, since Tab opens it. No Disconnect until there is
+    a main menu to go back to.
+- **A main menu for Ultimate Gun Game (and the other party apps).**
+  Scope it after the Escape menu: play (host or join), server browser
+  or direct connect, options, quit. Then add Disconnect to the Escape
+  menu, returning to it.
 - **Combat Arms grenade not thrown while sprinting: matches Combat Arms.**
   Pin pulled, then sprint, then release: the throw waits until sprint
   ends. view_models.md says so ("Grenade and sprint": the cocked and
