@@ -33,6 +33,10 @@ the user's go-ahead: no Actions runs unless asked.
   (`game/attachments.rs`, each weapon's `combat_arms:attachments`), the
   same for everyone who reaches the rung, so it stays fair; shown in the
   HUD's rung text if there's room.
+  With it, a random Combat Arms character per Combat Arms rung (user,
+  2026-10-29: per rung, the same for everyone on it), drawn from every
+  character model the install has, specialists included, not only the
+  default set.
 - **Frame rate drops after a few map changes: fixed, confirm in a
   playtest.** What grew was archetypes and tables (Bevy frees none; the
   characters' optional components make new ones at every map change and
