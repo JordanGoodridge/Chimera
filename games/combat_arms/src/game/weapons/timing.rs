@@ -1,27 +1,46 @@
-//! Each install weapon's own fire cycle, reload and draw from its own
+//! Each install weapon's own fire sequence, reload and draw from its own
 //! view model's animations (docs/plans/active/ca-weapon-timings.md;
 //! weapon_firing.md "Trigger and fire cycle" and "Reload",
-//! weapon_classes.md "Typical weapons" and 5.5, view_models.md 7): the
-//! cycle is `fire_0`'s length, the magazine reload `reload`'s, a shell
-//! reload `PreReload`, `reload` per shell and `PostReload`, the draw
-//! `select`'s, all at rate 1, each found by name in the model's combined
-//! list (its own animations, then its children's: `model::load`).
+//! weapon_classes.md "Typical weapons", 3.3, 4 and 5.5, view_models.md 7,
+//! inventory.md 8.2, special_weapons.md 4): the cycle is `fire_0`'s
+//! length, the magazine reload `reload`'s, a shell reload `PreReload`,
+//! `reload` per shell and `PostReload`, the draw `select`'s, the trigger's
+//! closing part `postfire`'s, all at rate 1, each found by name in the
+//! model's combined list (its own animations, then its children's:
+//! `model::load`). Also from the model:
+//!
+//! - the pre-fire's presence: a gun whose class plays one (the template's
+//!   `trigger.latency` 3) and whose model has no `prefire` takes the
+//!   first round an update sooner (latency 2; weapon_firing.md, "Trigger
+//!   and fire cycle");
+//! - a spinning gun's (`CaSpin`, the merge's `combat_arms:spin` table
+//!   where `AccumPreFire` is set): the spin-up `prefire`, the spin-down
+//!   `postfire`, the loop `fire_0`, a round per `FIRE_KEY` before the
+//!   loop's end (its cycle the loop over their count), latency 1, no
+//!   trigger post-fire (the spin-down is it);
+//! - a flame gun's (`special::CaFlame`): the pre-fire, the loop, its
+//!   `FIRE_KEY`s (their count and mean spacing, the trigger's cycle) and
+//!   the post-fire;
+//! - a knife's (`inventory::Knife`): each swing's length (`fire_0`,
+//!   `alt_fire_0`), hits (its `FIRE_KEY`s, `ALT_FIRE_KEY`s) and post-fire,
+//!   at 1 + the record's `FireAniRate`.
 //!
 //! The `combat_arms:timing` hook (written by `data`'s merge on the
 //! install's copies, never on our documents: their numbers are the
 //! spec's) reads the weapon's `[models] view` when the weapon is built,
 //! on whichever side builds it, once per model file per world
 //! (`ViewTimes`, failures too). A
-//! model that doesn't read, or an animation it lacks, keeps the
-//! template's number. The rates on top are the other modules': the cycle
-//! is divided by `attachments::fire_animation_rate` (the record's
-//! `FireAniRate`, `CaItem::fire_rate`, + the parts'), the draw by the
+//! model that doesn't read, or a length it lacks, keeps the template's
+//! number (a `postfire` it lacks is none). The rates on top are the other
+//! modules': the cycle and post-fire are divided by
+//! `attachments::fire_animation_rate` (the record's `FireAniRate`,
+//! `CaItem::fire_rate`, + the parts' and the gear's), the draw by the
 //! item's select rate; with an attachments table the lengths become its
-//! `Stock` (the parts' rates applied there). The hook runs after the
-//! attachments, damage and inventory hooks (hooks build in name order),
-//! so it rewrites what they took from the template: the stock numbers
-//! and the server's reload window (`CaDamage::reload_third_person`, when
-//! it was the template's reload).
+//! `Stock` (the parts' and gear's rates applied there). The hook runs
+//! after the attachments, damage, inventory, knife, flame and spin hooks
+//! (hooks build in name order), so it rewrites what they took from the
+//! template: the stock numbers and the server's reload window
+//! (`CaDamage::reload_third_person`, when it was the template's reload).
 //!
 //! The server's numbers win (docs/plans/active/ca-weapon-timings.md, open
 //! question 1): the hook leaves what it settled on the weapon
@@ -39,10 +58,10 @@
 //! - A client still reads the model on the first build of a weapon the
 //!   server has sent the timing for (then takes the server's): one wasted
 //!   read, or one warning when it can't.
-//! - Not taken from the model yet: a semi-automatic's `postfire` (our
-//!   trigger has one cycle), the pre-fire's presence (`trigger.latency`
-//!   stays the template's), a minigun's spin lengths (`combat_arms:spin`)
-//!   and the knives' and grenades' timings (their own hooks; the merge
+//! - A non-spinning gun's pre-fire of non-zero length counts as present
+//!   only (one update), not by its length (the plan's open questions); the
+//!   spin's and the flame's lengths play at rate 1; a knife copy keeps its
+//!   template's pre-fire; grenades' timings are their own hook's (the merge
 //!   writes no timing table for them).
 
 use std::collections::BTreeMap;
@@ -54,10 +73,12 @@ use serde::{Deserialize, Serialize};
 use super::{
     super::{
         attachments::{CaAttachSlots, animation_rate, fire_animation_rate},
-        inventory::CaItem,
+        inventory::{CaItem, Knife, played_rate},
         model,
+        special::{CaFlame, FlameParams},
     },
     CaDamage,
+    classes::CaSpin,
 };
 use super::super::attachments::{CaFitted, CaMods};
 use crate::weapon::{Magazine, ShellReload, Trigger, Weapon, data::WeaponData};
@@ -74,13 +95,24 @@ pub struct TimingParams {}
 
 /// A view model's action lengths at rate 1, s (None: the model has no
 /// such animation, or it is 0 ms long).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct AnimTimes {
     pub fire: Option<f32>,
     pub reload: Option<f32>,
     pub pre_reload: Option<f32>,
     pub post_reload: Option<f32>,
     pub select: Option<f32>,
+    /// Whether the model has a `prefire` (a 0 ms one counts), and its
+    /// length.
+    pub has_prefire: bool,
+    pub prefire: Option<f32>,
+    pub postfire: Option<f32>,
+    /// `alt_fire_0` (a knife's stab).
+    pub alt_fire: Option<f32>,
+    /// The `FIRE_KEY` times in `fire_0` and the `ALT_FIRE_KEY` times in
+    /// `alt_fire_0`, s.
+    pub fire_keys: Vec<f32>,
+    pub alt_fire_keys: Vec<f32>,
 }
 
 impl AnimTimes {
@@ -93,13 +125,41 @@ impl AnimTimes {
                 .filter(|&ms| ms > 0)
                 .map(|ms| ms as f32 / 1000.0)
         };
+        let keys = |name: &str, word: &str| -> Vec<f32> {
+            let Some(i) = list.find(name) else { return Vec::new() };
+            list.entries[i]
+                .animation
+                .keys
+                .iter()
+                .filter(|k| {
+                    lithtech_formats::anim::key_commands(&k.string)
+                        .iter()
+                        .any(|c| c.first().is_some_and(|w| w.eq_ignore_ascii_case(word)))
+                })
+                .map(|k| k.time as f32 / 1000.0)
+                .collect()
+        };
         AnimTimes {
             fire: len("fire_0"),
             reload: len("reload"),
             pre_reload: len("PreReload"),
             post_reload: len("PostReload"),
             select: len("select"),
+            has_prefire: list.find("prefire").is_some(),
+            prefire: len("prefire"),
+            postfire: len("postfire"),
+            alt_fire: len("alt_fire_0"),
+            fire_keys: keys("fire_0", "FIRE_KEY"),
+            alt_fire_keys: keys("alt_fire_0", "ALT_FIRE_KEY"),
         }
+    }
+
+    /// The fire keys before `fire_0`'s end (a loop's last key, at its
+    /// end, is the next play's first: weapon_classes.md 3.3, the lower
+    /// count).
+    fn loop_keys(&self) -> Vec<f32> {
+        let end = self.fire.unwrap_or(0.0);
+        self.fire_keys.iter().copied().filter(|&k| k < end - 1e-6).collect()
     }
 }
 
@@ -135,11 +195,11 @@ pub fn read(path: &str) -> Option<AnimTimes> {
 /// The hook: weapon `d`'s parts take its view model's lengths.
 pub fn apply(e: &mut EntityWorldMut, d: &'static WeaponData, _: &TimingParams) {
     let Some(path) = d.models.view.as_deref().map(model::normalize) else { return };
-    let cached = e.get_resource_mut::<ViewTimes>().and_then(|c| c.0.get(&path).copied());
+    let cached = e.get_resource_mut::<ViewTimes>().and_then(|c| c.0.get(&path).cloned());
     let times = cached.unwrap_or_else(|| {
         let t = read(&path);
         if let Some(mut c) = e.get_resource_mut::<ViewTimes>() {
-            c.0.insert(path, t);
+            c.0.insert(path, t.clone());
         }
         t
     });
@@ -155,16 +215,26 @@ pub fn apply(e: &mut EntityWorldMut, d: &'static WeaponData, _: &TimingParams) {
 /// (`encode`, `push`). The cycle, reload and draw are the parts' values
 /// before the attachments' rates (`stock`: the rate-1 lengths those
 /// apply to).
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CaTimingValues {
     pub cycle: Option<f32>,
     pub reload: Option<f32>,
     /// `ShellReload`'s start, insert, finish.
     pub shell: Option<(f32, f32, f32)>,
     pub draw: Option<f32>,
-    /// `CaAttachSlots::stock`'s cycle, reload, draw.
-    pub stock: Option<(f32, f32, f32)>,
+    /// `CaAttachSlots::stock`'s cycle, reload, draw, post-fire.
+    pub stock: Option<(f32, f32, f32, f32)>,
     pub reload_third_person: Option<f32>,
+    /// `Trigger::postfire` and `latency`.
+    pub postfire: Option<f32>,
+    pub latency: Option<u32>,
+    /// `CaSpin`'s spin-up, spin-down, loop.
+    pub spin: Option<(f32, f32, f32)>,
+    /// `CaFlame`'s pre-fire, loop, keys, interval, post-fire.
+    pub flame: Option<(f32, f32, u32, f32, f32)>,
+    /// `Knife`'s played rate and each attack's pre-fire, length, hits and
+    /// post-fire.
+    pub knife: Option<(f32, Vec<(f32, f32, Vec<f32>, f32)>)>,
 }
 
 impl CaTimingValues {
@@ -174,8 +244,21 @@ impl CaTimingValues {
             reload: e.get::<Magazine>().map(|m| m.reload_time),
             shell: e.get::<ShellReload>().map(|s| (s.start, s.insert, s.finish)),
             draw: e.get::<Weapon>().map(|w| w.draw_time),
-            stock: e.get::<CaAttachSlots>().map(|s| (s.stock.cycle, s.stock.reload, s.stock.draw)),
+            stock: e
+                .get::<CaAttachSlots>()
+                .map(|s| (s.stock.cycle, s.stock.reload, s.stock.draw, s.stock.postfire)),
             reload_third_person: e.get::<CaDamage>().map(|d| d.reload_third_person),
+            postfire: e.get::<Trigger>().map(|t| t.postfire),
+            latency: e.get::<Trigger>().map(|t| t.latency),
+            spin: e.get::<CaSpin>().map(|s| (s.params.prefire, s.params.postfire, s.params.loop_len)),
+            flame: e.get::<CaFlame>().map(|f| {
+                let p = f.params;
+                (p.prefire, p.loop_len, p.keys, p.interval, p.postfire)
+            }),
+            knife: e.get::<Knife>().map(|k| {
+                let attacks = k.attacks.iter().map(|a| (a.prefire, a.length, a.hits.clone(), a.postfire)).collect();
+                (k.rate, attacks)
+            }),
         }
     }
 }
@@ -203,11 +286,40 @@ pub fn push(world: &mut World, e: Entity, bytes: &[u8]) {
     if let (Some((start, insert, finish)), Some(mut s)) = (v.shell, e.get_mut::<ShellReload>()) {
         (s.start, s.insert, s.finish) = (start, insert, finish);
     }
+    if let (Some(shell), Some(mut s)) = (v.shell, e.get_mut::<CaAttachSlots>()) {
+        s.stock.shell = Some(shell);
+    }
     if let (Some(d), Some(mut w)) = (v.draw, e.get_mut::<Weapon>()) {
         w.draw_time = d;
     }
-    if let (Some((cycle, reload, draw)), Some(mut s)) = (v.stock, e.get_mut::<CaAttachSlots>()) {
-        (s.stock.cycle, s.stock.reload, s.stock.draw) = (cycle, reload, draw);
+    if let (Some((cycle, reload, draw, postfire)), Some(mut s)) = (v.stock, e.get_mut::<CaAttachSlots>()) {
+        (s.stock.cycle, s.stock.reload, s.stock.draw, s.stock.postfire) = (cycle, reload, draw, postfire);
+    }
+    if let Some(mut t) = e.get_mut::<Trigger>() {
+        if let Some(p) = v.postfire {
+            t.postfire = p;
+        }
+        if let Some(l) = v.latency {
+            t.latency = l;
+        }
+    }
+    if let (Some((prefire, postfire, loop_len)), Some(mut s)) = (v.spin, e.get_mut::<CaSpin>()) {
+        (s.params.prefire, s.params.postfire, s.params.loop_len) = (prefire, postfire, loop_len);
+    }
+    if let (Some((prefire, loop_len, keys, interval, postfire)), Some(mut f)) = (v.flame, e.get_mut::<CaFlame>()) {
+        f.params = FlameParams {
+            prefire,
+            loop_len,
+            keys,
+            interval,
+            postfire,
+        };
+    }
+    if let (Some((rate, attacks)), Some(mut k)) = (v.knife.clone(), e.get_mut::<Knife>()) {
+        k.rate = rate;
+        for (a, (prefire, length, hits, postfire)) in k.attacks.iter_mut().zip(attacks) {
+            (a.prefire, a.length, a.hits, a.postfire) = (prefire, length, hits, postfire);
+        }
     }
     if let (Some(r), Some(mut d)) = (v.reload_third_person, e.get_mut::<CaDamage>()) {
         d.reload_third_person = r;
@@ -225,10 +337,33 @@ pub fn push(world: &mut World, e: Entity, bytes: &[u8]) {
 /// says).
 pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
     let (fire_rate, select_rate) = e.get::<CaItem>().map_or((0.0, 0.0), |i| (i.fire_rate, i.select_rate));
+    let rate = fire_animation_rate(fire_rate, 0.0);
+    if e.contains::<Knife>() {
+        knife_times(e, t, fire_rate);
+    }
+    // The cycle at rate 1: `fire_0`; a spinning gun's a round per fire
+    // key of its loop, a flame gun's its keys' spacing.
+    let spin = e.contains::<CaSpin>();
+    let flame = flame_times(e, t);
+    let cycle = match (spin, flame) {
+        (true, _) => t.fire.map(|f| f / t.loop_keys().len().max(1) as f32),
+        (false, Some(interval)) => Some(interval),
+        (false, None) => t.fire,
+    };
+    if spin && let Some(mut s) = e.get_mut::<CaSpin>() {
+        s.params.prefire = t.prefire.unwrap_or(0.0);
+        s.params.postfire = t.postfire.unwrap_or(0.0);
+        if let Some(f) = t.fire {
+            s.params.loop_len = f;
+        }
+    }
+    // The trigger's closing part: a spinning gun's is its spin-down, a
+    // flame gun's its own lock.
+    let postfire = if spin || flame.is_some() { 0.0 } else { t.postfire.unwrap_or(0.0) };
     let old_reload = e.get::<Magazine>().map(|m| m.reload_time);
     if let Some(mut s) = e.get_mut::<CaAttachSlots>() {
-        if let Some(f) = t.fire {
-            s.stock.cycle = f;
+        if let Some(c) = cycle {
+            s.stock.cycle = c;
         }
         if let Some(r) = t.reload {
             s.stock.reload = r;
@@ -236,14 +371,25 @@ pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
         if let Some(sel) = t.select {
             s.stock.draw = sel;
         }
+        s.stock.postfire = postfire;
     }
-    if let (Some(f), Some(mut tr)) = (t.fire, e.get_mut::<Trigger>()) {
-        tr.cycle = f / fire_animation_rate(fire_rate, 0.0);
+    if let Some(mut tr) = e.get_mut::<Trigger>() {
+        if let Some(c) = cycle {
+            tr.cycle = c / rate;
+        }
+        tr.postfire = postfire / rate;
+        tr.latency = match tr.latency {
+            _ if spin => 1,
+            // A class that plays the pre-fire (3: the update that sees the
+            // press, the pre-fire's, `fire_0`'s), without one in the model.
+            3 if !t.has_prefire => 2,
+            l => l,
+        };
     }
     if let (Some(r), Some(mut m)) = (t.reload, e.get_mut::<Magazine>()) {
         m.reload_time = r;
     }
-    if let Some(mut s) = e.get_mut::<ShellReload>() {
+    let shell = e.get_mut::<ShellReload>().map(|mut s| {
         if let Some(p) = t.pre_reload {
             s.start = p;
         }
@@ -253,6 +399,10 @@ pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
         if let Some(p) = t.post_reload {
             s.finish = p;
         }
+        (s.start, s.insert, s.finish)
+    });
+    if let (Some(shell), Some(mut s)) = (shell, e.get_mut::<CaAttachSlots>()) {
+        s.stock.shell = Some(shell);
     }
     if let (Some(sel), Some(mut w)) = (t.select, e.get_mut::<Weapon>()) {
         w.draw_time = sel / animation_rate(1.0 + select_rate);
@@ -262,5 +412,48 @@ pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
         && dmg.reload_third_person == old
     {
         dmg.reload_third_person = r;
+    }
+}
+
+/// A flame gun's fire keys from `t` (special_weapons.md 4): the pre-fire,
+/// the loop, its keys and their mean spacing, the post-fire. Returns the
+/// spacing (the trigger's cycle at rate 1); None without `CaFlame`.
+fn flame_times(e: &mut EntityWorldMut, t: &AnimTimes) -> Option<f32> {
+    let mut f = e.get_mut::<CaFlame>()?;
+    let keys = t.loop_keys();
+    if let Some(p) = t.prefire {
+        f.params.prefire = p;
+    }
+    if let Some(l) = t.fire {
+        f.params.loop_len = l;
+    }
+    if !keys.is_empty() {
+        f.params.keys = keys.len() as u32;
+    }
+    if keys.len() >= 2 {
+        f.params.interval = (keys[keys.len() - 1] - keys[0]) / (keys.len() - 1) as f32;
+    }
+    f.params.postfire = t.postfire.unwrap_or(0.0);
+    Some(f.params.interval)
+}
+
+/// A knife's swings from `t` (inventory.md 8.2, view_models.md 7 and C1):
+/// the slash `fire_0` with its `FIRE_KEY`s, the stab `alt_fire_0` with its
+/// `ALT_FIRE_KEY`s (a swing the model lacks, or keys it lacks, stay the
+/// template's), the post-fire, at 1 + the record's `FireAniRate`.
+fn knife_times(e: &mut EntityWorldMut, t: &AnimTimes, fire_rate: f32) {
+    let Some(mut k) = e.get_mut::<Knife>() else { return };
+    k.rate = played_rate(1.0 + fire_rate);
+    let swings = [(t.fire, &t.fire_keys), (t.alt_fire, &t.alt_fire_keys)];
+    for (a, (length, hits)) in k.attacks.iter_mut().zip(swings) {
+        if let Some(l) = length {
+            a.length = l;
+        }
+        if !hits.is_empty() {
+            a.hits = hits.clone();
+        }
+        if let Some(p) = t.postfire {
+            a.postfire = p;
+        }
     }
 }

@@ -16,19 +16,23 @@
 //!   (`MovementData`), as one movement.toml-format document. Registered
 //!   by `movement`.
 //!
-//! Known shortcuts: the gear and perk records (`gear::records::GearData`:
-//! the vests' movement penalty, armour) aren't sent: they are built from
-//! the install's records into maps with no document form to write back
-//! (`GearData::parse` reads ours only); a client with other gear data
-//! mispredicts a vest's speed (armour itself replicates). Models, skins
-//! and sounds the documents name are still read from the client's own
-//! install (a missing one: the fallback).
+//! - `GEAR`: the gear and perk records (`gear::records::GearData`: ours
+//!   with the install's over them by id; the vests' movement penalty,
+//!   armour and `ReloadAniRate` / `SelectAniRate`, the sets' effects) as
+//!   one gear.toml-format document (`GearData::to_doc`). Registered by
+//!   `gear`.
+//!
+//! Known shortcuts: models, skins and sounds the documents name are
+//! still read from the client's own install (a missing one: the
+//! fallback). The lobby's item table and `gear::gear_data` (our own
+//! defaults) keep this machine's gear records.
 
 use bevy::prelude::*;
 use serde::Serialize;
 
 use super::super::{
     attachments::{CaModTable, ModRecord, parse_mods},
+    gear::{CaGearData, records::GearData},
     movement::MovementData,
 };
 
@@ -36,6 +40,7 @@ use super::super::{
 pub const WEAPONS: &str = "combat_arms:weapons";
 pub const ATTACHMENTS: &str = "combat_arms:attachments";
 pub const MOVEMENT: &str = "combat_arms:movement";
+pub const GEAR: &str = "combat_arms:gear";
 
 #[derive(Serialize)]
 struct Mods<'a> {
@@ -75,6 +80,19 @@ pub fn apply_movement(world: &mut World, docs: &[(String, String)]) -> Result<()
     Ok(())
 }
 
+/// The gear records as one document (gear.toml's format).
+pub fn gear_doc(data: &GearData) -> Vec<(String, String)> {
+    vec![("gear.toml".into(), data.to_doc())]
+}
+
+/// The server's gear records in place of this app's.
+pub fn apply_gear(world: &mut World, docs: &[(String, String)]) -> Result<(), String> {
+    let (_, text) = docs.first().ok_or("no gear document")?;
+    let data = GearData::parse(text)?;
+    world.insert_resource(CaGearData(std::sync::Arc::new(data)));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +107,10 @@ mod tests {
         let docs = movement_doc(&m);
         let back: MovementData = toml::from_str(&docs[0].1).unwrap();
         assert_eq!(format!("{back:?}"), format!("{m:?}"));
+        let gear = GearData::built_in();
+        let docs = gear_doc(&gear);
+        assert_eq!(GearData::parse(&docs[0].1).unwrap(), gear);
+        // The same data writes the same text (the hash a client compares).
+        assert_eq!(gear_doc(&GearData::parse(&docs[0].1).unwrap()), docs);
     }
 }
