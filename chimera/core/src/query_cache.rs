@@ -14,6 +14,16 @@
 //!
 //! Known shortcuts: a call nested inside another of the same query type
 //! gets a new state (the kept one is lent out), correct but not cached.
+//! Only the code that showed in profiles keeps its states; about 270
+//! other `world.query` calls (console commands, loads, rare events) still
+//! make theirs. A kept state still costs more as archetypes pile up (Bevy
+//! frees none; the characters' optional components make new ones at every
+//! map change and death: docs/performance.md, "Map changes that slowed
+//! the tick"): it steps over every empty table it matches each time it
+//! iterates, and each new archetype makes it look again at those with its
+//! rarest component. Fewer tables would need the characters' optional
+//! components (spawn protection, the gun's game's movement and view
+//! parts, the body model) as sparse sets, or fewer of them.
 
 use std::any::{Any, TypeId};
 

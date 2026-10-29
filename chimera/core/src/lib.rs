@@ -7,7 +7,8 @@
 //! (`game_registry`: what a game tells the shell about itself) and the
 //! gameplay (`gameplay`: which game fills each match-wide slot), the parts
 //! each game lends a game made of several (`game_parts`), announcers'
-//! packs and kill facts (`announcer`), minigame cue packs (`cues`). Code
+//! packs and kill facts (`announcer`), minigame cue packs (`cues`), queries
+//! kept between calls of exclusive code (`query_cache`). Code
 //! everything else uses and that changes rarely, in its own crate so an
 //! edit higher up doesn't recompile it.
 //!

@@ -190,7 +190,7 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
         return;
     };
     let now = world.resource::<Time>().elapsed_secs_f64();
-    let viewer = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next();
+    let viewer = chimera_core::query_cache::first::<With<LocalPlayer>>(world);
     let due = viewer.and_then(|v| {
         let at = super::runtime::respawn_due(world, v)?;
         Some(RespawnAt {

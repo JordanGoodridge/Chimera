@@ -1,7 +1,8 @@
 //! Performance tools: the `chimera_perf` overlay (frame times, main-world
 //! CPU time, GPU time per render pass, entity and mesh counts, visibility
-//! culling), `r_novis`, and `--bench` (time each `--views` view instead of
-//! capturing it; see docs/performance.md).
+//! culling), `r_novis`, `chimera_census` (`chimera_core::metrics::census`:
+//! what the world holds), and `--bench` (time each `--views` view instead
+//! of capturing it; see docs/performance.md).
 //!
 //! `chimera_perf` overlay (frame times, main-world CPU, render-world time
 //! (`RenderTime`, written by the render world), GPU per render pass, entities,
@@ -32,6 +33,8 @@ pub struct PerfPlugin;
 
 impl Plugin for PerfPlugin {
     fn build(&self, app: &mut App) {
+        use crate::console::ConsoleAppExt;
+        app.console_command("chimera_census", chimera_core::metrics::census::HELP, chimera_core::metrics::census::command);
         app.add_plugins((EntityCountDiagnosticsPlugin::default(), RenderDiagnosticsPlugin))
             .init_resource::<Perf>()
             .init_resource::<FrameTimes>()

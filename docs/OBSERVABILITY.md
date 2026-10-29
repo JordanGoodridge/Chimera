@@ -1165,6 +1165,24 @@ Details and baseline numbers: [performance.md](performance.md).
   build adds the frame's spans with the most self time (`spans by self
   ms: <system> 12.3 x2, ...`). The debug UI Perf tab has the same percentiles as
   a table, with a frame-time histogram.
+- What a world holds: `chimera_census [<top>]` (console; any app) counts
+  entities by archetype (the `<top>` largest component sets), every
+  archetype and table made (Bevy frees none), component types,
+  observers, systems per schedule, resources and each reflect-registered
+  asset store; `chimera_census save <name>`, then `chimera_census diff
+  [<name>]` lists what changed since (the last census or the named one),
+  new archetypes' and tables' component sets included: take one, change
+  maps a few times, diff (performance.md, "Map changes that slowed the
+  tick"). Headless, `metrics::census::Census::take(world)` and `diff`.
+- Instructions per system, headless: with `--features dev,trace`,
+  `metrics::span_cost::SpanCosts::install()` before the `Sim` is built
+  (a system's span is made with it), then `take()` after each window and
+  `rises(&before, &after, n)`: every span's own instructions on the
+  schedules' thread, load-independent (`party_kit`'s `archetypes` and
+  `heavy::bot_cost` print them). Where the time goes outside spans
+  (Bevy's command application is in none): run the test under gdb and
+  sample it (a thread sending the process `SIGUSR1`, gdb set to stop on
+  it and print the test thread's backtrace).
 - `chimera_perf_log 1` logs the same readout as one text line a second
   (`chimera_perf: 60 fps  frame 16.67 ms ... | vis: cluster ...`), so runs
   can be compared without reading screenshots (`--frames N ... 2>&1 |
