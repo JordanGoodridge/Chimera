@@ -7,13 +7,18 @@
 //!   from the template's place, the oldest dropped when too tall, one
 //!   oldest per expired line), and the open input and radio menu into
 //!   `CaTalk::input` and `CaTalk::radio`. Lines that are string ids
-//!   (`$SameSentence`) are resolved with the game's table.
+//!   (`$SameSentence`) are resolved with the game's table, and so are the
+//!   ids inside a radio call's line (`PanelLine::ids`: its class and
+//!   message, which travel as menu indices, so each client shows them in
+//!   its own language); an id the table lacks shows without its `$`.
 //! - `CaTalkPlugin` adds the drawing (the shell's UI nodes) and the keys:
 //!   while the input is open it takes every key (F2, F3, F4 switch the
 //!   tab, Esc closes, Enter sends, Up cycles whisper partners, Page Up,
 //!   Page Down and Down are swallowed, the rest is typed) and the game
 //!   sees none; while a radio menu is open the number keys pick (the
-//!   weapon keys are swallowed). Binds (Enter, F2 to F4, B, V, N, T, F8)
+//!   weapon keys never see them: the digits are taken
+//!   (`client::binds::CapturedKeys`) until let go, so the pick doesn't
+//!   switch weapon once the menu has closed either). Binds (Enter, F2 to F4, B, V, N, T, F8)
 //!   are `game::chat`'s commands.
 //!
 //! Known shortcuts: the panel, the input bar and the radio window are
@@ -117,6 +122,31 @@ pub fn without_number(s: &str) -> String {
     }
 }
 
+/// A chat line as shown: its string ids (`PanelLine::ids`, a radio call's
+/// class and message) looked up in the viewer's table, the id without its
+/// `$` where the table has none; a line starting with `$` is an id as a
+/// whole. The name's span moves with the text before it.
+pub fn shown_line(strings: &super::layout::text::Strings, l: &crate::game::chat::show::PanelLine) -> (String, Option<(usize, usize, [u8; 4])>) {
+    if l.ids.is_empty() {
+        let text = if l.text.starts_with('$') { shown_id(strings, &l.text, l.text.trim_start_matches('$')) } else { l.text.clone() };
+        // The name's span is in the unresolved text; kept only for a
+        // plain line (ids resolve to other text).
+        return (text, l.name.filter(|_| !l.text.starts_with('$')));
+    }
+    let mut text = l.text.clone();
+    let mut name = l.name;
+    for &(a, b) in l.ids.iter().rev() {
+        let Some(id) = l.text.get(a..b) else { continue };
+        let shown = shown_id(strings, id, id.trim_start_matches('$'));
+        text.replace_range(a..b, &shown);
+        if let Some((na, nb, c)) = name.as_mut().map(|n| (n.0, n.1, n.2)).filter(|n| n.0 >= b) {
+            let (na, nb) = ((na + shown.len()).wrapping_sub(b - a), (nb + shown.len()).wrapping_sub(b - a));
+            name = Some((na, nb, c));
+        }
+    }
+    (text, name)
+}
+
 fn update(world: &mut World) {
     let now = now_ms(world);
     let screen = world.get_resource::<HudScreen>().map_or(Screen::default(), |s| s.0);
@@ -145,10 +175,9 @@ fn update(world: &mut World) {
                 .collect(),
         })
     });
-    let shown: Vec<String> =
-        lines.iter().map(|l| if l.text.starts_with('$') { ui.strings.resolve(&l.text) } else { l.text.clone() }).collect();
+    let shown: Vec<(String, Option<(usize, usize, [u8; 4])>)> = lines.iter().map(|l| shown_line(&ui.strings, l)).collect();
     let mut talk = world.resource_mut::<CaTalk>();
-    for (l, shown) in lines.into_iter().zip(shown) {
+    for (l, (shown, name)) in lines.into_iter().zip(shown) {
         talk.seen = talk.seen.max(l.id);
         let height = font.as_ref().map_or(14, |f| chat::height(&shown, f, s));
         talk.queue.push(Message {
@@ -157,9 +186,7 @@ fn update(world: &mut World) {
             life: l.life,
             height,
             colour: l.colour,
-            // The name's span is in the unresolved text; kept only for a
-            // plain line (ids resolve to other text).
-            name: l.name.filter(|_| !l.text.starts_with('$')),
+            name,
         });
     }
     talk.queue.frame(now);
@@ -286,10 +313,23 @@ fn typing(world: &mut World) {
                 break;
             }
         }
-        // Weapon-select keys are swallowed while the menu is open.
-        let mut keys = world.resource_mut::<ButtonInput<KeyCode>>();
-        for (key, _) in DIGITS {
-            keys.clear_just_pressed(key);
+        // Weapon-select keys are swallowed while the menu is open, and a
+        // number that was down stays taken after it closes (the pick
+        // closes it in the frame the key goes down) until it is let go:
+        // the slot binds never see it.
+        let down: Vec<KeyCode> = {
+            let mut keys = world.resource_mut::<ButtonInput<KeyCode>>();
+            let down = DIGITS.iter().map(|(k, _)| *k).filter(|k| keys.pressed(*k)).collect();
+            for (key, _) in DIGITS {
+                keys.clear_just_pressed(key);
+            }
+            down
+        };
+        if !down.is_empty() {
+            let mut captured = world.get_resource_or_insert_with(crate::client::binds::CapturedKeys::default);
+            for k in down {
+                captured.capture(k);
+            }
         }
     }
 }

@@ -53,6 +53,11 @@ pub struct PanelLine {
     pub colour: Rgba,
     /// The sender's name in the text (byte range) and its colour.
     pub name: Option<(usize, usize, Rgba)>,
+    /// Byte ranges of `text` that are string-table ids (`$...`) the panel
+    /// resolves in the viewer's language: a radio call's class and
+    /// message, which travel as the menu entry's indices, so each client
+    /// shows them from its own table. A player's own text never has any.
+    pub ids: Vec<(usize, usize)>,
     /// When it came in and how long it lives, ms.
     pub born: f64,
     pub life: f64,
@@ -65,6 +70,7 @@ impl PanelLine {
             text: text.into(),
             colour,
             name: None,
+            ids: Vec::new(),
             born: now,
             life,
         }
@@ -119,6 +125,7 @@ pub fn show(me: &Peer, opts: &ShowOpts, inc: &Incoming, now: f64) -> Option<Pane
         (Channel::Radio, Some(class)) => format!("[{class}] {} : {}", inc.name, inc.text),
         _ => format!("{} : {}", inc.name, inc.text),
     };
+    let unfiltered_len = line.len();
     // 5 The colour.
     let mut colour = match inc.channel {
         Channel::Radio => colours::RADIO,
@@ -142,8 +149,20 @@ pub fn show(me: &Peer, opts: &ShowOpts, inc: &Incoming, now: f64) -> Option<Pane
             Some((at, at + inc.name.len(), [(c >> 16) as u8, (c >> 8) as u8, c as u8, 255]))
         })
         .flatten();
+    // The ids in a radio line: the class and the message, when they are
+    // string ids and the filter left the line's length alone.
+    let mut ids = Vec::new();
+    if inc.channel == Channel::Radio && line.len() == unfiltered_len {
+        if let Some(class) = inc.class.filter(|c| c.starts_with('$')) {
+            ids.push((1, 1 + class.len()));
+        }
+        if inc.text.starts_with('$') {
+            ids.push((line.len() - inc.text.len(), line.len()));
+        }
+    }
     Some(PanelLine {
         name,
+        ids,
         ..PanelLine::new(line, colour, now, LINE_LIFE)
     })
 }

@@ -57,6 +57,32 @@ fn the_radio_menus_texts_are_in_the_string_table() {
     eprintln!("{ids} radio list texts are string ids, all resolved");
 }
 
+/// Every radio entry's chat line is a string id the table resolves (the
+/// chat shows the text, not `$radio_message_...`).
+#[test]
+fn the_radio_chat_lines_are_in_the_string_table() {
+    let Some(m) = install() else { return };
+    let strings = install::strings(&m, "ENG").expect("the string table reads");
+    let Ok(bytes) = m.read(radio::FILE) else {
+        eprintln!("skipping: {} isn't readable", radio::FILE);
+        return;
+    };
+    let data = RadioData::read(&Document::parse(&bytes).unwrap());
+    let (mut ids, mut missing) = (0, Vec::new());
+    for class in &data.classes {
+        for e in &class.entries {
+            for c in e.chat.iter().filter(|c| c.starts_with('$')) {
+                ids += 1;
+                if strings.resolve(c).starts_with('$') {
+                    missing.push(c.clone());
+                }
+            }
+        }
+    }
+    eprintln!("{ids} radio chat lines are string ids, {} missing from the table", missing.len());
+    assert!(missing.is_empty(), "not in the table: {missing:?}");
+}
+
 /// Every key name of the install's file resolves in its table.
 #[test]
 fn the_key_names_are_in_the_string_table() {

@@ -97,7 +97,9 @@ impl Plugin for LocalInputPlugin {
             .init_resource::<super::binds::PolledBinds>()
             .init_resource::<WheelJump>()
             .init_resource::<FreeLook>()
+            .init_resource::<super::binds::CapturedKeys>()
             .register_type::<MouseSettings>()
+            .add_systems(PreUpdate, super::binds::release_captured.after(bevy::input::InputSystems))
             .add_systems(Update, ((grab_cursor, write_local_intent, chimera_net::net::predict::hold_view).chain(), drop_key))
             .add_systems(FixedPreUpdate, apply_wheel_jump);
         mouse_cvars(app);
@@ -318,9 +320,10 @@ pub fn write_local_intent(
     zoomed: Query<&crate::weapon::Zoomed, With<LocalPlayer>>,
     spectator: Option<Res<super::spectate::Spectator>>,
     weapon_menu: Option<Res<super::weapon_menu::WeaponMenu>>,
-    (actions, identity): (
+    (actions, identity, captured): (
         Option<Res<crate::core::ActionRegistry>>,
         Query<&crate::slots::GameIdentity, With<LocalPlayer>>,
+        Option<Res<super::binds::CapturedKeys>>,
     ),
     mut last_motion: Local<Vec2>,
 ) {
@@ -333,7 +336,7 @@ pub fn write_local_intent(
     let identity = identity.iter().next().map(|i| i.0.as_str());
     let binds = console.as_ref().map_or(std::borrow::Cow::Borrowed(&empty), |c| c.effective_binds(identity));
     let binds = &*binds;
-    let bound = |command: &str| super::binds::pressed(binds, &keys, &mouse, command);
+    let bound = |command: &str| super::binds::pressed_free(binds, &keys, &mouse, captured.as_deref(), command);
     let freelook = bound("+freelook") || held.as_ref().is_some_and(|h| h.freelook);
     if !freelook {
         free.set_if_neq(FreeLook::default());
@@ -655,6 +658,45 @@ mod tests {
         app.world_mut().resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::KeyG);
         app.update();
         assert_eq!(intent(&mut app).actions, 0);
+    }
+
+    /// A key a menu has taken (`CapturedKeys`) selects no weapon, in the
+    /// frame it goes down nor while it is held after the menu closed; let
+    /// go and pressed again, it selects.
+    #[test]
+    fn a_captured_number_key_selects_no_weapon() {
+        let mut app = App::new();
+        app.add_plugins(crate::console::ConsolePlugin)
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<AccumulatedMouseMotion>()
+            .init_resource::<AccumulatedMouseScroll>()
+            .init_resource::<Time>()
+            .init_resource::<MouseSettings>()
+            .init_resource::<WheelJump>()
+            .init_resource::<FreeLook>()
+            .init_resource::<super::super::view::FreeCam>()
+            .init_resource::<super::super::binds::CapturedKeys>()
+            .add_systems(PreUpdate, super::super::binds::release_captured)
+            .add_systems(Update, write_local_intent);
+        let me = app.world_mut().spawn((Intent::default(), LocalPlayer)).id();
+        app.world_mut().spawn(CursorOptions {
+            grab_mode: CursorGrabMode::Locked,
+            ..default()
+        });
+        app.world_mut().resource_mut::<crate::console::Console>().submit("bind 4 slot4");
+        let select = |app: &mut App| {
+            app.update();
+            app.world().get::<Intent>(me).unwrap().select
+        };
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Digit4);
+        app.world_mut().resource_mut::<super::super::binds::CapturedKeys>().capture(KeyCode::Digit4);
+        assert_eq!(select(&mut app), None, "taken by a menu");
+        assert_eq!(select(&mut app), None, "still held, the menu closed");
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::Digit4);
+        assert_eq!(select(&mut app), None);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Digit4);
+        assert_eq!(select(&mut app), Some(3), "pressed again: slot 4");
     }
 
     /// Shift is `+sprint` in the shared binds (Combat Arms'); a player of
