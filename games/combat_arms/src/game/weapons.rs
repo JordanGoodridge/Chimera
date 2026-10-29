@@ -202,9 +202,11 @@
 
 //!
 //! Slots and switching are `inventory`'s, thrown weapons `grenades`',
-//! attachments `attachments`'.
+//! attachments `attachments`', an install copy's own fire cycle, reload
+//! and draw from its view model `timing`'s.
 
 pub mod classes;
+pub mod timing;
 pub mod zoom;
 
 use std::{
@@ -1704,7 +1706,8 @@ impl Plugin for CaWeaponsPlugin {
         })
         .register_weapon_hook::<CaAltFire>(ALT_FIRE, |e, _, p| {
             e.insert((*p, p.burst()));
-        });
+        })
+        .register_weapon_hook::<timing::TimingParams>(timing::TIMING, timing::apply);
         let data = super::data::CaData::of(app);
         if let Err(e) = app.add_weapon_set(data.weapon_set()) {
             panic!("Combat Arms weapon data: {e}");
@@ -1713,6 +1716,7 @@ impl Plugin for CaWeaponsPlugin {
             app.insert_resource(CaServerSettings::of(&data));
         }
         app.init_resource::<SpreadScales>()
+            .init_resource::<timing::ViewTimes>()
             .init_resource::<SpreadOptions>()
             .init_resource::<CaAiDamage>()
             .insert_resource(CaSurfaces::built_in().clone())

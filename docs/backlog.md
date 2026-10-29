@@ -320,7 +320,8 @@ the user's go-ahead: no Actions runs unless asked.
     cycles at the M4A1's 105 ms; every sniper copy, semi-automatic ones
     included, at the L96A1's bolt 1.4 s, though the view model plays the
     copy's own animations. `FireAniRate` is written on 812 copies and dropped
-    on 83 whose template has no `combat_arms:inventory` table.
+    on 83 whose template has no `combat_arms:inventory` table. (Fixed:
+    fix 3.)
   - numbers (clip, damage, `FireDelay`, spread, recoil, zoom fields):
     own, as `weapon_values` maps them (where the template has the
     table).
@@ -359,7 +360,11 @@ the user's go-ahead: no Actions runs unless asked.
      implement: characters.md 2, "Third-person weapon model and
      animation class". This overlaps the open "R870 not in Combat Arms
      characters' hands" work.
-  3. Take each copy's rate of fire, reload and draw from its own view
+  3. (Done 2026-10-29: `weapons::timing`, the `combat_arms:timing` hook
+     on every copied gun reads its view model when first built, server
+     and client alike; `FireAniRate` in every weapon's inventory table;
+     plan and open questions: docs/plans/active/ca-weapon-timings.md.)
+     Take each copy's rate of fire, reload and draw from its own view
      model's animations (`fire_0`, `reload` or the shell timings,
      `select`; at rate 1 + `FireAniRate`), not the template's, and write
      `FireAniRate` even where the template has no inventory table. Ready

@@ -68,7 +68,12 @@
 //!   their own numbers, after ours in install order (ours keep their
 //!   registry indices); a copy keeps its template's `class` (an
 //!   automatic gun game's) but a grenade's (a smoke copied from a frag
-//!   doesn't kill);
+//!   doesn't kill); a copied gun (a trigger and a view model, not a knife
+//!   or grenade) gets a `combat_arms:timing` table (`timing_table`): its
+//!   fire cycle, reload and draw are its own view model's animations,
+//!   read when it is first built (`weapons::timing`), not the template's;
+//!   every weapon's `FireAniRate` goes in `combat_arms:inventory` (made
+//!   when the template has none, the record's other item fields with it);
 //! - movement (`merge_movement`): the body type `FigureType0` replaces
 //!   `character.figure` (`StiffDuration` with it);
 //! - attachments (`attachment_table`): the modification file's `Mod#`
@@ -99,8 +104,9 @@
 //!   the install gives a sight zoom; the special weapons, with no
 //!   attachments table, get none: their own scope designators, `LGB_scope`
 //!   and the like, aren't specified), `AccumPreFire` in `combat_arms:spin`'s;
-//!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps our shell
-//!   timings: they are the view model's animations). Not mapped (no field
+//!   `ReloadPerBullet` 0 removes our `magazine.shells` (1 keeps it: ours
+//!   are the spec's timings, a copy's its own view model's, `timing`).
+//!   Not mapped (no field
 //!   in our data yet): the trigger's `latency` (the pre-fire's updates:
 //!   ours, 3 or a primary shotgun's 2, copied with the class's document),
 //!   a projectile's box (its model's first animation box x `ModelScale`:
@@ -457,6 +463,12 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
     const ZOOM: &str = "combat_arms:zoom";
     const SPIN: &str = "combat_arms:spin";
     let mut out = vec![
+        // `FireAniRate` on every weapon (the inventory table made where
+        // the template has none: its other fields then land too).
+        Set {
+            when: When::Create,
+            ..set(&["hooks", INVENTORY, "fire_rate"], w.fire_ani_rate)
+        },
         set(&["trigger", "automatic"], w.rapid_fire_count != 1),
         Set {
             when: When::Key,
@@ -484,7 +496,6 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
         set(&["hooks", HANDLING, "move_penalty"], w.move_penalty),
         set(&["hooks", INVENTORY, "infinite"], w.infinite_ammo != 0),
         set(&["hooks", INVENTORY, "drop_on_death"], w.drop_by_player_dead),
-        set(&["hooks", INVENTORY, "fire_rate"], w.fire_ani_rate),
         set(&["hooks", HUD, "crosshair"], i64::from(w.cross_hair_type.clamp(0, 255))),
         set(&["hooks", HUD, "disable_crosshair"], w.disable_crosshair != 0),
         set(&["hooks", HUD, "duck_perturb"], i64::from(w.duck_perturb)),
@@ -955,8 +966,8 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
     for s in model_values(w) {
         apply(doc, &s);
     }
-    // `ReloadPerBullet` 0: a magazine reload (our shell timings stay when
-    // it is 1: they are the animations').
+    // `ReloadPerBullet` 0: a magazine reload (the shell part stays when it
+    // is 1: a copy's timings are then its own model's, `timing_table`).
     if w.reload_per_bullet == 0
         && let Some(Value::Table(m)) = doc.get_mut("magazine")
     {
@@ -1055,6 +1066,7 @@ pub fn merge_weapon_docs_with_mods(
             m.insert("ammo".into(), Value::String(ammo_id));
         }
         patch(&mut t, w, install, mods, meters_per_unit);
+        timing_table(&mut t);
         new.push((format!("install:{}", w.name), t));
     }
     if skipped > 0 {
@@ -1064,6 +1076,25 @@ pub fn merge_weapon_docs_with_mods(
     docs.into_iter()
         .map(|(n, t)| toml::to_string(&t).map(|s| (n.clone(), s)).map_err(|e| format!("{n}: {e}")))
         .collect()
+}
+
+/// A copy's own fire cycle, reload and draw: the `combat_arms:timing`
+/// table (`weapons::timing`, read from its view model when built) on a
+/// gun with a trigger and a view model; not on a knife or grenade (their
+/// own hooks time them).
+fn timing_table(doc: &mut Table) {
+    use super::weapons::timing::TIMING;
+    let has_view = doc.get("models").and_then(|m| m.get("view")).is_some();
+    let Some(Value::Table(hooks)) = doc.get("hooks") else { return };
+    let timed_elsewhere = [super::inventory::KNIFE_HOOK, super::grenades::HOOK]
+        .iter()
+        .any(|h| hooks.contains_key(*h));
+    if !has_view || !doc.contains_key("trigger") || timed_elsewhere {
+        return;
+    }
+    if let Some(Value::Table(hooks)) = doc.get_mut("hooks") {
+        hooks.insert(TIMING.into(), Value::Table(Table::new()));
+    }
 }
 
 /// The document a new install weapon `w` is copied from: of our matched
