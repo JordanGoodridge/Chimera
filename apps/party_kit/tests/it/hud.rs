@@ -133,7 +133,8 @@ pub(crate) fn swap_to(sim: &mut Sim, me: Entity, rung: usize) {
 #[test]
 fn the_hud_follows_the_gun_with_the_minigame_on_both() {
     let (mut sim, me, _other) = party_with_huds();
-    let title = sim.app.world().resource::<chimera_sim::minigame::ActiveMinigame>().def.name.clone();
+    let title = sim.app.world().resource::<chimera_sim::minigame::hud::MinigameHud>().title.clone();
+    assert!(!title.contains('{'), "{title}");
     // The Glock: CS:S's HUD.
     assert_eq!(held(&sim, me), Some(cs_source::game::weapons::GLOCK));
     assert_eq!(hud(&sim), cs_source::game::GAME);
@@ -226,4 +227,23 @@ fn a_rung_up_across_games_shows_one_level_up_callout() {
     assert!(up[1].starts_with("Level 3/"), "{up:?}");
     let lines = cs_minigame_lines(&mut sim);
     assert!(!lines.iter().any(|(_, t)| t.starts_with("Rung up!")), "no second banner in CS:S's panel: {lines:?}");
+}
+
+/// The gun game's title names the map played, not a fixed one: after a
+/// rotation to de_aztec it reads "Gun Game: Aztec", on Warehouse
+/// "Gun Game: Warehouse" (the definition's name has `{map}`).
+#[test]
+fn the_title_follows_the_map_played() {
+    let (mut sim, _me, _other) = party_with_huds();
+    for (map, title) in [
+        ("cs_source:de_aztec", "Gun Game: Aztec"),
+        ("combat_arms:warehouse", "Gun Game: Warehouse"),
+        ("cs_source:de_dust2", "Gun Game: Dust 2"),
+    ] {
+        sim.app.world_mut().insert_resource(chimera_world::map::LoadedMapName(map.into()));
+        sim.seconds(0.3);
+        assert_eq!(sim.app.world().resource::<chimera_sim::minigame::hud::MinigameHud>().title, title, "on {map}");
+        let lines = cs_minigame_lines(&mut sim);
+        assert!(lines.contains(&(PanelLine::Title, title.to_string())), "CS:S's panel on {map}: {lines:?}");
+    }
 }

@@ -137,7 +137,7 @@ pub fn collect(world: &mut World) -> Option<MatchResults> {
             .then(oa.cmp(ob))
     });
     Some(MatchResults {
-        title: active.def.name.clone(),
+        title: super::hud::shown_name(world, active.def),
         rungs,
         rows: rows.into_iter().map(|(_, r)| r).collect(),
     })

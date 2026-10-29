@@ -226,3 +226,51 @@ fn a_network_client_has_the_servers_entries() {
     let w = sim.clients[0].app.world();
     assert!(w.resource::<KillFeed>().entries[0].killer.as_ref().is_some_and(|k| k.local));
 }
+
+/// Every line of the shell's feed is as tall whatever its icon (a CS:S
+/// glyph, a Combat Arms image, a tall image, none), and each icon sits in
+/// a box as tall as the line that centres it vertically, scaled down to
+/// leave a margin when it is taller. (The headless app has no layout:
+/// the nodes' set sizes and alignment are what is checked.)
+#[test]
+fn lines_are_equal_in_height_and_icons_centred() {
+    use chimera_client::client::weapon_icons::{WeaponIcon, WeaponIcons};
+    let (mut sim, me, other) = feed_sim(true);
+    let mut icons = WeaponIcons::default();
+    icons.register("cs_source", |_| Some(WeaponIcon::Glyph { font: Handle::default(), ch: 'a', em: 80.0 }));
+    icons.register("combat_arms", |id| {
+        let size = if id.ends_with("tall") { Vec2::new(40.0, 200.0) } else { Vec2::new(120.0, 30.0) };
+        Some(WeaponIcon::Image { image: Handle::default(), size })
+    });
+    sim.app.insert_resource(icons);
+    sim.app.world_mut().resource_mut::<KillFeed>().max = 8;
+    for w in [cs_source::game::weapons::GLOCK, "combat_arms:beretta_m92fs", "combat_arms:tall", "none:thing"] {
+        kill(&mut sim, other, me, w, Hitgroup::Chest);
+        sim.seconds(0.1);
+    }
+    sim.seconds(0.3);
+    let w = sim.app.world_mut();
+    let rows: Vec<Entity> = w.query_filtered::<Entity, With<KillFeedRow>>().iter(w).collect();
+    assert_eq!(rows.len(), 4);
+    let tall = |e: Entity| w.get::<Node>(e).unwrap().height;
+    let line = tall(rows[0]);
+    assert!(matches!(line, Val::Px(h) if h > 0.0), "{line:?}");
+    let Val::Px(line_px) = line else { unreachable!() };
+    let mut boxes = 0;
+    for r in &rows {
+        assert_eq!(tall(*r), line, "every line the same height");
+        for c in w.get::<Children>(*r).unwrap().to_vec() {
+            let n = w.get::<Node>(c).unwrap();
+            if n.align_items == AlignItems::Center && n.height == line {
+                boxes += 1;
+                for i in w.get::<Children>(c).unwrap().to_vec() {
+                    let inner = w.get::<Node>(i).unwrap();
+                    if let Val::Px(h) = inner.height {
+                        assert!(h < line_px, "the image leaves a margin: {h} in {line_px}");
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(boxes, 3, "the three iconed lines have a centring box, the fourth words");
+}

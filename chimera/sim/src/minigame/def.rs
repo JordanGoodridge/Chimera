@@ -4,7 +4,7 @@
 //!
 //! ```toml
 //! id = "originals:gun_game_dust2"
-//! name = "Gun Game: Dust II"
+//! name = "Gun Game: {map}"   # {map}: the map played (hud::shown_name), else as written
 //! players = { min = 2, max = 16 }
 //! maps = ["cs_source:de_dust2", "combat_arms:warehouse"]   # a pool, the first played first
 //! teams = "free_for_all"                                  # or "two", "one_team"

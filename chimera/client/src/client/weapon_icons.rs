@@ -10,7 +10,8 @@
 //! or changes (later calls replace); with nothing registered every lookup
 //! is none, so plain single-game apps are unchanged.
 //!
-//! Known shortcuts: an icon is drawn at the feed's own size (an image
+//! Known shortcuts (the kill feed centres icons in a line-tall box itself,
+//! `kill_feed::icon_slot`; other users place them as before): an icon is drawn at the feed's own size (an image
 //! scaled to the line's height, a glyph at its font's size), not at
 //! the registering game's layout.
 

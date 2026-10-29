@@ -1,6 +1,6 @@
 //! What a playing minigame tells the local player's HUD (D2, L2): data, not
 //! drawing. `MinigameHud` is rebuilt every frame by `update` from the
-//! active minigame: its name, the status lines its rules module gives the
+//! active minigame: its name (`{map}` in it: the map played, `shown_name`), the status lines its rules module gives the
 //! local player (`RulesModule::status`: the ladder's rung, the next gun,
 //! the leader), the match's phase and time, and brief notices made of the
 //! match's `MinigameEvent`s (the module's `notice` for its own events,
@@ -29,7 +29,7 @@
 
 use bevy::{ecs::message::MessageCursor, prelude::*};
 
-use super::{ActiveMinigame, MinigameEvent};
+use super::{ActiveMinigame, MinigameDef, MinigameEvent};
 use crate::{
     core::{LocalPlayer, RespawnAt, RespawnDue, SimClock},
     mode::{Match, Phase},
@@ -148,6 +148,51 @@ impl MinigameHud {
     }
 }
 
+/// The minigame's name as players see it: the definition's `name`, with
+/// `{map}` (if it has one) replaced by the display name of the map
+/// actually played (`map::LoadedMapName`, else the pool's first map), so a
+/// rotating pool's title follows the map. A name without `{map}` is as
+/// written.
+pub fn shown_name(world: &World, def: &MinigameDef) -> String {
+    if !def.name.contains("{map}") {
+        return def.name.clone();
+    }
+    let map = world
+        .get_resource::<chimera_world::map::LoadedMapName>()
+        .map(|m| m.0.as_str())
+        .filter(|m| !m.is_empty() && *m != "greybox")
+        .or(def.maps.first().map(String::as_str))
+        .unwrap_or("");
+    def.name.replace("{map}", &map_display_name(map))
+}
+
+/// A map id (`cs_source:de_aztec`, `combat_arms:warehouse`) as a name to
+/// read: no game part, no CS-style mode prefix (`de_`, `cs_`, ...),
+/// underscores as spaces, words capitalised, a trailing number apart
+/// (`de_dust2`: "Dust 2").
+pub fn map_display_name(id: &str) -> String {
+    let id = id.rsplit(':').next().unwrap_or(id);
+    let id = ["de_", "cs_", "as_", "es_", "aim_", "ar_", "dm_", "gg_", "fy_", "zm_"]
+        .iter()
+        .find_map(|p| id.strip_prefix(p).filter(|r| !r.is_empty()))
+        .unwrap_or(id);
+    id.split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let digits = w.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+            let (word, num) = w.split_at(digits);
+            let mut cs = word.chars();
+            let head = cs.next().map(|c| c.to_uppercase().chain(cs).collect::<String>()).unwrap_or_default();
+            match (head.is_empty(), num.is_empty()) {
+                (_, true) => head,
+                (true, false) => num.to_string(),
+                _ => format!("{head} {num}"),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// The match's own line: waiting for players, the time left, the end.
 fn phase_line(world: &World) -> Option<HudLine> {
     let m = world.resource::<Match>();
@@ -200,7 +245,7 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
     });
     set_respawn_due(world, due);
     let mut hud = world.remove_resource::<MinigameHud>().unwrap_or_default();
-    hud.title = active.def.name.clone();
+    hud.title = shown_name(world, active.def);
     hud.notices.retain(|(_, until)| *until > now);
     if hud.callout.as_ref().is_some_and(|c| now - c.since >= CALLOUT_SECONDS) {
         hud.callout = None;
@@ -250,4 +295,18 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
     }
     world.insert_resource(hud);
     super::moments::update(world);
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::map_display_name;
+
+    #[test]
+    fn map_ids_read_as_names() {
+        assert_eq!(map_display_name("cs_source:de_aztec"), "Aztec");
+        assert_eq!(map_display_name("de_dust2"), "Dust 2");
+        assert_eq!(map_display_name("combat_arms:warehouse"), "Warehouse");
+        assert_eq!(map_display_name("cs_source:cs_office"), "Office");
+        assert_eq!(map_display_name("cs_source:de_cbble"), "Cbble");
+    }
 }
