@@ -8,6 +8,7 @@
 mod map_lifetime;
 mod minigame;
 mod mode;
+mod nav_bounds;
 mod movement;
 mod noclip_damage;
 mod rung_extras;

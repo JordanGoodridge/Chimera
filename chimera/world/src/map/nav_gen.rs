@@ -12,19 +12,37 @@
 //! sizes are `NavGenParams`, the colliders that count are the caller's
 //! (`generate`'s `ignore`).
 //!
+//! Bounded (`generate_within`, `Bounds`): on a map with visibility data a
+//! walker that climbs more than a player walks (a bot's 0.8 m jump-ups, a
+//! narrower hull) can leave the playable space, over or through its
+//! walls (de_aztec's jungle behind a gap a player doesn't fit, `heavy::
+//! nav_bounds` in party_kit), and the jungle is in valid clusters too. So
+//! a bounded mesh keeps only cells whose chest (1 m up) is in a cluster
+//! a walking player (`walking_player`) reaches from the same seeds:
+//! jump-up ledges inside the rooms a player walks stay, anything beyond
+//! the rooms goes, and so does whatever is reached only through it.
+//!
 //! Known shortcuts: no ladders, jumps, crouch-only areas, hiding spots or
 //! visibility data; cells are tested at their centres only (a wall
 //! thinner than a cell between two cell centres is found by the sweep,
 //! a pillar between centres narrower than the radius is not); areas'
 //! corner heights are the corner cells' floors (a ramp is a staircase of
-//! areas no wider than `max_area` cells).
+//! areas no wider than `max_area` cells). The bound is by clusters: a
+//! jump-up ledge in a cluster no walk enters (a box top in a leaf of its
+//! own, a wall's top) is dropped with the outside (de_dust2 loses about
+//! 70 of its 4950 m2, cs_office 45 of 4010), and a jump over a low wall
+//! into a walked cluster stays; a map without visibility data (Combat
+//! Arms') isn't bounded; the walk is generated a second time for it.
 
 use std::collections::{HashMap, VecDeque};
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use super::nav::{NavArea, NavMesh, Side, Via};
+use super::{
+    nav::{NavArea, NavMesh, Side, Via},
+    vis::MapVisibility,
+};
 
 /// The walker and the grid, metres.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -66,6 +84,29 @@ impl Default for NavGenParams {
         }
     }
 }
+
+/// A walking player: the default step and height, a little wider than a
+/// CS:S player (radius 0.4 m), walks off drops up to 3 m; no jumps.
+pub fn walking_player() -> NavGenParams {
+    NavGenParams {
+        radius: 0.4,
+        max_drop: 3.0,
+        ..Default::default()
+    }
+}
+
+/// What bounds a generated mesh to the map's playable space
+/// (`generate_within`): the map's visibility tree and the walker whose
+/// reach marks the playable clusters.
+#[derive(Clone, Copy)]
+pub struct Bounds<'a> {
+    pub vis: &'a MapVisibility,
+    pub walker: NavGenParams,
+}
+
+/// The height above a cell's floor at which its cluster is taken (a
+/// standing character's chest, as `spawns::inside_map`).
+const CHEST: f32 = 1.0;
 
 /// One grid cell's floor.
 #[derive(Clone, Copy, Debug)]
@@ -186,50 +227,96 @@ pub fn generate(
     seeds: &[Vec3],
     p: &NavGenParams,
 ) -> NavMesh {
-    let mut g = Grid {
-        q,
-        filter: SpatialQueryFilter::from_mask(p.mask),
-        ignore,
-        p: *p,
-        cells: Vec::new(),
-        columns: HashMap::new(),
-        links: Vec::new(),
+    generate_within(q, ignore, seeds, p, None)
+}
+
+/// `generate`, and with `bounds` only the cells in the clusters a
+/// walking player reaches from the same seeds (the module doc; without
+/// visibility data, as `generate`).
+pub fn generate_within(
+    q: &SpatialQuery,
+    ignore: &dyn Fn(Entity) -> bool,
+    seeds: &[Vec3],
+    p: &NavGenParams,
+    bounds: Option<Bounds>,
+) -> NavMesh {
+    let bounds = bounds.filter(|b| !b.vis.nodes.is_empty());
+    let clusters: Option<(&MapVisibility, std::collections::BTreeSet<u32>)> = bounds.map(|b| {
+        let mut walk = Grid::new(q, ignore, &b.walker);
+        walk.flood(seeds, &|_| true);
+        let set = walk
+            .cells
+            .iter()
+            .filter_map(|c| {
+                let (x, z) = walk.centre(c.ix, c.iz);
+                b.vis.cluster_at(Vec3::new(x, c.y + CHEST, z))
+            })
+            .collect();
+        (b.vis, set)
+    });
+    let keep = |at: Vec3| {
+        clusters
+            .as_ref()
+            .is_none_or(|(vis, set)| vis.cluster_at(at + Vec3::Y * CHEST).is_some_and(|c| set.contains(&c)))
     };
-    let mut open = VecDeque::new();
-    for s in seeds {
-        let (ix, iz) = ((s.x / p.cell).floor() as i32, (s.z / p.cell).floor() as i32);
-        let Some(y) = g.floor(ix, iz, s.y + 0.5, 4.0) else { continue };
-        if g.find(ix, iz, y).is_some() || !g.stands(ix, iz, y) {
-            continue;
+    let mut g = Grid::new(q, ignore, p);
+    g.flood(seeds, &keep);
+    merge(&g)
+}
+
+impl<'a, 'w, 's> Grid<'a, 'w, 's> {
+    fn new(q: &'a SpatialQuery<'w, 's>, ignore: &'a dyn Fn(Entity) -> bool, p: &NavGenParams) -> Self {
+        Grid {
+            q,
+            filter: SpatialQueryFilter::from_mask(p.mask),
+            ignore,
+            p: *p,
+            cells: Vec::new(),
+            columns: HashMap::new(),
+            links: Vec::new(),
         }
-        open.push_back(g.add(ix, iz, y));
     }
-    while let Some(i) = open.pop_front() {
-        let Cell { ix, iz, y } = g.cells[i];
-        for (dx, dz, side) in DIRS {
-            let (jx, jz) = (ix + dx, iz + dz);
-            let top = y + p.step + 0.05;
-            let Some(y1) = g.floor(jx, jz, top, p.step + 0.05 + p.max_drop) else { continue };
-            if !g.passes(ix, iz, y, dx, dz) {
+
+    /// The cells reachable from `seeds` through cells whose floor point
+    /// `keep` takes (seeds are always taken).
+    fn flood(&mut self, seeds: &[Vec3], keep: &dyn Fn(Vec3) -> bool) {
+        let p = self.p;
+        let mut open = VecDeque::new();
+        for s in seeds {
+            let (ix, iz) = ((s.x / p.cell).floor() as i32, (s.z / p.cell).floor() as i32);
+            let Some(y) = self.floor(ix, iz, s.y + 0.5, 4.0) else { continue };
+            if self.find(ix, iz, y).is_some() || !self.stands(ix, iz, y) {
                 continue;
             }
-            let j = match g.find(jx, jz, y1) {
-                Some(j) => j,
-                None => {
-                    if g.cells.len() >= p.max_cells || !g.stands(jx, jz, y1) {
-                        continue;
-                    }
-                    let j = g.add(jx, jz, y1);
-                    open.push_back(j);
-                    j
+            open.push_back(self.add(ix, iz, y));
+        }
+        while let Some(i) = open.pop_front() {
+            let Cell { ix, iz, y } = self.cells[i];
+            for (dx, dz, side) in DIRS {
+                let (jx, jz) = (ix + dx, iz + dz);
+                let top = y + p.step + 0.05;
+                let Some(y1) = self.floor(jx, jz, top, p.step + 0.05 + p.max_drop) else { continue };
+                if !self.passes(ix, iz, y, dx, dz) {
+                    continue;
                 }
-            };
-            if !g.links[i].iter().any(|l| l.0 == j) {
-                g.links[i].push((j, side));
+                let j = match self.find(jx, jz, y1) {
+                    Some(j) => j,
+                    None => {
+                        let (x, z) = self.centre(jx, jz);
+                        if self.cells.len() >= p.max_cells || !keep(Vec3::new(x, y1, z)) || !self.stands(jx, jz, y1) {
+                            continue;
+                        }
+                        let j = self.add(jx, jz, y1);
+                        open.push_back(j);
+                        j
+                    }
+                };
+                if !self.links[i].iter().any(|l| l.0 == j) {
+                    self.links[i].push((j, side));
+                }
             }
         }
     }
-    merge(&g)
 }
 
 /// Cells into rectangles and their links into area links.

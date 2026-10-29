@@ -30,10 +30,24 @@ the user's go-ahead: no Actions runs unless asked.
 - **The gun game's title names Dust II on every map: fixed, confirm in a
   playtest.** The definition's name is now "Gun Game: {map}", `{map}` the
   map played ("Gun Game: Aztec"; `minigame::hud::shown_name`).
-- **Bots' generated nav reaches outside de_aztec.** Spawns no longer use
-  it, but its 0.8 m jump ledges climb the walls onto the jungle outside,
-  so a bot can still walk there. Bound the generated mesh to the map's
-  playable leaves, as spawns now are.
+- **Bots' generated nav reaches outside de_aztec: fixed, confirm in a
+  playtest.** Not over the walls: a one-cell gap a CS:S player doesn't
+  fit through (Combat Arms' hull is 30 u, the walk test is at cell
+  centres), source `setpos 2923 600 -179`, opens 7900 m2 of jungle, and
+  its 0.8 m jump-ups add more; the jungle is in valid clusters. Now a
+  generated mesh on a map with visibility data is bounded
+  (`nav_gen::generate_within`, `Bounds`, used by `brain::ensure_nav`):
+  only cells whose chest is in a cluster a walking player's mesh (0.45 m
+  step, 0.4 m radius) reaches from the same seeds, so the floor beyond
+  goes and so does everything reached only through it. Bots' mesh areas
+  (m2) unbounded -> bounded: de_aztec 2584 (14748) -> 1404 (6116),
+  de_dust2 1351 (4948) -> 1278 (4876), cs_office 1097 (4010) -> 1074
+  (3966), de_port 3288 (12602) -> 2518 (10300); no floor a player walks
+  lost on any of them; what goes inside is jump-up spots in clusters no
+  walk enters (wall tops, a few box tops). Tests: chimera_sim
+  `nav_bounds` (toy wall climbed by ledges onto an outside floor);
+  party_kit `heavy::nav_bounds` (de_aztec: no area in the jungle, four
+  bots three minutes never there; the four maps' counts).
 - **`combat_arms:junkflea` is in the map pool but doesn't load: fixed.**
   The install's world is `junk_flea` (the lobby's key `junkflea` is
   another name); the pool says `combat_arms:junk_flea` now. Test
@@ -165,8 +179,8 @@ the user's go-ahead: no Actions runs unless asked.
   are ledges only a jump reaches; none of them was in a solid or void
   leaf). `combat_arms:junkflea`, in the Combat Arms parts' pool, doesn't
   load on this box ("no such map (worlds*/junkflea.dat)"): check the
-  pool's name for it. Left for the bots: their mesh still reaches outside
-  de_aztec, so a bot can walk there. Tests: chimera_sim
+  pool's name for it. The bots' mesh reaching outside: fixed (the entry
+  above). Tests: chimera_sim
   `spawns::a_mesh_generated_for_another_walker_is_not_spawned_on`,
   `spawns::spots_in_solid_or_void_leaves_are_not_spawned_in`; party_kit
   `heavy::spawns::every_pool_map_s_spawn_spots_are_inside_it` (the sweep,

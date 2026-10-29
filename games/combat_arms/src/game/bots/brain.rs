@@ -49,7 +49,7 @@ use super::super::{
 };
 use crate::{
     core::{Damage, Dead, FreezeTime, Health, Intent, MovementState, SimClock, Spectating, Team},
-    map::{SeeThrough, nav::NavMesh},
+    map::{SeeThrough, nav::NavMesh, nav_gen, vis::ActiveVisibility},
     weapon::{Inventory, Magazine, Weapon, WeaponEvent, WeaponEventKind, grenade::Throwable},
 };
 
@@ -379,7 +379,8 @@ pub fn camping(
 
 /// The map's navigation mesh: generated from the collision
 /// (`map::nav_gen`) once bots play on a map that has none, from its
-/// spawn points and characters.
+/// spawn points and characters, bounded to the clusters a walking player
+/// reaches where the map has visibility data (`nav_gen::Bounds`).
 pub fn ensure_nav(world: &mut World) {
     if world.contains_resource::<NavMesh>() {
         // The brains' shared copy, kept with the map's mesh.
@@ -428,10 +429,17 @@ pub fn ensure_nav(world: &mut World) {
         world.insert_resource(mesh);
         return;
     }
+    // Bounded to the rooms a walking player reaches (`nav_gen::Bounds`):
+    // the jump-ups climb out of de_aztec otherwise.
+    let vis = world.get_resource::<ActiveVisibility>().map(|v| v.0.clone());
     let mesh = {
         let mut state = SystemState::<SpatialQuery>::new(world);
         let q = state.get(world).unwrap();
-        crate::map::nav_gen::generate(&q, &|e| ignore.contains(&e), &seeds, &nav_params())
+        let bounds = vis.as_deref().map(|vis| nav_gen::Bounds {
+            vis,
+            walker: nav_gen::walking_player(),
+        });
+        nav_gen::generate_within(&q, &|e| ignore.contains(&e), &seeds, &nav_params(), bounds)
     };
     info!("bots: generated a navigation mesh of {} areas", mesh.areas.len());
     world.insert_resource(mesh);
