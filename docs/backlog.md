@@ -75,7 +75,6 @@ the user's go-ahead: no Actions runs unless asked.
     hands (install-only guns may have no held model).
   - Neon Outlaw ASW338LM: its texture is mapped wrongly, scattered
     across the gun (UVs).
-  - Round music loops one short track: a party playlist instead.
   - On the end screen, guns still play their firing animation and WASD
     still plays footsteps.
   - de_piranesi's sky draws blank, showing only through some
