@@ -73,9 +73,15 @@
 //! - A crossbow's alternate fire (right button, 1300 u/s, 41) isn't a mode
 //!   yet; its bolt is the primary's. The explosive bolt's `Range` is
 //!   measured in a straight line from the fire position.
-//! - Placeholder looks: objects are shown by their weapon's `ShownItem`
-//!   key (no models, effects or sounds for the devices yet); the
-//!   projectile and device weapons have no view models of their own.
+//! - Placeholder looks: devices and bolts are shown by their weapon's
+//!   `ShownItem` key (no models, effects or sounds for the devices yet);
+//!   an impact projectile by its record's model (`ProjectileParams::
+//!   shown_key`, from the install; a model-less one, the flame puff, and
+//!   any without an install, by the front end's placeholder ball), with no
+//!   trail group (`FXName`) or flight sound (`FlySound`): unspecified
+//!   (docs/backlog.md). Its explosion's sound and group are the ImpactFX
+//!   (`effects`). The projectile and device weapons have no view models
+//!   of their own.
 //! - Case 11 lists the M32's shells at 8100, 9100 ... and the end at 14134
 //!   ms; section 3.2 and case 12 have each shell complete a second after
 //!   the 2100 ms pre-reload and the reload end 1034 ms after the last
@@ -653,7 +659,12 @@ pub fn spawn_object(world: &mut World, mut o: CaObject) -> Entity {
         centre: at,
         half: o.half * o.unit,
     };
-    let id = o.weapon.to_string();
+    // Drawn as its projectile record's model (impact projectiles), else
+    // by its weapon's key.
+    let id = match &o.kind {
+        Kind::Impact(p) => p.shown_key(),
+        _ => o.weapon.to_string(),
+    };
     let mut e = world.spawn((Name::new(name), Transform::from_translation(at), target, ShownItem(id), o));
     if survives {
         e.insert(SurvivesRestart);

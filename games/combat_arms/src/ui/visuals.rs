@@ -3,8 +3,9 @@
 //! gun, a thin light one for a melee weapon) while it has no view model
 //! (`game::view_model`: keyed ones without the V2 key, or one still
 //! loading: `on_demand`, which this plugin turns on);
-//! grenades in flight without their model as small
-//! dark balls (`grenade_balls`) and, without the install's effect file,
+//! grenades and impact projectiles in flight without their model as small
+//! dark balls (`grenade_balls`; not a flame puff, whose record has no
+//! model: nothing is drawn for it until its trail group is specified) and, without the install's effect file,
 //! smoke clouds as grey balls of the cloud's size (`smoke_balls`; with it
 //! the cloud is the `Smoke_Grenade_01` group's particles, `ui::effects`).
 //! Other characters are the shell's capsules (`client::hud`).
@@ -122,7 +123,10 @@ fn grenade_balls(
     mut commands: Commands,
 ) {
     for (e, item) in &new {
-        if !item.0.starts_with(crate::game::GAME) || models.as_ref().is_some_and(|m| m.0.contains_key(&item.0)) {
+        // A model-less impact projectile (the flame puff) draws no ball:
+        // its record has no model (special_weapons.md 4).
+        let modelless = item.0 == crate::game::special::ProjectileParams::NO_MODEL_KEY;
+        if modelless || !item.0.starts_with(crate::game::GAME) || models.as_ref().is_some_and(|m| m.0.contains_key(&item.0)) {
             continue;
         }
         commands.entity(e).insert((

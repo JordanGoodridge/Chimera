@@ -1006,7 +1006,9 @@ fn net_rocket_seen_and_damaging() {
     let ok = sim.until(300, |s| {
         for (i, c) in s.clients.iter_mut().enumerate() {
             let w = c.app.world_mut();
-            if w.query::<&ShownItem>().iter(w).any(|i| i.0 == LAW) {
+            // Drawn by its projectile's key (the record's model; none in
+            // the built-in data).
+            if w.query::<&ShownItem>().iter(w).any(|i| i.0 == combat_arms::game::special::ProjectileParams::NO_MODEL_KEY) {
                 seen[i] = true;
             }
         }

@@ -27,11 +27,39 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Combat Arms launchers: the boss flame launcher hurt nobody, every
+  rocket was a grey ball: fixed, confirm in a playtest; the looks in
+  flight need a spec.** The "Hephaestus" is the install's
+  `Powered_Suit_Boss_Launcher` (`Guntype` 9; its ammo fires the flame
+  puff `Yellow_Flame` with a burning sphere, 10 HP/s, 999 rounds,
+  infinite: the 999 is its data). Install weapons we have no document for
+  were copied from the first of our documents of their `Guntype`, the
+  rocket launcher, so its puffs flew as rockets with no blast and no
+  sphere. Now a copy takes the document whose weapon fires the same
+  projectile record (the flamethrower), and every impact projectile
+  weapon takes from the install its record's speed, lifetime, gravity and
+  model (drawn in flight: the LAW and its NPC copy `LAW_npc` show the
+  missile, not a ball or the launcher), its ammo's sphere, its `FireSnd`
+  and its ImpactFX (the rocket's `gren.wav` and `Grenade_Dirt` at the
+  blast, the M32 family's `M32_EXPLOSION.wav` and `M32_Dirt`). Tests:
+  combat_arms `install_launchers`. Same fix for every `Guntype` 9 and 15
+  copy (the flamethrower skins and `HQRAID_BOSS_FLAME`, the LAW, RPG-7,
+  AT4 and RMS12 skins, the boss missile, the M79/MZP-1 family). Left for
+  a spec session (docs/plans/active/combat-arms.md, brief 24b): the
+  projectile record's trail group (`FXName`), flight sound (`FlySound`),
+  flare and light. A flame puff has no model in its record, so it now
+  draws nothing (no ball); until the spec answers how its `Flame_Yellow`
+  trail plays, flame weapons show no flame. The M32 family firing
+  copies of itself: fixed with the rest (the shell was drawn by the
+  weapon's key, the M32's held model; now `M32_Shell.ltb`). The
+  "Anti-Virus Flamethrower" is most likely `RMS12` (its HUD name image,
+  `Name_RMS12`): a flamethrower copy now (500 u/s puffs, no ball), but its
+  ammo has `ProgDamage` 0, so its spheres do nothing (special_weapons.md
+  4, Open question 8: as the data says); `RMS12_Bounty` burns 30 HP/s.
+  Its 134 ms single-key fire loop (spec 4) isn't taken yet (the copy has
+  the flamethrower's keys, brief 24b item 9).
+
 - **In progress (agents working, 2026-10-29):**
-  - Hephaestus and the LAW NPC fire grey balls (999 ammo, no damage, no
-    explosion or sounds): Combat Arms launcher projectiles.
-    The M32 fires copies of its own model instead of grenades; the
-    Anti-Virus Flamethrower fires slow grey balls instead of flames.
   - Grey Combat Arms skins: Prismatic Eco M416, Drakeveil SIG550, Red
     Dominion ARX160 Lv.1 (limit), AUG A3 Champions Lightning, M14
     Cyanide Echo lv.4 (limit), and Dragunov SVD Obsidian Dragon (flat,
@@ -147,7 +175,11 @@ the user's go-ahead: no Actions runs unless asked.
   Our own documents are wrong too. The LAW, RPG-7, M32, M79, MZP-1, XM25,
   normal crossbow and the M67 have no `combat_arms:effects` table, so
   they fire silently with no impact effect (their records name sounds,
-  `Rocket`/`M32_Exp`/`HandGrenade` impacts and `WEAPON_HH` flashes). The
+  `Rocket`/`M32_Exp`/`HandGrenade` impacts and `WEAPON_HH` flashes).
+  (Fixed 2026-10-29 for every impact projectile weapon, the launchers
+  and their copies: the table is made, with the record's `FireSnd`,
+  `FireSndRadius` and the ammo's ImpactFX; the crossbow, the M67 and
+  the launchers' `HHMuzzleFXName` and `FireFXName` are still open.) The
   MP5A4 and Dragunov have no first-person muzzle flash (no view-model
   table). The M60's FireFX should be `5.56mm`, not `7.62mm`, the R870's
   `12Gauge_R`, not `_G`. The R870 has no deselect sound.

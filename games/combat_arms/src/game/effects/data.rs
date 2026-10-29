@@ -373,6 +373,10 @@ pub struct CaWeaponFx {
     pub misc_sounds: Vec<String>,
     pub reload_radius: f32,
     pub select_radius: f32,
+    /// The install's record of `impact` (the ammo's `ImpactFXName` in its
+    /// effect file), used when the tables have none of that name: the
+    /// launchers' explosions.
+    pub impact_record: Option<ImpactFx>,
 }
 
 impl Default for CaWeaponFx {
@@ -394,11 +398,21 @@ impl Default for CaWeaponFx {
             misc_sounds: Vec::new(),
             reload_radius: 300.0,
             select_radius: 300.0,
+            impact_record: None,
         }
     }
 }
 
 impl CaWeaponFx {
+    /// Its ImpactFX record: the tables' of its name, else the install's
+    /// carried with it (`impact_record`).
+    pub fn impact_of<'a>(&'a self, tables: &'a CaFxTables) -> Option<&'a ImpactFx> {
+        if self.impact.is_empty() {
+            return None;
+        }
+        tables.impact(&self.impact).or(self.impact_record.as_ref())
+    }
+
     /// The files it names.
     pub fn sound_files(&self) -> impl Iterator<Item = &str> {
         [&self.fire_sound, &self.dry_fire_sound, &self.select_sound, &self.deselect_sound]
