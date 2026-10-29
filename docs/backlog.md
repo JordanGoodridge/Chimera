@@ -85,6 +85,11 @@ the user's go-ahead: no Actions runs unless asked.
   options (video, audio, mouse, binds, the party settings: hit marker,
   swap effect, even footsteps, music), scoreboard, change map or vote,
   disconnect, quit. The user to confirm the list.
+- **Combat Arms grenade not thrown while sprinting: matches Combat Arms.**
+  Pin pulled, then sprint, then release: the throw waits until sprint
+  ends. view_models.md says so ("Grenade and sprint": the cocked and
+  throw stages wait until sprint ends). Kept for parity; a party-mode
+  option to throw while sprinting only if the user asks.
 - **Kill feed: Combat Arms gun icons sit at the top of the line.** The
   generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
   icons vertically, with every line the same height (widths may vary).
