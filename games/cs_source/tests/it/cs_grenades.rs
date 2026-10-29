@@ -3,7 +3,7 @@
 //! the pin and release timing (G17, G30), the throw (G1), flight and
 //! bounces against floors, walls and players (G10-G14), the fuse (G16), HE
 //! damage by distance, walls, static props, props and players in between
-//! (G18-G20, Q10), kill
+//! (G18-G20, Q10), the bounce heights and stop time of a throw (spec 4), kill
 //! credit, flash blindness, what blasts and flashes do to hearing (5.5,
 //! 6.4) and the HE's view shake, the smoke cloud's life and bots' sight through
 //! it, round restarts, and a primed grenade dropped by the dying.
@@ -761,4 +761,171 @@ fn grenades_play_water_sounds_crossing_the_surface() {
     let (_, _) = place(&mut sim, SMOKEGRENADE, Vec3::new(centre.x, 1.0, centre.y), Vec3::Y * 40.0);
     let heard = entries(collect::<PlaySound>(&mut sim, 1.0));
     assert!(heard.iter().any(|e| e == "BaseEntity.ExitWater"), "{heard:?}");
+}
+
+/// The spec's flight rules (grenades.md section 4) run by hand in inches on
+/// a floor `y = 0` and a wall `x = wall`, for a ±2 in box: gravity 320 in/s²
+/// (0.4 x 800) integrated per 0.015 s tick as the exact parabola, mirror
+/// then scale by 0.45 on every contact, a floor contact keeps the rest of
+/// the tick (a second sweep of the new velocity) and a wall contact loses
+/// it, stop when the scaled velocity is under 30 in/s (floor: rest; wall:
+/// velocity 0). Returns each tick's (x, y, vx, vy) of the box centre.
+fn spec_flight(mut p: (f32, f32), mut v: (f32, f32), wall: Option<f32>, ticks: usize) -> Vec<[f32; 4]> {
+    let (dt, g, e, half) = (0.015f32, 320.0f32, 0.45f32, 2.0f32);
+    let mut out = vec![];
+    let mut rest = false;
+    for _ in 0..ticks {
+        if !rest {
+            let vy2 = v.1 - g * dt;
+            let mut step = (v.0 * dt, (v.1 + vy2) / 2.0 * dt);
+            v.1 = vy2;
+            for _ in 0..2 {
+                // First plane the centre reaches within this step.
+                let tf = (step.1 < 0.0).then(|| (half - p.1) / step.1);
+                let tw = wall.and_then(|w| (step.0 > 0.0).then(|| (w - half - p.0) / step.0));
+                let (t, floor) = match (tf, tw) {
+                    (Some(a), Some(b)) if a.min(b) < 1.0 => (a.min(b), a <= b),
+                    (Some(a), None) if a < 1.0 => (a, true),
+                    (None, Some(b)) if b < 1.0 => (b, false),
+                    _ => {
+                        p = (p.0 + step.0, p.1 + step.1);
+                        break;
+                    }
+                };
+                p = (p.0 + step.0 * t, p.1 + step.1 * t);
+                let mut r = if floor { (v.0, -v.1) } else { (-v.0, v.1) };
+                for c in [&mut r.0, &mut r.1] {
+                    if c.abs() < 0.1 {
+                        *c = 0.0;
+                    }
+                }
+                r = (r.0 * e, r.1 * e);
+                if (r.0 * r.0 + r.1 * r.1).sqrt() < 30.0 {
+                    v = (0.0, 0.0);
+                    rest = floor;
+                    break;
+                }
+                v = r;
+                if !floor {
+                    break;
+                }
+                step = (r.0 * (1.0 - t) * dt, r.1 * (1.0 - t) * dt);
+            }
+        }
+        out.push([p.0, p.1, v.0, v.1]);
+    }
+    out
+}
+
+/// Throws a grenade of `id` as the spec's level-view throw (3: speed 600 in/s
+/// 10 degrees up) from `from` (inches) and compares it, tick by tick, with
+/// `spec_flight`; returns the per-tick (x, y, vx, vy) in inches.
+fn bounce_run(id: &str, from: (f32, f32), wall: Option<f32>, ticks: usize, exact: usize) -> Vec<[f32; 4]> {
+    let mut sim = sim();
+    let (s, c) = 10f32.to_radians().sin_cos();
+    let v0 = (600.0 * c, 600.0 * s);
+    let at = Vec3::new(from.0 * UNIT, from.1 * UNIT, 0.0);
+    let (_, g) = place(&mut sim, id, at, Vec3::new(v0.0, v0.1, 0.0) * UNIT);
+    // Keep it from going off during the record.
+    sim.app.world_mut().get_mut::<Projectile>(g).unwrap().fuse = 100.0;
+    let mut got = vec![];
+    for _ in 0..ticks {
+        sim.ticks(1);
+        let p = projectiles(&mut sim).into_iter().find(|x| x.0 == g).unwrap();
+        got.push([p.2.x / UNIT, p.2.y / UNIT, p.1.velocity.x / UNIT, p.1.velocity.y / UNIT]);
+    }
+    let want = spec_flight(from, v0, wall, ticks);
+    // Tick by tick, positions within 0.3 in (our box stops 1 mm, 0.04 in,
+    // short of what it touches) and velocities within 0.05 in/s, for the
+    // first `exact` ticks. A grazing contact (a last hop of a few inches
+    // a second) can land a tick apart from there on, because of that
+    // 0.04 in, so the rest is compared as bounces below.
+    for (i, (a, b)) in got.iter().zip(&want).enumerate().take(exact) {
+        assert!(
+            (a[0] - b[0]).abs() < 0.3 && (a[1] - b[1]).abs() < 0.3 && (a[2] - b[2]).abs() < 0.05 && (a[3] - b[3]).abs() < 0.05,
+            "{id} tick {i}: ours {a:?}, spec {b:?}"
+        );
+    }
+    got
+}
+
+/// Bounce apex heights (centre y over the floor-resting centre, 2 in) of a
+/// run, the tick each floor contact happened on, and the tick it stopped.
+fn bounces(run: &[[f32; 4]]) -> (Vec<f32>, Vec<usize>, Option<usize>) {
+    let (mut apex, mut contacts) = (vec![], vec![]);
+    for i in 1..run.len() {
+        if run[i][3] > 0.0 && run[i - 1][3] <= 0.0 && run[i][1] < 6.0 {
+            contacts.push(i);
+        }
+        if run[i][3] < 0.0 && run[i - 1][3] >= 0.0 && i > 1 {
+            apex.push(run[i - 1][1] - 2.0);
+        }
+    }
+    let stop = (1..run.len()).find(|&i| run[i][2] == 0.0 && run[i][3] == 0.0);
+    (apex, contacts, stop)
+}
+
+#[test]
+fn css_grenades_bounce_as_the_spec_says_on_floor_and_wall() {
+    // Expected numbers, by hand from the spec (inches, seconds). The
+    // level-view throw (section 3) is 600 in/s 10 degrees up: vx = 600 cos
+    // 10 = 590.88, vy = 600 sin 10 = 104.19. Released with the box centre
+    // 20 in up; the floor holds the centre at 2 in. Gravity 0.4 x 800 = 320.
+    //  - apex of the throw: 18 + 104.19^2 / 640 = 34.96 over the resting
+    //    centre height (ours 34.94).
+    //  - first floor contact: vy_in = sqrt(104.19^2 + 2*320*18) = 150.1 down,
+    //    rebound 0.45 x 150.1 = 67.5 up (the tick's gravity trims it to 66.8
+    //    up), apex 67.5^2 / 640 = 7.1 (the tick-sampled parabola gives 7.4);
+    //    vx 590.88 -> 265.90 (= 0.45 x 590.88).
+    //  - second contact: falls 7.4 -> vy_in about 66.8, rebound 0.45 x 66.8
+    //    = 30.1 up (just over the 30 in/s stop), vx 265.90 -> 119.65 (apex
+    //    about 1.9).
+    //  - third contact: vx 119.65 and vy about 35 in: 0.45 x hypot = 57 in/s
+    //    is over 30, so it hops once more (vx 53.85, vy 15.7, apex about
+    //    1); the contact after it has 0.45 x hypot(53.85, 20) = 26 in/s,
+    //    under 30: it stops there, with no sliding (no ground friction).
+    //  - it rests about 1.6 s (105 ticks) after the throw; x then
+    //    stays put.
+    // `spec_flight` applies exactly the spec's per-tick rules and gives
+    // those numbers (the contact ticks 52, 81, 96 and the stop on 105); the
+    // test requires ours to follow it tick by tick up to the third contact
+    // and to agree to a tick on the contact and stop times after it.
+    for id in [HEGRENADE, FLASHBANG, SMOKEGRENADE] {
+        // Floor: thrown 20 in up (centre) from x = -30 m, nothing in the way.
+        let from = (-30.0 / UNIT, 20.0);
+        let run = bounce_run(id, from, None, 200, 94);
+        let (apex, contacts, stop) = bounces(&run);
+        let want = bounces(&spec_flight(from, (590.88, 104.19), None, 200));
+        assert_eq!(contacts.len(), want.1.len(), "{id}: floor contacts {contacts:?} vs spec {:?}", want.1);
+        for (a, b) in contacts.iter().zip(&want.1) {
+            assert!(a.abs_diff(*b) <= 1, "{id}: contact ticks {contacts:?} vs spec {:?}", want.1);
+        }
+        assert_eq!(contacts[..2], [52, 81], "{id}: contact ticks");
+        let (stop, spec_stop) = (stop.expect("{id} stops: no rolling"), want.2.unwrap());
+        assert!(stop.abs_diff(spec_stop) <= 1, "{id}: stops on tick {stop}, spec {spec_stop}");
+        // Apexes over the resting height: the throw's 34.96, then 7.4, 1.9.
+        for (a, b) in apex.iter().zip(&want.0) {
+            assert!((a - b).abs() < 0.5, "{id}: apex {apex:?} vs spec {:?}", want.0);
+        }
+        assert!((apex[0] - 34.96).abs() < 0.1 && (apex[1] - 7.4).abs() < 0.2, "{apex:?}");
+        // Once stopped it stays put: no sliding or rolling.
+        assert!((run[199][0] - run[stop][0]).abs() < 1e-3 && run[199][1] == run[stop][1]);
+
+        // Wall: the east wall's inner face is at x = 40 m; thrown at it from
+        // 4 m away. The wall contact sends vx to -0.45 x 590.88 = -265.9
+        // and vy to 0.45 x (vy - 4.8) (the tick's gravity, then the same
+        // scale; no second sweep).
+        let wall = 40.0 / UNIT;
+        let from = (wall - 4.0 / UNIT, 20.0);
+        let run = bounce_run(id, from, Some(wall), 120, 120);
+        let i = (1..run.len()).find(|&i| run[i][2] < 0.0).expect("hits the wall");
+        assert!(
+            (run[i][2] + 0.45 * 590.88).abs() < 0.05,
+            "{id}: off the wall at {} in/s, spec {}",
+            run[i][2],
+            -0.45 * 590.88
+        );
+        assert!((run[i][3] - 0.45 * (run[i - 1][3] - 4.8)).abs() < 0.05, "vy scaled by 0.45 too");
+        assert!(bounces(&run).2.is_some(), "{id}: falls, bounces and stops");
+    }
 }
