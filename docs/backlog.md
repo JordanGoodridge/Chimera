@@ -35,7 +35,9 @@ the user's go-ahead: no Actions runs unless asked.
   - Grey Combat Arms skins: Prismatic Eco M416, Drakeveil SIG550, Red
     Dominion ARX160 Lv.1 (limit), AUG A3 Champions Lightning, M14
     Cyanide Echo lv.4 (limit), and Dragunov SVD Obsidian Dragon (flat,
-    unshaded grey). The R870 isn't visible in Combat Arms characters'
+    unshaded grey), and the SIG550 Clockwork, whose body alone is grey
+    while its scope (an attachment, its own model) is textured. The R870
+    isn't visible in Combat Arms characters'
     hands (install-only guns may have no held model).
   - Neon Outlaw ASW338LM: its texture is mapped wrongly, scattered
     across the gun (UVs).
