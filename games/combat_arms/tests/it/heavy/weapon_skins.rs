@@ -11,7 +11,7 @@
 //! style our table doesn't know (drawn opaque, lit).
 //!
 //! Needs the V1 key (the weapons file) and the V2 key (the rifles',
-//! SMGs', snipers' and third-person archives): run on the Windows PC with
+//! SMGs', snipers' and third-person archives) in chimera.local.toml; run
 //! `cargo test -p combat_arms --features dev,ui --test it
 //! heavy::weapon_skins -- --nocapture` for the report (`ui`: with the
 //! names the game shows); `CHIMERA_SKINS_SHOW=m416,sig550` also prints

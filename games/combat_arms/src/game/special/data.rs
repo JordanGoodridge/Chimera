@@ -55,7 +55,44 @@ pub struct ProjectileParams {
     /// The shooter never takes the sphere's burn (a `Guntype` 9 weapon's).
     #[serde(default)]
     pub shooter_exempt: bool,
+    /// The projectile record's world model (`Model`, an archive path of
+    /// the install), drawn in flight with `ModelScale` and `Skin#`
+    /// (archive paths by texture index); None: no model (the flame puff),
+    /// or no install.
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default = "unit_scale")]
+    pub model_scale: [f32; 3],
+    #[serde(default)]
+    pub skins: Vec<String>,
 }
+
+fn unit_scale() -> [f32; 3] {
+    [1.0; 3]
+}
+
+impl ProjectileParams {
+    /// The key its projectile is drawn under (`map::loose::ShownItem`, the
+    /// held-model kit): one per model, scale and skins, whichever weapon
+    /// fires it; a model-less projectile's never has a model.
+    pub fn shown_key(&self) -> String {
+        match &self.model {
+            Some(m) => format!(
+                "{}{m}|{:?}|{}",
+                PROJECTILE_KEY,
+                self.model_scale,
+                self.skins.join(",")
+            ),
+            None => Self::NO_MODEL_KEY.to_string(),
+        }
+    }
+
+    /// The drawn key of a projectile without a model.
+    pub const NO_MODEL_KEY: &'static str = "combat_arms:projectile#none";
+}
+
+/// What every impact projectile's drawn key starts with.
+pub const PROJECTILE_KEY: &str = "combat_arms:projectile#";
 
 /// `combat_arms:flame`: the flamethrower's fire keys (4): a pre-fire, then
 /// a loop with `keys` fire keys `interval` apart.

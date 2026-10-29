@@ -18,7 +18,9 @@
 //! `characters::held_on_demand`); each grenade's
 //! model in flight (its projectile record's `Model`, `Skin#` and
 //! `ModelScale`, in its `World` pose: `THROWN_POSE`) as a held model in no
-//! hand under `grenades::thrown_key`. The body's nodes, sockets, weight sets and
+//! hand under `grenades::thrown_key`; each impact projectile's model in
+//! flight (the same fields of its record, `special::ProjectileParams`) under
+//! `ProjectileParams::shown_key`, once per model. The body's nodes, sockets, weight sets and
 //! animation list are kept as a `Rig` (`rig`, every record of the group
 //! posing on the first's) for posing.
 //!
@@ -242,6 +244,23 @@ pub fn add_character_models(map: &mut MapData, ca: &CaDataInner, file: &dyn Fn(&
             Err(e) => map.warnings.push(format!("{} thrown model: {e}", w.id)),
         }
     }
+    // Impact projectiles in flight (special_weapons.md 1.1): their
+    // projectile record's model, once per model, scale and skins
+    // (`ProjectileParams::shown_key`), for every weapon of the set (the
+    // install's launchers too: a few models in all).
+    let mut keys = std::collections::BTreeSet::new();
+    for w in &ca.weapon_set().weapons {
+        let Some(p) = w.hook::<ProjectileParams>(PROJECTILE) else { continue };
+        let Some(path) = p.model.as_deref() else { continue };
+        let key = p.shown_key();
+        if !keys.insert(key.clone()) {
+            continue;
+        }
+        match thrown(path, &key, &p.skins, p.model_scale, map, file) {
+            Ok(h) => map.kit.held.push(h),
+            Err(e) => map.warnings.push(format!("{} projectile model: {e}", w.id)),
+        }
+    }
 }
 
 /// Weapon `id`'s third-person model as `add_character_models` makes the
@@ -265,6 +284,8 @@ pub fn load_held_weapon(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Res
     let h = held(path, id, &data.weapon(Some(id)), hand, &mut own, file).map_err(|e| format!("{id} third-person model: {e}"))?;
     Ok((h, own.textures))
 }
+
+use super::super::special::{PROJECTILE, ProjectileParams};
 
 /// The world model's animation a grenade in flight is drawn in (its
 /// `Hand` first, then `World`: grenades.md 6).
