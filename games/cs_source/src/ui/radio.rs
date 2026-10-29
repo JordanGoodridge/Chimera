@@ -231,6 +231,7 @@ fn keys(
     menu: Res<RadioMenu>,
     radio: Option<Res<RadioCommands>>,
     mut console: ResMut<Console>,
+    mut captured: Option<ResMut<crate::client::binds::CapturedKeys>>,
     mut commands: Commands,
 ) {
     if !crate::client::input::cursor_grabbed(&cursor) {
@@ -247,6 +248,11 @@ fn keys(
     let Some(n) = DIGITS.iter().position(|k| keys.just_pressed(*k)) else {
         return;
     };
+    // The number is the menu's: no weapon slot takes it, nor once the menu
+    // has closed with the key still down.
+    if let Some(c) = captured.as_deref_mut() {
+        c.capture(DIGITS[n]);
+    }
     if n == 0 {
         commands.queue(|w: &mut World| w.resource_mut::<RadioMenu>().0 = None);
         return;

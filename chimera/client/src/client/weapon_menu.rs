@@ -187,6 +187,7 @@ pub fn menu_input(
     player: Option<Single<&Inventory, With<LocalPlayer>>>,
     weapons: Query<&Weapon>,
     panels: Option<Res<crate::client::front_end::Panels>>,
+    captured: Option<Res<crate::client::binds::CapturedKeys>>,
     time: Res<Time>,
     (sounds, mut play): (Option<Res<crate::map::RoundSounds>>, MessageWriter<crate::map::PlaySound>),
 ) {
@@ -210,8 +211,10 @@ pub fn menu_input(
     let binds = console.as_ref().map_or(&empty, |c| &c.binds);
     let playing = cursor.iter().next().is_some_and(crate::client::input::cursor_grabbed)
         && !panels.is_some_and(|p| p.number_keys_taken());
-    let just = |c: &str| playing && crate::client::binds::just_pressed(binds, &keys, &mouse, c);
-    let attack_held = playing && crate::client::binds::pressed(binds, &keys, &mouse, "+attack");
+    let just =
+        |c: &str| playing && crate::client::binds::just_pressed_free(binds, &keys, &mouse, captured.as_deref(), c);
+    let attack_held =
+        playing && crate::client::binds::pressed_free(binds, &keys, &mouse, captured.as_deref(), "+attack");
     if !attack_held {
         menu.swallow_fire = false;
     }

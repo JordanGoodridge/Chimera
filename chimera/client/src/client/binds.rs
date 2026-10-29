@@ -39,6 +39,9 @@
 //! is held. The fixed buttons (`+jump`, `+attack` ...) stay Chimera's own
 //! aliases (the fields of `Intent`).
 //!
+//! Menus that read keys take them (`CapturedKeys`): the polled binds of
+//! `input` and `weapon_menu` don't see a captured key until it is up.
+//!
 //! Known shortcuts: a named action is only a held button: it has no
 //! console `+throw` typed-hold (`console::HeldActions` keeps Chimera's
 //! own) and no wheel notch.
@@ -505,6 +508,62 @@ pub fn just_pressed(
     command: &str,
 ) -> bool {
     bound_down(binds, keys.get_just_pressed().copied(), mouse.get_just_pressed().copied(), command)
+}
+
+/// Keys a menu has taken: the game's polled binds (`pressed_free`,
+/// `just_pressed_free`: slot keys, attack ...) don't see them until they
+/// are let go, so the number that picks a radio command never also takes
+/// out a weapon, in the frame it picks or after the menu has closed with
+/// the key still down. A menu calls `capture` for the keys it reads (in
+/// `PreUpdate`, after `InputSystems`); `release_captured` forgets a key
+/// once it is up.
+#[derive(Resource, Default, Clone, Debug, PartialEq, Eq)]
+pub struct CapturedKeys(std::collections::HashSet<KeyCode>);
+
+impl CapturedKeys {
+    pub fn capture(&mut self, key: KeyCode) {
+        self.0.insert(key);
+    }
+
+    pub fn holds(&self, key: KeyCode) -> bool {
+        self.0.contains(&key)
+    }
+
+    /// Forget the keys that are up.
+    pub fn release_up(&mut self, keys: &ButtonInput<KeyCode>) {
+        self.0.retain(|k| keys.pressed(*k));
+    }
+}
+
+/// Forget captured keys that are let go.
+pub fn release_captured(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<CapturedKeys>) {
+    if !captured.0.is_empty() {
+        captured.release_up(&keys);
+    }
+}
+
+/// `pressed`, not counting the keys a menu has taken.
+pub fn pressed_free(
+    binds: &BTreeMap<String, String>,
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    captured: Option<&CapturedKeys>,
+    command: &str,
+) -> bool {
+    let free = |k: &KeyCode| !captured.is_some_and(|c| c.holds(*k));
+    bound_down(binds, keys.get_pressed().copied().filter(free), mouse.get_pressed().copied(), command)
+}
+
+/// `just_pressed`, not counting the keys a menu has taken.
+pub fn just_pressed_free(
+    binds: &BTreeMap<String, String>,
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    captured: Option<&CapturedKeys>,
+    command: &str,
+) -> bool {
+    let free = |k: &KeyCode| !captured.is_some_and(|c| c.holds(*k));
+    bound_down(binds, keys.get_just_pressed().copied().filter(free), mouse.get_just_pressed().copied(), command)
 }
 
 /// Wheel notches this frame on wheel directions bound to `command`.

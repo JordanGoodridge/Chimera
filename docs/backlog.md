@@ -176,12 +176,13 @@ the user's go-ahead: no Actions runs unless asked.
   4. Which surface: the water brush's top face, and what a prop in two
      water brushes of different heights does.
 - **Combat Arms radio menu: number keys leak through, and raw text
-  keys.** With the radio menu open (C, V, B, N), the number key that
-  picks a command also switches weapon (4 takes out the grenade): the
-  menu must consume it. The chat line then reads like
-  `$radio_message_report_chat_3` instead of the message: resolve it
-  through the install's string table in the game's language (and say
-  so if the table is in a keyed archive this box can't read).
+  keys: fixed, confirm in a playtest.** The pick key stayed held after
+  the menu closed and the slot bind (read while held) took out the
+  weapon; menus now take their keys (`CapturedKeys`, CS:S's radio menu
+  too). The chat line held the `$radio_message_...` id inside
+  `[Class] Name : $id`, which only a leading `$` resolved; the table
+  (`language_pack`, V1-keyed, reads here and has all 27 chat ids) now
+  resolves the ids inside radio lines at the viewer's end.
 - **CS:S grenades bounce too much.** Check our grenade against
   specs/cs_source/grenades.md section 4: 0.4 x gravity, elasticity 0.45
   times the surface's (1.0 world, 0.3 player) capped at 0.9, stop below

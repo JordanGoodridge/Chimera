@@ -323,3 +323,94 @@ fn console_keeps_its_keys() {
     assert_eq!(sim.app.world().resource::<Seen>().0.concat(), "ab");
     assert_eq!(sim.app.world().resource::<CaChat>().input.clone().unwrap_or_default(), "");
 }
+
+/// The number that picks a radio command doesn't also pick a weapon: the
+/// slot bind doesn't see the key in the frame it picks, nor after the menu
+/// has closed with the key still down; let go and pressed again, it does.
+#[test]
+fn the_pick_key_never_reaches_the_slot_binds() {
+    use chimera_client::client::binds::{CapturedKeys, just_pressed_free, pressed_free, release_captured};
+    use std::collections::BTreeMap;
+    let mut sim = sim();
+    sim.app.init_resource::<CapturedKeys>().add_systems(PreUpdate, release_captured.after(bevy::input::InputSystems));
+    let binds: BTreeMap<String, String> = [("4".to_string(), "slot4".to_string())].into();
+    let mouse = ButtonInput::<MouseButton>::default();
+    let sees = |sim: &Sim, just: bool| {
+        let w = sim.app.world();
+        let (keys, cap) = (w.resource::<ButtonInput<KeyCode>>(), w.resource::<CapturedKeys>());
+        if just {
+            just_pressed_free(&binds, keys, &mouse, Some(cap), "slot4")
+        } else {
+            pressed_free(&binds, keys, &mouse, Some(cap), "slot4")
+        }
+    };
+    chat::radio_key(sim.app.world_mut(), radio::REPORT);
+    sim.ticks(1);
+    // Press 4 (entry 4 of the built-in report menu, or the last one).
+    let w = sim.app.world_mut();
+    w.write_message(KeyboardInput {
+        key_code: KeyCode::Digit4,
+        logical_key: Key::Character("4".into()),
+        state: ButtonState::Pressed,
+        text: None,
+        repeat: false,
+        window: Entity::PLACEHOLDER,
+    });
+    w.resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Digit4);
+    sim.ticks(1);
+    assert!(!sees(&sim, true) && !sees(&sim, false), "not in the frame it picks");
+    // Held on, the menu closed (or open on a missing entry): still not.
+    sim.ticks(3);
+    assert!(sim.app.world().resource::<ButtonInput<KeyCode>>().pressed(KeyCode::Digit4));
+    assert!(!sees(&sim, false), "not after the menu closed, the key still down");
+    // Let go: forgotten; pressed again, the slot sees it.
+    sim.app.world_mut().resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::Digit4);
+    sim.ticks(1);
+    sim.app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Digit4);
+    sim.app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear_just_pressed(KeyCode::Digit4);
+    assert!(sees(&sim, false), "after closing, the number switches weapons again");
+}
+
+/// A radio call's line shows the message from the viewer's string table
+/// (the ids travel as indices: each client resolves in its language), the
+/// name's colour span moves with the text, and where the table has no
+/// such id the line shows the id without its `$`, never the raw key.
+#[test]
+fn a_radio_line_resolves_its_string_ids() {
+    use combat_arms::game::chat::CaRadioIn;
+    let mut sim = sim();
+    {
+        let w = sim.app.world_mut();
+        let mut radio = w.resource_mut::<chat::CaRadio>();
+        let class = &mut radio.0.classes[radio::REPORT as usize];
+        class.name = "$radio_class_report".into();
+        class.entries.truncate(2);
+        class.entries[0].chat = vec!["$radio_message_report_chat_1".into()];
+        class.entries[1].chat = vec!["$radio_message_report_chat_missing".into()];
+        let mut ui = w.resource_mut::<CaUi>();
+        ui.strings = Strings::parse("radio_class_report = \"Report\"\nradio_message_report_chat_1 = \"Enemy spotted!\"\n");
+    }
+    let me = sim.app.world_mut().query_filtered::<Entity, With<LocalPlayer>>().single(sim.app.world()).unwrap();
+    for entry in [0u8, 1] {
+        sim.app.world_mut().write_message(CaRadioIn {
+            sender: Some(me),
+            name: "A1".into(),
+            name_colour: 0x00ff00,
+            class: radio::REPORT,
+            entry,
+            ..default()
+        });
+        sim.ticks(2);
+    }
+    let q = &talk(&sim).queue.messages;
+    let texts: Vec<_> = q.iter().map(|m| m.text.clone()).collect();
+    assert_eq!(
+        texts,
+        vec!["[Report] A1 : Enemy spotted!", "[Report] A1 : radio_message_report_chat_missing"]
+    );
+    let (a, b) = {
+        let n = q[0].name.expect("the name's span");
+        (n.0, n.1)
+    };
+    assert_eq!(&texts[0][a..b], "A1");
+}
