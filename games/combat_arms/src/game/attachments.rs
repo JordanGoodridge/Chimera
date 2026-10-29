@@ -110,6 +110,7 @@
 use std::sync::OnceLock;
 
 use bevy::prelude::*;
+use chimera_sim::server_docs::DocsAppExt;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -1303,6 +1304,11 @@ impl Plugin for CaAttachmentsPlugin {
                 CaMods::default(),
             ));
         })
+        .server_docs(
+            super::data::served::ATTACHMENTS,
+            super::data::served::attachments_doc(&table),
+            chimera_sim::server_docs::DocApply::With(super::data::served::apply_attachments),
+        )
         .insert_resource(table)
         .insert_resource(CaDefaultLoadout(loadout))
         .init_resource::<RecoilLastWins>()

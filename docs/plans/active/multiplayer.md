@@ -1737,6 +1737,14 @@ desyncs"): a new server message, `net::weapon_params::WeaponParams` (a
 weapon's registry index and each game codec's bytes), ordered, registered
 after `ServerStats`.
 
+### net33 (2026-10-29)
+
+Server data documents: `MatchManifest` gains `docs` (`server_docs::DocsOffer`
+per set: name, SHA-256, count, size) and `registry` (`RegistryOffer`: the
+SHA-256 of every weapon id in registry order, and their count); new
+messages after `WeaponParams`: `DocsRequest` (client), `DocsChunk` and
+`DocsDenied` (server), ordered.
+
 ## Server-pushed weapon parameters
 
 The seam: a game registers a codec by name (`weapon::params`,
@@ -1762,13 +1770,68 @@ another install version:
 | CA copies' fire cycle, reload, draw, shell reload | view models (V2-keyed archives) | **Pushed** (`combat_arms:timing`) | none left |
 | Fitted parts (rung extras, loadouts) | the server's fitting | Yes: `CaFitted` slot ids, a predicted part | none |
 | Rung extras (parts, body, melee) | the server's ladder draw | Yes: `NetMinigame::rung_extras` | none |
-| The weapon registry (ids by index: the install's ~2,000 copies) | `ATTRIBUTES.rez` (V1 key) | No: indices go unchecked | **High**: a client without the V1 key has no copies, another install version can shift or change them; it builds the wrong weapon or none. Fix: a registry hash in the match manifest (refuse with the reason), or the server's merged weapon documents sent for what a client carries. Too big for a per-weapon codec: the client must have the weapon id to build |
-| Copies' record numbers (clip size, `FireAniRate`, spread, recoil, alt modes) | `ATTRIBUTES.rez` | No | Medium: another install version mispredicts fire and reload (clip and reserve are corrected from the server every state; damage and hits are the server's). Same fix as the registry |
-| Attachment records' terms (rates, spread, recoil, clip) | built-in + the install's mods file by name | No (only the slot ids) | Medium, another version only: the parts' rates differ |
-| Movement (body type) and gear records (vest movement penalty, armour) | `ATTRIBUTES.rez` + built-in | No (armour replicates; the penalty is derived) | Medium, another version only: movement corrections. A codec per character (an own-state part, `net::parts`) if seen |
+| The weapon registry (ids by index: the install's ~2,300 copies) | `ATTRIBUTES.rez` (V1 key) | **Sent** when it differs (`combat_arms:weapons`, "Server data documents"); the registry's hash checked at join | none left: a client whose registry still differs leaves with the reason |
+| Copies' record numbers (clip size, `FireAniRate`, spread, recoil, alt modes) | `ATTRIBUTES.rez` | **Sent**: in the weapon documents | none left |
+| Attachment records' terms (rates, spread, recoil, clip) | built-in + the install's mods file by name | **Sent** when they differ (`combat_arms:attachments`; a record's index is its id on the network) | none left |
+| Movement (body type) | `ATTRIBUTES.rez` + built-in | **Sent** when it differs (`combat_arms:movement`) | none left |
+| Gear records (vest movement penalty, armour) | `ATTRIBUTES.rez` + built-in | No (armour replicates; the penalty is derived) | Medium, another version only: movement corrections. Not a document yet: `GearData` is built from the install's records with no writer back to data/gear.toml's format; a codec per character (an own-state part, `net::parts`) or a writer if seen |
 | A rung body's look and gear | the install's character data | Body id: yes; its gear: derived | Low: same as gear above |
 | Hit spheres, body and held models | install models | Not needed: hits are the server's (lag compensated, the stock rig on a dedicated server) | none for hits; looks only |
 | Ladders, volumes, map props | the map file | Map hash checked at join | none (props don't collide) |
 | Projectiles (launchers, grenades) | records | The server's `NetItem`s | none |
 | `ReloadCheckTime` | `[TimeWeight]` | Server only | none |
+
+## Server data documents
+
+The registry and the numbers behind it are too big for a per-weapon
+codec (a client must have a weapon's id to build it), so the server
+sends the data itself where the client's differs (2026-10-29). The
+seam: a game registers each derived data as a named set of documents
+(chimera_sim's `server_docs`, `App::server_docs(name, docs, apply)`,
+`server_weapon_docs` for a weapon set): the data-driven TOML it builds
+from, in the order that matters, and how a client puts another set in
+(`DocApply::Weapons`: `weapon::data::replace_weapon_set`, the set's
+weapons replaced at the same registry position; `DocApply::With`: the
+game's function replacing its resources). Combat Arms registers three
+(`data::served`): `combat_arms:weapons` (the merged documents,
+`CaDataInner::weapon_docs`), `combat_arms:attachments` (`CaModTable` as one
+mods.toml document), `combat_arms:movement` (`MovementData` as one
+movement.toml document).
+
+Over the network (chimera_net's `net::server_docs`): the manifest offers
+each set's SHA-256 (of its documents as postcard), count and size, and
+the registry's hash (every weapon id in order). A client (`manifest::accept`)
+asks for each set whose hash differs from its own (`DocsRequest`), holds
+`Loaded` back until they are in (`client::check_map`), unpacks and checks
+each against the offer and puts it in; then, or at once when nothing
+differs, its registry must hash as the server's, else it leaves with the
+reason ("The server's game data differs from this build's: its weapon
+list has N weapons, this build's M ..."). The server packs each set once
+in a thread (postcard, bzip2 best) and sends it in 16 KB `DocsChunk`s, 64 KB
+a frame; a set packed over `DocsLimit` (4 MB) isn't sent: `DocsDenied`
+with the reason ("... is too big to send (N KB packed, at most M KB)"),
+and the client leaves with it (`JoinFailure::Mounts`). Leaving the server
+puts the client's own data back (`server_docs::restore_own`; the own
+weapon set swapped back, not parsed again). Models, textures and sounds
+are never sent: the client reads them from its own install (a missing
+one draws the fallback).
+
+Sizes (dev box's install, 2026-10-29): Combat Arms' merged weapon set is
+2,298 documents, 14.4 MB of TOML; bzip2 -9 packs it to ~280 KB (~2 s on
+this box; gzip -9 632 KB, xz 163 KB, zstd -19 139 KB). Under the 4 MB
+limit by far, so every document goes (not only the match's pool): the
+registry's indices need all of them anyway. The attachment records are
+~197 KB unpacked, ~2 KB packed; the built-in weapon set 61 documents. The
+server logs each set's documents, bytes and packed bytes when packed and
+when sent; the client its packed and unpacked bytes and time when put in.
+
+Tests: combat_arms `server_docs` (a client without the install's data
+takes the weapons and attachments, not the movement, before it enters;
+then its registry is the server's index for index and a copy's 1 s burst
+on its 45-round clip is predicted with 0 errors and the same clip;
+leaving restores its own; a client with the same data receives nothing; a
+set over the limit refuses the join with the reason; a registry still
+differing ends the join), chimera_sim `server_docs::tests` (a set
+replaced in place, bad documents change nothing, put back), Combat
+Arms' `served::tests` (the documents read back as written).
 

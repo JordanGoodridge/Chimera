@@ -76,6 +76,8 @@ pub struct CaDataInner {
     /// The built-in weapon documents of this data.
     docs: Vec<(String, String)>,
     weapon_set: OnceLock<&'static WeaponSet>,
+    /// The documents `weapon_set` was parsed from (merged or built in).
+    weapon_docs: OnceLock<Vec<(String, String)>>,
     attachments: OnceLock<CaModTable>,
     movement: OnceLock<MovementData>,
     gear: OnceLock<GearData>,
@@ -91,6 +93,7 @@ impl CaData {
             attributes,
             docs,
             weapon_set: OnceLock::new(),
+            weapon_docs: OnceLock::new(),
             attachments: OnceLock::new(),
             movement: OnceLock::new(),
             gear: OnceLock::new(),
@@ -215,12 +218,23 @@ impl CaDataInner {
                     .map_err(|e| warn!("Combat Arms: the install's weapons weren't merged: {e}"))
                     .ok()?;
                 let refs: Vec<(&str, &str)> = merged.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
-                WeaponSet::parse(&refs, &[])
+                let set = WeaponSet::parse(&refs, &[])
                     .map_err(|e| warn!("Combat Arms: the install's weapons don't load, using the built-in ones: {e}"))
-                    .ok()
+                    .ok()?;
+                Some((set, merged))
             });
-            Box::leak(Box::new(merged.unwrap_or_else(builtin)))
+            let (set, used) = merged.unwrap_or_else(|| (builtin(), self.docs.clone()));
+            let _ = self.weapon_docs.set(used);
+            Box::leak(Box::new(set))
         })
+    }
+
+    /// The weapon documents (name, TOML text) `weapon_set` is parsed
+    /// from, in registry order: the install's merged over ours, or ours
+    /// (what a server sends a client whose own differ: `served`).
+    pub fn weapon_docs(&self) -> &[(String, String)] {
+        self.weapon_set();
+        self.weapon_docs.get().expect("set with the weapon set")
     }
 
     /// The attachment records: the built-in ones (data/attachments/mods.toml)

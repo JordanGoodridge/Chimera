@@ -23,7 +23,9 @@
 //!   each manifest it gets against its own report before it loads
 //!   anything, and runs the parts' checks (`NetHooks::accept`: the
 //!   minigame's definition is one this build can play), leaving with the
-//!   reason (`client::JoinFailure::Mounts`) when one fails.
+//!   reason (`client::JoinFailure::Mounts`) when one fails. The manifest
+//!   also offers the server's data documents and weapon registry
+//!   (`server_docs`): a client whose own differ asks for the server's.
 //! - A client without a report (`LocalMounts` absent: a faithful game's
 //!   client) is taken as having what it needs: the map check still
 //!   decides.
@@ -57,6 +59,12 @@ pub struct MatchManifest {
     pub weapons: Vec<String>,
     /// The minigame playing, if any.
     pub minigame: Option<MinigameOffer>,
+    /// The server's data documents, by set (`server_docs`): a client
+    /// whose own differ asks for them.
+    pub docs: Vec<super::server_docs::DocsOffer>,
+    /// The server's weapon registry (`server_docs`): a client's must
+    /// match once it has the server's documents.
+    pub registry: super::server_docs::RegistryOffer,
 }
 
 /// A game a match reads from the client's install.
@@ -293,6 +301,7 @@ pub fn current(world: &mut World) -> MatchManifest {
     for hook in hooks {
         hook(world, &mut m);
     }
+    super::server_docs::offer(world, &mut m);
     m
 }
 
@@ -343,6 +352,7 @@ pub fn accept(world: &mut World, manifest: &MatchManifest) -> Result<(), String>
     for hook in hooks {
         hook(world, manifest)?;
     }
+    super::server_docs::check(world, manifest)?;
     world.insert_resource(ServerManifest(manifest.clone()));
     Ok(())
 }

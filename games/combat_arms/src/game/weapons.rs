@@ -216,6 +216,7 @@ use std::{
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
+use chimera_sim::server_docs::DocsAppExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -1714,6 +1715,8 @@ impl Plugin for CaWeaponsPlugin {
         if let Err(e) = app.add_weapon_set(data.weapon_set()) {
             panic!("Combat Arms weapon data: {e}");
         }
+        // A network client whose documents differ takes the server's.
+        app.server_weapon_docs(super::data::served::WEAPONS, data.weapon_set(), data.weapon_docs().to_vec());
         if !app.world().contains_resource::<CaServerSettings>() {
             app.insert_resource(CaServerSettings::of(&data));
         }
