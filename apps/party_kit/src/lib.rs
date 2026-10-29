@@ -70,7 +70,7 @@
 //!   `chimera_client::client::swap_effect`).
 //!
 //! - A gun game's rung extras (`chimera_sim::minigame::ladder::RungExtras`:
-//!   Combat Arms' rungs' fitted parts, character and melee weapon,
+//!   Combat Arms' rungs' fitted parts, character and melee weapon and CS:S's rungs' player model,
 //!   `combat_arms::game::rungs`) are seeded anew at every launch of the
 //!   apps (`launch_rung_seed`); the plugins alone (the tests) keep seed 0.
 //!

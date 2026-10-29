@@ -205,6 +205,7 @@ pub mod radio;
 pub mod ropes;
 pub mod resim;
 pub mod rules;
+pub mod rungs;
 pub mod scrapes;
 pub mod shadow;
 pub mod sky;

@@ -177,12 +177,20 @@ impl CharacterModels {
                 Self::wears(game, m) && m.name.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(&n.0))
             }),
             None => class
-                .filter(|c| c.0 != 0 && c.team() == team)
+                // A class counts for its team, or in a free-for-all
+                // (a team id past the two sides) whichever it is.
+                .filter(|c| c.0 != 0 && (c.team() == team || team.is_some_and(|t| t.0 > 2)))
                 .and_then(|c| {
-                    self.0
-                        .iter()
-                        .enumerate()
-                        .find(|(_, m)| Self::wears(game, m) && m.class == Some(c.0))
+                    let own = self.0.iter().enumerate().find(|(_, m)| Self::wears(game, m) && m.class == Some(c.0));
+                    // A team's first class has no class tag: its default.
+                    own.or_else(|| {
+                        let side = c.team()?;
+                        let first = (c.0 - 1) % crate::core::PlayerClass::PER_TEAM == 0;
+                        let all = self.0.iter().enumerate().filter(|(_, m)| {
+                            Self::wears(game, m) && m.name.is_none() && m.class.is_none()
+                        });
+                        first.then(|| all.clone().find(|(_, m)| m.team == Some(side)).or_else(|| all.clone().find(|(_, m)| m.team.is_none())))?
+                    })
                 })
                 .or_else(|| identity.and_then(|_| self.varied(game, team)))
                 .or_else(|| self.for_team_of(game, team)),
