@@ -334,18 +334,23 @@ numbers (pinned by `parity_pin_*` tests in each game).
   and nobody carries armour their HUD doesn't show. (Combat Arms puts on
   its default gear at a switch, not a loadout's.)
 
-- **Spawn protection shows nothing** (`core::SpawnProtected`, a
-  minigame's: `protection = { damage, bullets, fire_ends }`, as Combat
-  Arms' 4 s and 3 s; the gun games keep one 1.5 s for both, ended by
-  the first shot): no damage lands in the damage
-  window (`core::God`), a bullet stops at the player in the bullets
-  window, and while either runs a hit on the player is told with no hit
+- **Spawn protection: see-through, shot through** (`core::SpawnProtected`,
+  a minigame's: `protection = { damage, bullets, fire_ends }`, in shape
+  Combat Arms' 4 s and 3 s; the party gun games keep one 2 s for both,
+  ended by the player's first attack: user, 2026-10-29): no damage lands
+  in the damage window (`core::God`); in the bullets window the player
+  isn't there for attacks: rounds and swings pass through to what is
+  behind (the wall's decal, the next player's hit), thrown projectiles fly
+  through, blasts and flashes leave it out, in every game's delivery. A
+  hit that still reaches it (the damage window alone) is told with no hit
   (`weapon::impact::hide_protected`): no game draws blood, a puff, a
   decal or an impact sound, nor a hit indicator, name-tag flash or the
-  victim's reaction, for any gun. The windows replicate on each client's
-  clock (`chimera_net::minigame_net::NetProtected`), so the server and
-  every client agree: no blood without damage. Like Combat Arms, nothing
-  marks a protected player (a visible marker would be a party option).
+  victim's reaction. The windows replicate on each client's clock
+  (`chimera_net::minigame_net::NetProtected`), so the server and every
+  client agree, and on every machine the protected body draws half
+  see-through (`chimera_present`'s `render::tint::fade_protected`),
+  fading back over 0.2 s when the protection ends: unlike Combat Arms,
+  whose protection has no look, the party shows that shots won't land.
 
 ### Announcers
 

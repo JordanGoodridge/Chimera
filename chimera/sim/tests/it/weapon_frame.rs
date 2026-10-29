@@ -252,6 +252,111 @@ fn a_spawn_protected_target_shows_and_takes_no_hit() {
     assert!(sim.app.world().get::<Health>(target).unwrap().current < 10.0);
 }
 
+/// Spawn protection's bullets window (`core::SpawnProtected::
+/// passes_attacks`, user 2026-10-29): a round passes through the
+/// protected player as if it weren't there, into the character behind
+/// (which takes the damage) or, with no one there, to the wall (its trace
+/// ends on the wall, with the normal an impact and a decal are drawn
+/// from). Nothing traced or dealt names the protected player.
+#[test]
+fn a_round_passes_through_a_spawn_protected_target_into_what_is_behind() {
+    use chimera_core::core::{SimClock, SpawnProtected};
+    let (mut sim, p, target) = armed(PISTOL);
+    let behind = sim.spawn_character(sim.position(target) - Vec3::Z * 2.0, placeholder::ID);
+    sim.app.world_mut().get_mut::<Health>(behind).unwrap().current = 10.0;
+    let now = sim.app.world().resource::<SimClock>().now;
+    sim.app.world_mut().entity_mut(target).insert(SpawnProtected {
+        damage_until: now + 10.0,
+        bullets_until: now + 10.0,
+    });
+    sim.ticks(2);
+    let names = |events: &[WeaponEvent], who: Entity| {
+        events
+            .iter()
+            .filter(|e| match e.kind {
+                WeaponEventKind::Shot { hit, .. } | WeaponEventKind::ShotContinued { hit, .. } => hit == Some(who),
+                WeaponEventKind::Hit { target: t, .. } => t == who,
+                _ => false,
+            })
+            .count()
+    };
+    sim.intent(p).fire = true;
+    let events = events_in(&mut sim, 2);
+    sim.intent(p).fire = false;
+    assert_eq!(names(&events, target), 0, "nothing names the protected player");
+    assert!(names(&events, behind) >= 2, "the one behind is traced and hit: {events:?}");
+    assert_eq!(sim.app.world().get::<Health>(target).unwrap().current, 10.0);
+    assert!(sim.app.world().get::<Health>(behind).unwrap().current < 10.0, "the one behind takes it");
+    // No one behind: the round ends on the wall past the protected player.
+    sim.app.world_mut().despawn(behind);
+    sim.seconds(0.5);
+    sim.intent(p).fire = true;
+    let events = events_in(&mut sim, 2);
+    sim.intent(p).fire = false;
+    let (to, hit, normal) = events
+        .iter()
+        .find_map(|e| match e.kind {
+            WeaponEventKind::Shot { to, hit, normal, .. } if e.owner == p => Some((to, hit, normal)),
+            _ => None,
+        })
+        .expect("a shot");
+    assert!(hit.is_some_and(|h| h != target) && normal.is_some(), "a wall hit, drawn: {hit:?} {normal:?}");
+    assert!(to.z < sim.position(target).z - 1.0, "past the protected player: {to}");
+    assert_eq!(names(&events, target), 0);
+}
+
+const KNIFE: &str = r#"
+id = "kit:knife"
+base = "kit:base"
+slot = 2
+draw = 0.5
+
+[melee.primary]
+range = 2.5
+hull = 0.3
+facing_cos = 0.7
+damage = 5.0
+hit_refire = 0.5
+miss_refire = 0.4
+miss_refire_other = 0.5
+force = 0.0
+"#;
+
+/// A swing passes through a spawn-protected player too (its bullets
+/// window): the character behind it takes the hit.
+#[test]
+fn a_swing_passes_through_a_spawn_protected_target() {
+    use chimera_core::core::{SimClock, SpawnProtected};
+    use chimera_sim::weapon::data::WeaponDataAppExt;
+    let mut sim = testkit::kit_sim();
+    sim.app.add_weapon_data(&[("knife.toml", KNIFE)]).expect("the knife loads");
+    let p = testkit::with_player(&mut sim, None, "kit:knife");
+    let front = sim.position(p) - Vec3::Z * 0.9;
+    let target = sim.spawn_character(front, placeholder::ID);
+    let behind = sim.spawn_character(front - Vec3::Z * 0.9, placeholder::ID);
+    for e in [target, behind] {
+        sim.app.world_mut().get_mut::<Health>(e).unwrap().current = 10.0;
+    }
+    sim.seconds(1.0);
+    let now = sim.app.world().resource::<SimClock>().now;
+    sim.app.world_mut().entity_mut(target).insert(SpawnProtected {
+        damage_until: now + 10.0,
+        bullets_until: now + 10.0,
+    });
+    let chest = sim.position(behind) + Vec3::Y * 0.2;
+    testkit::aim_at(&mut sim, p, chest);
+    sim.intent(p).fire = true;
+    let events = events_in(&mut sim, 2);
+    sim.intent(p).fire = false;
+    let at = events.iter().find_map(|e| match e.kind {
+        WeaponEventKind::Swing { at, .. } => Some(at.map(|a| a.2)),
+        _ => None,
+    });
+    assert_eq!(at, Some(Some(behind)), "the swing lands behind: {events:?}");
+    assert_eq!(sim.app.world().get::<Health>(target).unwrap().current, 10.0);
+    assert!(sim.app.world().get::<Health>(behind).unwrap().current < 10.0);
+}
+
 /// On a client, others' rounds traced again (`RemoteShot`) show no hit on
 /// a player its server protects (the replicated `SpawnProtected`).
 #[test]

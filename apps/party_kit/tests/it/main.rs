@@ -25,6 +25,7 @@ mod last_shot;
 mod net_gun_game;
 mod party_music;
 mod persist;
+mod protection_look;
 mod net_party;
 mod results_hud;
 mod rotation;

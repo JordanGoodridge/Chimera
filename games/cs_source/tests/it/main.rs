@@ -79,6 +79,7 @@ mod source_movement;
 mod source_movement_css;
 mod source_movement_ladder_water;
 mod source_movement_tricks;
+mod spawn_protection;
 mod sprays;
 mod teams;
 mod view_model_spec;

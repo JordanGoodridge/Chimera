@@ -110,7 +110,7 @@ fn character(game: &'static str) -> MapCharacterModel {
 }
 
 /// A floor whose top is at y = 0, 60 m across, with both games' bodies.
-fn floor(name: &str) -> MapData {
+pub(crate) fn floor(name: &str) -> MapData {
     let (lo, hi) = (Vec3::new(-30.0, -1.0, -30.0), Vec3::new(30.0, 0.0, 30.0));
     MapData {
         name: name.into(),
@@ -125,7 +125,7 @@ fn floor(name: &str) -> MapData {
 }
 
 /// The asset stores `render` draws into (headless `Sim` has meshes only).
-fn render_assets(app: &mut App) {
+pub(crate) fn render_assets(app: &mut App) {
     app.init_asset::<Image>()
         .init_asset::<StandardMaterial>()
         .init_asset::<PropMaterial>()

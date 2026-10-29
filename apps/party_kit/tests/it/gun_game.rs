@@ -75,7 +75,15 @@ pub(crate) fn shoot_until_dead(sim: &mut Sim, shooter: Entity, target: Entity, s
     for t in 0..ticks {
         let at = sim.position(target);
         testkit::aim_at(sim, shooter, at);
-        sim.intent(shooter).fire = t % 2 == 0;
+        // Held against the recoil (the view punch the shots climb by), as
+        // a player pulls down: a long burst otherwise climbs over the head.
+        let punch = sim.app.world().get::<chimera_sim::weapon::ViewPunch>(shooter).map_or(Vec3::ZERO, |p| p.0);
+        {
+            let mut i = sim.intent(shooter);
+            i.pitch -= punch.x;
+            i.yaw -= punch.y;
+            i.fire = t % 2 == 0;
+        }
         sim.ticks(1);
         if !alive(sim, target) {
             sim.intent(shooter).fire = false;

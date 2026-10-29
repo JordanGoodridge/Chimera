@@ -28,7 +28,7 @@ identity = "weapon"
 weapons = ["cs_source", "combat_arms"]
 
 [spawn]
-respawn = { delay = "2s", protection = "1.5s" }
+respawn = { delay = "2s", protection = "2s" }
 points = "random_hidden"
 min_distance = 20.32   # m (800 u) from a living enemy
 # The knife of the rung gun's game, swapped with the gun.
