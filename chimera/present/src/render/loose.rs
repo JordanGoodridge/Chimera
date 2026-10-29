@@ -31,12 +31,14 @@ pub fn draw_loose(
         return;
     };
     for (e, item) in &items {
-        // `try_`: an item can be gone by the time this applies (picked up,
-        // or a network client's copy despawned, in the same frame).
-        commands.entity(e).try_insert(LooseItemDrawn);
+        // Until its held model is there (one added late:
+        // `bodies::build_late_held`), it waits undrawn.
         let (Some(a), Some(parts)) = (assets.0.get(&item.0), held.0.get(&item.0)) else {
             continue;
         };
+        // `try_`: an item can be gone by the time this applies (picked up,
+        // or a network client's copy despawned, in the same frame).
+        commands.entity(e).try_insert(LooseItemDrawn);
         // Its own materials, lit where it lies (probe_lit).
         let own: Vec<_> = parts
             .whole

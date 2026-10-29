@@ -487,6 +487,17 @@ fn build_character_assets(
         commands.insert_resource(loose);
     }
     commands.insert_resource(HeldAssets(held));
+    // What held models added later are built with (`bodies::build_late_held`).
+    commands.insert_resource(super::bodies::HeldLateBase {
+        data: MapData {
+            fog: data.fog.clone(),
+            look: data.look.clone(),
+            ..default()
+        },
+        lit: data.light_field.is_some(),
+        view,
+        root: data.kit.characters.first().map(|c| c.root),
+    });
     if let Some(view_models) = view_models {
         commands.insert_resource(view_models);
     }

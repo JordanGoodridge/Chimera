@@ -19,7 +19,9 @@
 //! - `ProjectileRecord`: the effect file's (`ATTRIBUTES/FX.TXT`)
 //!   projectile records (`ProjectileFX#`: special_weapons.md "Projectile
 //!   record"), kept on `WeaponsFile` and linked by the ammo's
-//!   `ProjectileFXName`.
+//!   `ProjectileFXName`; `ImpactRecord` its impact records (`ImpactFX#`:
+//!   effects_sounds.md "Effect tables in the attribute data"), linked by
+//!   the ammo's `ImpactFXName`.
 //! - `AttachmentsFile`: the character attachments file
 //!   (`ATTACHMENTS.TXT`): goggles and backpacks (`Goggle#`, `Backpack#`:
 //!   socket, model per figure type, skins, render styles).
@@ -183,6 +185,10 @@ pub struct AmmoRecord {
     pub health: f64,
     /// `ProjectileFXName`: the projectile record it fires (`FX.TXT`).
     pub projectile_fx: String,
+    /// `ImpactFXName`: the impact record its hits and blasts show
+    /// (`FX.TXT` `ImpactFX#`, effects_sounds.md); None when the key is
+    /// missing (no effect), empty when present but empty (`BulletFmj`).
+    pub impact_fx: Option<String>,
 }
 
 impl AmmoRecord {
@@ -224,6 +230,7 @@ impl AmmoRecord {
             damage_move_penalty_duration: s.number("DamageMovePenaltyDuration", -1.0),
             health: s.number("Health", 0.0),
             projectile_fx: s.string("ProjectileFXName").map(text).unwrap_or_default(),
+            impact_fx: s.string("ImpactFXName").map(text),
         }
     }
 }
@@ -320,6 +327,8 @@ pub struct WeaponRecord {
     pub grenade_attach: i32,
     pub wide_fire_max_num: i32,
     pub wide_fire_angle_degree: i32,
+    /// `FireSnd` (empty: none).
+    pub fire_snd: String,
     pub fire_snd_radius: i32,
     pub reload_snd_radius: i32,
     pub select_snd_radius: i32,
@@ -463,6 +472,7 @@ impl WeaponRecord {
             grenade_attach: i("GrenadeAttach", 0),
             wide_fire_max_num: i("WideFireMaxNum", 0),
             wide_fire_angle_degree: i("WideFireAngleDegree", 0),
+            fire_snd: s.string("FireSnd").map(text).unwrap_or_default(),
             fire_snd_radius: i("FireSndRadius", 1000),
             reload_snd_radius: i("ReloadSndRadius", 300),
             select_snd_radius: i("SelectSndRadius", 300),
@@ -556,6 +566,9 @@ pub struct WeaponsFile {
     /// The effect file's projectile records (`ProjectileFX#`; empty
     /// without the file), linked by the ammo's `ProjectileFXName`.
     pub projectiles: Vec<ProjectileRecord>,
+    /// The effect file's impact records (`ImpactFX#`; empty without the
+    /// file), linked by the ammo's `ImpactFXName`.
+    pub impacts: Vec<ImpactRecord>,
 }
 
 impl WeaponsFile {
@@ -607,6 +620,7 @@ impl WeaponsFile {
             auto_switch,
             perturb,
             projectiles: Vec::new(),
+            impacts: Vec::new(),
         })
     }
 
@@ -646,6 +660,55 @@ impl WeaponsFile {
     pub fn projectile(&self, ammo: &AmmoRecord) -> Option<&ProjectileRecord> {
         find_by_name(&self.projectiles, &ammo.projectile_fx, |p| &p.name).map(|(_, p)| p)
     }
+
+    /// The impact record `ammo` names (its `ImpactFXName`, the first
+    /// record of that name; a present but empty name is `BulletFmj`).
+    pub fn impact(&self, ammo: &AmmoRecord) -> Option<&ImpactRecord> {
+        let name = ammo.impact_fx.as_deref()?;
+        let name = if name.is_empty() { "BulletFmj" } else { name };
+        find_by_name(&self.impacts, name, |p| &p.name).map(|(_, p)| p)
+    }
+}
+
+/// `ImpactFX<N>` in the effect file (effects_sounds.md, "Effect tables in
+/// the attribute data"): what an impact or a blast plays.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImpactRecord {
+    pub name: String,
+    /// `Sound`: a file, or `Surface` (by surface and ammo kind).
+    pub sound: String,
+    pub sound_radius: f64,
+    pub create_mark: bool,
+    /// `Mark`: `surface` (the surface's bullet hole) or a sprite; empty:
+    /// none.
+    pub mark: String,
+    pub mark_scale: f64,
+    pub mark_color_ratio: Option<f64>,
+    /// `DoSurfaceFX`.
+    pub do_surface_fx: bool,
+    /// `FXName`: a group always played at the impact.
+    pub fx_name: String,
+}
+
+impl ImpactRecord {
+    pub fn read(s: &Section) -> Self {
+        Self {
+            name: name_of(s),
+            sound: s.string("Sound").map(text).unwrap_or_default(),
+            sound_radius: s.number("SoundRadius", 0.0),
+            create_mark: s.int("CreateMark", 0) != 0,
+            mark: s.string("Mark").map(text).unwrap_or_default(),
+            mark_scale: s.number("MarkScale", 0.0),
+            mark_color_ratio: s.number_opt("MarkColorRatio"),
+            do_surface_fx: s.int("DoSurfaceFX", 0) != 0,
+            fx_name: s.string("FXName").map(text).unwrap_or_default(),
+        }
+    }
+
+    /// Every `ImpactFX#` record of the effect file.
+    pub fn read_all(doc: &Document) -> Vec<Self> {
+        doc.records("ImpactFX").into_iter().map(Self::read).collect()
+    }
 }
 
 /// `ProjectileFX<N>` in the effect file (special_weapons.md, "Projectile
@@ -663,6 +726,8 @@ pub struct ProjectileRecord {
     pub fire_offset: Option<f64>,
     /// `CanHitSameKind`.
     pub can_hit_same_kind: Option<bool>,
+    /// `Gravity` 1: the object gravity applies in flight.
+    pub gravity: Option<bool>,
     /// `Model`: the world model it is drawn with; `ModelScale` (default
     /// 1 per axis); `Skin0..`.
     pub model: String,
@@ -680,6 +745,7 @@ impl ProjectileRecord {
             drop_velocity: s.number_opt("DropVelocity"),
             fire_offset: s.number_opt("FireOffset"),
             can_hit_same_kind: s.number_opt("CanHitSameKind").map(|v| v != 0.0),
+            gravity: s.number_opt("Gravity").map(|v| v != 0.0),
             model: s.string("Model").map(text).unwrap_or_default(),
             model_scale: s.vector("ModelScale").unwrap_or([1.0; 3]),
             skins: s.string_list("Skin").iter().map(|b| text(b)).collect(),

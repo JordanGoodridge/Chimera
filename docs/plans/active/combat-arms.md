@@ -435,6 +435,52 @@ Notes:
   bomb's fire key with movement locked; the mission files read (item
   21). Live checks left in windows-captures.md, Sitting 5, items 17-30.
 
+## Weapon skins: open questions for a spec session (2026-10-29)
+
+From the 2026-10-28 gun game playtest's grey and scrambled guns (docs/
+backlog.md). Sprite skins now draw their first frame; these need the
+reference on the Windows PC:
+
+1. **Sprite files (`.spr`) as model skins.** Their layout: we read five
+   32-bit fields, then each frame as a 16-bit length and a texture path;
+   what are the five fields (frame count, frame time in ms, looping,
+   flags), and is there anything after the frames? When a weapon's
+   `PVSkin#` / `HHSkin#` names a sprite (121 in the gun archives, e.g.
+   `GUNS_T_PV_AR\PV_AR_RINBOW_M416.SPR`; 310 pieces of the 2,298
+   weapons; `GUNS_T_PV_AR\PV_AR_ARX_160_LINE.SPR`
+   whose frames are `PV_AR_ARX_160_LINE-1..5.DTX`), how does the model
+   draw it: which frame when, from which clock (per model since it was
+   created, or the game's), looping or once, blended between frames or
+   not? Same for characters' and attachments' sprite skins
+   (`ATTACH_T\GODSET.SPR`). Test cases: one sprite's fields and frame
+   list, and the frame shown at a few times.
+2. **Render styles of those weapons.** What `PVRenderStyle#` /
+   `HHRenderStyle#` the sprite-skinned and other special skins name
+   (the sprite-skinned guns name `RS\default.ltb`; unknown to our
+   table so far: `RS\ENV_ALPHA_MASK.ltb`, `RS\ItemEdge.ltb`,
+   `RS\envmap.ltb`), and what each such `RS\*.LTB` does (the render-style files'
+   format is still uncovered: models_ltb.md "Other files"): lighting,
+   blending, an environment map or a second texture stage?
+3. **Pieces with two texture slots.** models_ltb.md says T is 1 or 2;
+   what does the second slot do (a second stage: detail, environment
+   map, specular?) and which slot carries the colour? 62 weapon pieces
+   have two (the knives' `..._BC.DTX`, the power suits' and swords'
+   `TEXTURES\128XPV_SPECIALSPECR.DTX`, `TEXFX\RENDERSTYLES\CLOUDS.DTX`);
+   we draw the first.
+4. **"Neon Outlaw ASW338LM"**, whose texture the user saw scattered over
+   the gun, isn't in the dev box's install (nor "AUG A3 Champions
+   Lightning"): on the Windows PC, which weapon record is it (its
+   `Name`, `PVModelNormal`, `PVSkin#`, `HHSkin#`), and what does its
+   model's piece name as texture slots? (`heavy::weapon_skins` with
+   `CHIMERA_SKINS_SHOW=outlaw` prints it.) Upgrade levels and limited
+   editions are separate records sharing their skins (the Red Dominion
+   ARX160 Lv.1-4 and their "(limit)" copies all name
+   `PV_AR_ARX_160_LINE.SPR`): no question there.
+
+`cargo test -p combat_arms --features dev,ui --test it
+heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
+and skins, grouped by cause (needs the keys).
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the
@@ -570,6 +616,50 @@ run `$env:TZ="UTC"` before `git commit`. End the message with
 hooks. Then `git pull --rebase` and `git push` to main (or to
 `specs-incoming` if I say so).
 ```
+
+### 24b. Projectile looks and sounds in flight (follow-up, 2026-10-29)
+
+From the 2026-10-28 gun game playtest (docs/backlog.md): impact
+projectiles now fly, hurt and explode by the data (the projectile record's
+speed, lifetime, gravity and model; the ammo's blast and lasting sphere;
+the weapon's `FireSnd`; the ammo's ImpactFX sound and group at the blast),
+but special_weapons.md and effects_sounds.md leave out what the projectile
+record's own presentation fields do, so flame puffs show as a placeholder
+ball and rockets fly silent with no trail. The session answers, as an
+addition to specs/combat_arms/special_weapons.md (a "Corrections" or
+"Follow-up" section; change nothing else):
+
+1. `FXName` (rockets `Smoky_Tail01`, the flame `Flame_Yellow`, launcher
+   shells `M32_Tail`) with `FxSmoothShutdown`: is the group attached to
+   the projectile and moved with it every frame, started once at launch,
+   or re-emitted? Its frame (facing the flight?), what happens to it at
+   the detonation (stops emitting, particles live out), on every client or
+   only some, at which effect detail.
+2. `FlySound` and `SoundRadius` (rockets `Grenade.wav`, 1200; the flame
+   none): looped while it flies and following it? Volume, inner radius,
+   when it stops (detonation, sky), whether `Sound` (a second field, empty
+   in the stock records) is another one.
+3. `Flare`, `FlareSprite`, `FlareScale`, `Light`, `LightRadius`,
+   `LightColor`, `SmokeTrail`, `SmokeTrailType`: drawn or not in the
+   release build; what each looks like.
+4. A model-less projectile (the flame puff): is anything drawn besides
+   the `FXName` group?
+5. The world model's orientation in flight (which model axis faces the
+   flight), its pose (animation name) and whether `Skin0` is the only skin.
+6. The fire sound of the flamethrower and the boss flame launcher
+   (`Powered_Suit_Boss_Launcher`), whose records have no `FireSnd`: does a
+   view-model sound key, a looping sound or the projectile record play it?
+7. A launcher's `FireFXName` (`M136_Rocket`, `NoShell`): the own-muzzle
+   group and casings as for guns (effects_sounds.md 1, 8)?
+8. For launched (not thrown) ammo, whether `DoSurfaceFX` plays the
+   surface's `GrenadeFXName` or its `ImpactFXName` (effects_sounds.md 6
+   names thrown ammo only).
+9. The flame launcher copies: a copied flame weapon's fire keys (ours are
+   the flamethrower's 8 per 734 ms loop): read from its own `fire_0`?
+   Give the boss flame launcher's numbers.
+
+Same rules as brief 24 (identity, UTC, no code, no machine paths, test
+cases with numbers, "Open questions").
 
 ### 25. Radar and minimap
 

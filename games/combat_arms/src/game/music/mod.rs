@@ -16,7 +16,9 @@
 //!   a party match's (a minigame's moments, Chimera's `minigame::
 //!   moments`, when Combat Arms plays its music: `GameParts::music`)
 //!   by Section 10 (`director::observe_party`), its interface sounds'
-//!   files from data/music.toml's `[party]` (inferred).
+//!   files from data/music.toml's `[party]` (inferred). The party's own
+//!   music (the `party_music` cvar: the start track once, then a shuffled
+//!   playlist; 2 the original's loop; 0 off) is described in `director`.
 //! - `trigger` (5): the server's `BGMTrigger` objects, `CaMusicOn` and
 //!   `CaMusicOff` to every client, the late joiner's one trigger.
 //! - `ambient` (6): the map's `SoundFX` objects as every client holds them
@@ -37,7 +39,8 @@
 //! playlist, the current screen and the last interface sounds;
 //! `ca_ambient` lists the map's sounds and the gain at the player.
 //!
-//! Known shortcuts (docs/tech-debt.md): the install's keyed attribute
+//! Known shortcuts (docs/tech-debt.md): `party_music` isn't saved between runs
+//! (set it in a config file or the console); the install's keyed attribute
 //! files (the playlist's entries and default ticks, the interface sounds'
 //! files, each mode's `StartBGM` and `LoopBGM`, `clientevent.txt`) aren't
 //! read, so data/music.toml's inferred values stand in and no interface
@@ -123,6 +126,21 @@ impl Plugin for CaMusicPlugin {
                 )
                     .chain()
                     .in_set(CaMusicSet),
+            )
+            .console_cvar(
+                "party_music",
+                "party_music <0|1|2>: a party match's music: 0 off, 1 the start track once then a shuffled playlist \
+                 of Combat Arms' tracks, 2 Combat Arms' original (the start track looping). Volume: the musicvolume option.",
+                &data::MusicData::built_in().party.default_music.to_string(),
+                |w| w.get_resource::<CaMusic>().map(|m| m.party_music.to_string()),
+                |w, v| {
+                    let n: u8 = v.trim().parse().map_err(|_| "party_music is 0, 1 or 2".to_string())?;
+                    if n > 2 {
+                        return Err("party_music is 0, 1 or 2".into());
+                    }
+                    w.resource_mut::<CaMusic>().party_music = n;
+                    Ok(())
+                },
             )
             .console_command(
                 "ca_music",

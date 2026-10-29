@@ -9,7 +9,8 @@
 //! their posing are `render::bodies`, which draws what these say.
 //!
 //! `CharacterModels`, `BodyModel`, `BodyName`, `BodySkin`, `BodyNumber`, `Corpse`, `Held`,
-//! `ShowLocalBody`;
+//! `ShowLocalBody`; held models a game adds after the map spawned
+//! (`add_held_model`, `LateHeldModels`: one the map's kit lacks);
 //! hitboxes on the skeleton (also headless), `SimAnimator`/`SimPose`.
 //!
 //! Known shortcuts (docs/tech-debt.md): Maps without character models fall back
@@ -30,6 +31,30 @@ use super::*;
 /// hand. Games set it.
 #[derive(Component, Clone, Default, Debug, PartialEq)]
 pub struct Held(pub Option<String>);
+
+/// Held models added after the map spawned (`add_held_model`): a game's
+/// weapon whose held model the map's kit doesn't carry (Combat Arms'
+/// install weapons, loaded the first time a character holds one), each
+/// with its own textures (its meshes' texture indices name them). Kept
+/// across map changes: `render::bodies::build_late_held` builds what the
+/// spawned map's held models lack.
+#[derive(Resource, Clone, Default)]
+pub struct LateHeldModels(pub Vec<(std::sync::Arc<MapHeldModel>, std::sync::Arc<Vec<MapTexture>>)>);
+
+impl LateHeldModels {
+    /// Whether a held model of `key` was added.
+    pub fn has(&self, key: &str) -> bool {
+        self.0.iter().any(|(m, _)| m.key == key)
+    }
+}
+
+/// Add held model `model` (drawn from the next frame, on this map and the
+/// next ones), its textures `textures`; one of the same key is replaced.
+pub fn add_held_model(world: &mut World, model: MapHeldModel, textures: std::sync::Arc<Vec<MapTexture>>) {
+    let mut late = world.get_resource_or_init::<LateHeldModels>();
+    late.0.retain(|(m, _)| m.key != model.key);
+    late.0.push((std::sync::Arc::new(model), textures));
+}
 
 /// A body drawn on an entity that is not a character: the corpse a game
 /// leaves behind. It takes the same components as a character's body

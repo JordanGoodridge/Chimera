@@ -31,6 +31,7 @@ mod game_modes;
 mod game_modes_followups;
 mod grenades;
 mod hired_guns;
+mod install_launchers;
 mod inventory;
 mod lobby;
 mod lobby_loadout;
@@ -87,6 +88,7 @@ mod heavy {
     mod radio;
     mod radar;
     mod view_model;
+    mod weapon_skins;
     mod world;
     mod world_objects;
 }

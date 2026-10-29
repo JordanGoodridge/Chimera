@@ -1102,7 +1102,11 @@ fn on_death(mut died: MessageReader<Died>, mut commands: Commands) {
 /// `who` leaves play (killed, or off to the spectators): it stops arming
 /// and drops the bomb and its defusal kit where it stands.
 pub fn drop_objective_items(w: &mut World, who: Entity) {
-    if let Some(a) = w.entity_mut(who).take::<Arming>() {
+    // Queued by `Died`: the player may be gone (left) before this runs.
+    let Ok(mut e) = w.get_entity_mut(who) else {
+        return;
+    };
+    if let Some(a) = e.take::<Arming>() {
         w.write_message(WeaponEvent {
             owner: who,
             weapon: a.weapon,
@@ -1113,7 +1117,7 @@ pub fn drop_objective_items(w: &mut World, who: Entity) {
     if let Some(bomb) = carried_bomb(w, who) {
         drop::drop_this(w, who, bomb, false);
     }
-    if w.entity_mut(who).take::<DefuseKit>().is_some()
+    if w.get_entity_mut(who).ok().and_then(|mut e| e.take::<DefuseKit>()).is_some()
         && let Some(t) = w.get::<Transform>(who).copied()
     {
         let model = w.resource::<BombRules>().kit_model.clone();

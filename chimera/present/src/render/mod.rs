@@ -101,6 +101,7 @@ pub fn scoped_resources(app: &mut App) {
         .map_scoped::<fog::SceneFog>()
         .map_scoped::<bodies::PlayModels>()
         .map_scoped::<bodies::HeldAssets>()
+        .map_scoped::<bodies::HeldLateBase>()
         .map_scoped::<texture_anim::TextureAnims>()
         .map_scoped::<probe_lit::ProbeLightScale>();
 }

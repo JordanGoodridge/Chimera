@@ -418,7 +418,13 @@ Part B Combat Arms' pack).
   if alive, the last stage's music while anyone is on the last rung, the
   respawn countdown's ticks, silence on the match-end screen); the
   others stay silent. Sounds a callout plays (rung up, last rung) are
-  the cue pack's, not the director's, so nothing plays twice.
+  the cue pack's, not the director's, so nothing plays twice. The party's
+  music is not the original's loop (it gets stale): by default (cvar
+  `party_music 1`, data/music.toml `[party]`) the start track plays once
+  and a shuffled playlist of Combat Arms' menu tracks follows, each once
+  before any repeats, cross-fading; the last stage takes over and the
+  playlist resumes after it. `party_music 2` is the original's loop, 0
+  none; Combat Arms' own modes always keep the original.
 
 ### Gun game rules
 

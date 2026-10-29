@@ -1690,7 +1690,14 @@ frame) and then by what in it scaled with views:
   active camera when a later active camera on the same target, HDR and
   MSAA, drawing the whole target, copies out after it (the UI's; the
   view model's or the world's when the UI's is off; each target of a
-  capture its own), and turns it back on otherwise.
+  capture its own), and turns it back on otherwise. The camera left
+  copying replaces the target (`BlendState::REPLACE`): Bevy blends every
+  copy but the target's bottom camera's over what the target holds, so
+  with the bottom ones skipped the frame was blended over the window's
+  clear colour where its alpha is below one. Stock de_dust2's and
+  cs_office's skies are opaque (the frozen scenes below matched);
+  de_piranesi's isn't: its sky showed grey, the sky only at the edges of
+  alpha-to-coverage foliage (2026-10-28 playtest, fixed the next day).
 - Tried and left: `ClusterConfig::Single` on the sky and view-model
   cameras (no gain; `ClusterConfig::None` fails wgpu validation: the
   world and prop shaders read the clusters), and light clustering is per

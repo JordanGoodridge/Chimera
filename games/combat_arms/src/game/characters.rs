@@ -174,6 +174,7 @@
 
 pub mod death;
 pub mod driver;
+pub mod held_on_demand;
 pub mod models;
 pub mod records;
 pub mod skeleton;
@@ -409,7 +410,12 @@ impl Plugin for CaCharactersPlugin {
             .add_systems(FixedUpdate, dress.after(drive).after(bodies))
             .add_systems(FixedUpdate, hitboxes.after(drive))
             .add_systems(FixedUpdate, wear_looks.before(setup).run_if(core::authoritative))
-            .add_systems(FixedUpdate, client_clock.before(drive).run_if(core::shows_others));
+            .add_systems(FixedUpdate, client_clock.before(drive).run_if(core::shows_others))
+            .add_systems(
+                Update,
+                held_on_demand::load_on_demand
+                    .run_if(resource_exists::<super::view_model::on_demand::LoadOnDemand>),
+            );
         look_cvars(app);
         use crate::console::ConsoleAppExt;
         app.console_command(

@@ -368,7 +368,7 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
         // that aren't textures are empty slots.
         let dtx = |l: &[String]| -> Vec<String> {
             l.iter()
-                .map(|s| if s.to_lowercase().ends_with(".dtx") { s.clone() } else { String::new() })
+                .map(|s| if super::super::data::is_skin_file(s) { s.clone() } else { String::new() })
                 .collect()
         };
         if !r.upper_skins.is_empty() {
@@ -414,17 +414,18 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
     }
 }
 
-/// The install's weapons file over our weapon looks: each weapon of the
-/// set with an install record takes its `AniType`, `LowerAniType` and
-/// `HHSkin#` (characters.md's "Third-person weapon model and animation
-/// class"); `HHAniFrame_#` isn't read (our data has none either).
+/// The install's weapons file over our weapon looks: each install
+/// weapon (ours and the ones it adds, by the id the weapon merge gives
+/// it: `data::install_weapons_by_id`) takes its `AniType`, `LowerAniType`,
+/// `HHSkin#` and `HHRenderStyle#` (characters.md's "Third-person weapon
+/// model and animation class"); `HHAniFrame_#` isn't read (our data has
+/// none either).
 fn merge_install_weapons(data: &mut CharacterData, ca: &CaDataInner) {
-    if ca.attributes().is_none() {
+    let Some(file) = ca.attributes().and_then(|a| a.weapons.as_ref()) else {
         return;
-    }
-    for id in ca.builtin_weapon_ids() {
-        let Some(r) = ca.install_weapon(id) else { continue };
-        let look = data.weapons.entry(id.clone()).or_default();
+    };
+    for (id, r) in super::super::data::install_weapons_by_id(file) {
+        let look = data.weapons.entry(id).or_default();
         look.ani_type = r.ani_type;
         look.lower_ani_type = r.lower_ani_type;
         if !r.hh_skins.is_empty() {
