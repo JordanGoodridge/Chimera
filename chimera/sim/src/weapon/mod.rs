@@ -614,11 +614,11 @@ pub struct OwnKit(pub Vec<&'static str>);
 
 fn give_starting_weapons(world: &mut World) {
     #[allow(clippy::type_complexity)]
-    let new: Vec<(Entity, Option<u8>, Option<OwnKit>)> = world
-        .query_filtered::<(Entity, Option<&Team>, Option<&OwnKit>), (With<Intent>, With<Health>, Without<Inventory>)>()
-        .iter(world)
-        .map(|(e, t, k)| (e, t.map(|t| t.0), k.cloned()))
-        .collect();
+    let new: Vec<(Entity, Option<u8>, Option<OwnKit>)> = chimera_core::query_cache::cached_query::<
+        (Entity, Option<&Team>, Option<&OwnKit>),
+        (With<Intent>, With<Health>, Without<Inventory>),
+        _,
+    >(world, |q, world| q.iter(world).map(|(e, t, k)| (e, t.map(|t| t.0), k.cloned())).collect());
     if new.is_empty() {
         return;
     }

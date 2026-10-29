@@ -302,7 +302,7 @@ fn relay_one(w: &mut World, client: ClientId, seq: u16, frames: Vec<Vec<u8>>) {
         .iter(w)
         .map(|(c, p)| (ClientId::Client(c), p.character))
         .collect();
-    if let Some(host) = w.query_filtered::<Entity, With<LocalPlayer>>().iter(w).next() {
+    if let Some(host) = chimera_core::query_cache::first::<With<LocalPlayer>>(w) {
         listeners.push((ClientId::Server, host));
     }
     let n = frames.len() as u64;

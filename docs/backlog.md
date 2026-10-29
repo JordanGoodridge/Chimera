@@ -1362,6 +1362,22 @@ dithered fade bands. Left:
   cameras per frame"), broken props' pieces with their `.phy` hulls
   (sleeping by props' stillness rule), a toy-scene test of ragdolls'
   forced sleep.
+- Party frame rate (performance.md, "Party frame-rate pass"; measure
+  each step with `tools/perf-profile.sh` and `--baseline`): the render
+  thread now sets the frame (6.9 ms of CPU at ~125 fps on de_dust2, GPU
+  1.5 ms). Next: which of the 4 cameras drawing in a party match must
+  draw (each costs command encoding, preprocessing bind groups,
+  clustering and instance buffers: ~1.9 + 0.6 + 0.6 + 0.3 ms a frame
+  together); the 14 meshes and 6 materials modified a frame (name them
+  in `chimera_perf 3`, write only real changes); the per-tick executor
+  cost (fewer, larger systems in Select and Weapons); `bevy_ui` layout
+  of hidden trees (0.38 ms); the minigame HUD's, moments' and ladder's
+  `world.query` calls (0.12 ms, `query_cache::cached_query`); Combat
+  Arms' `Rig::posed` names (0.18 ms); a party `perfgate` scenario.
+  Done: kept query states (`chimera_core::query_cache`: ticks 16-24%
+  fewer instructions), `keys_for` without copies, `roster::arm`
+  without cloning `BotData`, the profiling tools (`profsum`,
+  `perf-profile.sh`, `tracesum --folded`).
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).

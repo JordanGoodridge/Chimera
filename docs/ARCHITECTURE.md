@@ -41,7 +41,7 @@ chimera_present (chimera/present/)   render, audio, MapPlugin, assets (installs 
 chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; music; greybox, harness::Sim
   |                \
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
- (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay, game_parts, announcer, cues
+ (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay, game_parts, announcer, cues, query_cache
                       chimera_vfs (chimera/vfs/)   the neutral VFS (`FileSource`, `Mount`) under both format crates and `mount`
                       lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```
@@ -333,7 +333,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
                |                 (game_log beside it: game events, the server log)
              core                (shared vocabulary)
                                  (env under console and mount: variables, user folders;
-                                  profile beside them: a player's settings file)
+                                  profile beside them: a player's settings file;
+                                  query_cache under console: kept query states)
 ```
 
 Exact edges: game_log uses core and console; net uses the engine's

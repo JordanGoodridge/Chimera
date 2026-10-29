@@ -1115,7 +1115,9 @@ Details and baseline numbers: [performance.md](performance.md).
   max), the main world's CPU time and the render world's time (its
   `Render` schedule), GPU time per render pass (every camera's run of
   it together), entity, mesh and triangle counts, cameras drawing (the
-  view model's draws only with something on its layer) and visibility culling (camera cluster,
+  view model's draws only with something on its layer), the world's
+  archetypes (`archetypes N (+M)`: added since the last readout; a count
+  that keeps rising makes every query check new archetypes) and visibility culling (camera cluster,
   clusters and map parts potentially visible), and what changes each
   frame (transforms written, under the map's root, mesh and material
   assets modified), and `physics: N dynamic bodies, M awake` (an awake
@@ -1249,7 +1251,7 @@ Details and baseline numbers: [performance.md](performance.md).
   `TRACE_CHROME=<file>` names it (else `trace-*.json` in the working
   directory). Keep runs short (`--frames 400`: about 1.5 GB) and the
   file in your `target/`. `tracesum <file> [--skip N] [--top N]
-  [--filter text] [--by-total]` (`chimera/tools/src/bin/tracesum.rs`) prints the main
+  [--filter text] [--by-total] [--folded out.txt]` (`chimera/tools/src/bin/tracesum.rs`) prints the main
   world's (`main app`) and render world's (`sub app: name=RenderApp`)
   time per frame and the spans with the most self time per frame, by
   thread (systems run on the `workers`); open the file in
@@ -1274,9 +1276,14 @@ Details and baseline numbers: [performance.md](performance.md).
   (`client::trace_capture`; `scripts/profile.sh`, `scripts\profile.ps1`);
   Tracy: `--features tracy` and the Tracy 0.14.1 profiler (not set up on
   the dev box). performance.md, "See a frame yourself". CPU sampling (`perf record -g`, `cargo flamegraph`) works on
-  any optimized build on Linux; `perf` isn't installed on the dev box:
-  sample the dev build under gdb instead (performance.md, "Community
-  maps' slow first views"). A main-thread schedule with much self time
+  any optimized build on Linux: `tools/perf-profile.sh` (perf on a
+  `profiling` build with frame pointers, then `profsum`, the
+  `chimera/tools` bin: our code and Bevy's systems by ms per frame, a
+  flame graph, before/after with `--baseline`; `tracesum --folded` feeds
+  `profsum` a span trace on Windows; performance.md, "Measuring"). The
+  dev box has no `perf` package installed: the script takes `PERF=<path>`
+  (a `perf` binary unpacked from the distribution's package works without
+  installing). A main-thread schedule with much self time
   in `tracesum` is waiting for workers (or descheduled under load).
 
 ## 3d. The debug UI

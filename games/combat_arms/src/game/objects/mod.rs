@@ -360,18 +360,19 @@ fn characters(world: &mut World, scale: f32) -> Vec<CharBox> {
     if scale <= 0.0 {
         return Vec::new();
     }
-    let mut q = world.query_filtered::<(
+    type Row = (
         Entity,
-        &Transform,
-        &MovementState,
-        Option<&Health>,
+        &'static Transform,
+        &'static MovementState,
+        Option<&'static Health>,
         Has<Bot>,
         Has<Npc>,
         Has<Dead>,
-        &Intent,
-    ), With<Intent>>();
-    q.iter(world)
-        .map(|(e, t, s, h, bot, npc, dead, intent)| {
+        &'static Intent,
+    );
+    chimera_core::query_cache::cached_query::<Row, With<Intent>, _>(world, |q, world| {
+        q.iter(world)
+            .map(|(e, t, s, h, bot, npc, dead, intent)| {
             let (lo, hi) = if s.hull_max != s.hull_min {
                 (s.hull_min, s.hull_max)
             } else {
@@ -389,6 +390,7 @@ fn characters(world: &mut World, scale: f32) -> Vec<CharBox> {
             }
         })
         .collect()
+    })
 }
 
 /// The world model nodes' and volumes' entities, by object id.
@@ -594,8 +596,10 @@ fn gather(world: &mut World) {
 /// The nodes characters' use rays hit on a fresh press of the use key.
 fn use_rays(world: &mut World) -> Vec<(ObjId, Who)> {
     let pressed: Vec<(Entity, Vec3, Vec3)> = {
-        let mut q = world.query::<(Entity, &Transform, &Intent, &MovementState)>();
-        let rows: Vec<_> = q.iter(world).map(|(e, t, i, s)| (e, t.translation + s.eye_offset, i.clone())).collect();
+        let rows: Vec<_> =
+            chimera_core::query_cache::cached_query::<(Entity, &Transform, &Intent, &MovementState), (), _>(world, |q, world| {
+                q.iter(world).map(|(e, t, i, s)| (e, t.translation + s.eye_offset, i.clone())).collect()
+            });
         let mut o = world.resource_mut::<CaObjects>();
         rows.into_iter()
             .filter_map(|(e, eye, i)| {

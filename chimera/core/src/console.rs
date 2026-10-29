@@ -853,9 +853,12 @@ pub fn userinfo(world: &mut World) -> std::collections::BTreeMap<String, String>
 
 /// The local player's `core::UserInfo`: its userinfo cvars' values.
 fn local_userinfo(world: &mut World) {
-    let mut local = world.query_filtered::<(Entity, Option<&crate::core::UserInfo>), With<crate::core::LocalPlayer>>();
-    let Some((me, have)) = local.iter(world).next() else { return };
-    let have = have.cloned();
+    let local = crate::query_cache::cached_query::<
+        (Entity, Option<&crate::core::UserInfo>),
+        With<crate::core::LocalPlayer>,
+        _,
+    >(world, |q, world| q.iter(world).next().map(|(e, have)| (e, have.cloned())));
+    let Some((me, have)) = local else { return };
     let info = crate::core::UserInfo(userinfo(world));
     if have.as_ref() != Some(&info) {
         world.entity_mut(me).insert(info);

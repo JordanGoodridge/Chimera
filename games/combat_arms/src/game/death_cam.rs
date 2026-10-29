@@ -447,7 +447,7 @@ pub const FAST_MODES: &[&str] = &["TDM", "FFA", "CTF", "BNT", "SBT", "HQM", "SQM
 /// countdown for this player, its wait (7 s, Relentless's shorter) and
 /// whether F7 may ask (the mode, the counts or the premium pass).
 fn eligibility(world: &mut World) {
-    let me = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next();
+    let me = chimera_core::query_cache::first::<With<LocalPlayer>>(world);
     let mode = current_mode(world).or_else(|| world.get_resource::<CaMatchView>().and_then(|v| v.mode()));
     let mut rules = Rules::default();
     let mut room = screen::RoomFacts::default();

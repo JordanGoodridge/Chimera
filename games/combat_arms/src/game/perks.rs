@@ -81,6 +81,7 @@
 //! - HUD positions count every working perk in the order equipped (the
 //!   spec says only "the perk in that HUD position").
 
+use chimera_core::query_cache::cached_query;
 use std::collections::HashMap;
 
 use bevy::prelude::*;
@@ -788,7 +789,7 @@ fn perk_tick(world: &mut World) {
     let dt = world.resource::<SimClock>().dt();
     let rounds = world.get_resource::<RoundRestarts>().map_or(0, |r| r.0);
     let data = world.resource::<CaGearData>().0.clone();
-    let players: Vec<Entity> = world.query_filtered::<Entity, With<CaPerkState>>().iter(world).collect();
+    let players: Vec<Entity> = cached_query::<Entity, With<CaPerkState>, _>(world, |q, w| q.iter(w).collect());
     for e in players {
         tick_one(world, &data, e, now, dt, rounds);
     }
@@ -1158,16 +1159,13 @@ fn supplies(world: &mut World) {
     let now = world.resource::<SimClock>().now;
     let rounds = world.get_resource::<RoundRestarts>().map_or(0, |r| r.0);
     // Resourceful boxes.
-    let boxes: Vec<(Entity, CaPerkBox, Vec3)> = world
-        .query::<(Entity, &CaPerkBox, &Transform)>()
-        .iter(world)
-        .map(|(e, b, t)| (e, *b, t.translation))
-        .collect();
-    let players: Vec<(Entity, Vec3, u8)> = world
-        .query_filtered::<(Entity, &Transform, Option<&Team>), (With<Intent>, Without<Dead>)>()
-        .iter(world)
-        .map(|(e, t, team)| (e, t.translation, team.map_or(0, |t| t.0)))
-        .collect();
+    let boxes: Vec<(Entity, CaPerkBox, Vec3)> = cached_query::<(Entity, &CaPerkBox, &Transform), (), _>(world, |q, w| {
+        q.iter(w).map(|(e, b, t)| (e, *b, t.translation)).collect()
+    });
+    let players: Vec<(Entity, Vec3, u8)> =
+        cached_query::<(Entity, &Transform, Option<&Team>), (With<Intent>, Without<Dead>), _>(world, |q, w| {
+            q.iter(w).map(|(e, t, team)| (e, t.translation, team.map_or(0, |t| t.0))).collect()
+        });
     for (b, bx, at) in boxes {
         if now - bx.since >= bx.life {
             world.despawn(b);
@@ -1188,7 +1186,7 @@ fn supplies(world: &mut World) {
         }
     }
     // Supply points.
-    let points: Vec<Entity> = world.query_filtered::<Entity, With<CaSupplyBox>>().iter(world).collect();
+    let points: Vec<Entity> = cached_query::<Entity, With<CaSupplyBox>, _>(world, |q, w| q.iter(w).collect());
     for point in points {
         supply_frame(world, point, now, rounds, &players);
     }
@@ -1232,11 +1230,10 @@ fn records_as_last_primary(ty: i32) -> bool {
 /// Each server tick: the weapon in hand becomes the player's last primary
 /// when its gun type says so.
 fn track_last_primary(world: &mut World) {
-    let held: Vec<(Entity, Entity, Option<Entity>)> = world
-        .query::<(Entity, &Inventory, Option<&CaLastPrimary>)>()
-        .iter(world)
-        .filter_map(|(e, i, l)| Some((e, i.active?, l.and_then(|l| l.0))))
-        .collect();
+    let held: Vec<(Entity, Entity, Option<Entity>)> =
+        cached_query::<(Entity, &Inventory, Option<&CaLastPrimary>), (), _>(world, |q, w| {
+            q.iter(w).filter_map(|(e, i, l)| Some((e, i.active?, l.and_then(|l| l.0)))).collect()
+        });
     for (e, w, last) in held {
         if last == Some(w) {
             continue;

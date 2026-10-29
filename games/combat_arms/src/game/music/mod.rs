@@ -193,7 +193,7 @@ fn gather(world: &mut World) {
     } else {
         Screen::Match
     };
-    let me = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next();
+    let me = chimera_core::query_cache::first::<With<LocalPlayer>>(world);
     let alive =
         me.is_some_and(|e| world.get::<Dead>(e).is_none() && world.get::<Health>(e).is_none_or(|h| h.current > 0.0));
     let my_team = me.and_then(|e| world.get::<Team>(e)).map_or(0, |t| t.0);

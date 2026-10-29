@@ -353,7 +353,7 @@ pub fn peer_of(world: &World, e: Entity) -> Option<Peer> {
 }
 
 fn local_player(world: &mut World) -> Option<Entity> {
-    world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next()
+    chimera_core::query_cache::first::<With<LocalPlayer>>(world)
 }
 
 fn name_colour(world: &World, e: Entity) -> u32 {

@@ -62,6 +62,7 @@ use crate::{
     },
     weapon::{Inventory, give},
 };
+use chimera_core::query_cache::cached_query;
 use chimera_core::slots::{FollowsWeapon, MovementSlot};
 
 /// A decided round's results stay up this long before the round ends.
@@ -110,19 +111,14 @@ pub struct SpawnCursor(pub usize);
 
 /// The players in the match, in join order.
 pub fn players(world: &mut World) -> Vec<(Entity, u8)> {
-    let mut all: Vec<(u64, Entity, u8)> = world
-        .query_filtered::<(Entity, &Team, Option<&JoinOrder>), (
-            With<Intent>,
-            With<Health>,
-            With<InMinigame>,
-            Without<Connecting>,
-            Without<Spectating>,
-            Without<Npc>,
-        )>()
-        .iter(world)
-        .filter(|(_, t, _)| plays(t.0))
-        .map(|(e, t, o)| (o.map_or(u64::MAX, |o| o.0), e, t.0))
-        .collect();
+    type Playing = (With<Intent>, With<Health>, With<InMinigame>, Without<Connecting>, Without<Spectating>, Without<Npc>);
+    let mut all: Vec<(u64, Entity, u8)> =
+        cached_query::<(Entity, &Team, Option<&JoinOrder>), Playing, _>(world, |q, world| {
+            q.iter(world)
+                .filter(|(_, t, _)| plays(t.0))
+                .map(|(e, t, o)| (o.map_or(u64::MAX, |o| o.0), e, t.0))
+                .collect()
+        });
     all.sort();
     all.into_iter().map(|(_, e, t)| (e, t)).collect()
 }
@@ -346,18 +342,9 @@ fn join(world: &mut World) {
     if super::held(world) {
         return;
     }
-    let new: Vec<(Entity, u8)> = world
-        .query_filtered::<(Entity, &Team), (
-            With<Intent>,
-            With<Health>,
-            Without<InMinigame>,
-            Without<Connecting>,
-            Without<Spectating>,
-            Without<Npc>,
-        )>()
-        .iter(world)
-        .map(|(e, t)| (e, t.0))
-        .collect();
+    type Joining = (With<Intent>, With<Health>, Without<InMinigame>, Without<Connecting>, Without<Spectating>, Without<Npc>);
+    let new: Vec<(Entity, u8)> =
+        cached_query::<(Entity, &Team), Joining, _>(world, |q, world| q.iter(world).map(|(e, t)| (e, t.0)).collect());
     let over = world.resource::<Match>().phase == Phase::MatchOver;
     for (e, team) in new {
         if team == 255 {
@@ -434,13 +421,15 @@ fn end_protection(world: &mut World) {
     let now = world.resource::<SimClock>().now;
     let mut done = Vec::new();
     let mut damage_over = Vec::new();
-    for (e, sp, p, i, god) in world.query::<(Entity, &SpawnProtected, &Protected, &Intent, Has<God>)>().iter(world) {
-        if (p.fire_ends && i.fire) || sp.over(now) {
-            done.push(e);
-        } else if god && now + 1e-9 >= sp.damage_until {
-            damage_over.push(e);
+    cached_query::<(Entity, &SpawnProtected, &Protected, &Intent, Has<God>), (), _>(world, |q, world| {
+        for (e, sp, p, i, god) in q.iter(world) {
+            if (p.fire_ends && i.fire) || sp.over(now) {
+                done.push(e);
+            } else if god && now + 1e-9 >= sp.damage_until {
+                damage_over.push(e);
+            }
         }
-    }
+    });
     for e in done {
         unprotect(world, e);
     }

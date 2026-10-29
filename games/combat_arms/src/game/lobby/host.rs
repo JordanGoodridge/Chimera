@@ -298,7 +298,7 @@ fn serve_standalone(world: &mut World) {
 fn client_frame(world: &mut World) {
     let now = chat::now_ms(world);
     let notices: Vec<CaLobbyNotice> = world.resource_mut::<Messages<CaLobbyNotice>>().drain().collect();
-    let has_player = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next().is_some();
+    let has_player = chimera_core::query_cache::first::<With<LocalPlayer>>(world).is_some();
     let name = world.resource::<CaLobbyName>().0.clone();
     let mut out = Vec::new();
     {
@@ -357,7 +357,7 @@ fn host_frame(world: &mut World) {
 /// Players whose connection is gone leave the lobby.
 fn drop_leavers(world: &mut World) {
     let present: Vec<PlayerId> = world.query::<(Entity, &Player)>().iter(world).map(|(e, _)| e.to_bits()).collect();
-    let local = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next().is_some();
+    let local = chimera_core::query_cache::first::<With<LocalPlayer>>(world).is_some();
     let mut host = world.resource_mut::<CaLobbyHost>();
     let gone: Vec<PlayerId> = host
         .lobby
@@ -448,7 +448,7 @@ fn apply_launch(world: &mut World, host: &CaLobbyHost, s: &Settings) {
 /// The character of a lobby player.
 fn character_of(world: &mut World, p: PlayerId) -> Option<Entity> {
     if p == 0 {
-        world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next()
+        chimera_core::query_cache::first::<With<LocalPlayer>>(world)
     } else {
         let client = Entity::from_bits(p);
         world.get::<Player>(client).map(|pl| pl.character)

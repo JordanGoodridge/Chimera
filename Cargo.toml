@@ -321,3 +321,10 @@ inherits = "release"
 lto = false
 codegen-units = 16
 incremental = true
+
+# The playtest build with line tables, for CPU sampling (`perf record`,
+# tools/perf-profile.sh; docs/performance.md, "Measuring"): the same code,
+# function and line names in the profile.
+[profile.profiling]
+inherits = "playtest"
+debug = "line-tables-only"
