@@ -33,7 +33,7 @@ the user's go-ahead: no Actions runs unless asked.
     The M32 fires copies of its own model instead of grenades; the
     Anti-Virus Flamethrower fires slow grey balls instead of flames.
   - Grey Combat Arms skins: Prismatic Eco M416, Drakeveil SIG550, Red
-    Dominion ARX160 Lv.1 (limit), M14
+    Dominion ARX160 Lv.1 (limit), AUG A3 Champions Lightning, M14
     Cyanide Echo lv.4 (limit), and Dragunov SVD Obsidian Dragon (flat,
     unshaded grey). The R870 isn't visible in Combat Arms characters'
     hands (install-only guns may have no held model).
@@ -79,6 +79,12 @@ the user's go-ahead: no Actions runs unless asked.
   the spec first, since a strip that doesn't turn toward the eye looks
   flat. Then ask a spec session on the Windows PC how Combat Arms
   orients the strip and what it does with the zoomed field of view.
+- **Ultimate Gun Game's Escape menu.** It shows Combat Arms' menu. It
+  should be Ultimate Gun Game's own, drawn above the match-end screen
+  (it's drawn under it now), and offer better options. Proposed: resume,
+  options (video, audio, mouse, binds, the party settings: hit marker,
+  swap effect, even footsteps, music), scoreboard, change map or vote,
+  disconnect, quit. The user to confirm the list.
 - **Kill feed: Combat Arms gun icons sit at the top of the line.** The
   generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
   icons vertically, with every line the same height (widths may vary).
