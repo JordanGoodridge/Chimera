@@ -68,6 +68,12 @@ the user's go-ahead: no Actions runs unless asked.
     models (copies included)?
   Fix the draw to take only parts that fit, and draw fitted parts on the
   models; questions the specs leave open go to a spec session.
+  With it, odds for the draw (user, 2026-10-29). Each slot keeps the
+  gun's stock part most of the time (about 70-80%). Odds per kind:
+  sights and scopes most often, then silencers, power parts (ammo,
+  magazines) least (about 10%). At most two non-stock parts per gun. The
+  odds live in the ladder rules as data. Fitted parts can add to a gun's
+  power score once the power curve exists.
 - **The rung line lists raw attachment ids.** With rung extras on, the
   gun game panel's top line reads like "Rung 1/12: FMG-9
   (Silencer_A_SMG_Gold, DotSight_Holosight_SMG_Gold, ...)". It runs
