@@ -71,6 +71,14 @@ the user's go-ahead: no Actions runs unless asked.
   throw's bounce heights and slide in a test against those numbers. If
   ours matches the spec and still looks wrong, the spec needs
   re-checking against the reference in a spec session on the Windows PC.
+- **Combat Arms tracers look flat and wide**, worst through a sniper
+  scope. The spec (effects_sounds.md section 4) gives a flat strip of
+  constant `Width` (15-30 u) with depth test off. It doesn't say how the
+  strip faces the camera (turned about its own axis toward the eye, or
+  fixed), nor whether the width changes while zoomed. Check ours against
+  the spec first, since a strip that doesn't turn toward the eye looks
+  flat. Then ask a spec session on the Windows PC how Combat Arms
+  orients the strip and what it does with the zoomed field of view.
 - **Kill feed: Combat Arms gun icons sit at the top of the line.** The
   generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
   icons vertically, with every line the same height (widths may vary).
