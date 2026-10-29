@@ -5,7 +5,8 @@
 //!
 //! `chimera_perf` overlay (frame times, main-world CPU, render-world time
 //! (`RenderTime`, written by the render world), GPU per render pass, entities,
-//! meshes and triangles drawn, cameras drawing, visibility, dynamic bodies awake), the same as text (`chimera_perf_log
+//! meshes and triangles drawn, cameras drawing, visibility, dynamic bodies awake; `chimera_perf 3` also
+//! what writes transforms, meshes and materials each frame and the UI trees laid out), the same as text (`chimera_perf_log
 //! 1`, and `PerfReport` in bugreport's report.txt), `r_novis`,
 //! `chimera_skyocclude`, `host_timescale`, `fps_max` (`FrameLimit`: 300 as CS:S,
 //! sleeps at the end of a frame; off without a window and under `--bench`), the
@@ -48,6 +49,17 @@ impl Plugin for PerfPlugin {
                 Last,
                 (
                     record_triangles,
+                    (
+                        name_modified::<Mesh3d>,
+                        name_modified::<MeshMaterial3d<crate::render::prop_material::PropMaterial>>,
+                        name_modified::<MeshMaterial3d<StandardMaterial>>,
+                        name_modified::<MeshMaterial3d<crate::render::sprite_material::SpriteMaterial>>,
+                        name_modified::<MeshMaterial3d<crate::render::particles::ParticleDrawMaterial>>,
+                        name_modified::<MeshMaterial3d<crate::render::decal::DecalMaterial>>,
+                        name_modified::<MeshMaterial3d<crate::render::world_material::WorldMaterial>>,
+                    )
+                        .run_if(|p: Res<Perf>| p.show >= 3),
+                    count_ui.run_if(|p: Res<Perf>| p.show >= 3),
                     count_churn,
                     end_frame,
                     perf_report,
@@ -84,7 +96,7 @@ impl Plugin for PerfPlugin {
             app,
             "chimera_perf",
             "1: performance overlay (frame times, CPU, GPU passes, meshes, visibility, per-frame changes); \
-             2: also every render pass; 3: also log what writes transforms, each second.",
+             2: also every render pass; 3: also log what writes transforms, meshes and materials, and the UI trees, each second.",
             |p| &mut p.show,
         );
         resource_cvar::<HostTimescale, f32>(
@@ -482,6 +494,9 @@ struct Churn {
     started: Option<Instant>,
     sums: [u32; 4],
     names: std::collections::HashMap<String, u32>,
+    /// `chimera_perf 3`: modified mesh and material assets over the
+    /// second, by the kind and the name of an entity drawing them.
+    assets: std::collections::HashMap<String, u32>,
     /// Last second's averages: transforms, of them under the map's root,
     /// meshes, materials.
     shown: [f32; 4],
@@ -552,19 +567,149 @@ fn count_churn(
         let mut names: Vec<_> = churn.names.drain().collect();
         names.sort_by(|a, b| b.1.cmp(&a.1));
         let top: Vec<String> = names.iter().take(12).map(|(k, v)| format!("{k}: {:.1}", *v as f32 / n)).collect();
+        let mut assets: Vec<_> = churn.assets.drain().collect();
+        assets.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let assets: Vec<String> = assets.iter().take(16).map(|(k, v)| format!("{k}: {:.1}", *v as f32 / n)).collect();
         info!(
             "per frame: {:.1} transforms written ({:.1} under the map's root), {:.1} meshes and {:.1} materials modified; \
-             transforms by name: {}",
+             transforms by name: {}; assets modified by user: {}",
             churn.shown[0],
             churn.shown[1],
             churn.shown[2],
             churn.shown[3],
-            top.join(", ")
+            top.join(", "),
+            assets.join(", ")
         );
     }
     churn.frames = 0;
     churn.sums = [0; 4];
     churn.started = Some(now);
+}
+
+/// `chimera_perf 3`: count each modified asset of `C`'s kind (a mesh or a
+/// material) under the name of an entity drawing it (the nearest `Name` up
+/// its tree, digits left out), for `count_churn`'s log line: what rewrites
+/// a mesh or material every frame (each write prepares it for the GPU
+/// again, whether or not it changed).
+fn name_modified<C: bevy::asset::AsAssetId>(
+    mut events: MessageReader<AssetEvent<C::Asset>>,
+    users: Query<(Entity, &C)>,
+    names: Query<&Name>,
+    parents: Query<&ChildOf>,
+    mut churn: ResMut<Churn>,
+) {
+    let modified: std::collections::HashSet<AssetId<C::Asset>> = events
+        .read()
+        .filter_map(|e| match e {
+            AssetEvent::Modified { id } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    if modified.is_empty() {
+        return;
+    }
+    let kind = std::any::type_name::<C::Asset>().rsplit("::").next().unwrap_or("asset");
+    let mut found = std::collections::HashSet::new();
+    for (e, c) in &users {
+        let id = c.as_asset_id();
+        if !modified.contains(&id) || !found.insert(id) {
+            continue;
+        }
+        let mut at = e;
+        let mut label = names.get(at).ok();
+        while label.is_none()
+            && let Ok(p) = parents.get(at)
+        {
+            at = p.parent();
+            label = names.get(at).ok();
+        }
+        let label: String = label
+            .map_or_else(|| "?".into(), |n| n.as_str().to_string())
+            .chars()
+            .filter(|c| !c.is_ascii_digit())
+            .collect();
+        *churn.assets.entry(format!("{kind} {label}")).or_default() += 1;
+    }
+    let unused = modified.len() - found.len();
+    if unused > 0 {
+        *churn.assets.entry(format!("{kind} (no entity)")).or_default() += unused as u32;
+    }
+}
+
+/// `chimera_perf 3`: the UI trees laid out each frame (`bevy_ui` lays out
+/// every root's tree, hidden or not), logged once a second: roots and their
+/// nodes, of them in hidden trees, and nodes whose `Node` or text changed
+/// this frame (each is synced to the layout again), by root name.
+#[allow(clippy::type_complexity)]
+fn count_ui(
+    roots: Query<(Entity, Option<&Name>, &InheritedVisibility), (With<Node>, Without<ChildOf>)>,
+    children: Query<&Children>,
+    nodes: Query<(), With<Node>>,
+    changed: Query<Entity, (With<Node>, Or<(Changed<Node>, Changed<bevy::ui::ContentSize>, Changed<Text>)>)>,
+    parents: Query<&ChildOf>,
+    names: Query<&Name>,
+    texts: Query<&Text>,
+    mut at: Local<Option<Instant>>,
+    mut changes: Local<(u32, std::collections::HashMap<String, u32>)>,
+) {
+    changes.0 += 1;
+    for e in &changed {
+        // The nearest name up the tree, else the root; and the text, if any.
+        let (mut at, mut label) = (e, names.get(e).ok().map(|n| n.as_str().to_string()));
+        while let Ok(p) = parents.get(at) {
+            at = p.parent();
+            if label.is_none() {
+                label = names.get(at).ok().map(|n| n.as_str().to_string());
+            }
+        }
+        let mut label = label.unwrap_or_else(|| format!("root {at}"));
+        if let Ok(t) = texts.get(e) {
+            label.push_str(&format!(" {:?}", t.0.chars().take(24).collect::<String>()));
+        }
+        *changes.1.entry(label).or_default() += 1;
+    }
+    let now = Instant::now();
+    if at.is_some_and(|t| (now - t).as_secs_f32() < 1.0) {
+        return;
+    }
+    *at = Some(now);
+    let (mut all, mut hidden, mut hidden_roots) = (0usize, 0usize, 0usize);
+    let mut trees: Vec<(String, usize, bool)> = Vec::new();
+    for (root, name, vis) in &roots {
+        let n = 1 + children.iter_descendants(root).filter(|c| nodes.contains(*c)).count();
+        all += n;
+        if !vis.get() {
+            hidden += n;
+            hidden_roots += 1;
+        }
+        // Unnamed roots by their first named node.
+        let label = name.or_else(|| children.iter_descendants(root).find_map(|c| names.get(c).ok())).map_or_else(
+            || format!("{root}"),
+            |n| n.as_str().to_string(),
+        );
+        trees.push((label, n, vis.get()));
+    }
+    trees.sort_by(|a, b| b.1.cmp(&a.1));
+    let frames = changes.0.max(1) as f32;
+    let mut changed: Vec<_> = changes.1.drain().collect();
+    changed.sort_by(|a, b| b.1.cmp(&a.1));
+    changes.0 = 0;
+    info!(
+        "ui: {all} nodes in {} roots, {hidden} in {hidden_roots} hidden roots; trees: {}; changed per frame by root: {}",
+        trees.len(),
+        trees
+            .iter()
+            .take(16)
+            .map(|(n, c, v)| format!("{n} {c}{}", if *v { "" } else { " (hidden)" }))
+            .collect::<Vec<_>>()
+            .join(", "),
+        changed
+            .iter()
+            .take(12)
+            .map(|(n, c)| format!("{n}: {:.1}", *c as f32 / frames))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 }
 
 /// `chimera_perf_log 1`: log the readout once a second.

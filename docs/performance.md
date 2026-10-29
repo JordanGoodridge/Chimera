@@ -21,7 +21,11 @@ Performance").
   playtest` and run `target/playtest/refcmp`).
 - A/B: `-- +r_novis 1` (no PVS culling) or `CHIMERA_MERGED_WORLD=1` (the
   world as one mesh per material, nothing culled: the code before
-  chunking); `CHIMERA_MERGE_BRUSHES=0` (brush entities not merged).
+  chunking); `CHIMERA_MERGE_BRUSHES=0` (brush entities not merged);
+  `CHIMERA_GPU_PREPROCESS=1` (Bevy's GPU mesh preprocessing and
+  indirect draws instead of batching each camera's meshes on the CPU),
+  `CHIMERA_SKIP_OUTPUTS=0` (every camera copies its frame out, not only
+  the last on each target; "Party frame-rate pass", second pass).
 - One second of a frame's spans to look at yourself (any app, Windows
   too): `--features trace` and `trace_capture 1`, or Tracy ("See a frame
   yourself" below).
@@ -1559,6 +1563,112 @@ query states and Combat Arms' animation are small (8, 11). A party
 above). On the Windows PC: `scripts\profile.ps1 lucker_party` gives the
 span version of these pictures (`tracesum --folded`, `profsum --unit
 us`).
+
+### Second pass: the cameras (2026-10-29)
+
+Same scenes and tool, with the local player held still (`--spawn` and
+`--look` at a fixed place, `+sv_cheats 1 +god`: a random spawn moved
+the render world's instructions by 1M a frame between runs).
+
+**The cameras.** A party match draws four, all on the window, sharing
+its intermediate textures: the 3D sky's (`render::sky`, order -1: the
+2D sky cubemap and the 3D skybox's layer, behind everything; on while
+the eye's leaf sees sky, indoors on cs_office too), the world's (the
+local player's `FirstPersonCamera`, 0), the view model's
+(`render::view_model`, 1: the weapon, shells, muzzle flashes; already
+off with nothing on its layer: "Fewer cameras per frame") and the UI's
+(`client::debug`, 100: Bevy UI, both games' HUDs, the party's panels,
+egui). The C4 screen's camera, monitors' and water reflections' are
+off or absent here. Each must draw (its own projection, depth or
+layer); what each cost was measured by turning it off
+(`render_instr`, de_dust2: sky -2.5M, view model -1.8M of 17.5M a
+frame) and then by what in it scaled with views:
+
+- **Bevy's GPU mesh preprocessing**: per view and per frame it made the
+  preprocessing bind groups again (`prepare_preprocess_bind_groups`
+  0.66 ms), wrote every phase's instance buffers
+  (`write_binned_instance_buffers` 0.59) and encoded compute passes over
+  the instances (bin unpacking, uniform allocation, culling, indirect
+  parameters: more GPU time than the opaque pass, 0.4 + 0.3 ms). Now
+  every camera has `NoIndirectDrawing` (`render::cameras::CamerasPlugin`,
+  a component Bevy requires on every `Camera`): each view's visible
+  meshes are batched on the CPU, as on hardware without compute shaders.
+  Same draws; a few hundred meshes drawn a frame batch faster than the
+  GPU path's per-view setup.
+- **Copies out to the window**: every camera ended with Bevy's
+  `upscaling` blit to the swapchain, overwritten by the next camera's.
+  `render::cameras::skip_covered_outputs` (in `Last`, after everything
+  that turns cameras on and off) sets `CameraOutputMode::Skip` on an
+  active camera when a later active camera on the same target, HDR and
+  MSAA, drawing the whole target, copies out after it (the UI's; the
+  view model's or the world's when the UI's is off; each target of a
+  capture its own), and turns it back on otherwise.
+- Tried and left: `ClusterConfig::Single` on the sky and view-model
+  cameras (no gain; `ClusterConfig::None` fails wgpu validation: the
+  world and prop shaders read the clusters), and light clustering is per
+  view in Bevy 0.20 whatever the view holds.
+
+A/B in one binary: `CHIMERA_GPU_PREPROCESS=1` (Bevy's GPU preprocessing
+again), `CHIMERA_SKIP_OUTPUTS=0` (every camera copies out). Test:
+`chimera/present/tests/it/camera_outputs.rs`.
+
+Medians of two quiet rounds (load 5-9, `chimera_perf_log`, 20 s from
+40 s after start; range), and of the three perf rounds at load 18-31
+for the instructions:
+
+| map | build | fps | frame p50 ms | render CPU p50 ms | render instr / frame | GPU p50 ms |
+|---|---|---|---|---|---|---|
+| de_dust2 | before | 126 (126-126) | 7.61 (7.61-7.62) | 6.22 | 17.5M (perf rounds 18.8M) | 1.45 |
+| de_dust2 | after | 168 (150-187) | 5.98 (5.76-6.20) | 4.15 | 9.8M (perf rounds 10.1M) | 0.96 |
+| cs_office | before | 110 (107-114) | 8.76 (8.11-9.41) | 7.56 | 25.0M (perf rounds 26.5M) | 1.83 |
+| cs_office | after | 139 (138-140) | 7.90 (7.50-8.30) | 4.57 | 10.7M (perf rounds 10.8M) | 1.02 |
+
+So 44% (de_dust2) and 57% (cs_office) fewer render-world instructions a
+frame, a third (de_dust2) to almost half (cs_office) less GPU time, and the render thread's CPU from 6.2-7.6
+to 4.2-4.6 ms: the **main thread sets the frame again** (cs_office: its
+14M instructions a frame without ticks plus 11M a tick). The sky's and
+the view model's cameras batched on the CPU with the skipped copies
+alone gave 17.6 -> 16.1M on de_dust2 and 24.9 -> 22.0M on cs_office;
+the rest is the world's camera batched on the CPU too. In the perf profiles (de_dust2, quiet round): render thread
+8.19 -> 5.90 ms of CPU a frame, `prepare_preprocess_bind_groups` 0.66 ->
+0.03, `write_binned_instance_buffers` 0.59 -> 0.01, `Queue::submit` 1.08
+-> 0.56, `CommandEncoder::finish` on the task pool 1.29 -> 0.78,
+`create_bind_group` 0.81 -> 0.23; `upscaling` 0.02 -> 0.01; cs_office
+9.32 -> 6.64 ms. (The main thread's ms a frame there rose because that
+run drew fewer frames under perf, so more ticks a frame.)
+
+No visible change: the frozen scenes (`+host_timescale 0`, the CA HUD,
+the 3D sky; de_dust2 and cs_office) are identical to the pixel before
+and after; live captures over the remote console (`setpos`, `give`,
+`+attack2`, `host_timescale 0`, `screenshot`; AWP with the CS:S HUD and
+an M4A1 and L96A1 with Combat Arms', each unscoped and scoped, both
+maps) differ only in the HUD's clock (17x21 pixels) and, for Combat
+Arms' scoped view model, its sway, as two runs of the old build do.
+
+**Meshes and materials modified a frame** (`chimera_perf 3` now names
+each modified mesh or material by an entity drawing it, and logs the UI
+trees laid out): on de_dust2 13.9 `PropMaterial`s of "Body"
+(`render::probe_lit::relight`: a moving character's body re-sampled
+from the light field every 0.25 m, 8 materials each, and held weapons
+1 each), 5 rope meshes (`render::rope_sway`: ropes within
+`rope_wind_dist` swaying), 3 character blob shadows (moved over 5 mm),
+2.2 decal `StandardMaterial`s (Combat Arms' marks fading), 1 dust mesh.
+All real changes: none wrote the same data (a relight's new probe
+values differed from the material's in 300 of 300 sampled). Cheaper
+writes need sharing, not skipping: one probe per body instead of a copy
+in each of its materials (8 writes to 1), ropes rebuilt only while
+their PVS shows them.
+
+**`bevy_ui` layout** (0.30-0.33 ms): 372 UI nodes in 73 roots, 316 of
+them in 37 hidden roots (the largest 163 and 91 nodes, unnamed); about
+12 roots get one node or text changed every frame (unnamed nodes, some
+texts set to "" again). Not changed this pass: name the trees, write
+texts only when they change, and give hidden trees `Display::None`
+where nothing depends on their size.
+
+Pictures (ms of CPU a frame, before grey, after blue; per thread by
+crate family; flame graphs before and after): `top.svg`, `families.svg`,
+`flame.svg` from `profsum --baseline`.
 
 ## See a frame yourself
 

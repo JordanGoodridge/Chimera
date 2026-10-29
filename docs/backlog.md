@@ -1363,21 +1363,30 @@ dithered fade bands. Left:
   (sleeping by props' stillness rule), a toy-scene test of ragdolls'
   forced sleep.
 - Party frame rate (performance.md, "Party frame-rate pass"; measure
-  each step with `tools/perf-profile.sh` and `--baseline`): the render
-  thread now sets the frame (6.9 ms of CPU at ~125 fps on de_dust2, GPU
-  1.5 ms). Next: which of the 4 cameras drawing in a party match must
-  draw (each costs command encoding, preprocessing bind groups,
-  clustering and instance buffers: ~1.9 + 0.6 + 0.6 + 0.3 ms a frame
-  together); the 14 meshes and 6 materials modified a frame (name them
-  in `chimera_perf 3`, write only real changes); the per-tick executor
-  cost (fewer, larger systems in Select and Weapons); `bevy_ui` layout
-  of hidden trees (0.38 ms); the minigame HUD's, moments' and ladder's
-  `world.query` calls (0.12 ms, `query_cache::cached_query`); Combat
-  Arms' `Rig::posed` names (0.18 ms); a party `perfgate` scenario.
+  each step with `tools/perf-profile.sh` and `--baseline`): after the
+  second pass the main thread sets the frame again (render world 44-57%
+  fewer instructions, de_dust2 126 -> 150-187 fps, cs_office 110 -> 139
+  on a quiet box). Next: the per-tick executor cost (fewer, larger
+  systems in Select and Weapons: cs_office ticks run 11M instructions);
+  `bevy_ui` layout (0.30 ms: 316 of 372 nodes in hidden trees, ~12
+  roots changed every frame; name the trees, write texts only on
+  change, `Display::None` for hidden trees that don't size anything);
+  one light probe per body instead of a copy in each of its 8 materials
+  (`probe_lit::relight` writes ~14 materials a frame with 4 bots
+  moving); ropes rebuilt only while the PVS shows them; light
+  clustering per view (0.37 ms, Bevy's); the minigame HUD's, moments'
+  and ladder's `world.query` calls (0.12 ms,
+  `query_cache::cached_query`); Combat Arms' `Rig::posed` names (0.18
+  ms); a party `perfgate` scenario; whether CPU batching stays cheaper
+  on maps with thousands of meshes in view (`refcmp bench` with and
+  without `CHIMERA_GPU_PREPROCESS=1` on mg_lego_multigames_v2).
   Done: kept query states (`chimera_core::query_cache`: ticks 16-24%
   fewer instructions), `keys_for` without copies, `roster::arm`
   without cloning `BotData`, the profiling tools (`profsum`,
-  `perf-profile.sh`, `tracesum --folded`).
+  `perf-profile.sh`, `tracesum --folded`); every camera's meshes
+  batched on the CPU (`NoIndirectDrawing`) and only the last camera on
+  a target copying out (`render::cameras`); `chimera_perf 3` naming
+  modified meshes and materials and logging the UI trees.
 - `perfgate` in the pre-push hook (budgets per game app): deferred by
   the user (2026-10-15), pushes aren't blocked on performance for now.
   A Windows-side check needs another counter source (none there yet).

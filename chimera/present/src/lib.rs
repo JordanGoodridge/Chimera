@@ -34,6 +34,7 @@ pub struct PresentationPlugins;
 impl bevy::app::PluginGroup for PresentationPlugins {
     fn build(self) -> bevy::app::PluginGroupBuilder {
         bevy::app::PluginGroupBuilder::start::<Self>()
+            .add(render::cameras::CamerasPlugin)
             .add(render::world_material::WorldMaterialPlugin)
             .add(render::rope_material::RopeMaterialPlugin)
             .add(render::sprite_material::SpriteMaterialPlugin)

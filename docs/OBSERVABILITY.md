@@ -1124,8 +1124,12 @@ Details and baseline numbers: [performance.md](performance.md).
   body costs the solver, transform propagation and its shadow's checks
   every tick; a settled map has none awake). `chimera_perf 3` also logs
   each second which entities (by name) write transforms and which bodies
-  are awake: anything writing every frame for nothing costs transform
-  propagation and GPU re-preparation.
+  are awake, the modified meshes and materials by an entity drawing them
+  (`assets modified by user: PropMaterial Body: 13.9, Mesh Rope : 5.0`),
+  and the UI trees `bevy_ui` lays out (`ui: N nodes in M roots, K in
+  hidden roots; trees: ...; changed per frame by root: ...`): anything
+  writing every frame for nothing costs transform propagation, layout
+  and GPU re-preparation.
 - Load times: a Source map load logs `<map>: loaded in <total> s
   (<slowest stages>)` and keeps every stage's seconds in
   `MapData::load_times` (`map::loading::LoadTimer`; a heavy test can
