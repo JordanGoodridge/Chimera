@@ -146,6 +146,7 @@ pub fn wanted_groups(tables: &CaFxTables, weapons: &[CaWeaponFx], view_muzzles: 
         names.extend(a.pv_muzzle.iter().chain(&a.hh_muzzle).cloned());
     }
     names.extend(weapons.iter().map(|w| w.hh_muzzle.clone()));
+    names.extend(weapons.iter().filter_map(|w| w.impact_record.as_ref()).map(|i| i.fx.clone()));
     names.extend(view_muzzles.iter().cloned());
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = Vec::new();

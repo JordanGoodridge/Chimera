@@ -18,6 +18,16 @@
 //! second of the respawn countdown, and the music stopped and paused on
 //! the match-end screen. The rung-up and last-rung sounds are the cue
 //! pack's, the win and lose sounds the match-end screen's.
+//!
+//! The party's own music is ours, not the original's, and is set by
+//! `CaMusic::party_music` (the `party_music` cvar, default from
+//! data/music.toml `[party]`): 1 (default) plays the start track once,
+//! then a shuffled playlist (`party_next`: each playable track once
+//! before any repeats, cross-fading over the menu fade as the menu's
+//! near-end rule), the last-stage music taking over while anyone is on
+//! the last rung and the playlist (not the start track) resuming after
+//! it; 2 is the original's looping start track; 0 no party music. Only a
+//! party match is affected: Combat Arms' own modes keep the parity above.
 
 use std::collections::HashMap;
 
@@ -130,6 +140,18 @@ pub struct CaMusic {
     /// The mode under way, for the cues that restart its music.
     mode: String,
     rng: u64,
+    /// A party match plays (`observe_party`), not a Combat Arms mode.
+    party: bool,
+    /// The `party_music` cvar: 0 off, 1 the start track once then the
+    /// playlist, 2 the original's looping start track.
+    pub party_music: u8,
+    /// The party playlist runs (the start track played; not ended by the
+    /// match or a last stage).
+    playlist_on: bool,
+    /// The party playlist's tracks not yet played this round of it.
+    bag: Vec<String>,
+    /// The party playlist's track last started.
+    party_last: String,
 }
 
 impl Default for CaMusic {
@@ -159,6 +181,11 @@ impl CaMusic {
             last_stage_on: false,
             mode: String::new(),
             rng: 0x9E37_79B9_7F4A_7C15,
+            party: false,
+            party_music: data.party.default_music,
+            playlist_on: false,
+            bag: Vec::new(),
+            party_last: String::new(),
         }
     }
 
@@ -227,6 +254,92 @@ impl CaMusic {
         }
     }
 
+    fn draw(&mut self, n: usize) -> usize {
+        let mut x = self.rng;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.rng = x;
+        (x % n.max(1) as u64) as usize
+    }
+
+    /// The party playlist's next track, fading in over the menu fade: the
+    /// next of a shuffled bag of the playlist's playable files, which
+    /// refills (shuffled again, not starting with the track just played)
+    /// when it is empty, so every track plays once before any repeats.
+    fn party_next(&mut self, now: f64) {
+        if self.bag.is_empty() {
+            let files = &self.files;
+            let source: Vec<&String> = if self.data.party.playlist.is_empty() {
+                self.data.playlist.iter().map(|e| &e.file).collect()
+            } else {
+                self.data.party.playlist.iter().collect()
+            };
+            let mut bag: Vec<String> = Vec::new();
+            for f in source {
+                if files.exists(f) && !bag.contains(f) {
+                    bag.push(f.clone());
+                }
+            }
+            for i in (1..bag.len()).rev() {
+                let j = self.draw(i + 1);
+                bag.swap(i, j);
+            }
+            // Popped from the end: the track just played is not next.
+            if bag.len() > 1 && bag.last().is_some_and(|l| l.eq_ignore_ascii_case(&self.party_last)) {
+                let n = bag.len();
+                bag.swap(0, n - 1);
+            }
+            self.bag = bag;
+        }
+        let Some(file) = self.bag.pop() else { return };
+        // A playlist of one repeats its track.
+        let looping = self.party_playlist_size() == 1;
+        self.party_last = file.clone();
+        self.start(&file, looping, self.data.menu_fade, now);
+    }
+
+    fn party_playlist_size(&self) -> usize {
+        let src: Vec<&String> = if self.data.party.playlist.is_empty() {
+            self.data.playlist.iter().map(|e| &e.file).collect()
+        } else {
+            self.data.party.playlist.iter().collect()
+        };
+        let mut seen: Vec<&String> = Vec::new();
+        for f in src {
+            if self.files.exists(f) && !seen.contains(&f) {
+                seen.push(f);
+            }
+        }
+        seen.len()
+    }
+
+    /// The party playlist's update, once a frame: the track after the one
+    /// that is near its end (the menu fade left), as the menu's.
+    fn party_frame(&mut self, now: f64) {
+        if !self.party || !self.playlist_on || self.screen != Screen::Match || self.last_stage_on {
+            return;
+        }
+        match self.party_music {
+            1 => {
+                let window = self.data.menu_fade * 1000.0;
+                let files = &self.files;
+                if !self.player.playing() || self.player.near_end_within(now, window, |f| files.length_ms(f)) {
+                    self.party_next(now);
+                }
+            }
+            // Changed while it played: off is silent, the original's
+            // start track loops.
+            m => {
+                self.playlist_on = false;
+                self.stop();
+                if m != 0 {
+                    self.mode_music(now);
+                }
+            }
+        }
+    }
+
     /// The menu update (3), once a frame while a menu screen is shown.
     pub fn menu_frame(&mut self, now: f64) {
         if self.paused {
@@ -260,6 +373,7 @@ impl CaMusic {
         if matches!(self.screen, Screen::Menu | Screen::Result) {
             self.menu_frame(now);
         }
+        self.party_frame(now);
         self.player.update(now);
     }
 
@@ -282,6 +396,19 @@ impl CaMusic {
         let Some((file, looping)) = self.data.mode_track(&self.mode, None).map(|(f, l)| (f.to_string(), l)) else {
             return;
         };
+        if self.party {
+            match self.party_music {
+                0 => return,
+                // The start track once; the playlist follows it.
+                1 => {
+                    self.stop();
+                    self.start(&file, false, 0.0, now);
+                    self.playlist_on = true;
+                    return;
+                }
+                _ => {}
+            }
+        }
         self.stop();
         self.start(&file, looping, 0.0, now);
     }
@@ -310,6 +437,7 @@ impl CaMusic {
     /// A map begins (or the world is entered without a loading screen):
     /// the per-map cue state is fresh.
     pub fn reset_map(&mut self) {
+        self.playlist_on = false;
         self.mode_music_done = false;
         self.qrt_end_played = false;
         self.capture_on = false;
@@ -388,6 +516,9 @@ impl CaMusic {
                 self.sound("last_stage_sound");
             }
             let f = self.data.cues.last_stage.clone();
+            if self.party && self.party_music == 0 {
+                return;
+            }
             if !self.current.eq_ignore_ascii_case(&f) {
                 self.stop();
                 self.start(&f, true, 0.0, now);
@@ -395,7 +526,12 @@ impl CaMusic {
         } else if n == 0 && self.last_stage_on {
             self.last_stage_on = false;
             self.stop();
-            if self.data.modes.get(&self.mode).is_some_and(|m| m.looping) {
+            if self.party && self.party_music != 2 {
+                // Back to the playlist, not the start track.
+                if self.party_music == 1 && self.playlist_on {
+                    self.party_next(now);
+                }
+            } else if self.data.modes.get(&self.mode).is_some_and(|m| m.looping) {
                 self.mode_music(now);
             }
         }
@@ -463,6 +599,7 @@ impl CaMusic {
     /// A party match is decided (its match-end screen): music stopped and
     /// paused; the screen plays the win or lose sound.
     pub fn party_end(&mut self) {
+        self.playlist_on = false;
         self.screen = Screen::Result;
         self.stop();
         self.paused = true;
@@ -477,6 +614,7 @@ impl CaMusic {
 
     /// Leaving a match from the in-game menu: stop.
     pub fn leave_match(&mut self) {
+        self.playlist_on = false;
         self.screen = Screen::Menu;
         self.reset_map();
         self.stop();
@@ -521,6 +659,7 @@ fn in_round(p: &rules::Phase) -> bool {
 /// and results.
 pub fn observe(m: &mut CaMusic, prev: &MusicFacts, now: &MusicFacts, ms: f64) {
     use rules::Phase;
+    m.party = now.party.is_some();
     if let Some(party) = &now.party {
         observe_party(m, prev, now, party, ms);
         return;
@@ -591,6 +730,7 @@ pub fn observe_party(m: &mut CaMusic, prev: &MusicFacts, now: &MusicFacts, party
     if party.music != Some(crate::game::GAME) {
         // Another game's music, or none: Combat Arms' is silent (and its
         // playlist doesn't run).
+        m.playlist_on = false;
         if m.player.playing() {
             m.stop();
         }

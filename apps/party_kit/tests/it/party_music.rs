@@ -104,3 +104,17 @@ fn a_protected_player_shows_and_takes_no_hit_from_either_games_guns() {
         sim.app.world_mut().get_mut::<Health>(b).unwrap().current = full;
     }
 }
+
+/// The `party_music` cvar (0 off, 1 playlist, 2 the original's loop) is
+/// on the party's console, defaults to the playlist and sets the music.
+#[test]
+fn the_party_music_cvar_defaults_to_the_playlist_and_sets_the_director() {
+    let mut sim = party();
+    let console = sim.app.world().resource::<chimera_core::console::Console>();
+    let cvar = console.cvar("party_music").expect("party_music").clone();
+    assert_eq!(cvar.default, "1");
+    assert_eq!((cvar.get)(sim.app.world_mut()).as_deref(), Some("1"));
+    (cvar.set)(sim.app.world_mut(), "2").unwrap();
+    assert_eq!(sim.app.world().resource::<CaMusic>().party_music, 2);
+    assert!((cvar.set)(sim.app.world_mut(), "3").is_err());
+}
