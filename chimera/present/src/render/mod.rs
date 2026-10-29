@@ -7,7 +7,8 @@
 //! what the simulation makes in play, drawn from its drawn-part requests
 //! (`bodies`, `loose`, `breakables`, `props`, `merge`: docs/ARCHITECTURE.md,
 //! "Drawn-part requests"); the effects, decals, water, shadows, culling,
-//! sky, light styles, monitor screens and view models; the order blended
+//! sky, light styles, monitor screens and view models; what every
+//! camera's frame costs (`cameras`); the order blended
 //! meshes draw in (`blend_order`); the materials
 //! (`world_material`, `prop_material`, `sprite_material`, `rope_material`,
 //! `probe_lit`, `fog`, the `materials` and `images` helpers) and their
@@ -17,6 +18,7 @@ use bevy::prelude::*;
 
 pub mod beams;
 pub mod blend_order;
+pub mod cameras;
 pub mod bodies;
 pub mod breakables;
 pub mod color_correction;
