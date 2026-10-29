@@ -23,7 +23,10 @@
 //!   game's, `WeaponIcons::mark`, else "HS"), victim; names in team
 //!   colours (a teammate's death green), the local player's in gold and
 //!   its rows outlined; a row
-//!   fades over its last second. Sized by the window's height.
+//!   fades over its last second. Sized by the window's height. Every row
+//!   is one fixed height; an icon sits in a line-tall box that centres it
+//!   (an image 90 % of the line tall, a glyph cut to fit, `icon_slot`), so
+//!   rows are equal with any icon or none.
 //! - **`SharedKillFeed`**: the app's flag that this feed is the one; the
 //!   games' own feeds (CS:S's death notices, Combat Arms' kill feed) and
 //!   the shell's fallback HUD's leave theirs out while it is in. Plain
@@ -40,7 +43,7 @@ use bevy::{prelude::*, window::PrimaryWindow};
 use super::{
     fonts::UiFonts,
     minigame_scoreboard::{GunNames, gun_name},
-    weapon_icons::{WeaponIcons, spawn_weapon_icon},
+    weapon_icons::{WeaponIcon, WeaponIcons, spawn_weapon_icon},
 };
 use crate::{
     core::{DamageKind, Died, Hitgroup, LocalPlayer, MapLoads, Team},
@@ -328,8 +331,8 @@ fn draw(
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     column_gap: px(6.0 * s),
-                    padding: UiRect::axes(px(7.0 * s), px(2.0 * s)),
-                    min_height: px(line),
+                    padding: UiRect::axes(px(7.0 * s), px(0.0)),
+                    height: px(line),
                     border: UiRect::all(px(if local { (1.5 * s).max(1.0) } else { 0.0 })),
                     ..default()
                 },
@@ -345,9 +348,7 @@ fn draw(
                 }
                 let game = e.weapon.and_then(|w| w.split_once(':')).map(|(g, _)| g);
                 match e.weapon.and_then(|w| icons.as_ref()?.icon(w)) {
-                    Some(icon) => {
-                        spawn_weapon_icon(r, &icon, icon_scale, line * 0.9, None);
-                    }
+                    Some(icon) => icon_slot(r, &icon, icon_scale, line, 0.9),
                     None => {
                         let what = fallback_word(e, |w| gun_name(w, names.as_deref(), catalog.as_deref()));
                         text(r, what, Color::srgb(0.78, 0.78, 0.8));
@@ -355,7 +356,7 @@ fn draw(
                 }
                 if e.headshot {
                     match game.and_then(|g| icons.as_ref()?.mark(g, HEADSHOT)) {
-                        Some(mark) => spawn_weapon_icon(r, &mark, icon_scale, line * 0.8, None),
+                        Some(mark) => icon_slot(r, &mark, icon_scale, line, 0.8),
                         None => text(r, "HS".into(), Color::srgb(1.0, 0.35, 0.3)),
                     }
                 }
@@ -365,6 +366,38 @@ fn draw(
             });
         }
     });
+}
+
+/// Spawns `icon` in a box as tall as the line, centring it vertically
+/// whatever its art: an image is `fill` of the line tall (width by its
+/// shape), a glyph's font is cut down when it would be taller than that.
+/// The row's height is fixed, so a line is as tall with an icon, without
+/// one or with a tall one (widths vary).
+fn icon_slot(r: &mut ChildSpawnerCommands, icon: &WeaponIcon, scale: f32, line: f32, fill: f32) {
+    let scale = fitted_scale(icon, scale, line * fill);
+    // An icon font's ink sits a little above its line's middle: nudged down.
+    let nudge = match icon {
+        WeaponIcon::Glyph { em, .. } => 0.16 * em * scale,
+        WeaponIcon::Image { .. } => 0.0,
+    };
+    r.spawn(Node {
+        height: px(line),
+        padding: UiRect::top(px(nudge)),
+        align_items: AlignItems::Center,
+        justify_content: JustifyContent::Center,
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|b| spawn_weapon_icon(b, icon, scale, line * fill, None));
+}
+
+/// `scale`, lowered so a glyph icon's size fits `room` pixels (an image
+/// is sized by the height it is given).
+pub fn fitted_scale(icon: &WeaponIcon, scale: f32, room: f32) -> f32 {
+    match icon {
+        WeaponIcon::Glyph { em, .. } if *em * scale > room => room / em,
+        _ => scale,
+    }
 }
 
 /// The words in a row's icon place when the gun has no icon: the gun's

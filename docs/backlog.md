@@ -27,9 +27,9 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
-- **The gun game's title names Dust II on every map.** On de_aztec the
-  panel reads "Gun Game: Dust II": the definition's title is fixed while
-  the map rotates. Show the map actually played.
+- **The gun game's title names Dust II on every map: fixed, confirm in a
+  playtest.** The definition's name is now "Gun Game: {map}", `{map}` the
+  map played ("Gun Game: Aztec"; `minigame::hud::shown_name`).
 - **Bots' generated nav reaches outside de_aztec.** Spawns no longer use
   it, but its 0.8 m jump ledges climb the walls onto the jungle outside,
   so a bot can still walk there. Bound the generated mesh to the map's
@@ -208,9 +208,9 @@ the user's go-ahead: no Actions runs unless asked.
   ends. view_models.md says so ("Grenade and sprint": the cocked and
   throw stages wait until sprint ends). Kept for parity; a party-mode
   option to throw while sprinting only if the user asks.
-- **Kill feed: Combat Arms gun icons sit at the top of the line.** The
-  generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
-  icons vertically, with every line the same height (widths may vary).
+- **Kill feed: Combat Arms gun icons sit at the top of the line: fixed,
+  confirm in a playtest.** Rows are one fixed height and each icon sits in
+  a line-tall centring box (`kill_feed::icon_slot`).
 - **Combat Arms guns' own sounds, scopes and models: audit** (2026-10-29,
   with the install's attribute data read: 2,298 weapons, 61 ours and
   2,237 copies; 1,996 have a `class` and can be given by Ultimate Gun
