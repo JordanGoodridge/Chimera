@@ -106,7 +106,7 @@ view_offset = [0.4, -0.6, 1.5]
 [hooks."combat_arms:effects"]
 ammo_kind = "bullet"
 impact = "BulletFmj"
-fire = "7.62mm"
+fire = "5.56mm"
 tracer = "MG01"
 hh_muzzle = "M4_HH_Muzz"
 fire_sound = "guns_snd_mg/m60/fire.wav"

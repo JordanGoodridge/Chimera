@@ -35,9 +35,18 @@
 //!   `ProjectileFX#` its ammo's `ProjectileFXName` names, its `Velocity`,
 //!   `Lifetime`, `DropVelocity`, `FireOffset`, `CanHitSameKind` and
 //!   thrown `Model`, `ModelScale`, `Skin#` in `combat_arms:grenade`;
-//!   `sound_values`: `MiscSound1..5` as `combat_arms:effects`
-//!   `misc_sounds` (the table made for a document without one) and the
-//!   grenade hook's `call_out` (`PlayAutoThrowSound` and `Guntype` 7); the
+//!   `effects_patch`: the weapon's own sounds and effects, never its
+//!   template's, in `combat_arms:effects` and `combat_arms:view_model`
+//!   (both made for a document without one: the crossbow, the grenades,
+//!   the MP5A4): `FireSnd`, `SilencedFireSnd1..10`, `DryFireSnd`,
+//!   `ReloadSnd1..3`, `SelectSnd`, `DeselectSnd`, `MiscSound1..5` with
+//!   `FireSndRadius`, `ReloadSndRadius` and `SelectSndRadius`, the muzzle
+//!   groups `PVMuzzleFXName`, `HHMuzzleFXName` and the flash-hider groups,
+//!   and the default ammo's `ImpactFXName`, `FireFXName` and
+//!   `TracerFXName` (a missing field: the spec's default, no sound or
+//!   effect; an empty impact or tracer name: `BulletFmj`, `Standard`;
+//!   a thrown weapon's ammo effects are the grenade hook's), and
+//!   `sound_values`: the grenade hook's `call_out` (`PlayAutoThrowSound` and `Guntype` 7); the
 //!   third-person `AniType`, `LowerAniType` and `HHSkin#` go to
 //!   `characters::records`): the record's value, or the spec's
 //!   built-in default when the install lacks it, never ours, and the
@@ -98,14 +107,18 @@
 //!   the template's stays), `AltVelocity`, the projectile record's
 //!   `FXName` and `FlySound` (unspecified: docs/backlog.md), a copied
 //!   flame weapon's fire keys (the flamethrower's, not read from its own
-//!   view model), a launcher ammo's `FireFXName`, `TripleShot*` timing,
+//!   view model), `TripleShot*` timing,
 
-//!   `ContinuousFire`, sounds and sound radii (but an impact projectile
-//!   weapon's fire sound), render styles,
+//!   `ContinuousFire`, render styles,
 //!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
 //!   and worn gear, the modification file's gear lists and per-slot
 //!   option fields.
+//! - An ammo's `FireFXName`, `TracerFXName` and `ImpactFXName` are names
+//!   only: the records come from our built-in tables (data/effects.toml,
+//!   the stock ones), and a name they lack (a water gun's, `Standard`) keeps
+//!   the template's value; an impact projectile weapon's impact record is
+//!   read from the install (`impact_record`).
 //! - Special functions in the modification file are read by name
 //!   (`InstDamage`, `Stun`, ...; targets `All`, `Player`, ...); a number
 //!   there is skipped (the spec doesn't say how numbers map).
@@ -617,22 +630,97 @@ pub fn is_skin_file(path: &str) -> bool {
     p.ends_with(".dtx") || p.ends_with(".spr")
 }
 
-/// The install weapon's sound fields: `MiscSound1..5` as the effects
-/// hook's `misc_sounds` (view-model `sound_key` 10 to 14; the grenade
-/// pin is the first: grenades.md Corrections (2026-10-27) C1) and, for
-/// the grenade hook, whether a release makes the team call-out
-/// (`PlayAutoThrowSound` on and `Guntype` 7).
+/// The install weapon's grenade hook value: whether a release makes the
+/// team call-out (`PlayAutoThrowSound` on and `Guntype` 7).
 fn sound_values(w: &WeaponRecord) -> Vec<Set> {
-    let mut out = Vec::new();
-    if w.misc_sounds.iter().any(|f| !f.is_empty()) {
-        let files = w.misc_sounds.iter().map(|f| Value::String(super::model::normalize(f))).collect();
-        out.push(set(&["hooks", super::effects::data::EFFECTS, "misc_sounds"], Value::Array(files)));
-    }
-    out.push(set(
+    vec![set(
         &["hooks", super::grenades::HOOK, "call_out"],
         w.play_auto_throw_sound && w.gun_type == THROWN_GUNTYPE,
-    ));
-    out
+    )]
+}
+
+/// A list of strings as normalized archive paths (or names), the trailing
+/// empty entries cut; `lead` empty entries first (the PV flash-hider
+/// groups are indexed by level, from 1).
+fn string_array(items: &[String], lead: usize, normalize: bool) -> Value {
+    let mut v: Vec<&String> = items.iter().collect();
+    while v.last().is_some_and(|s| s.is_empty()) {
+        v.pop();
+    }
+    let lead = if v.is_empty() { 0 } else { lead };
+    Value::Array(
+        std::iter::repeat_n(String::new(), lead)
+            .chain(v.into_iter().map(|s| if normalize { super::model::normalize(s) } else { s.clone() }))
+            .map(Value::String)
+            .collect(),
+    )
+}
+
+/// An effect name from an ammo record, as written into
+/// `combat_arms:effects`: `None` keeps what the document has. A missing
+/// key is no effect (""); a present but empty one is `empty_means`
+/// (effects_sounds.md, "Effect tables"); a name our built-in tables
+/// don't have keeps the template's (their records aren't read yet).
+fn effect_name(name: &Option<String>, empty_means: &str, known: impl Fn(&str) -> bool) -> Option<String> {
+    match name.as_deref() {
+        None => Some(String::new()),
+        Some(n) => {
+            let n = if n.is_empty() { empty_means } else { n };
+            if n.is_empty() || known(n) { Some(n.to_string()) } else { None }
+        }
+    }
+}
+
+/// The weapon's own sounds and effects (effects_sounds.md, "How effects
+/// are described as data" and 11), into `combat_arms:effects` and
+/// `combat_arms:view_model`, both made where the document has none (a
+/// copy would otherwise play its template's): its `FireSnd`,
+/// `SilencedFireSnd1..10`, `DryFireSnd`, `ReloadSnd1..3`, `SelectSnd`,
+/// `DeselectSnd`, `MiscSound1..5` with their radii, the muzzle groups
+/// (`PVMuzzleFXName`, `HHMuzzleFXName`, the flash-hider groups) and the
+/// default ammo's `ImpactFXName`, `FireFXName` and `TracerFXName`. A
+/// missing field is the spec's default: no sound, no group, no effect.
+/// A thrown weapon's ammo effects are the grenade hook's.
+fn effects_patch(doc: &mut Table, w: &WeaponRecord, ammo: Option<&AmmoRecord>) {
+    const EFFECTS: &str = super::effects::data::EFFECTS;
+    const VIEW: &str = "combat_arms:view_model";
+    let Some(Value::Table(hooks)) = doc.get_mut("hooks") else { return };
+    let tables = super::effects::data::CaFxTables::built_in();
+    let text = |s: &str| Value::String(super::model::normalize(s));
+    let made = !hooks.contains_key(EFFECTS);
+    let Value::Table(fx) = hooks.entry(EFFECTS).or_insert_with(|| Value::Table(Table::new())) else { return };
+    if made && w.gun_type == THROWN_GUNTYPE {
+        fx.insert("ammo_kind".into(), Value::String("thrown".into()));
+    }
+    fx.insert("fire_sound".into(), text(&w.fire_snd));
+    fx.insert("fire_radius".into(), Value::Float(f64::from(w.fire_snd_radius)));
+    fx.insert("silenced_sounds".into(), string_array(&w.silenced_fire_snd, 0, true));
+    fx.insert("dry_fire_sound".into(), text(&w.dry_fire_snd));
+    fx.insert("reload_sounds".into(), string_array(&w.reload_snd, 0, true));
+    fx.insert("select_sound".into(), text(&w.select_snd));
+    fx.insert("deselect_sound".into(), text(&w.deselect_snd));
+    fx.insert("misc_sounds".into(), string_array(&w.misc_sounds, 0, true));
+    fx.insert("reload_radius".into(), Value::Float(f64::from(w.reload_snd_radius)));
+    fx.insert("select_radius".into(), Value::Float(f64::from(w.select_snd_radius)));
+    fx.insert("hh_muzzle".into(), Value::String(w.hh_muzzle_fx.clone()));
+    fx.insert("hh_flash_hider".into(), string_array(&w.hh_flash_hider_fx, 0, false));
+    if w.gun_type != THROWN_GUNTYPE
+        && let Some(a) = ammo
+    {
+        let names = [
+            ("impact", effect_name(&a.impact_fx, "BulletFmj", |n| tables.impact(n).is_some())),
+            ("fire", effect_name(&a.fire_fx, "", |n| tables.fire(n).is_some())),
+            ("tracer", effect_name(&a.tracer_fx, "Standard", |n| tables.tracer(n).is_some())),
+        ];
+        for (key, name) in names {
+            if let Some(n) = name {
+                fx.insert(key.into(), Value::String(n));
+            }
+        }
+    }
+    let Value::Table(view) = hooks.entry(VIEW).or_insert_with(|| Value::Table(Table::new())) else { return };
+    view.insert("muzzle_fx".into(), Value::String(w.pv_muzzle_fx.clone()));
+    view.insert("flash_hider_fx".into(), string_array(&w.pv_flash_hider_fx, 1, false));
 }
 
 /// `Guntype` of the thrown weapons.
@@ -825,15 +913,8 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
     if let Some(r) = projectile_range {
         apply(doc, &set(&["hitscan", "range"], r));
     }
-    // Its sounds: the effects hook is made for a weapon whose document
-    // has none (the grenades') when the record names misc sounds.
-    if w.misc_sounds.iter().any(|f| !f.is_empty())
-        && let Some(Value::Table(hooks)) = doc.get_mut("hooks")
-    {
-        hooks
-            .entry(super::effects::data::EFFECTS)
-            .or_insert_with(|| Value::Table(Table::new()));
-    }
+    // Its own sounds and effects, not its template's.
+    effects_patch(doc, w, file.default_ammo(w));
     for s in sound_values(w) {
         apply(doc, &s);
     }

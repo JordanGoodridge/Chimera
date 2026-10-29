@@ -254,7 +254,11 @@ the user's go-ahead: no Actions runs unless asked.
   `12Gauge_R`, not `_G`. The R870 has no deselect sound.
 
   Fixes, most audible or visible first:
-  1. Read `FireSnd`, `SilencedFireSnd1..10`, `DryFireSnd`,
+  1. (Done 2026-10-29, with 4: `effects_patch` in `game/data.rs`; the
+     heavy `heavy::own_sounds` finds all 2,225 weapons naming a `FireSnd`
+     playing it; ammo FX names unknown to our built-in tables, e.g.
+     `Standard`, keep the template's: their `FX.TXT` records aren't read.)
+     Read `FireSnd`, `SilencedFireSnd1..10`, `DryFireSnd`,
      `ReloadSnd1..3`, `SelectSnd`, `DeselectSnd`, `PVMuzzleFXName`,
      `HHMuzzleFXName` per weapon, and the ammo's `ImpactFXName`,
      `FireFXName` and `TracerFXName` with effects_sounds.md's
@@ -279,7 +283,7 @@ the user's go-ahead: no Actions runs unless asked.
      say the cycle is the fire animation's length. Reading 2,000 models
      at merge time is too slow, so it needs a small plan (at give time,
      or cached).
-  4. Correct our documents (M60 and R870 FireFX, R870 deselect, MP5A4
+  4. (Done 2026-10-29, with 1: the install gives them, and the built-in values are fixed.) Correct our documents (M60 and R870 FireFX, R870 deselect, MP5A4
      and Dragunov muzzle flash). Item 1 makes this automatic with the
      install; the built-in values still matter without it.
   5. `DotSightName` reticles. Ready to implement: hud_crosshair.md.

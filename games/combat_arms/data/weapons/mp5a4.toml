@@ -90,6 +90,12 @@ silenced_radius = [1200, 1200]
 [hooks."combat_arms:handling"]
 move_penalty = 0.07
 
+# view_models.md 4, 9, 10 (per-weapon placement): `PVMuzzleFXName` (the
+# install gives `MuzzlePos`; placeholders without it).
+[hooks."combat_arms:view_model"]
+muzzle_fx = "AK47_pv_muzz"
+shells = true
+
 # effects_sounds.md, "How effects are described as data" and 11: the
 # ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
 # third-person muzzle group and the weapon's sounds (files inside the

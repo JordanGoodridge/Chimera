@@ -109,6 +109,15 @@ shell_model = "guns_sc/models/12gauge.ltb"
 shell_skin = "guns_sc/skins/12gauge_g.dtx"
 shell_scale = 0.5
 
+# The Remington 870's own record (the audit of 2026-10-29; the spec lists
+# only the stock `12Gauge_G`): the same casing, skin PLACEHOLDER.
+[fire."12Gauge_R"]
+fx = "test"
+shells = true
+shell_model = "guns_sc/models/12gauge.ltb"
+shell_skin = "guns_sc/skins/12gauge_g.dtx"
+shell_scale = 0.5
+
 [fire.FireSoundOnly]
 fx = ""
 shells = false
