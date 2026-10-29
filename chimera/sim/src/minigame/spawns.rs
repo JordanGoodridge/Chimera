@@ -8,7 +8,8 @@
 //!   own file or volumes; else one generated from its collision,
 //!   `map::nav_gen`, with a walking player's step: a mesh someone else
 //!   generated, `NavMesh::generated`, is not used, since bots' own climbs
-//!   0.8 m ledges and so left de_aztec over its walls), a grid
+//!   0.8 m ledges a player can't, and once left de_aztec over its walls),
+//!   a grid
 //!   about `SPOT_GRID` m apart in the areas that can be walked to from the
 //!   spawn points and back (the mesh's main connected region), in a
 //!   seeded random order. Each spot is checked (`spot_ok`): a floor under
@@ -243,13 +244,10 @@ pub fn candidates(world: &mut World) -> Vec<Vec3> {
 }
 
 /// The walker that makes the spots' mesh when the map has none of its
-/// own: a player walking (the default step), a little wider than one.
+/// own: a player walking (the default step), a little wider than one
+/// (`nav_gen::walking_player`).
 pub fn walker() -> NavGenParams {
-    NavGenParams {
-        radius: RADIUS,
-        max_drop: 3.0,
-        ..default()
-    }
+    nav_gen::walking_player()
 }
 
 /// The spots of the loaded map, at most `cap` (`ready` unset; empty

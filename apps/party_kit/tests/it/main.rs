@@ -39,4 +39,5 @@ mod heavy {
     mod cross_hits;
     mod css_map_moves;
     mod impacts;
+    mod nav_bounds;
 }

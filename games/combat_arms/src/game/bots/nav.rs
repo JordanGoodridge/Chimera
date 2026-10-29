@@ -1,7 +1,8 @@
 //! What the bots move on (specs/combat_arms/bots.md 3): the map's
 //! navigation areas (Chimera's `NavMesh`: the map's hand-placed AI
 //! volumes, `map_ai`, or where it has none generated from its collision,
-//! `chimera_world::map::nav_gen`), the volume path
+//! `chimera_world::map::nav_gen`, bounded to the clusters a walking player
+//! reaches on a map with visibility data, `brain::ensure_nav`), the volume path
 //! search with its squared-distance costs, and the straight walk test the
 //! attack moves and the sight shortcut use.
 //!
