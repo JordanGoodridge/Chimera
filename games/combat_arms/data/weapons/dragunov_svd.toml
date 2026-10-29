@@ -97,6 +97,12 @@ move_penalty = 0.24
 [hooks."combat_arms:hud"]
 disable_crosshair = true
 
+# view_models.md 4, 9, 10 (per-weapon placement): `PVMuzzleFXName` (the
+# install gives `MuzzlePos`; placeholders without it).
+[hooks."combat_arms:view_model"]
+muzzle_fx = "AK47_pv_muzz"
+shells = true
+
 # effects_sounds.md, "How effects are described as data" and 11: the
 # ammo's ImpactFX, FireFX and TracerFX records (data/effects.toml), the
 # third-person muzzle group and the weapon's sounds (files inside the
