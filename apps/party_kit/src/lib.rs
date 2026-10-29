@@ -69,6 +69,9 @@
 //!   short flash on a rung's swap and a puff at others' bodies:
 //!   `chimera_client::client::swap_effect`).
 //!
+//! - The host's settings and the vote to skip the map (`host`): the
+//!   Escape menu's server side (`esc_menu`, with `present`).
+//!
 //! - A gun game's rung extras (`chimera_sim::minigame::ladder::RungExtras`:
 //!   Combat Arms' rungs' fitted parts, character and melee weapon,
 //!   `combat_arms::game::rungs`) are seeded anew at every launch of the
@@ -280,9 +283,12 @@ impl Plugin for PartyPartsPlugin {
             bots.gun_types.extend(bot_gun_types());
         }
         even_footsteps(app);
+        // The host's settings and the skip-map vote (the Escape menu's).
+        host::build(app);
     }
 
     fn finish(&self, app: &mut App) {
+        host::finish(app);
         // The guns a ladder may hand out that the table doesn't name (Combat
         // Arms' launchers, its install's weapons): their AI row by class.
         let classed: Vec<(String, chimera_core::game_parts::GunClass)> = app
@@ -505,9 +511,12 @@ pub fn ids() -> Vec<String> {
         .collect()
 }
 
+pub mod host;
 pub mod server;
 #[cfg(feature = "present")]
 pub mod controls;
+#[cfg(feature = "present")]
+pub mod esc_menu;
 #[cfg(feature = "present")]
 mod client;
 #[cfg(feature = "present")]

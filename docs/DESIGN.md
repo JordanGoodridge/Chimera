@@ -526,6 +526,32 @@ game's:
   flashes and fades over 0.3 s while the new gun draws, and another
   player's body gets a brief puff, generic, no game's look.
 
+### The party apps' Escape menu
+
+Ultimate Gun Game and Lucker Party have a menu of their own
+(`party_kit::esc_menu`), not one game's: Combat Arms' in-game menu
+yields Esc to it (`chimera_client::client::front_end::AppMenu`), and it
+draws above everything but the console, the match-end screen and the
+Tab scoreboard included. While it is open the game gets no input (the
+shell sees a menu open; keys pressed are captured until let go). Its
+pages are data (apps/party_kit/data/options.toml, host_settings.toml):
+
+- **Options** set the player's own cvars (video, audio, mouse, the
+  party's opt-in settings), saved in the config; "Binds" is the
+  Controls page.
+- **Host settings**, for the host only (a listen server's player; RCON
+  admins later): existing server cvars that apply at once (bots,
+  `party_even_footsteps`, votes allowed) and host overrides of every
+  minigame's definition (`chimera_sim::minigame::overrides`: rung extras
+  by part, demote on suicide, the knife finale, the map rotation,
+  spawn protection), which apply from the next match, as the page says.
+- **Vote to skip the map** is one of the engine's votes (`net::vote`,
+  issue `skipmap`): server-decided, a majority of the people (bots never
+  vote), 20 s, one at a time, a wait per caller; passed, the server
+  goes to the rotation's next map. Everyone sees a small vote panel
+  (F1 yes, F2 no).
+- No scoreboard entry (Tab) and no Disconnect until there is a main menu.
+
 ## Multiplayer
 
 Same principles as the main game: the server owns the loadout, rules and

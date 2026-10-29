@@ -45,6 +45,8 @@
 //!   `moments::MinigameMoments` is the match's moments for a game's music
 //!   director (the start of play, the last rung, the respawn countdown,
 //!   the result), the game the definition's `music` picks.
+//! - The host's settings (`overrides::MinigameOverrides`, cvars an app
+//!   registers): keys of any definition set when its match starts.
 //! - Console: `minigames` (the definitions, the playing one marked),
 //!   `minigame <id>`, `minigame_load <file>`, `minigame_status`,
 //!   `minigame_restart`.
@@ -85,6 +87,7 @@ pub mod def;
 pub mod hud;
 pub mod ladder;
 pub mod moments;
+pub mod overrides;
 pub mod results;
 pub mod rotation;
 pub mod runtime;
@@ -316,10 +319,13 @@ pub fn weapon(def: &MinigameDef, catalog: &WeaponCatalog, id: &str) -> Result<&'
         .ok_or_else(|| format!("weapon {id}: not in the weapon catalogue"))
 }
 
-/// Start minigame `id`: its definition checked and made the active one,
-/// the gameplay switched to it, a fresh match that every player joins
-/// (a `MatchHold` lifted).
+/// Start minigame `id`: its definition (with the host's overrides,
+/// `overrides`) checked and made the active one, the gameplay switched to
+/// it, a fresh match that every player joins (a `MatchHold` lifted).
 pub fn start(world: &mut World, id: &str) -> Result<&'static MinigameDef, String> {
+    if !client(world) {
+        overrides::apply(world, id);
+    }
     let def = begin(world, id, true)?;
     world.remove_resource::<MatchHold>();
     Ok(def)

@@ -38,7 +38,7 @@ use crate::net_party::{failure, party_and};
 
 /// A two-rung ladder on a pool of two maps, short enough to finish in a
 /// test.
-const ROTATING: &str = r#"
+pub(crate) const ROTATING: &str = r#"
 id = "test:rotating"
 name = "Rotating ladder"
 players = { min = 2, max = 8 }
@@ -61,15 +61,15 @@ ladder = ["cs_source:weapon_deagle", "cs_source:weapon_ak47"]
 /// The levels the server was asked to change to (the test's
 /// `changelevel`).
 #[derive(Resource, Default)]
-struct Levels(Vec<String>);
+pub(crate) struct Levels(pub Vec<String>);
 
 /// Frames a test map takes to load on the server and on a client.
-const SERVER_LOAD: u32 = 30;
+pub(crate) const SERVER_LOAD: u32 = 30;
 const CLIENT_LOAD: u32 = 90;
 
 /// A test map loading here: its id and the frames left.
 #[derive(Resource)]
-struct FakeLoad(String, u32);
+pub(crate) struct FakeLoad(pub String, pub u32);
 
 /// A map's load done (`MapFile` for the handshake, a map load counted),
 /// as the game's loader leaves it (no world: the test's maps are empty).
@@ -84,7 +84,7 @@ fn loaded(world: &mut World, map: &str) {
 /// The server's `changelevel` as the party server's: the map's name at
 /// once (its clients hear "changing level"), the map in `SERVER_LOAD`
 /// frames later with a fresh game (`party_kit::server::swap_map`).
-fn server_loads(world: &mut World) {
+pub(crate) fn server_loads(world: &mut World) {
     let Some(FakeLoad(map, left)) = world.remove_resource::<FakeLoad>() else { return };
     if left > 0 {
         world.insert_resource(FakeLoad(map, left - 1));
@@ -99,7 +99,7 @@ fn server_loads(world: &mut World) {
 
 /// A client loads what its handshake asks for (`NetEvent::LoadMap`)
 /// `CLIENT_LOAD` frames later.
-fn client_loads(world: &mut World, mut cursor: Local<MessageCursor<NetEvent>>) {
+pub(crate) fn client_loads(world: &mut World, mut cursor: Local<MessageCursor<NetEvent>>) {
     let asked: Vec<String> = cursor
         .read(world.resource::<Messages<NetEvent>>())
         .filter_map(|e| match e {

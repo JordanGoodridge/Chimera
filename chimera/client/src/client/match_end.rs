@@ -223,6 +223,10 @@ impl MatchEndPart {
     }
 }
 
+/// Where it draws: over the HUDs, under the Tab scoreboard
+/// (`minigame_scoreboard::SCOREBOARD_Z`) and an app's menu.
+pub const MATCH_END_Z: i32 = 75;
+
 const TEXT: Color = Color::srgb(0.95, 0.95, 0.95);
 const DIM: Color = Color::srgb(0.7, 0.7, 0.72);
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.25);
@@ -275,7 +279,7 @@ fn spawn(mut commands: Commands) {
         .spawn((
             MatchEndRoot,
             Visibility::Hidden,
-            GlobalZIndex(75),
+            GlobalZIndex(MATCH_END_Z),
             BackgroundColor(Color::srgba(0.02, 0.02, 0.03, 0.82)),
             Node {
                 position_type: PositionType::Absolute,

@@ -1,0 +1,84 @@
+# The host's settings: the Escape menu's "Host settings" page (shown to the
+# host only) and the server cvars behind them (party_kit::host).
+#
+# Each [[setting]]: its label, the cvar it sets on the server, and either
+# `choices` (value, label; cycled by a click) or `range` (min, max, step).
+# `key` makes the cvar a host override of every minigame's definition
+# (chimera_sim::minigame::overrides: that TOML key set when a match
+# starts; "" is the minigame's own value), so it applies from the next
+# match; without `key` the cvar is an existing one that applies at once
+# (`live = true`).
+
+[[setting]]
+label = "Bots"
+cvar = "MaxPlayer"
+live = true
+range = [0, 15, 1]
+
+[[setting]]
+label = "Even footsteps"
+cvar = "party_even_footsteps"
+live = true
+choices = [["0", "Each game's own"], ["1", "One profile (CS:S's)"]]
+
+[[setting]]
+label = "Skip-map votes"
+cvar = "sv_allow_votes"
+live = true
+choices = [["1", "Allowed"], ["0", "Off"]]
+
+[[setting]]
+label = "Rung extras: attachments"
+cvar = "mp_rung_extras_attachments"
+key = "rules.rung_extras.attachments"
+help = "A gun game's rungs draw fitted parts for their guns (true or false)."
+choices = [["", "Minigame's"], ["true", "On"], ["false", "Off"]]
+
+[[setting]]
+label = "Rung extras: characters"
+cvar = "mp_rung_extras_character"
+key = "rules.rung_extras.character"
+help = "A gun game's rungs draw a character for everyone on them (true or false)."
+choices = [["", "Minigame's"], ["true", "On"], ["false", "Off"]]
+
+[[setting]]
+label = "Rung extras: melee"
+cvar = "mp_rung_extras_melee"
+key = "rules.rung_extras.melee"
+help = "A gun game's rungs draw a melee weapon of their own (true or false)."
+choices = [["", "Minigame's"], ["true", "On"], ["false", "Off"]]
+
+[[setting]]
+label = "Demote on suicide"
+cvar = "mp_demote_on_suicide"
+key = "rules.demote_on_suicide"
+help = "A suicide, fall or `kill` costs a rung (true or false)."
+choices = [["", "Minigame's"], ["true", "On"], ["false", "Off"]]
+
+[[setting]]
+label = "Knife finale"
+cvar = "mp_knife_finale"
+key = "rules.knife_finale"
+help = "A last rung of the knife alone (true or false)."
+choices = [["", "Minigame's"], ["true", "On"], ["false", "Off"]]
+
+[[setting]]
+label = "Map rotation"
+cvar = "mp_map_rotation"
+key = "rotation"
+help = "How the next map is picked: random or in_turn."
+choices = [["", "Minigame's"], ["random", "Random"], ["in_turn", "In turn"]]
+
+[[setting]]
+label = "Avoid recent maps"
+cvar = "mp_avoid_recent"
+key = "avoid_recent"
+help = "A random rotation skips the last this many maps played."
+choices = [["", "Minigame's"], ["0", "0"], ["3", "3"], ["5", "5"], ["10", "10"]]
+
+[[setting]]
+label = "Spawn protection"
+cvar = "mp_spawn_protection"
+key = "spawn.respawn.protection"
+help = "Seconds a respawned player can't be hurt (ended by firing)."
+choices = [["", "Minigame's"], ["0", "Off"], ["1", "1 s"], ["1.5", "1.5 s"], ["2", "2 s"], ["3", "3 s"]]
