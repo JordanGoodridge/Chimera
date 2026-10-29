@@ -67,10 +67,12 @@ the user's go-ahead: no Actions runs unless asked.
   game, and leaves with the reason if its registry still differs or a
   set is too big to send (4 MB packed; the install's weapons pack to
   ~280 KB from 14.4 MB). Models and sounds are still the client's own.
-  Gear records aren't sent yet (multiplayer.md "Server data documents").
+  The gear and perk records go too (`combat_arms:gear`, net34), so a
+  vest's movement penalty and reload and select bonuses agree.
   Tests: combat_arms `server_docs` (0 prediction errors on a copy's
   burst after the documents came, the same clip; nothing sent to a
-  client with the same data; refusals).
+  client with the same data; refusals),
+  `weapon_timings::a_vests_rates_shorten_the_reload_and_draw_on_both_sides`.
 - **The gun game's title names Dust II on every map: fixed, confirm in a
   playtest.** The definition's name is now "Gun Game: {map}", `{map}` the
   map played ("Gun Game: Aztec"; `minigame::hud::shown_name`).
@@ -407,7 +409,9 @@ the user's go-ahead: no Actions runs unless asked.
   3. (Done 2026-10-29: `weapons::timing`, the `combat_arms:timing` hook
      on every copied gun reads its view model when first built, server
      and client alike; `FireAniRate` in every weapon's inventory table;
-     plan and open questions: docs/plans/active/ca-weapon-timings.md.)
+     plan and open questions: docs/plans/active/ca-weapon-timings.md;
+     part 2, the vest's and sets' reload, draw and fire rates in the
+     weapon's own times, done the same day: `gear::CaGearRates`.)
      Take each copy's rate of fire, reload and draw from its own view
      model's animations (`fire_0`, `reload` or the shell timings,
      `select`; at rate 1 + `FireAniRate`), not the template's, and write

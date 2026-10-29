@@ -203,6 +203,9 @@ pub fn push(world: &mut World, e: Entity, bytes: &[u8]) {
     if let (Some((start, insert, finish)), Some(mut s)) = (v.shell, e.get_mut::<ShellReload>()) {
         (s.start, s.insert, s.finish) = (start, insert, finish);
     }
+    if let (Some(shell), Some(mut s)) = (v.shell, e.get_mut::<CaAttachSlots>()) {
+        s.stock.shell = Some(shell);
+    }
     if let (Some(d), Some(mut w)) = (v.draw, e.get_mut::<Weapon>()) {
         w.draw_time = d;
     }
@@ -243,7 +246,7 @@ pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
     if let (Some(r), Some(mut m)) = (t.reload, e.get_mut::<Magazine>()) {
         m.reload_time = r;
     }
-    if let Some(mut s) = e.get_mut::<ShellReload>() {
+    let shell = e.get_mut::<ShellReload>().map(|mut s| {
         if let Some(p) = t.pre_reload {
             s.start = p;
         }
@@ -253,6 +256,10 @@ pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
         if let Some(p) = t.post_reload {
             s.finish = p;
         }
+        (s.start, s.insert, s.finish)
+    });
+    if let (Some(shell), Some(mut s)) = (shell, e.get_mut::<CaAttachSlots>()) {
+        s.stock.shell = Some(shell);
     }
     if let (Some(sel), Some(mut w)) = (t.select, e.get_mut::<Weapon>()) {
         w.draw_time = sel / animation_rate(1.0 + select_rate);

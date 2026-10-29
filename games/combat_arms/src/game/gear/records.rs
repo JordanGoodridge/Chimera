@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use lithtech_formats::attributes::{Document, Section};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::game::weapons::{Gear, Protection};
 
@@ -29,7 +29,7 @@ fn standing_mass() -> f32 {
 }
 
 /// One entry of a piece (`ProtectionType{i}` with its four fractions).
-#[derive(Deserialize, Clone, Copy, Debug, Default)]
+#[derive(Deserialize, Clone, Copy, Debug, Default, Serialize)]
 #[serde(deny_unknown_fields)]
 struct EntryDef {
     ty: i32,
@@ -42,7 +42,7 @@ struct EntryDef {
     #[serde(default)]
     leg: f32,
     /// Sets the four.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     all: Option<f32>,
     #[serde(default = "yes")]
     consumable: bool,
@@ -63,7 +63,7 @@ impl EntryDef {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PieceDef {
     id: i32,
@@ -76,7 +76,7 @@ struct PieceDef {
     protects: Vec<EntryDef>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct VestDef {
     id: i32,
@@ -104,7 +104,7 @@ struct VestDef {
     select_ani_rate: f32,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct WornDef {
     id: i32,
@@ -120,7 +120,7 @@ struct WornDef {
     max_stamina: f32,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MaskDef {
     ids: Vec<i32>,
@@ -131,7 +131,7 @@ struct MaskDef {
     max_stamina: f32,
 }
 
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModSlot {
     Head,
@@ -139,7 +139,7 @@ pub enum ModSlot {
     Vest,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ModDef {
     id: i32,
@@ -156,7 +156,7 @@ struct ModDef {
 }
 
 /// A perk's kind (section 13).
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PerkKind {
     Passive,
@@ -164,7 +164,7 @@ pub enum PerkKind {
     Mode,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PerkDef {
     #[serde(rename = "type")]
@@ -177,7 +177,7 @@ struct PerkDef {
     values: BTreeMap<String, toml::Value>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ItemDef {
     no: i32,
@@ -185,7 +185,7 @@ struct ItemDef {
 }
 
 /// One effect of a set tier (section 12).
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SetEffect {
     /// `EffectType`.
@@ -200,7 +200,7 @@ pub struct SetEffect {
     pub locations: Vec<u8>,
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SetTier {
     /// `ItemCount{j}`: the piece count that earns it.
@@ -210,7 +210,7 @@ pub struct SetTier {
 }
 
 /// `SetItem#`: its items and tiers.
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SetDef {
     #[serde(default)]
@@ -220,13 +220,18 @@ pub struct SetDef {
     pub tier: Vec<SetTier>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 struct File {
+    /// How many gear records the data has (`GearData::piece_count`);
+    /// absent: the highest piece id + 1. The written document has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    piece_count: Option<usize>,
     piece: Vec<PieceDef>,
     vest: Vec<VestDef>,
     head: Vec<WornDef>,
     goggle: Vec<WornDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     worldcup_mask: Option<MaskDef>,
     backpack: Vec<WornDef>,
     gear_mod: Vec<ModDef>,
@@ -312,7 +317,7 @@ impl PerkRecord {
 }
 
 /// Every record of the gear and perk systems.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct GearData {
     pub pieces: HashMap<i32, Piece>,
     pub vests: HashMap<i32, Vest>,
@@ -439,8 +444,120 @@ impl GearData {
             data.items.insert(i.no, i.weapon.clone());
         }
         data.sets = file.set;
-        data.piece_count = data.pieces.keys().max().map_or(0, |&m| m as usize + 1);
+        data.piece_count = file
+            .piece_count
+            .unwrap_or_else(|| data.pieces.keys().max().map_or(0, |&m| m as usize + 1));
         Ok(data)
+    }
+
+    /// This data as one gear document (data/gear.toml's format, records
+    /// by id): `parse` reads it back as this data. What a server sends a
+    /// client whose own gear data differs (`data::served::GEAR`); the same
+    /// data writes the same text on every machine.
+    pub fn to_doc(&self) -> String {
+        fn sorted<'a, T: 'a>(m: impl IntoIterator<Item = (&'a i32, &'a T)>) -> Vec<(i32, &'a T)> {
+            let mut v: Vec<(i32, &T)> = m.into_iter().map(|(k, v)| (*k, v)).collect();
+            v.sort_by_key(|(k, _)| *k);
+            v
+        }
+        let worn = |(id, w): (i32, &Worn)| WornDef {
+            id,
+            name: w.name.clone(),
+            gear: w.gear,
+            move_penalty: w.move_penalty,
+            dash_speed: w.dash_speed,
+            max_stamina: w.max_stamina,
+        };
+        let mut items: Vec<ItemDef> = self
+            .items
+            .iter()
+            .map(|(no, weapon)| ItemDef {
+                no: *no,
+                weapon: weapon.clone(),
+            })
+            .collect();
+        items.sort_by_key(|i| i.no);
+        let file = File {
+            piece: sorted(&self.pieces)
+                .into_iter()
+                .map(|(id, p)| PieceDef {
+                    id,
+                    name: p.name.clone(),
+                    armor: p.armor,
+                    health: p.health,
+                    protects: p
+                        .gear
+                        .protects
+                        .iter()
+                        .map(|e| EntryDef {
+                            ty: e.damage_type,
+                            head: e.head,
+                            torso: e.torso,
+                            arm: e.arm,
+                            leg: e.leg,
+                            all: None,
+                            consumable: e.consumable,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            vest: sorted(&self.vests)
+                .into_iter()
+                .map(|(id, v)| VestDef {
+                    id,
+                    name: v.name.clone(),
+                    gear: v.gear,
+                    max_armor: v.max_armor,
+                    max_hp: v.max_hp,
+                    move_penalty: v.move_penalty,
+                    dash_speed: v.dash_speed,
+                    max_stamina: v.max_stamina,
+                    mass: v.mass,
+                    figure: v.figure,
+                    reload_ani_rate: v.reload_ani_rate,
+                    select_ani_rate: v.select_ani_rate,
+                })
+                .collect(),
+            head: sorted(&self.heads).into_iter().map(worn).collect(),
+            goggle: sorted(&self.goggles).into_iter().map(worn).collect(),
+            worldcup_mask: None,
+            backpack: sorted(&self.backpacks).into_iter().map(worn).collect(),
+            gear_mod: sorted(&self.mods)
+                .into_iter()
+                .map(|(id, m)| ModDef {
+                    id,
+                    name: m.name.clone(),
+                    slot: m.slot,
+                    gear: m.gear,
+                    move_penalty: m.move_penalty,
+                    dash_speed: m.dash_speed,
+                    max_stamina: m.max_stamina,
+                })
+                .collect(),
+            perk: self
+                .perks
+                .iter()
+                .map(|p| PerkDef {
+                    ty: p.ty,
+                    name: p.name.clone(),
+                    slots: p.slots,
+                    items: p.items.clone(),
+                    kind: p.kind,
+                    values: p
+                        .values
+                        .iter()
+                        .map(|(k, [a, b])| {
+                            let pair = vec![toml::Value::Float(f64::from(*a)), toml::Value::Float(f64::from(*b))];
+                            (k.clone(), toml::Value::Array(pair))
+                        })
+                        .collect(),
+                })
+                .collect(),
+            item: items,
+            set: self.sets.clone(),
+            piece_count: Some(self.piece_count),
+        };
+        toml::to_string(&file).expect("gear records serialize")
     }
 
     /// The built-in data.

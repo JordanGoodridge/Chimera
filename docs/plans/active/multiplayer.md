@@ -1745,6 +1745,12 @@ SHA-256 of every weapon id in registry order, and their count); new
 messages after `WeaponParams`: `DocsRequest` (client), `DocsChunk` and
 `DocsDenied` (server), ordered.
 
+### net34 (2026-10-29)
+
+A new server data set, `combat_arms:gear` (the gear and perk records as
+one gear.toml-format document, `GearData::to_doc`): an older client
+doesn't know the set the manifest offers.
+
 ## Server-pushed weapon parameters
 
 The seam: a game registers a codec by name (`weapon::params`,
@@ -1774,8 +1780,8 @@ another install version:
 | Copies' record numbers (clip size, `FireAniRate`, spread, recoil, alt modes) | `ATTRIBUTES.rez` | **Sent**: in the weapon documents | none left |
 | Attachment records' terms (rates, spread, recoil, clip) | built-in + the install's mods file by name | **Sent** when they differ (`combat_arms:attachments`; a record's index is its id on the network) | none left |
 | Movement (body type) | `ATTRIBUTES.rez` + built-in | **Sent** when it differs (`combat_arms:movement`) | none left |
-| Gear records (vest movement penalty, armour) | `ATTRIBUTES.rez` + built-in | No (armour replicates; the penalty is derived) | Medium, another version only: movement corrections. Not a document yet: `GearData` is built from the install's records with no writer back to data/gear.toml's format; a codec per character (an own-state part, `net::parts`) or a writer if seen |
-| A rung body's look and gear | the install's character data | Body id: yes; its gear: derived | Low: same as gear above |
+| Gear records (vest movement penalty, armour, `ReloadAniRate` / `SelectAniRate`, set effects) | `ATTRIBUTES.rez` + built-in | **Sent** when they differ (`combat_arms:gear`: `GearData::to_doc`, net34); the rates then derived on both sides from the replicated look and loadout (`gear::CaGearRates`) | none left |
+| A rung body's look and gear | the install's character data | Body id: yes; its gear: derived from the sent gear records | none left |
 | Hit spheres, body and held models | install models | Not needed: hits are the server's (lag compensated, the stock rig on a dedicated server) | none for hits; looks only |
 | Ladders, volumes, map props | the map file | Map hash checked at join | none (props don't collide) |
 | Projectiles (launchers, grenades) | records | The server's `NetItem`s | none |
@@ -1792,11 +1798,12 @@ seam: a game registers each derived data as a named set of documents
 from, in the order that matters, and how a client puts another set in
 (`DocApply::Weapons`: `weapon::data::replace_weapon_set`, the set's
 weapons replaced at the same registry position; `DocApply::With`: the
-game's function replacing its resources). Combat Arms registers three
+game's function replacing its resources). Combat Arms registers four
 (`data::served`): `combat_arms:weapons` (the merged documents,
 `CaDataInner::weapon_docs`), `combat_arms:attachments` (`CaModTable` as one
 mods.toml document), `combat_arms:movement` (`MovementData` as one
-movement.toml document).
+movement.toml document), `combat_arms:gear` (`GearData` as one gear.toml
+document, records by id: `GearData::to_doc`; net34).
 
 Over the network (chimera_net's `net::server_docs`): the manifest offers
 each set's SHA-256 (of its documents as postcard), count and size, and
@@ -1831,7 +1838,10 @@ then its registry is the server's index for index and a copy's 1 s burst
 on its 45-round clip is predicted with 0 errors and the same clip;
 leaving restores its own; a client with the same data receives nothing; a
 set over the limit refuses the join with the reason; a registry still
-differing ends the join), chimera_sim `server_docs::tests` (a set
+differing ends the join), combat_arms `weapon_timings::a_vests_rates_shorten_the_reload_and_draw_on_both_sides`
+(a client on our gear records takes the server's, whose vests carry
+reload and select bonuses, and predicts the shortened reload with 0
+errors), chimera_sim `server_docs::tests` (a set
 replaced in place, bad documents change nothing, put back), Combat
 Arms' `served::tests` (the documents read back as written).
 

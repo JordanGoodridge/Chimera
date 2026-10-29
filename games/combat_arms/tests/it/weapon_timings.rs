@@ -399,3 +399,110 @@ fn a_client_with_its_own_models_takes_the_servers_timing() {
     assert_eq!(client.get::<Magazine>(cw).unwrap().reload_time, 1.0);
     assert_eq!(client.get::<Weapon>(cw).unwrap().draw_time, 0.5);
 }
+
+// ---------------------------------------------------------------------------
+// The gear's animation rates (docs/plans/active/ca-weapon-timings.md,
+// part 2): the vest's `ReloadAniRate` and `SelectAniRate` in the weapon's
+// own reload and draw, server-authoritative and predicted; the gear
+// records go to a client whose own differ (`data::served::GEAR`).
+
+/// The server's gear data: every vest with `ReloadAniRate` 0.25 and
+/// `SelectAniRate` 0.5 (rates 1.25 and 1.5).
+fn fast_vests() -> combat_arms::game::gear::records::GearData {
+    let mut g = combat_arms::game::gear::records::GearData::built_in();
+    for v in g.vests.values_mut() {
+        v.reload_ani_rate = 0.25;
+        v.select_ani_rate = 0.5;
+    }
+    g
+}
+
+/// The first app built (the server) wears `fast_vests`; the clients
+/// keep ours.
+#[derive(Clone)]
+struct ServerGear(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl Plugin for ServerGear {
+    fn build(&self, app: &mut App) {
+        if self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            app.insert_resource(combat_arms::game::gear::CaGearData(std::sync::Arc::new(fast_vests())));
+        }
+        CaSim.build(app);
+    }
+}
+
+/// A vest's reload and select bonuses shorten the M4A1's own reload
+/// (2.3 s / 1.25 = 1.84 s) and draw (1.2 s / 1.5 = 0.8 s) on the server,
+/// and the client, whose gear records were ours, takes the server's
+/// (`combat_arms:gear`) before it enters and predicts the reload without
+/// error.
+#[test]
+fn a_vests_rates_shorten_the_reload_and_draw_on_both_sides() {
+    use chimera_net::net::server_docs::DocsHeard;
+    use combat_arms::game::{data::served::GEAR, gear::CaGearData};
+    let link = LinkConditions {
+        latency: Duration::from_millis(50),
+        jitter: Duration::ZERO,
+        loss: 0.0,
+    };
+    let pick = ServerGear(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)));
+    let mut sim = NetSim::new(pick, link, 17, 0, |app| {
+        app.add_plugins(GreyboxMapPlugin);
+    });
+    sim.add_client(|w| assert_ne!(*w.resource::<CaGearData>().0, fast_vests(), "the client starts on ours"));
+    sim.set_frame(TICK_INTERVAL);
+    sim.until_joined(900);
+    sim.ticks(240);
+    {
+        let client = sim.clients[0].app.world();
+        let heard = &client.resource::<DocsHeard>().0;
+        assert!(heard.iter().any(|h| h.0 == GEAR), "the gear set came: {heard:?}");
+        assert_eq!(*client.resource::<CaGearData>().0, fast_vests());
+    }
+    let theirs = sim.character_of(0).unwrap();
+    let sw = weapon::give(sim.server.app.world_mut(), theirs, "combat_arms:m4a1").unwrap();
+    sim.ticks(150);
+    let cw = client_weapon(&mut sim, "combat_arms:m4a1");
+    for (side, w, e) in [("server", sim.server.app.world(), sw), ("client", sim.clients[0].app.world(), cw)] {
+        let reload = w.get::<Magazine>(e).unwrap().reload_time;
+        let draw = w.get::<Weapon>(e).unwrap().draw_time;
+        assert!((reload - 1.84).abs() < 1e-5, "{side}: reload {reload}");
+        assert!((draw - 0.8).abs() < 1e-5, "{side}: draw {draw}");
+    }
+    // Fire a few rounds, then reload: timed on the server, predicted.
+    let intent = |sim: &mut NetSim, f: &dyn Fn(&mut Intent)| {
+        let me = sim.local_player(0).unwrap();
+        f(&mut sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap());
+    };
+    intent(&mut sim, &|i| i.fire = true);
+    sim.ticks(30);
+    intent(&mut sim, &|i| i.fire = false);
+    sim.ticks(30);
+    *sim.clients[0].app.world_mut().resource_mut::<NetGraph>() = NetGraph::default();
+    let clip = |w: &World, e: Entity| w.get::<Magazine>(e).unwrap().clip;
+    assert!(clip(sim.server.app.world(), sw) < 30);
+    intent(&mut sim, &|i| i.reload = true);
+    sim.ticks(2);
+    intent(&mut sim, &|i| i.reload = false);
+    let (mut started, mut filled) = (None, None);
+    for _ in 0..((3.0 / TICK_INTERVAL) as u64) {
+        sim.ticks(1);
+        let w = sim.server.app.world();
+        let now = w.resource::<SimClock>().now;
+        let st = w.get::<chimera_sim::weapon::WeaponState>(sw).unwrap();
+        if started.is_none() && st.reload_end.is_some() {
+            started = Some(now);
+        }
+        if started.is_some() && filled.is_none() && clip(w, sw) == 30 {
+            filled = Some(now);
+        }
+    }
+    let took = filled.unwrap() - started.unwrap();
+    assert!((took - 1.84).abs() < 0.05, "the server reloaded in {took} s, not 2.3");
+    let g = sim.clients[0].app.world().resource::<NetGraph>().clone();
+    println!("vest reload: {took:.3} s, {} states checked, {} errors ({:?})", g.checked, g.errors, g.last_differing);
+    assert!(g.checked > 0);
+    assert_eq!(g.errors, 0, "mispredicted ({:?})", g.last_differing);
+    let cw = client_weapon(&mut sim, "combat_arms:m4a1");
+    assert_eq!(clip(sim.clients[0].app.world(), cw), 30);
+}

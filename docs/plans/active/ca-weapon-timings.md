@@ -1,6 +1,6 @@
 # Plan: Combat Arms weapons' own fire, reload and draw timings
 
-Status: 2026-10-29, implemented in one session (part 1 below); backlog
+Status: 2026-10-29, parts 1 and 2 implemented (below); backlog
 item "Combat Arms guns' own sounds, scopes and models: audit", fix 3.
 
 Today every install copy fires, reloads and draws at its template's
@@ -103,8 +103,24 @@ combat_arms --features dev --test it heavy::timings -- --nocapture`):
    view models' lengths written in the test fire, reload and draw on
    them, on the server and predicted; ours unchanged), the heavy
    `heavy::timings` over the install's pool.
-2. Open: the vest's `ReloadAniRate` / `SelectAniRate` and set bonuses in
-   the weapon's own reload and draw (today the picture only).
+2. (Done 2026-10-29.) The vest's `ReloadAniRate` / `SelectAniRate` and
+   the sets' rates (effect kinds 10, 11, 12, player-wide and per weapon)
+   in the weapon's own cycle, reload (a shell reload's three parts too)
+   and draw: one sum with the parts' (attachments.md "Animation rates":
+   $r_{reload} = 1 + \sum_{socket}$ `Reloadanirate` $+ r_{model} + r_{set}$,
+   capped as the rest). `gear::CaGearRates` on every weapon with an
+   attachments table, derived each predicted tick from its owner's look
+   (`Selection::model`: the vest) and set tiers (`CaGearEffects`), on the
+   server and the client alike from the replicated look and loadout;
+   `attachments::apply_fitted` / `apply_draw` add it, the view model
+   plays at the same rates. The gear records now go to a client whose
+   own differ (`data::served::GEAR`, `GearData::to_doc`, net34), so both
+   derive the same rates and movement penalties. Not pushed per weapon:
+   derived from replicated data. Test:
+   `weapon_timings::a_vests_rates_shorten_the_reload_and_draw_on_both_sides`
+   (the M4A1's 2.3 s reload in 1.84 s and 1.2 s draw in 0.8 s on both
+   sides, a client on our gear records takes the server's, 0 prediction
+   errors over the reload).
 3. Open: the rest of the fire sequence from the model: a semi-automatic's
    `postfire` (M92FS 180 + 150 ms), the pre-fire's presence
    (`trigger.latency`), a minigun copy's spin lengths, a knife copy's
@@ -124,3 +140,7 @@ combat_arms --features dev --test it heavy::timings -- --nocapture`):
    we use the first-person `reload` for it, as before.
 3. Whether to read ahead (a background read of the next rung's model in
    the gun game) if a hitch shows on slow disks.
+4. The gear's rates reach only weapons with an attachments table (every
+   gun): a knife's, grenade's or special weapon's draw keeps its own
+   length, though inventory.md 6.4 adds the model's select bonus to
+   every draw. The view model plays those at the vest's rates as before.
