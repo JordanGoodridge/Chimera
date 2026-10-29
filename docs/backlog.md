@@ -53,6 +53,12 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **The rung line lists raw attachment ids.** With rung extras on, the
+  gun game panel's top line reads like "Rung 1/12: FMG-9
+  (Silencer_A_SMG_Gold, DotSight_Holosight_SMG_Gold, ...)". It runs
+  across the whole screen and shows record ids. Show the attachments'
+  display names from the install's string table, shortened (or icons),
+  and wrap or cap the line.
 - **A natural power curve for the random ladder (user idea, 2026-10-29).**
   Weak guns first, power rising, then the hard-hitting ones, then
   specials, a grenade, melee last. Proposed design, waiting on the
