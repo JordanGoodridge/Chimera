@@ -15,7 +15,11 @@
 //!   own clock (`game::ServerTime`).
 //! - **The players**: `InMinigame` and the rules module's own state
 //!   (`ladder::Rung`, `wins::MatchesWon`) replicate on the characters, so the HUD finds who
-//!   plays and who leads; kills and deaths are `NetScore`'s.
+//!   plays and who leads; kills and deaths are `NetScore`'s. The ladder's
+//!   rung extras (`ladder::RungExtras`, drawn by the server) go with the
+//!   match (`NetMinigame::rung_extras`) into the client's ladder (its HUD's
+//!   rung label); what they put on a player (a game's look, fitted parts,
+//!   the melee weapon) replicates as that game's state does.
 //! - **Spawn protection** (`NetProtected`): a protected character's two
 //!   windows (`core::SpawnProtected`) as server ticks, which a client
 //!   puts on its copy on its own clock (`apply_protection`), so its
@@ -77,7 +81,7 @@ use crate::{
         maps::sha256,
         ordered::OrderedAppExt,
     },
-    minigame::{self, ActiveMinigame, MatchResults, NextMatch, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::Rung, rotation::MapHistory, runtime::InMinigame, wins::MatchesWon},
+    minigame::{self, ActiveMinigame, MatchResults, NextMatch, EVENT_NAMES, MinigameDef, MinigameEvent, Minigames, ladder::{Ladder, Rung, RungExtras}, rotation::MapHistory, runtime::InMinigame, wins::MatchesWon},
     mode::{Match, Phase},
 };
 use chimera_core::game_registry::Games;
@@ -110,6 +114,9 @@ pub struct NetMinigame {
     /// The match-end hold (`minigame::NextMatch`): the next match's map
     /// once picked, and when it comes (a server tick).
     pub next: Option<(Option<String>, f64)>,
+    /// The ladder's rung extras (`ladder::Ladder::extras`: what each rung
+    /// gives everyone on it), which a client's ladder takes.
+    pub rung_extras: Vec<Option<RungExtras>>,
 }
 
 /// A character's spawn protection (`core::SpawnProtected`), its windows'
@@ -233,6 +240,7 @@ fn write_minigame(world: &mut World) {
             r
         }),
         next: world.get_resource::<NextMatch>().map(|n| (n.map.clone(), tick_of(&clock, n.at))),
+        rung_extras: world.get_resource::<Ladder>().map(|l| l.extras.clone()).unwrap_or_default(),
     };
     // Another minigame, or its definition made again (same id, new text).
     let announced = world.get_resource::<Announced>().map(|a| a.0);
@@ -709,6 +717,12 @@ fn apply_minigame(world: &mut World, mut refused: Local<Option<String>>) {
         phase::OVER => (Phase::MatchOver, None),
         _ => (Phase::Waiting, None),
     };
+    // The server's rung extras (the client's ladder draws none).
+    if let Some(mut ladder) = world.get_resource_mut::<Ladder>()
+        && ladder.extras != n.rung_extras
+    {
+        ladder.extras = n.rung_extras.clone();
+    }
     let mut m = world.get_resource_or_init::<Match>();
     if m.phase != phase {
         m.phase = phase;

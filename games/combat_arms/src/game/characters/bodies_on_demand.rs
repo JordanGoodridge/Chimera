@@ -1,0 +1,89 @@
+//! Character bodies loaded on demand: a map carries the stock bodies'
+//! groups only (`models::LOADED`), so a body record no group has (an
+//! install specialist or mercenary a ladder rung dresses its players in,
+//! `game::rungs`) loads in the background (`AsyncComputeTaskPool`) the
+//! first time a character's selection wears it, converted once per
+//! session as its own character model (`models::load_body`: its rig and
+//! group registered), kept across map changes in
+//! `map::LateCharacterModels` (`map::add_character_model`), which each
+//! map's `CharacterModels` takes (`map::append_late_characters`) and the
+//! drawing builds (`render::bodies::build_late_bodies`). Until it is
+//! ready the character wears what it wore (its previous body, or none).
+//!
+//! Only where `view_model::on_demand::LoadOnDemand` is (the front end: a
+//! dedicated server draws none; its hit spheres pose on the stock rig,
+//! `models::alias_rig`), and only on a map that has bodies of ours.
+//!
+//! Known shortcuts (docs/tech-debt.md): a body that doesn't load is tried
+//! once per session (its warning says why); a specialist loads its own
+//! copy of its sex's animation library (a few megabytes each).
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use bevy::{
+    prelude::*,
+    tasks::{AsyncComputeTaskPool, Task, block_on, poll_once},
+};
+
+use super::{
+    super::{GAME, data::CaData},
+    models,
+    records::Selection,
+};
+use crate::map::{CharacterModels, MapCharacterModel, MapTexture, add_character_model};
+
+type Loaded = Result<(MapCharacterModel, Vec<MapTexture>), String>;
+
+/// The bodies loading, the ones tried (loaded or not) and the ones a
+/// stock group has.
+#[derive(Default)]
+pub struct Pending {
+    tasks: BTreeMap<i32, Task<Loaded>>,
+    tried: BTreeSet<i32>,
+    stock: BTreeSet<i32>,
+}
+
+/// Each worn body record no loaded group has: loaded in the background
+/// once, added when done.
+pub fn load_on_demand(
+    looks: Query<&Selection>,
+    models: Option<Res<CharacterModels>>,
+    data: Res<CaData>,
+    mut pending: Local<Pending>,
+    mut commands: Commands,
+) {
+    pending.tasks.retain(|_, task| {
+        let Some(result) = block_on(poll_once(task)) else { return true };
+        match result {
+            Ok((model, textures)) => {
+                let textures = std::sync::Arc::new(textures);
+                commands.queue(move |world: &mut World| add_character_model(world, model, textures));
+            }
+            Err(e) => warn!("Combat Arms: {e} (the stock body stays)"),
+        }
+        false
+    });
+    // A map that wears none of ours (no bodies loaded, or another game's
+    // kit) loads none.
+    let Some(models) = models else { return };
+    if !models.0.iter().any(|m| m.game == Some(GAME)) {
+        return;
+    }
+    let chars = data.characters();
+    for look in &looks {
+        let id = chars.effective(look).0.id;
+        if pending.tried.contains(&id) || pending.stock.contains(&id) {
+            continue;
+        }
+        if models::group_has(id) {
+            pending.stock.insert(id);
+            continue;
+        }
+        pending.tried.insert(id);
+        let task = AsyncComputeTaskPool::get().spawn(async move {
+            let mount = super::super::world::mount().ok_or_else(|| format!("body record {id}: no Combat Arms install"))?;
+            models::load_body(id, &|p: &str| mount.read(p).ok())
+        });
+        pending.tasks.insert(id, task);
+    }
+}

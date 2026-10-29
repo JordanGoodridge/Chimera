@@ -447,6 +447,24 @@ that):
 - **A knife-only finale** (`knife_finale`, default off): a last rung
   after the guns where the player holds only a knife (the kit's, or a
   named one); its kill wins. Ultimate Gun Game keeps its gun ending.
+- **Rung extras, the same for everyone on a rung** (`rung_extras`,
+  default on): when a ladder is made (each map, each new ladder) a game
+  may draw something for each of its rungs from the match's seeded
+  generator (`ladder::RungExtrasHook`, registered by the game; Chimera's
+  ladder names no game): kept in the ladder's rung data and replicated
+  with the match, so a late joiner, a respawn and a network client get
+  the same; Chimera itself swaps a drawn melee weapon in for the kit's
+  and shows a label after the rung's gun. Combat Arms' rungs
+  (`combat_arms::game::rungs`) each draw a fitted set from the gun's
+  accepted parts (per slot a part or the stock one), a character for
+  everyone on the rung from every player body the install has
+  (specialists and mercenaries too; without the install the stock six;
+  a body no stock group has loads when first worn), and a melee weapon
+  of its own (knives, the shovel, the machete, ...); the knife finale
+  keeps its knife, CS:S's rungs draw nothing. Each part turns off by key
+  (`rung_extras = { attachments = false, character = false, melee =
+  false }`), all with `rung_extras = false`. The apps seed them anew at
+  each launch (Ultimate Gun Game with its launch seed).
 
 ### Automatic gun games (variety)
 

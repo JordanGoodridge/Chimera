@@ -269,6 +269,8 @@ pub fn client_app(args: Args, title: &str) -> App {
     // line) takes the rules slot and names the others.
     .set_gameplay(Gameplay::of(&combat_arms::game::INFO))
     .insert_resource(chimera_core::core::BuildVersion(super::VERSION))
+    // A ladder's rung extras differ every launch.
+    .insert_resource(super::launch_rung_seed())
     // Network play: a listen server, or a client (`connect`).
     .add_plugins(chimera_net::net::NetPlugin)
     // The client shell with Combat Arms' HUD, then its other looks.

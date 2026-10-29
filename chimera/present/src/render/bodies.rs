@@ -14,7 +14,9 @@
 //! (`probe_lit`); `PlayModels`/`HeldAssets` are built when the map
 //! spawns (`render::spawn`), held models a game adds later
 //! (`map::add_held_model`) on the next frame and again on each map
-//! (`build_late_held`); `adopt_bodies`/`pose_ragdolls` hand a dead
+//! (`build_late_held`), and character models a game adds later
+//! (`map::add_character_model`, appended to each map's `CharacterModels`)
+//! likewise (`build_late_bodies`); `adopt_bodies`/`pose_ragdolls` hand a dead
 //! character's body to its ragdoll and pose it from the ragdoll's bodies.
 //!
 //! Known shortcuts (docs/tech-debt.md): Frame-time shortcuts
@@ -144,6 +146,48 @@ pub fn build_late_held(
     }
 }
 
+/// Build the character models appended after the map spawned
+/// (`map::LateCharacterModels`, `map::append_late_characters`) that the
+/// map's `PlayModels` lack (by index: they come after the map's own), as
+/// the spawn builds the kit's, with their own textures.
+#[allow(clippy::too_many_arguments)]
+pub fn build_late_bodies(
+    late: Option<Res<crate::map::LateCharacterModels>>,
+    models: Option<Res<CharacterModels>>,
+    base: Option<Res<HeldLateBase>>,
+    play: Option<ResMut<PlayModels>>,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    materials: Option<ResMut<Assets<PropMaterial>>>,
+    mut bindposes: ResMut<Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>,
+    compressed: Option<Res<bevy::image::CompressedImageFormatSupport>>,
+) {
+    let (Some(late), Some(models), Some(base), Some(mut play), Some(mut materials)) = (late, models, base, play, materials)
+    else {
+        return;
+    };
+    if play.bodies.len() >= models.0.len() {
+        return;
+    }
+    for c in models.0.iter().skip(play.bodies.len()) {
+        // An appended model is a late one; anything else (the map's own:
+        // none past the built ones) leaves the rest unbuilt.
+        let Some((_, own)) = c.name.as_deref().and_then(|n| late.get(n)) else { return };
+        let bc = super::images::bc_wanted(compressed.as_deref());
+        let textures: Vec<Handle<Image>> =
+            own.iter().map(|t| images.add(super::images::to_image(t, &base.data.look, bc))).collect();
+        let material = |m: &MapMesh| {
+            let mut material = super::lit_prop_material(m, &textures, &base.data, base.view, false);
+            if !m.unlit && base.view != MapDebugView::Albedo && base.lit {
+                material.params.set_probe(&crate::map::LightProbe::default(), 1.0);
+            }
+            material
+        };
+        let assets = body_assets(&c.model, &c.bones, c.root, &mut meshes, &mut materials, &mut bindposes, &material);
+        play.bodies.push(assets);
+    }
+}
+
 pub struct BodyAssets {
     pub parts: Vec<(Handle<Mesh>, Handle<PropMaterial>)>,
     /// Each skin family's material per part (same order as `parts`), when
@@ -247,7 +291,8 @@ pub fn attach_bodies(
             (None, Some(aabb)) => aabb.min.y - at.translation().y,
             (None, None) => continue,
         };
-        let assets = &bodies.bodies[index];
+        // A model appended since (`build_late_bodies`) not built yet.
+        let Some(assets) = bodies.bodies.get(index) else { continue };
         let body = commands
             .spawn((
                 Name::new("Body"),

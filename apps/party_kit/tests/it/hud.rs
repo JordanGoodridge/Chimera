@@ -83,6 +83,7 @@ pub(crate) fn party_with_huds_and(extra: impl FnOnce(&mut App)) -> (Sim, Entity,
         app.world_mut().spawn((Node::default(), HudRoot(combat_arms::game::GAME)));
         app.insert_resource(HudDraws(vec![(combat_arms::game::GAME, combat_arms::ui::hud::DRAWS)]));
     });
+    crate::gun_game::plain_rungs(sim.app.world_mut());
     minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     let me = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), movement::ID);
     sim.app.world_mut().entity_mut(me).insert(LocalPlayer);

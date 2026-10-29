@@ -203,8 +203,10 @@ impl Plugin for UltimateGunGamePlugin {
             seed: self.seed,
             rungs: self.rungs,
         })
-        // The rotation's random picks follow the launch's seed too.
+        // The rotation's random picks follow the launch's seed too, as
+        // the rungs' extras do (`ladder::RungSeed`).
         .insert_resource(MapHistory::seeded(self.seed))
+        .insert_resource(chimera_sim::minigame::ladder::RungSeed(self.seed))
         .console_command(
             "ugg_new",
             "ugg_new [seed] [rungs] [map]: a new Ultimate Gun Game ladder for the players connected, played at once \

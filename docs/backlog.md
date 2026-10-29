@@ -254,7 +254,14 @@ the user's go-ahead: no Actions runs unless asked.
   have a surface 41, Bullet-Proof Glass, with its own impact. What
   Combat Arms does to rounds at glass (pass, stop, lose damage) may need
   a spec session on the Windows PC.
-- **Random attachments on Combat Arms rungs (user idea).** Some Combat
+- **Random attachments on Combat Arms rungs (user idea): fixed, confirm
+  in a playtest.** Built as Chimera's per-rung extras hook
+  (`ladder::RungExtrasHook`, `rung_extras` in `[rules]`) with Combat
+  Arms' draws (`game::rungs`): a fitted set, a character (install
+  specialists included, loaded when first worn) and a melee weapon per
+  Combat Arms rung, the same for everyone on it, the fitted parts in the
+  HUD's rung line (tests `chimera/sim/tests/it/rung_extras.rs`,
+  `apps/party_kit/tests/it/rung_extras.rs`). Some Combat
   Arms guns come bare. When the ladder is made, give each Combat Arms
   rung a random fitted set from that gun's accepted attachments
   (`game/attachments.rs`, each weapon's `combat_arms:attachments`), the

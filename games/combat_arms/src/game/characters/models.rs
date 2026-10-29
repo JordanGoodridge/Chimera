@@ -27,6 +27,11 @@
 //! Converted once per session (`shared_character_models`, the first map
 //! load's) and copied into each map after (`append_shared`: the textures
 //! appended, the indices moved), the rigs and groups registered again.
+//! A body no stock group has (an install specialist a ladder rung
+//! dresses its players in) loads alone when first worn (`load_body`,
+//! `bodies_on_demand`), its own character model added after the map
+//! (`map::add_character_model`); until then (and on a server, which
+//! draws none) it poses on its skeleton's stock rig (`alias_rig`).
 //!
 //! Every character archive (`CHARS_*`) and the third-person guns
 //! (`GUNS_M_HH`) are V2-keyed: without the key nothing here loads (the
@@ -49,7 +54,7 @@ use super::{
         render_style::{self, Style},
         view_model::hands,
     },
-    records::{self, ModelRecord, Selection},
+    records::{self, CharacterData, ModelRecord, Selection},
     skeleton::Rig,
 };
 use crate::map::{MapCharacterModel, MapData, MapHeldModel, MapMesh, MapMeshLook, MapModel};
@@ -162,12 +167,52 @@ pub fn loaded_groups() -> Vec<BodyGroup> {
     groups().lock().map(|g| g.clone()).unwrap_or_default()
 }
 
-/// Keep `group` as its skeleton's (the loader's; tests register their
-/// own).
+/// Keep `group` (the loader's; tests register their own), in place of
+/// one of the same name (its first record): one per skeleton for the
+/// stock bodies, one per body loaded on demand (`load_body`).
 pub fn register_group(group: BodyGroup) {
     if let Ok(mut g) = groups().lock() {
-        g.retain(|x| x.skeleton != group.skeleton);
+        let name = group.name();
+        g.retain(|x| x.name() != name);
         g.push(group);
+    }
+}
+
+/// Whether a loaded group has body record `id`.
+pub fn group_has(id: i32) -> bool {
+    groups().lock().is_ok_and(|g| g.iter().any(|x| x.records.contains(&id)))
+}
+
+/// Body record `id` as its own character model (a body no stock group
+/// has: an install specialist a ladder rung dresses its players in,
+/// `game::rungs`), loaded alone with its own animation library, faces and
+/// head pieces as `add_character_models` loads a group (`body_group`:
+/// its rig and group registered), with its own textures: for the map's
+/// `LateCharacterModels` (`map::add_character_model`). Err when it
+/// doesn't read.
+pub fn load_body(id: i32, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<(MapCharacterModel, Vec<crate::map::MapTexture>), String> {
+    let ca = CaData::install();
+    let data = ca.characters();
+    let r = data.model(id).ok_or_else(|| format!("body record {id}: none"))?;
+    let scale = super::super::movement::movement_data().meters_per_unit;
+    let mut own = MapData::default();
+    let c = body_group(&[r], scale, &mut own, file).map_err(|e| format!("body {} ({}): {e}", r.name, r.file))?;
+    Ok((c, own.textures))
+}
+
+/// Body record `id` posed on its skeleton's stock rig until its own loads
+/// (`load_body`; a server without drawing never loads it): its body file
+/// takes the stock group's rig of that skeleton when it has none, so its
+/// hit spheres follow the animated pose (the 53-node male and 60-node
+/// female player trees are one shape each, characters.md 2).
+pub fn alias_rig(data: &CharacterData, id: i32) {
+    let Some(r) = data.model(id) else { return };
+    if rig(&r.file).is_some() {
+        return;
+    }
+    let base = LOADED.iter().filter_map(|i| data.model(*i)).find(|b| b.skeleton == r.skeleton);
+    if let Some(stock) = base.and_then(|b| rig(&b.file)) {
+        register(&r.file, stock);
     }
 }
 

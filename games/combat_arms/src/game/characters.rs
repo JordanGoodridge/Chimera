@@ -11,7 +11,9 @@
 //!   goggles by skeleton and figure type. A player's selection is
 //!   `CaLook`: the local player's `CaOwnLook` (the console's `ca_model`,
 //!   `ca_face`, `ca_head`, `ca_camo`), a bot's drawn from the loadout
-//!   pool (`CharacterData::bot_look`), else the default. The same choice
+//!   pool (`CharacterData::bot_look`), else the default; a ladder rung's
+//!   look over any of them (`CaRungLook`, `game::rungs`). A body no stock
+//!   group has loads when first worn (`bodies_on_demand`). The same choice
 //!   is the player's gear (gear_perks.md, `gear`): the body record is the
 //!   vest, the head piece the helmet, the goggle and backpack as such.
 //! - `driver`: the animation driver (4-7, 9) on LithTech's millisecond
@@ -172,6 +174,7 @@
 //! - Death: the coin's clock is the game's, not the wall clock; the
 //!   floor snap skips a player standing on the ground.
 
+pub mod bodies_on_demand;
 pub mod death;
 pub mod driver;
 pub mod held_on_demand;
@@ -413,7 +416,7 @@ impl Plugin for CaCharactersPlugin {
             .add_systems(FixedUpdate, client_clock.before(drive).run_if(core::shows_others))
             .add_systems(
                 Update,
-                held_on_demand::load_on_demand
+                (held_on_demand::load_on_demand, bodies_on_demand::load_on_demand)
                     .run_if(resource_exists::<super::view_model::on_demand::LoadOnDemand>),
             );
         look_cvars(app);
@@ -552,7 +555,20 @@ fn look_seed(name: Option<&Name>, e: Entity) -> u64 {
     }
 }
 
-/// Looks (the server's): a bot without one draws its own from the
+/// A look every player on a ladder rung wears in place of their own
+/// (`game::rungs`: the rung's character, the same for all on it); the
+/// server's, its `Selection` replicating as any look's.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CaRungLook(pub Selection);
+
+/// A bot's own look (`CharacterData::bot_look` by its name's seed): what
+/// it wears again off a rung's look.
+pub fn bot_look_of(name: Option<&Name>, e: Entity) -> Selection {
+    records::builtin().bot_look(look_seed(name, e))
+}
+
+/// Looks (the server's): a rung's look first (`CaRungLook`); a bot
+/// without one draws its own from the
 /// loadout pool (`CharacterData::bot_look`); the local player wears
 /// `CaOwnLook` (changed from the console at once); a client's player the
 /// look its client sent (`CaClientLook`); others keep the default.
@@ -561,14 +577,16 @@ fn wear_looks(
     loadout: Res<CaOwnLook>,
     clients: Query<(&Player, &CaClientLook)>,
     characters: Query<
-        (Entity, Option<&Selection>, Option<&Name>, Has<core::Bot>, Has<LocalPlayer>),
+        (Entity, Option<&Selection>, Option<&Name>, Has<core::Bot>, Has<LocalPlayer>, Option<&CaRungLook>),
         (With<Intent>, With<MovementState>),
     >,
     mut commands: Commands,
 ) {
-    for (e, look, name, bot, local) in &characters {
+    for (e, look, name, bot, local, rung) in &characters {
         let sent = clients.iter().find(|(p, _)| p.character == e).map(|(_, l)| l.0);
-        let want = if local {
+        let want = if let Some(r) = rung {
+            r.0
+        } else if local {
             loadout.0
         } else if let Some(sent) = sent {
             sent

@@ -22,6 +22,27 @@
 //! the one named), and a knife kill wins (off by default).
 //! Combat Arms' own Arms Race (`games/combat_arms`, its rules) is not
 //! this module and keeps its spec's rules (no cost for a suicide).
+//!
+//! **Rung extras** (`RungExtras`): when the ladder is made (each match's
+//! start on the host: every map, every new ladder) each rung whose
+//! weapon's game registered a hook (`RungExtrasHook`,
+//! `RungExtrasAppExt::add_rung_extras`) gets that game's draw for it,
+//! from the match's seeded generator (`RungSeed`, the definition's id and
+//! the host's count of ladders made): the same for every player on the
+//! rung, kept in `Ladder::extras` (replicated with the match,
+//! `chimera_net::minigame_net`), so a late joiner, a respawn and a
+//! network client get the same. What they hold is the game's (its own
+//! key/value pairs, which only its hook reads), but for two things
+//! Chimera does itself: a melee weapon in place of the kit's
+//! (`RungExtras::melee`, `runtime::KitMelee`) and a label after the
+//! rung's weapon in the HUD's rung line. A player is armed for its rung
+//! (`arm`: the melee, then every hook's `apply`, with its own extras or
+//! none) before a life's weapons (`RulesModule::arming`) and at each rung
+//! swap. The knife finale's rung draws none (it keeps its knife), nor
+//! does a rung of a game without a hook (CS:S's). `rung_extras = false`
+//! turns them all off; a table turns a hook's options off by key
+//! (`rung_extras = { attachments = false }`; every key is on by default;
+//! a key no hook reads is warned about at the start).
 //! The ladder gives the weapons, so nobody drops one at death
 //! (`weapon::drop::NoDeathDrops`).
 //! At the time limit the highest rung wins, then the most kills; a tie is
@@ -39,6 +60,8 @@
 //!                                  # last rung (default: false)
 //! refill_ammo = true               # a rung's gun never runs dry, its grenade comes
 //!                                  # back once thrown (default: false)
+//! rung_extras = true               # the games' per-rung draws (default: on); or by
+//!                                  # option: { attachments = false, character = true }
 //! win = { kind = "ladder_end" }    # the only one so far
 //! ```
 //!
@@ -54,12 +77,15 @@
 //! the last level!", "You took the lead", "You lost the lead", "Tied for
 //! the lead"; the HUD's notices (`notice`) stay the small text.
 
+use std::collections::BTreeMap;
+
 use bevy::prelude::*;
 use chimera_core::query_cache::cached_query;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     ActiveMinigame, MinigameDef, MinigameEvent, RulesModule,
+    auto::Rng,
     hud::{Callout, HudLine},
     runtime,
 };
@@ -85,6 +111,7 @@ pub const RULES: RulesModule = RulesModule {
     loadout,
     no_kit,
     joined,
+    arming,
     status,
     notice,
     callout,
@@ -133,6 +160,8 @@ struct Params {
     join_rung: JoinRung,
     #[serde(default)]
     knife_finale: Finale,
+    #[serde(default)]
+    rung_extras: ExtrasParam,
 }
 
 fn yes() -> bool {
@@ -151,6 +180,128 @@ pub enum JoinRung {
     /// The first rung.
     First,
 }
+
+/// `rung_extras`: all on or off, or by option key.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum ExtrasParam {
+    All(bool),
+    Keys(BTreeMap<String, bool>),
+}
+
+impl Default for ExtrasParam {
+    fn default() -> Self {
+        Self::All(true)
+    }
+}
+
+/// Which rung extras a definition wants (`rung_extras`): every option
+/// key a hook reads is on unless turned off, none when all are off.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RungOptions {
+    /// `rung_extras = false`.
+    pub off: bool,
+    /// Each key turned on or off.
+    pub keys: BTreeMap<String, bool>,
+}
+
+impl RungOptions {
+    /// Whether option `key` is on.
+    pub fn on(&self, key: &str) -> bool {
+        !self.off && self.keys.get(key).copied().unwrap_or(true)
+    }
+
+    fn of(p: &ExtrasParam) -> Self {
+        match p {
+            ExtrasParam::All(on) => Self {
+                off: !on,
+                keys: BTreeMap::new(),
+            },
+            ExtrasParam::Keys(keys) => Self {
+                off: false,
+                keys: keys.clone(),
+            },
+        }
+    }
+}
+
+/// What a game adds to one rung (its `RungExtrasHook`'s draw), the same
+/// for every player on it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RungExtras {
+    /// The game whose hook drew it (only its `apply` gets it).
+    pub game: String,
+    /// A melee weapon in place of the kit's on this rung: the kit's
+    /// weapon of its slot (the knife's) becomes it (a weapon id in a set
+    /// the definition allows; anything else is dropped).
+    pub melee: Option<String>,
+    /// The game's own values, which only its hook reads.
+    pub values: Vec<(String, String)>,
+    /// Shown after the rung's weapon in the HUD's rung line.
+    pub label: Option<String>,
+}
+
+impl RungExtras {
+    /// Value `key`'s (the first).
+    pub fn value(&self, key: &str) -> Option<&str> {
+        self.values.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    }
+}
+
+/// A rung being drawn (`RungExtrasHook::draw`).
+pub struct RungDraw<'a> {
+    pub def: &'a MinigameDef,
+    /// The rung (0: the first) and its weapon.
+    pub rung: usize,
+    pub weapon: &'static str,
+    pub options: &'a RungOptions,
+}
+
+/// A game's per-rung draw for the ladder (registered with
+/// `RungExtrasAppExt::add_rung_extras`): for the rungs whose weapon is
+/// its own.
+#[derive(Clone, Copy)]
+pub struct RungExtrasHook {
+    /// The game (a weapon id's prefix).
+    pub game: &'static str,
+    /// The option keys it reads (`rung_extras = { <key> = false }`).
+    pub options: &'static [&'static str],
+    /// The rung's extras (the host's, once per ladder), drawn on `rng`.
+    pub draw: fn(&World, &RungDraw, &mut Rng) -> Option<RungExtras>,
+    /// Player `e` is armed for a rung: what this hook drew for it, or
+    /// none (another game's rung, or nothing drawn: what it set comes
+    /// off). The host's; before the rung's weapons are given.
+    pub apply: fn(&mut World, Entity, Option<&RungExtras>),
+}
+
+/// The registered `RungExtrasHook`s.
+#[derive(Resource, Clone, Default)]
+pub struct RungExtrasHooks(pub Vec<RungExtrasHook>);
+
+/// Registering a game's `RungExtrasHook`.
+pub trait RungExtrasAppExt {
+    /// `hook` (one per game: a second replaces the first).
+    fn add_rung_extras(&mut self, hook: RungExtrasHook) -> &mut Self;
+}
+
+impl RungExtrasAppExt for App {
+    fn add_rung_extras(&mut self, hook: RungExtrasHook) -> &mut Self {
+        let mut hooks = self.world_mut().get_resource_or_init::<RungExtrasHooks>();
+        hooks.0.retain(|h| h.game != hook.game);
+        hooks.0.push(hook);
+        self
+    }
+}
+
+/// The seed rung extras are drawn from (an app's launch seed; none: 0,
+/// the tests'). Each ladder made draws anew from it, the definition's id
+/// and how many ladders this host made (`LaddersMade`).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RungSeed(pub u64);
+
+/// How many ladders this host made (its rung extras' draws).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LaddersMade(pub u64);
 
 /// `knife_finale`: off, the kit's knife, or a named melee weapon.
 #[derive(Clone, Debug, Deserialize)]
@@ -209,6 +360,11 @@ pub struct Ladder {
     /// The last rung is a knife alone (`knife_finale`): its weapon is the
     /// last of `rungs`, held without the kit.
     pub knife_finale: bool,
+    /// Each rung's extras (`RungExtras`; empty: none drawn). The host
+    /// draws them; a network client takes the server's.
+    pub extras: Vec<Option<RungExtras>>,
+    /// The definition's `rung_extras`.
+    pub options: RungOptions,
 }
 
 impl Ladder {
@@ -222,6 +378,25 @@ impl Ladder {
     /// Whether `rung` is the knife-only last rung.
     pub fn knife_only(&self, rung: usize) -> bool {
         self.knife_finale && rung + 1 == self.rungs.len()
+    }
+
+    /// Rung `rung`'s extras.
+    pub fn extras(&self, rung: usize) -> Option<&RungExtras> {
+        self.extras.get(rung).and_then(Option::as_ref)
+    }
+
+    /// Every rung's melee weapon (`RungExtras::melee`), as the catalogue
+    /// has them.
+    fn melees(&self, catalog: &WeaponCatalog) -> Vec<&'static str> {
+        let mut out: Vec<&'static str> = Vec::new();
+        for m in self.extras.iter().flatten().filter_map(|x| x.melee.as_deref()) {
+            if let Some(w) = catalog.get(m)
+                && !out.contains(&w.id.as_str())
+            {
+                out.push(&w.id);
+            }
+        }
+        out
     }
 }
 
@@ -282,6 +457,8 @@ fn start(world: &mut World, def: &MinigameDef) {
     let knife = finale(def, &catalog, &p).ok().flatten();
     rungs.extend(knife);
     world.insert_resource(crate::weapon::drop::NoDeathDrops);
+    let options = RungOptions::of(&p.rung_extras);
+    let extras = draw_extras(world, def, &rungs, knife.is_some(), &options);
     world.insert_resource(Ladder {
         rungs,
         demote_on_melee: p.demote_on == Demote::MeleeDeath,
@@ -289,7 +466,94 @@ fn start(world: &mut World, def: &MinigameDef) {
         demote_on_suicide: p.demote_on_suicide,
         join_rung: p.join_rung,
         knife_finale: knife.is_some(),
+        extras,
+        options,
     });
+}
+
+/// The rungs' extras (`RungExtras`): each rung whose weapon's game has a
+/// hook, but the knife finale's, drawn by it from this ladder's seeded
+/// generator; none on a network client (it takes the server's) or with
+/// `rung_extras = false`.
+fn draw_extras(
+    world: &mut World,
+    def: &MinigameDef,
+    rungs: &[&'static str],
+    knife_finale: bool,
+    options: &RungOptions,
+) -> Vec<Option<RungExtras>> {
+    let client = world.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client);
+    let hooks = world.get_resource::<RungExtrasHooks>().cloned().unwrap_or_default();
+    if client || options.off || hooks.0.is_empty() {
+        return Vec::new();
+    }
+    for key in options.keys.keys() {
+        if !hooks.0.iter().any(|h| h.options.contains(&key.as_str())) {
+            warn!("{}: [rules] rung_extras: no game reads `{key}`", def.id);
+        }
+    }
+    let made = {
+        let mut n = world.get_resource_or_init::<LaddersMade>();
+        n.0 += 1;
+        n.0
+    };
+    let seed = world.get_resource::<RungSeed>().map_or(0, |s| s.0);
+    let id = def.id.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+    let mut rng = Rng::new(seed ^ id ^ made.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
+    let melee = |m: &str| super::weapon(def, &catalog, m).ok();
+    let world: &World = world;
+    rungs
+        .iter()
+        .enumerate()
+        .map(|(rung, weapon)| {
+            if knife_finale && rung + 1 == rungs.len() {
+                return None;
+            }
+            let game = weapon.split_once(':')?.0;
+            let hook = hooks.0.iter().find(|h| h.game == game)?;
+            let draw = RungDraw {
+                def,
+                rung,
+                weapon,
+                options,
+            };
+            let mut x = (hook.draw)(world, &draw, &mut rng)?;
+            x.game = game.to_string();
+            x.melee = x.melee.as_deref().and_then(melee).map(str::to_string);
+            Some(x)
+        })
+        .collect()
+}
+
+/// `e` armed for `rung` (the host's, before its weapons are given): the
+/// rung's melee weapon in place of the kit's (`runtime::KitMelee`), then
+/// every hook's `apply` with its own extras for the rung, or none.
+pub fn arm(world: &mut World, e: Entity, ladder: &Ladder, rung: usize) {
+    let extras = ladder.extras(rung).cloned();
+    let melee = extras
+        .as_ref()
+        .and_then(|x| x.melee.as_deref())
+        .and_then(|m| world.get_resource::<WeaponCatalog>()?.get(m).map(|w| w.id.as_str()));
+    match melee {
+        Some(m) => {
+            world.entity_mut(e).insert(runtime::KitMelee(m));
+        }
+        None => {
+            world.entity_mut(e).remove::<runtime::KitMelee>();
+        }
+    }
+    let hooks = world.get_resource::<RungExtrasHooks>().cloned().unwrap_or_default();
+    for h in &hooks.0 {
+        (h.apply)(world, e, extras.as_ref().filter(|x| x.game == h.game));
+    }
+}
+
+/// A life's arming (`RulesModule::arming`): for the player's rung.
+fn arming(world: &mut World, e: Entity) {
+    let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return };
+    let rung = world.get::<Rung>(e).map_or(0, |r| r.0).min(ladder.rungs.len().saturating_sub(1));
+    arm(world, e, &ladder, rung);
 }
 
 /// The knife-only last rung's life has no kit (the knife is its weapon).
@@ -534,6 +798,7 @@ fn melee_kill(world: &World, d: &Died) -> bool {
 /// the knife-only last rung: that knife alone).
 pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     world.entity_mut(e).insert(Rung(rung));
+    arm(world, e, ladder, rung);
     if ladder.knife_only(rung) {
         return knife_alone(world, e, ladder.rungs[rung]);
     }
@@ -551,8 +816,10 @@ pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     for w in old {
         runtime::take_weapon(world, e, w);
     }
-    // A kit by game (the gun game's knife) goes with the new gun's game.
-    runtime::refit_kit(world, e, ladder.rungs[rung]);
+    // A kit by game (the gun game's knife) goes with the new gun's game,
+    // a rung's melee weapon in place of the kit's.
+    let melees = world.get_resource::<WeaponCatalog>().map(|c| ladder.melees(c)).unwrap_or_default();
+    runtime::refit_kit(world, e, ladder.rungs[rung], &melees);
     give(world, e, ladder.rungs[rung]);
     keep_slot_order(world, e, &before, ladder);
     // No command of the player's did this: its client takes the state
@@ -657,7 +924,9 @@ fn status(world: &mut World, viewer: Entity) -> Vec<HudLine> {
     let rung = world.get::<Rung>(viewer).map_or(0, |r| r.0).min(total.saturating_sub(1));
     let mut lines = Vec::new();
     if let Some(w) = ladder.rungs.get(rung) {
-        lines.push(HudLine::new(format!("Rung {}/{total}: {{weapon}}", rung + 1)).weapon(w));
+        // The rung's label (its fitted parts) after the weapon.
+        let label = ladder.extras(rung).and_then(|x| x.label.as_deref()).map(|l| format!(" ({})", l.replace(['{', '}'], "")));
+        lines.push(HudLine::new(format!("Rung {}/{total}: {{weapon}}{}", rung + 1, label.unwrap_or_default())).weapon(w));
     }
     match ladder.rungs.get(rung + 1) {
         Some(w) => lines.push(HudLine::new("Next: {weapon}").weapon(w)),

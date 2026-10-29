@@ -18,7 +18,8 @@
 //! - **Fitting** ("Fitting: when and where", `fit_given`): the server, the
 //!   first update a weapon exists unfitted (given at spawn or respawn, or
 //!   handed over), fills each slot in order 0..4 from the owner's choice
-//!   (`CaLoadout` on the player, else `CaDefaultLoadout`: per weapon,
+//!   (a ladder rung's `CaRungParts` on the player for its gun, else
+//!   `CaLoadout` on the player, else `CaDefaultLoadout`: per weapon,
 //!   a list of names, each offered for its own slot), else the weapon's
 //!   default for that slot, and fits each that passes the checks (listed,
 //!   `Integrated`, `Kinds` 0..4, a socket slot's `Type` 0..5); a later
@@ -1038,6 +1039,16 @@ impl CaLoadout {
     }
 }
 
+/// The parts a ladder rung fits to its gun for every player on it
+/// (`game::rungs`), in place of the player's own (`CaLoadout`): weapon
+/// `weapon`'s, each offered for its own slot; a slot none is offered for
+/// keeps the weapon's default.
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
+pub struct CaRungParts {
+    pub weapon: String,
+    pub parts: Vec<String>,
+}
+
 /// The parts of every player without a `CaLoadout` (the app's
 /// `CHIMERA_CA_MODS`; none by default: stock weapons).
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
@@ -1134,6 +1145,7 @@ pub fn mods_of(table: &CaModTable, slots: &CaAttachSlots, fitted: &CaFitted) -> 
 fn fit_given(
     mut weapons: Query<(&Weapon, &CaAttachSlots, &mut CaFitted, Option<&mut Magazine>)>,
     loadouts: Query<&CaLoadout>,
+    rung_parts: Query<&CaRungParts>,
     everyone: Res<CaDefaultLoadout>,
     table: Res<CaModTable>,
 ) {
@@ -1143,7 +1155,13 @@ fn fit_given(
         }
         let owner = w.owner.filter(|o| *o != Entity::PLACEHOLDER);
         let loadout = owner.and_then(|o| loadouts.get(o).ok()).unwrap_or(&everyone.0);
-        let chosen = if owner.is_some() { loadout.for_weapon(w.id) } else { Vec::new() };
+        // A ladder rung's parts for its gun, in place of the owner's choice.
+        let rung = owner.and_then(|o| rung_parts.get(o).ok()).filter(|r| r.weapon == w.id);
+        let chosen = match rung {
+            Some(r) => r.parts.iter().map(String::as_str).collect(),
+            None if owner.is_some() => loadout.for_weapon(w.id),
+            None => Vec::new(),
+        };
         let parts = fit(&table, &slots.params, &chosen);
         fitted.slots = parts.map(|p| p.map(|(id, ..)| id));
         fitted.given = true;

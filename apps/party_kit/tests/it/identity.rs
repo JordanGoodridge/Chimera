@@ -47,6 +47,7 @@ use crate::gun_game::{held, line_up, party, rung, shoot_until_dead, soldier};
 fn party_with_bodies() -> Sim {
     let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, MapSimPlugin::empty(), PartyPartsPlugin));
     two_bodies(&mut sim.app);
+    crate::gun_game::plain_rungs(sim.app.world_mut());
     minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     sim
 }
@@ -215,6 +216,7 @@ pub(crate) fn party_net(latency_ms: u64, seed: u64) -> NetSim {
         app.add_plugins((GreyboxMapPlugin, MapSimPlugin::empty(), PartyPartsPlugin));
         two_bodies(app);
     });
+    crate::gun_game::plain_rungs(sim.server.app.world_mut());
     minigame::start(sim.server.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     sim.set_frame(TICK_INTERVAL);
     sim.until_joined(600);
