@@ -126,6 +126,7 @@ mod heavy {
     mod map_surf;
     mod map_surfaces;
     mod map_vis;
+    mod map_water_props;
     mod map_visuals;
     mod net_big_map;
     mod net_capacity;

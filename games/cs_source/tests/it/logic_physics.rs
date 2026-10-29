@@ -8,7 +8,9 @@
 //! forceclosed. Props and players (specs/source/prop_damage.md 6): a
 //! prop_physics crate or a 500 kg cupboard landing on a player hurts it as
 //! two contacts and is hurt by it; a multiplayer one passes through; a
-//! player running into a resting prop hurts neither.
+//! player running into a resting prop hurts neither. Water
+//! (`map::buoyancy`): a crate floats; de_aztec's oil drum floats at the
+//! depth its mass and hull volume give and stops bobbing.
 
 use avian3d::prelude::{LinearVelocity, Position};
 use bevy::{ecs::message::Messages, prelude::*};
@@ -708,6 +710,92 @@ fn a_crate_floats_in_water() {
             assert!(z < 20.0, "rests on the floor: {z}");
         }
     }
+}
+
+/// de_aztec's oil drum (`props_c17/oildrum001`: 30 kg in a 0.442 m³ hull,
+/// the de_aztec load's own figures; here a 16-sided drum of that size,
+/// its origin at its base) dropped into a pool: it floats with its weight
+/// of water under the surface (mass / 1000 kg/m³ of its hull: 7 %, the
+/// box estimate gave another depth for a drum on its side), within half a
+/// unit of that depth, and stops
+/// bobbing within 3 s, asleep or all but still. The spec doesn't give
+/// Source's depth or settling time (docs/backlog.md, open questions).
+#[test]
+fn an_oil_drum_floats_at_its_depth_and_stops_bobbing() {
+    use avian3d::prelude::{Collider, Rotation, Sleeping};
+    use crate::stack::map::buoyancy::{WATER_DENSITY, float_line, shape_hulls, submerged};
+    let (mass, volume, height) = (30.0f32, 0.4424f32, 48.0f32);
+    let sides = 16;
+    // A regular polygon's area is n/2 · r² · sin(2π/n).
+    let area = volume / (height * SCALE);
+    let r = (2.0 * area / (sides as f32 * (std::f32::consts::TAU / sides as f32).sin())).sqrt() / SCALE;
+    let at = Vec3::new(0.0, 0.0, 170.0);
+    let mut data = map(vec![entity(&[("classname", "prop_physics"), ("origin", "0 0 170")], Vec::new(), false)]);
+    add_crate(&mut data, 0, at);
+    let points: Vec<Vec3> = (0..sides)
+        .flat_map(|k| {
+            let a = k as f32 * std::f32::consts::TAU / sides as f32;
+            [0.0, height].map(|z| to_engine(Vec3::new(r * a.cos(), r * a.sin(), z)))
+        })
+        .collect();
+    let model = data.models.last_mut().unwrap();
+    let (lo, hi) = points.iter().fold((Vec3::MAX, Vec3::MIN), |(l, h), p| (l.min(*p), h.max(*p)));
+    model.bounds = (lo, hi);
+    model.collision.as_mut().unwrap().pieces = vec![MapConvex { points, planes: Vec::new() }];
+    model.collision.as_mut().unwrap().mass = mass;
+    data.props.last_mut().unwrap().physics.as_mut().unwrap().mass = mass;
+    let (a, b) = (to_engine(Vec3::new(-512.0, -512.0, 0.0)), to_engine(Vec3::new(512.0, 512.0, 128.0)));
+    data.water.push(crate::stack::core::MapWaterVolume {
+        brush: MapBrush::from_box(a.min(b), a.max(b)),
+        slime: false,
+    });
+    let surface = to_engine(Vec3::new(0.0, 0.0, 128.0)).y;
+    let mut sim = sim(data);
+    let drum = {
+        let world = sim.app.world_mut();
+        world.query::<(Entity, &PropEntity)>().iter(world).next().unwrap().0
+    };
+    // Its volume under water, and how far (units) it floats deeper
+    // than its weight of water would hold it.
+    let wet = |sim: &mut Sim| {
+        let w = sim.app.world();
+        let hulls = shape_hulls(w.get::<Collider>(drum).unwrap().shape_scaled()).unwrap();
+        let (pos, rot) = (w.get::<Position>(drum).unwrap().0, w.get::<Rotation>(drum).unwrap().0);
+        let place = |p: Vec3| pos + rot * p;
+        let under = submerged(&hulls, place, surface).0;
+        (under, (surface - float_line(&hulls, place, mass / WATER_DENSITY)) / SCALE)
+    };
+    // Into the water, then each tick: when it last moved faster than
+    // 1 cm/s.
+    let ticks = (8.0 / cs_source::TICK_INTERVAL) as usize;
+    let (mut entered, mut last_moving) = (None, 0usize);
+    let mut heights = Vec::new();
+    for t in 0..ticks {
+        sim.ticks(1);
+        let w = sim.app.world();
+        let v = w.get::<LinearVelocity>(drum).unwrap().0.length();
+        let asleep = w.get::<Sleeping>(drum).is_some();
+        if entered.is_none() && wet(&mut sim).0 > 0.0 {
+            entered = Some(t);
+        }
+        if !asleep && v > 0.01 {
+            last_moving = t;
+        }
+        heights.push(crate_at(&mut sim).z);
+    }
+    let entered = entered.expect("it reaches the water");
+    let settle = (last_moving - entered) as f64 * cs_source::TICK_INTERVAL;
+    let (under, off) = wet(&mut sim);
+    let tail = &heights[heights.len() - (1.0 / cs_source::TICK_INTERVAL) as usize..];
+    let swing = tail.iter().fold(f32::MIN, |a, b| a.max(*b)) - tail.iter().fold(f32::MAX, |a, b| a.min(*b));
+    eprintln!(
+        "drum: {under:.4} m³ under (its weight's worth {:.4}: {off:.2} units deeper), settled {settle:.2} s \
+         after reaching the water, last second's swing {swing:.3} units",
+        mass / WATER_DENSITY
+    );
+    assert!(off.abs() < 0.5, "floats {off} units from its depth");
+    assert!(settle < 3.0, "still {settle} s after reaching the water");
+    assert!(swing < 0.1, "no bobbing: {swing} units");
 }
 
 /// phys_ballsocket holding a crate to the world 32 units above it: it

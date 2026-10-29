@@ -92,17 +92,68 @@ the user's go-ahead: no Actions runs unless asked.
     still plays footsteps.
   - de_piranesi's sky draws blank, showing only through some
     transparent edges.
-- **Spawned outside de_aztec.** In a party match the user spawned outside
-  the map at `setpos 2519.69 2283.46 210.62; setang 20.09 233.12 0.00`.
-  Find which spawn picker chose it (the map's own spawn points, or our
-  generated gun game spawns), and why that spot passed; check every
-  stock map's spawns for points outside the playable space.
-- **de_aztec's barrels ride on top of the water.** Physics barrels in
-  water bob up and down sitting on the surface instead of floating
-  partly under it (`map::buoyancy`). Compare with CS:S: how deep a
-  barrel of that mass and volume floats, and the damping. Check the
-  water surface height used, the submerged-volume estimate (a hull, not
-  the bounding box) and the density.
+- **Spawned outside de_aztec: fixed, confirm in a playtest** (user: `setpos
+  2519.69 2283.46 210.62`). The gun game's `random_hidden` spots
+  (`chimera_sim::minigame::spawns`) come from the map's navigation mesh.
+  de_aztec ships none, and with Combat Arms bots in the match their
+  brain had already put its own generated mesh in the `NavMesh`
+  resource, made for a walker that jumps 0.8 m ledges
+  (`bots::brain::nav_params`). That mesh climbs over de_aztec's walls
+  onto the jungle outside: its area 43 holds the user's spot, on a floor
+  in a valid cluster, so every check passed. Now a generated mesh
+  (`NavMesh::generated`) is never used for spawns: they walk their own
+  from the spawn points at a player's step, and on a map with visibility
+  data a spot must also be in a cluster's leaf (`spawns::inside_map`: not
+  solid, not the void). Sweep of every map the party apps rotate to, all
+  candidate spots (no cap), with the bots' mesh loaded: 0 outside the map
+  and 0 off the walk on every map. The bots' mesh alone would have given
+  (spots off the walk / all): de_aztec 4654/7869, de_port 2281/9122,
+  cs_havana 1502/4303, warehouse 1110/1251, cs_assault 471/3151, de_dust
+  386/3668, de_inferno 366/2620, de_train 296/2000, bloodmoney 270/3578,
+  de_piranesi 200/3619, de_prodigy 176/1512, de_dust2 136/3278,
+  cs_militia 126/23426, cs_compound 88/7500, de_cbble 68/4135, de_chateau
+  61/2422, cs_office 60/2425, de_nuke 52/3261, cs_italy 27/1907, de_tides
+  26/1499, darkhills 1/223 (not all of these are outside the map: some
+  are ledges only a jump reaches; none of them was in a solid or void
+  leaf). `combat_arms:junkflea`, in the Combat Arms parts' pool, doesn't
+  load on this box ("no such map (worlds*/junkflea.dat)"): check the
+  pool's name for it. Left for the bots: their mesh still reaches outside
+  de_aztec, so a bot can walk there. Tests: chimera_sim
+  `spawns::a_mesh_generated_for_another_walker_is_not_spawned_on`,
+  `spawns::spots_in_solid_or_void_leaves_are_not_spawned_in`; party_kit
+  `heavy::spawns::every_pool_map_s_spawn_spots_are_inside_it` (the sweep,
+  `CHIMERA_SPAWN_SWEEP=<map>` for one).
+- **de_aztec's barrels ride on top of the water: fixed, confirm in a
+  playtest.** Six of de_aztec's 16 oil drums (`props_c17/oildrum001`, 30
+  kg in a 0.44 m³ hull: density 68 kg/m³) float in its shallow canals (the water
+  10 to 15 units deep over the floor, surface at z −528). `map::buoyancy`
+  took the wet share of the body's box (avian's `ColliderAabb`, which is
+  grown for contacts and swept along the velocity) times the hulls'
+  volume, so a drum rode high, and its vertical drag was scaled by that
+  share (7 %), so it bobbed for ever (±0.3 units at 2 Hz); a sleeping drum
+  was woken every step and kicked. Now the lift is the collision hulls'
+  volume cut at the surface (`buoyancy::submerged`, at the wet part's
+  centre), the bobbing is damped at a 0.3 ratio of its own rate, and a
+  drum at rest stays asleep. The drums now lie on their sides 3.6 units
+  under (within 0.25 units of where their weight of water is under) and
+  sleep within 1.5 s. Tests: cs_source
+  `logic_physics::an_oil_drum_floats_at_its_depth_and_stops_bobbing`,
+  `heavy::map_water_props::de_aztec_s_drums_float_at_their_depth_and_settle`.
+  Open questions for a spec session (physics_props.md has nothing on
+  water; none of this was guessed from Source, the figures are ours):
+  1. How deep does a prop float in CS:S: is it the share mass / (1000
+     kg/m³ × the `.phy` hull's volume), or does vphysics use the surface
+     property's density (`metal_barrel`'s) or another water density?
+     Measure de_aztec's drum (and a wood crate) at rest in water: how far
+     its lowest point is under the surface, upright or on its side.
+  2. How fast does a floating prop stop bobbing: dropped from 32 units
+     into deep water, the heave's period and how much each bob loses
+     (damping ratio), and when it sleeps.
+  3. Drag in water: horizontal and angular slowing of a floating prop
+     pushed at 100 units/s or spun, and whether it scales with the wet
+     part.
+  4. Which surface: the water brush's top face, and what a prop in two
+     water brushes of different heights does.
 - **Combat Arms radio menu: number keys leak through, and raw text
   keys.** With the radio menu open (C, V, B, N), the number key that
   picks a command also switches weapon (4 takes out the grenade): the

@@ -1143,6 +1143,7 @@ fn case_43_path_cost() {
         areas: vec![area(0, 0.0, 200.0 * s), area(1, 200.0 * s, 500.0 * s), area(2, 500.0 * s, 700.0 * s)],
         ladders: Vec::new(),
         places: Vec::new(),
+        generated: false,
     };
     m.areas[0].links.push((1, Via::Walk(Side::MaxX)));
     m.areas[1].links.push((0, Via::Walk(Side::MinX)));

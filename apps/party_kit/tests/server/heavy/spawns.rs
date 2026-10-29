@@ -4,7 +4,10 @@
 //! its collision). Fifty respawns of one soldier with another standing
 //! somewhere: spread over many areas rather than the two team spawns, out
 //! of the other's sight, at the least distance, on spots a soldier can
-//! stand on and walk from. Prints the figures (`--nocapture`).
+//! stand on and walk from. Prints the figures (`--nocapture`). And every
+//! map the party apps rotate to (CS:S's de_ and cs_ maps, Combat Arms'
+//! pool): every spot the picker may choose is inside the map, also with
+//! the bots' generated mesh in place (de_aztec's spawn outside the map).
 
 use std::collections::BTreeSet;
 
@@ -147,4 +150,100 @@ fn the_gun_game_spawns_spread_over_the_warehouse() {
         return;
     }
     play("combat_arms:warehouse", 8, 50);
+}
+
+/// Every candidate spot of `map`, as `random_hidden` makes them, checked:
+/// inside the map (`spawns::inside_map`) and, where the mesh is generated,
+/// walked to (on the walking mesh from the spawn points), also with the
+/// Combat Arms bots' mesh (jump-ups) loaded as a party with bots has it.
+/// One line per map: (outside, off the walk) counts, and the old picker's.
+fn sweep(map: &str) -> Option<String> {
+    use chimera_sim::minigame::spawns;
+    use chimera_world::map::{nav::NavMesh, nav_gen, vis::ActiveVisibility};
+    let mut sim = server(&["+minigame", "originals:gun_game_dust2", "+map", map, "+maxplayers", "4"])?;
+    sim.seconds(1.0);
+    let w = sim.app.world_mut();
+    let feet: Vec<Vec3> = w
+        .query_filtered::<&Transform, With<SpawnPoint>>()
+        .iter(w)
+        .map(|t| t.translation - Vec3::Y * chimera_world::map::SPAWN_LIFT)
+        .collect();
+    let vis = w.get_resource::<ActiveVisibility>().map(|v| v.0.clone());
+    let own = w.get_resource::<NavMesh>().filter(|n| !n.generated).is_some();
+    let (walk, bots) = {
+        let mut state = SystemState::<SpatialQuery>::new(w);
+        let q = state.get(w).unwrap();
+        (
+            nav_gen::generate(&q, &|_| false, &feet, &spawns::walker()),
+            nav_gen::generate(&q, &|_| false, &feet, &combat_arms::game::bots::brain::nav_params()),
+        )
+    };
+    let walked = |p: &Vec3| walk.areas.iter().any(|a| a.overlaps(p.x, p.z) && (a.height_at(p.x, p.z) - p.y).abs() < 0.6);
+    let count = |spots: &[Vec3]| {
+        (
+            spots.iter().filter(|s| !spawns::inside_map(vis.as_deref(), **s)).count(),
+            spots.iter().filter(|s| !walked(s)).count(),
+        )
+    };
+    let now = spawns::candidates(w);
+    let (outside, off) = count(&now);
+    let mut line = format!(
+        "{map}: {} spots ({} mesh), {outside} outside the map, {off} off the walk",
+        now.len(),
+        if own { "own" } else { "walked" }
+    );
+    assert_eq!(outside, 0, "{line}");
+    if !own {
+        assert_eq!(off, 0, "{line}");
+        // A party with bots: their mesh is loaded, and isn't spawned on.
+        let old = {
+            w.insert_resource(NavMesh { generated: false, ..bots.clone() });
+            spawns::candidates(w)
+        };
+        w.insert_resource(bots);
+        let with_bots = spawns::candidates(w);
+        let (old_outside, old_off) = count(&old);
+        let (b_outside, b_off) = count(&with_bots);
+        line += &format!(
+            "; on the bots' mesh {} spots, {old_outside} outside, {old_off} off the walk; with it loaded {b_outside}, {b_off}",
+            old.len()
+        );
+        assert_eq!((b_outside, b_off), (0, 0), "{line}");
+        w.remove_resource::<NavMesh>();
+    }
+    Some(line)
+}
+
+#[test]
+fn every_pool_map_s_spawn_spots_are_inside_it() {
+    if !installs() {
+        eprintln!("skipping: needs both the CS:S and the Combat Arms installs");
+        return;
+    }
+    let Some(css) = LocalConfig::load()
+        .ok()
+        .and_then(|c| c.game_path_in(cs_source::game::GAME, cs_source::game::INFO.steam.as_ref()))
+    else {
+        return;
+    };
+    let mut maps: Vec<String> = std::fs::read_dir(css.join("cstrike/maps"))
+        .map(|d| {
+            d.filter_map(|e| e.ok()?.file_name().into_string().ok())
+                .filter_map(|n| n.strip_suffix(".bsp").map(str::to_string))
+                .filter(|n| n.starts_with("de_") || n.starts_with("cs_"))
+                .map(|n| format!("cs_source:{n}"))
+                .collect()
+        })
+        .unwrap_or_default();
+    maps.sort();
+    maps.extend(
+        ["warehouse", "junkflea", "darkhills", "bloodmoney"].map(|m| format!("combat_arms:{m}")),
+    );
+    let only = std::env::var("CHIMERA_SPAWN_SWEEP").ok();
+    for map in maps.iter().filter(|m| only.as_ref().is_none_or(|o| m.contains(o.as_str()))) {
+        match sweep(map) {
+            Some(line) => eprintln!("{line}"),
+            None => eprintln!("{map}: not loaded"),
+        }
+    }
 }

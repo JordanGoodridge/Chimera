@@ -7,7 +7,8 @@
 //! drop as a one-way link); then the cells merged into axis-aligned
 //! rectangles of nearly level, mutually linked cells (`NavArea`s with
 //! their corner heights) and the cell links turned into area links
-//! (`Via::Walk` across the side they leave by). Game-neutral: the walker's
+//! (`Via::Walk` across the side they leave by), marked
+//! `NavMesh::generated`. Game-neutral: the walker's
 //! sizes are `NavGenParams`, the colliders that count are the caller's
 //! (`generate`'s `ignore`).
 //!
@@ -326,5 +327,6 @@ fn merge(g: &Grid<'_, '_, '_>) -> NavMesh {
         areas,
         ladders: Vec::new(),
         places: Vec::new(),
+        generated: true,
     }
 }

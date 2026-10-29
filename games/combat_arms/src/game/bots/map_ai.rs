@@ -240,6 +240,7 @@ impl MapAi {
             areas,
             ladders: Vec::new(),
             places: Vec::new(),
+            generated: false,
         })
     }
 

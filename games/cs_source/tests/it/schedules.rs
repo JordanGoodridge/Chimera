@@ -41,8 +41,8 @@ const RATCHET: &[ScheduleRatchet] = &[
     },
     ScheduleRatchet {
         schedule: "FixedPostUpdate",
-        server: 193,
-        client: 195,
+        server: 187,
+        client: 189,
         opposite: 30,
     },
     ScheduleRatchet {
