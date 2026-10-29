@@ -247,6 +247,18 @@ the user's go-ahead: no Actions runs unless asked.
   draws a random Combat Arms melee weapon (knives and the rest of the
   melee class), the same for everyone on the rung. The ladder's knife
   finale keeps its own knife.
+- **de_piranesi's sky blank (grey), the sky showing only at the edges of
+  some see-through objects: fixed, confirm in a playtest.** The camera
+  pass's skipped copies (docs/performance.md, "Second pass: the
+  cameras") left the UI camera copying the frame out, and Bevy
+  alpha-blends every copy but a target's bottom camera's over what the
+  target holds: the window's clear colour showed wherever the frame's
+  alpha is below one, de_piranesi's sky texture (de_dust2's and
+  cs_office's skies are opaque, so the frozen-scene checks matched);
+  the edges of alpha-to-coverage foliage and fences wrote alpha one.
+  The camera copying for skipped ones now replaces the target
+  (`render::cameras::skip_covered_outputs`; test
+  `chimera/present/tests/it/camera_outputs.rs`).
 - **Frame rate drops after a few map changes: fixed, confirm in a
   playtest.** What grew was archetypes and tables (Bevy frees none; the
   characters' optional components make new ones at every map change and
