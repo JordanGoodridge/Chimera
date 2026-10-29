@@ -16,10 +16,10 @@
 //!
 //! Known shortcuts (docs/tech-debt.md): a body that doesn't load is tried
 //! once per session (its warning says why); a specialist loads its own
-//! copy of its sex's animation library (a few megabytes each); some
-//! install bodies draw pieces untextured (a ghillie suit showed grey
-//! leaves on the dev box: skins outside the body record's upper, legs and
-//! mark slots, not looked into yet).
+//! copy of its sex's animation library (a few megabytes each); a body
+//! whose file the install doesn't have (two on the dev box's install,
+//! `heavy::body_skins`) stays in the rungs' pool and its players keep
+//! what they wore.
 
 use std::collections::{BTreeMap, BTreeSet};
 

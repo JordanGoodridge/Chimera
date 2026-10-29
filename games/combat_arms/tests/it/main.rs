@@ -72,6 +72,7 @@ mod world_objects_play;
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
     mod attributes;
+    mod body_skins;
     mod bots;
     mod characters;
     mod effects_sounds;

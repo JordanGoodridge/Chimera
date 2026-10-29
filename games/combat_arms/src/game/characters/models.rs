@@ -7,7 +7,8 @@
 //! pieces they may wear merged onto its skeleton as body-part choices
 //! (`BodyGroup`: a character's `map::BodyNumber` picks its body, face
 //! and head piece, `drawn`); its texture slots filled per camouflage
-//! index and team mark (skin family `family(c, teammate)`), a face's and
+//! index and team mark (skin family `family(c, teammate)`; slots 5 on
+//! the record's `AdditionalSkins#`, a ghillie suit's leaves: `slot`), a face's and
 //! head piece's skins by camouflage index; each piece in its render
 //! style (`render_style`: the body record's `RenderStyle#`, so the team
 //! mark of an enemy draws through `Alpha.dtx`'s alpha, nothing); each
@@ -446,17 +447,16 @@ pub fn append_shared(map: &mut MapData, models: &SharedModels, kit: &crate::map:
 }
 
 /// A texture slot's file for a family (2: 0 upper, 1 legs, 2 team mark,
-/// 3 and 4 clan background and emblem: mark 0 without a clan).
-fn slot(record: &ModelRecord, slot: i32, c: i32, teammate: bool) -> String {
-    let ca = CaData::install();
-    let data = ca.characters();
+/// 3 and 4 clan background and emblem: mark 0 without a clan, 5 on the
+/// record's additional skins).
+fn slot(data: &CharacterData, record: &ModelRecord, slot: i32, c: i32, teammate: bool) -> String {
     let (upper, lower) = data.skins(record, c);
     match slot {
         0 => upper.unwrap_or_default().to_string(),
         1 => lower.unwrap_or_default().to_string(),
         2 => data.team_mark(teammate, false).to_string(),
         3 | 4 => data.marks.enemy.clone(),
-        _ => String::new(),
+        s => data.additional_skin(record, s).unwrap_or_default().to_string(),
     }
 }
 
@@ -663,10 +663,10 @@ fn body_group(
                         // The team mark in its mark's own style too
                         // (`[TeamMark]`'s `RenderStyle#`).
                         Source::Body(record, 2) => (
-                            slot(record, 2, c, teammate),
+                            slot(&data, record, 2, c, teammate),
                             render_style::of_list(&data.marks.render_styles, i32::from(teammate)),
                         ),
-                        Source::Body(record, s) => (slot(record, *s, c, teammate), Style::Opaque),
+                        Source::Body(record, s) => (slot(&data, record, *s, c, teammate), Style::Opaque),
                     };
                     textures.look(name, *style, over, map)
                 })
@@ -862,4 +862,35 @@ fn held(
         merged: Vec::new(),
         own: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A body's texture slots (characters.md 2): 0 upper and 1 legs by
+    /// camouflage, 2 the team mark, 3 and 4 mark 0, 5 on the record's
+    /// additional skins (`AdditionalSkins{slot - 5}`, a ghillie suit's
+    /// leaves); past them nothing.
+    #[test]
+    fn body_texture_slots() {
+        let ca = CaData::builtin();
+        let data = ca.characters();
+        let mut r = data.default_model().clone();
+        r.upper_skins = vec!["up0.dtx".into(), "up1.dtx".into()];
+        r.lower_skins = vec!["lo0.dtx".into(), "lo1.dtx".into()];
+        r.additional_skins = vec!["CHARS_T_BODY\\fur.dtx".into(), String::new(), "spec.spr".into()];
+        assert_eq!(slot(&data, &r, 0, 1, false), "up1.dtx");
+        assert_eq!(slot(&data, &r, 1, 9, false), "lo0.dtx");
+        assert_eq!(slot(&data, &r, 2, 0, true), data.marks.teammate);
+        assert_eq!(slot(&data, &r, 2, 0, false), data.marks.enemy);
+        assert_eq!(slot(&data, &r, 4, 0, true), data.marks.enemy);
+        // The same additional skin for every camouflage index.
+        assert_eq!(slot(&data, &r, 5, 0, false), "CHARS_T_BODY\\fur.dtx");
+        assert_eq!(slot(&data, &r, 5, 3, true), "CHARS_T_BODY\\fur.dtx");
+        assert_eq!(slot(&data, &r, 6, 0, false), "");
+        assert_eq!(slot(&data, &r, 7, 0, false), "spec.spr");
+        assert_eq!(slot(&data, &r, 8, 0, false), "");
+        assert_eq!(slot(&data, &r, -1, 0, false), "");
+    }
 }
