@@ -63,6 +63,7 @@ mod vip_escort;
 mod weapon_classes;
 mod weapon_corrections;
 mod weapon_firing;
+mod weapon_timings;
 mod world;
 mod volume_corrections;
 mod world_corrections;
@@ -84,6 +85,7 @@ mod heavy {
     mod model;
     mod movement_volumes;
     mod own_sounds;
+    mod timings;
     mod mount;
     mod options;
     mod props;
