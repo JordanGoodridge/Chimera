@@ -38,6 +38,13 @@ the user's go-ahead: no Actions runs unless asked.
   barrel of that mass and volume floats, and the damping. Check the
   water surface height used, the submerged-volume estimate (a hull, not
   the bounding box) and the density.
+- **Combat Arms radio menu: number keys leak through, and raw text
+  keys.** With the radio menu open (C, V, B, N), the number key that
+  picks a command also switches weapon (4 takes out the grenade): the
+  menu must consume it. The chat line then reads like
+  `$radio_message_report_chat_3` instead of the message: resolve it
+  through the install's string table in the game's language (and say
+  so if the table is in a keyed archive this box can't read).
 - **Kill feed: Combat Arms gun icons sit at the top of the line.** The
   generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
   icons vertically, with every line the same height (widths may vary).
