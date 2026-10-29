@@ -435,6 +435,52 @@ Notes:
   bomb's fire key with movement locked; the mission files read (item
   21). Live checks left in windows-captures.md, Sitting 5, items 17-30.
 
+## Weapon skins: open questions for a spec session (2026-10-29)
+
+From the 2026-10-28 gun game playtest's grey and scrambled guns (docs/
+backlog.md). Sprite skins now draw their first frame; these need the
+reference on the Windows PC:
+
+1. **Sprite files (`.spr`) as model skins.** Their layout: we read five
+   32-bit fields, then each frame as a 16-bit length and a texture path;
+   what are the five fields (frame count, frame time in ms, looping,
+   flags), and is there anything after the frames? When a weapon's
+   `PVSkin#` / `HHSkin#` names a sprite (121 in the gun archives, e.g.
+   `GUNS_T_PV_AR\PV_AR_RINBOW_M416.SPR`; 310 pieces of the 2,298
+   weapons; `GUNS_T_PV_AR\PV_AR_ARX_160_LINE.SPR`
+   whose frames are `PV_AR_ARX_160_LINE-1..5.DTX`), how does the model
+   draw it: which frame when, from which clock (per model since it was
+   created, or the game's), looping or once, blended between frames or
+   not? Same for characters' and attachments' sprite skins
+   (`ATTACH_T\GODSET.SPR`). Test cases: one sprite's fields and frame
+   list, and the frame shown at a few times.
+2. **Render styles of those weapons.** What `PVRenderStyle#` /
+   `HHRenderStyle#` the sprite-skinned and other special skins name
+   (the sprite-skinned guns name `RS\default.ltb`; unknown to our
+   table so far: `RS\ENV_ALPHA_MASK.ltb`, `RS\ItemEdge.ltb`,
+   `RS\envmap.ltb`), and what each such `RS\*.LTB` does (the render-style files'
+   format is still uncovered: models_ltb.md "Other files"): lighting,
+   blending, an environment map or a second texture stage?
+3. **Pieces with two texture slots.** models_ltb.md says T is 1 or 2;
+   what does the second slot do (a second stage: detail, environment
+   map, specular?) and which slot carries the colour? 62 weapon pieces
+   have two (the knives' `..._BC.DTX`, the power suits' and swords'
+   `TEXTURES\128XPV_SPECIALSPECR.DTX`, `TEXFX\RENDERSTYLES\CLOUDS.DTX`);
+   we draw the first.
+4. **"Neon Outlaw ASW338LM"**, whose texture the user saw scattered over
+   the gun, isn't in the dev box's install (nor "AUG A3 Champions
+   Lightning"): on the Windows PC, which weapon record is it (its
+   `Name`, `PVModelNormal`, `PVSkin#`, `HHSkin#`), and what does its
+   model's piece name as texture slots? (`heavy::weapon_skins` with
+   `CHIMERA_SKINS_SHOW=outlaw` prints it.) Upgrade levels and limited
+   editions are separate records sharing their skins (the Red Dominion
+   ARX160 Lv.1-4 and their "(limit)" copies all name
+   `PV_AR_ARX_160_LINE.SPR`): no question there.
+
+`cargo test -p combat_arms --features dev,ui --test it
+heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
+and skins, grouped by cause (needs the keys).
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the

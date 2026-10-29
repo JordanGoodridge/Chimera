@@ -121,11 +121,13 @@
 //!   fails to load; its test adds one.
 //! - The install adds some 2,000 weapons; a map loads the held
 //!   (third-person) models of ours only (`builtin_weapon_ids`: what
-//!   players are given), so an install weapon given by other means has
-//!   none in third person (its view model loads on demand like any:
-//!   `view_model::on_demand`).
+//!   players are given); an install weapon given by other means loads
+//!   its held model when first held (`characters::held_on_demand`) and
+//!   its view model when first drawn (`view_model::on_demand`).
 //!   The skins' `Hands` placeholder and `PV_L_ARM` / `PV_R_ARM` tags (no
-//!   `.dtx`) are empty slots (`skin_paths`).
+//!   `.dtx` or `.spr`) are empty slots (`skin_paths`); a sprite skin
+//!   (`.spr`, the animated ones: rainbow, lava-crystal, light-up guns)
+//!   draws its first frame only (the sprite's timing isn't in the specs).
 
 pub mod attributes;
 mod store;
@@ -595,15 +597,24 @@ fn grenade_values(p: &ProjectileRecord, length_scale: f64) -> Vec<Set> {
 
 /// An attribute file's skin list as archive paths: entries that aren't
 /// texture files (the stock data's `Hands` placeholder and the
-/// `PV_L_ARM` / `PV_R_ARM` tags, view_models.md 2) are empty.
+/// `PV_L_ARM` / `PV_R_ARM` tags, view_models.md 2) are empty. A sprite
+/// (`.spr`, an animated texture sequence: world_dat.md) is a texture
+/// file: the model draws its first frame (`world::textures`).
 pub fn skin_paths(skins: &[String]) -> Vec<String> {
     skins
         .iter()
         .map(|s| {
             let p = super::model::normalize(s);
-            if p.ends_with(".dtx") { p } else { String::new() }
+            if is_skin_file(&p) { p } else { String::new() }
         })
         .collect()
+}
+
+/// Whether a skin entry names a texture file: a `.dtx` or a sprite
+/// (`.spr`), any case.
+pub fn is_skin_file(path: &str) -> bool {
+    let p = path.trim().to_ascii_lowercase();
+    p.ends_with(".dtx") || p.ends_with(".spr")
 }
 
 /// The install weapon's sound fields: `MiscSound1..5` as the effects

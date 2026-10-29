@@ -13,7 +13,9 @@
 //! mark of an enemy draws through `Alpha.dtx`'s alpha, nothing); each
 //! weapon's third-person model (`[models] world`, the weapons file's
 //! `HHModel`, in its `HHRenderStyle#`, drawn in its own `Hand` pose:
-//! `HELD_POSE`) as a held model on the `RightHand` socket; each grenade's
+//! `HELD_POSE`) as a held model on the `RightHand` socket (ours with the
+//! map; an install weapon's when first held: `load_held_weapon`,
+//! `characters::held_on_demand`); each grenade's
 //! model in flight (its projectile record's `Model`, `Skin#` and
 //! `ModelScale`, in its `World` pose: `THROWN_POSE`) as a held model in no
 //! hand under `grenades::thrown_key`; each impact projectile's model in
@@ -259,6 +261,28 @@ pub fn add_character_models(map: &mut MapData, ca: &CaDataInner, file: &dyn Fn(&
             Err(e) => map.warnings.push(format!("{} projectile model: {e}", w.id)),
         }
     }
+}
+
+/// Weapon `id`'s third-person model as `add_character_models` makes the
+/// kit's (its `[models] world` in its look's skins and render styles, on
+/// the default skeleton's `RightHand` socket), with its own textures:
+/// for a weapon the map's kit doesn't carry (an install weapon, loaded
+/// when first held: `held_on_demand`). Err when its data names none or it
+/// doesn't read.
+pub fn load_held_weapon(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<(MapHeldModel, Vec<crate::map::MapTexture>), String> {
+    let ca = CaData::install();
+    let w = ca
+        .weapon_set()
+        .weapons
+        .iter()
+        .find(|w| w.id == id)
+        .ok_or_else(|| format!("{id}: no such weapon"))?;
+    let path = w.models.world.as_deref().ok_or_else(|| format!("{id}: no third-person model in its data"))?;
+    let data = ca.characters();
+    let hand = data.skeleton(0).socket("RightHand").ok_or("the skeleton has no RightHand socket")?;
+    let mut own = MapData::default();
+    let h = held(path, id, &data.weapon(Some(id)), hand, &mut own, file).map_err(|e| format!("{id} third-person model: {e}"))?;
+    Ok((h, own.textures))
 }
 
 use super::super::special::{PROJECTILE, ProjectileParams};

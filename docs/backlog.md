@@ -66,15 +66,11 @@ the user's go-ahead: no Actions runs unless asked.
   the flamethrower's keys, brief 24b item 9).
 
 - **In progress (agents working, 2026-10-29):**
-  - Grey Combat Arms skins: Prismatic Eco M416, Drakeveil SIG550, Red
-    Dominion ARX160 Lv.1 (limit), AUG A3 Champions Lightning, M14
-    Cyanide Echo lv.4 (limit), and Dragunov SVD Obsidian Dragon (flat,
-    unshaded grey), and the SIG550 Clockwork, whose body alone is grey
-    while its scope (an attachment, its own model) is textured. The R870
-    isn't visible in Combat Arms characters'
-    hands (install-only guns may have no held model).
-  - Neon Outlaw ASW338LM: its texture is mapped wrongly, scattered
-    across the gun (UVs).
+  - Grey Combat Arms skins and the R870 in characters' hands: fixed
+    (below, "Grey Combat Arms gun skins", "Combat Arms install guns had
+    no gun in third person"); the Neon Outlaw ASW338LM's scattered
+    texture and the AUG A3 Champions Lightning: not found on the dev
+    box's install (below).
   - On the end screen, guns still play their firing animation and WASD
     still plays footsteps.
   - de_piranesi's sky draws blank, showing only through some
@@ -200,7 +196,8 @@ the user's go-ahead: no Actions runs unless asked.
      `ReloadSndRadius` and `SelectSndRadius` there too. Ready to
      implement: attribute_data.md's field table and effects_sounds.md
      "How effects are described as data" and 11.
-  2. Load held models on demand for every Combat Arms weapon (as view
+  2. (Done 2026-10-29: `characters::held_on_demand`, below.) Load held
+     models on demand for every Combat Arms weapon (as view
      models are), not only ours at map load, and merge the copies'
      `AniType`, `LowerAniType`, `HHSkin#` and `HHRenderStyle#`. Ready to
      implement: characters.md 2, "Third-person weapon model and
@@ -429,6 +426,70 @@ the user's go-ahead: no Actions runs unless asked.
   (the rest: kits, smoke and flash grenades, a missing snowball file).
   The text fallback is the plain name, no brackets. Tests: combat_arms'
   `heavy::kill_icons` (install), `kill_feed::tests` in chimera_client.
+- **Grey Combat Arms gun skins: fixed (first frame), confirm in a
+  playtest** ("Prismatic Eco M416", "Drakeveil SIG550", "Dragunov SVD
+  Obsidian Dragon" (flat), "M14 Cyanide Echo lv.4(limit)", "Red
+  Dominion ARX60 Lv.1 (limit)", "SIG50 Clockwork" (body grey, scope
+  textured)). Their `PVSkin#` / `HHSkin#` name a sprite (`.spr`, an
+  animated texture sequence: world_dat.md), e.g.
+  `GUNS_T_PV_AR\PV_AR_RINBOW_M416.SPR`, `PV_AR_ID_SIG550_BC.SPR`,
+  `PV_SG_VARIANTS_DRAGUNOV_SVD.SPR`, `PV_M14REDLIGHT.SPR`,
+  `PV_AR_ARX_160_LINE.SPR`, `PV_SIG50_LAVA00.SPR`; our skin lists kept
+  `.dtx` names only, so those pieces had no texture and drew the
+  untextured grey (an attachment names a `.dtx`: the Clockwork's scope
+  showed). A sprite skin now draws its first frame, as map surfaces and
+  effects already did (`data::skin_paths`, `world::textures`); it
+  doesn't animate: the sprite's timing isn't in the specs (open
+  question in docs/plans/active/combat-arms.md, "Weapon skins"). Same
+  for both games' boxes (a naming rule, not a key). The sweep of all
+  2,298 install weapons (`heavy::weapon_skins`, view and held model,
+  each piece's first texture slot) on the dev box's install:
+  - sprite skins, drawn grey before, now their first frame: 310 pieces
+    (the Prismatic Eco AK47/M416/AUG, Obsidian Gild AN-94, Drakeveil
+    CZ805/SIG550/SIG50 Lightning, ACR and SVD Obsidian Dragon, Red
+    Dominion ARX160 Lv.1-4 and limits, M14 Cyanide Echo, SIG50
+    Clockwork, Weaking Dragon AR-15, UMP-45 Neon Vandal, Cyber ACR, AK47
+    Pinkstatic, Knife Gradient, ...);
+  - still grey as the data says (parity: the game leaves an unresolved
+    skin empty too, textures_dtx.md): 9 skins name a file that isn't
+    there (SIG50 Samba Queen's scope `GUNS_T_PV_AR\PV_OPT_DT_SCOPE_
+    SAMBAQUEEN.DTX` is in `GUNS_T_PV_SR`; AA-12 Holy Fire's held, G36C
+    Orange Radiance's held, MK18 MOD1 camo, Retro Summer P90TR, Advanced
+    star(shing) M4A1's sprite frame, the bow controller), 6 pieces of
+    Lightning star FMG-9's view name a sprite that isn't there, 13
+    pieces' texture slot is past their skin list, 14 held/view models
+    name files that aren't there (`HH_M67.LTB` for the infected bombs,
+    `HH_M4CQB.LTB`, `HH_CLAYMORE.LTB`, the minigun);
+  - drawn but maybe not as the game: 62 pieces with a second texture
+    slot (knives, power suits, infected hands: not drawn), and render
+    styles our table doesn't know, drawn opaque: `RS\ENV_ALPHA_MASK.ltb`
+    (12: power suits, swords), `RS\ItemEdge.ltb` (6), `RS\envmap.ltb`
+    (2) (open questions 2, 3).
+  "Neon Outlaw ASW338LM" (texture scattered over the gun) and "AUG A3
+  Champions Lightning" aren't in this install's weapons file or string
+  table (newer items: the Windows PC's install is later?); every
+  ASW338LM and AUG A3 here resolves a plain `.dtx` on slot 1 or 0. Run
+  the sweep there with `CHIMERA_SKINS_SHOW=outlaw,champions` (below).
+  Tests: `attribute_data::sprite_skins_and_an_added_weapons_held_look`,
+  `model::a_sprite_skin_draws_its_first_frame`; the sweep:
+  `cargo test -p combat_arms --features dev,ui --test it
+  heavy::weapon_skins -- --nocapture` (`CHIMERA_SKINS_SHOW=a,b`: every
+  piece of the guns so named).
+- **Combat Arms install guns had no gun in third person (the R870):
+  fixed, confirm in a playtest.** A map carries the held models of our
+  own weapon documents only; the install's 1,981 copies (the ladder's
+  most, e.g. the 11 R870 variants: R870 MCS, R870SE, ...) had none, so
+  characters' hands were empty and a dropped one never drew, and their
+  look (skins, render styles, animation class) was the default. Our
+  `combat_arms:remington_870` does load with the map's kit (its
+  `HHModel` resolves and is textured); on a map whose kit doesn't carry
+  ours it now loads the same way. Their held model now loads in the
+  background the first time a character holds one or it lies loose
+  (`characters::held_on_demand`, Chimera's `map::add_held_model` /
+  `render::bodies::build_late_held`, kept across map changes), and every
+  install weapon takes its `HHSkin#`, `HHRenderStyle#` and `AniType`.
+  Tests: `held_on_demand::tests`, chimera_present
+  `bodies::late_held_models_are_built` and the attribute test above.
 
 ### Gun game playtest, 2026-10-25 (user; start after the usage reset)
 
