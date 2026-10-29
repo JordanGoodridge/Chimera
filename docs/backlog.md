@@ -52,9 +52,35 @@ the user's go-ahead: no Actions runs unless asked.
   The install's world is `junk_flea` (the lobby's key `junkflea` is
   another name); the pool says `combat_arms:junk_flea` now. Test
   (party_kit `heavy::pools`): every map in every pool resolves.
-- **Some Combat Arms bodies draw grey pieces** when loaded for a rung
-  (a ghillie-suit specialist; the Ice Mas Knight is fine). See
-  `characters/bodies_on_demand.rs`.
+- **Some Combat Arms bodies draw grey pieces: fixed, confirm in a
+  playtest** (a ghillie-suit specialist; the Ice Mas Knight was fine).
+  A body's texture slots 5 on are its record's `AdditionalSkins#`
+  (characters.md 2, "the record's additional skins"), which we didn't
+  read: the ghillie suits' leaves piece names slot 5
+  (`CHARS_T_BODY\CM_Fur_Ghillie_Suit_DF_SD.DTX`) and drew the
+  untextured grey. Now `BodyLook` / `ModelRecord::additional_skins` and
+  `models::slot`. The sweep of the 572 bodies of the rungs' pool
+  (`heavy::body_skins`, each body piece's first texture slot;
+  `CHIMERA_BODIES_LOAD=1` also loads each as a rung does, faces and
+  head pieces too) on the dev box's install:
+  - grey before, textured now: 7 pieces, the leaves of the 7 ghillie
+    records (72 `Ghillie_Suit`, 174-176 `Ghillie_Suit_Color_A/B/C`,
+    213-215 `Gear_Ghillie_Suit_0_DF/1_DE/2_UR`); no other body, face,
+    head piece or attachment loads untextured; no body skin is a sprite,
+    past its list, missing or in another archive;
+  - the install points at nothing: 279 `Medium_NM` and 280
+    `medium_NM_female` name body files it doesn't have
+    (`CM_Body_Medium_vest_KE.ltb`, `CW_Body_Medium_Female_KE.ltb`): a
+    rung drawing them keeps what its players wore;
+  - drawn but maybe not as the game: 163 pieces with a second texture
+    slot (mostly slot 5 or 6, `textures\128xPV_SpecialSpecR.dtx`: not
+    drawn), render styles our table doesn't know, drawn opaque
+    (`RS\PV_Char.ltb` 139, `RS\ENV_ALPHA_MASK.ltb` 41, `RS\PV_Char_B.ltb`
+    4, `RS\EdgeAmp01.ltb` 2), the leaves blended in the mark's
+    `RS\MARKTRANSPARENT.LTB`, and model colours (`ColorSkin{c}_`) not
+    read. Open questions: docs/plans/active/combat-arms.md, "Body
+    skins". Tests: models `body_texture_slots`, attribute_data
+    `body_additional_skins`, `heavy::body_skins`.
 - **A rung's character also sets armour and movement** (a Combat Arms
   body is its vest). It's the same for everyone on the rung, but a
   network client corrects its movement once at the swap. Ask the user

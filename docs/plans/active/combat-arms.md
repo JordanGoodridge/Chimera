@@ -481,6 +481,44 @@ reference on the Windows PC:
 heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
 and skins, grouped by cause (needs the keys).
 
+## Body skins: open questions for a spec session (2026-10-29)
+
+From the playtest's grey ghillie suit (docs/backlog.md). Texture slots 5
+on now take the body record's `AdditionalSkins#`; `heavy::body_skins`
+(`CHIMERA_SKINS_SHOW=ghillie`) prints any body's pieces. Need the
+reference:
+
+1. **Additional skins' index.** characters.md 2 says slots "5 …" are
+   "the record's additional skins": we read slot 5 + k as
+   `AdditionalSkins{k}`, the same for every camouflage index (the
+   ghillie suits' leaves piece names slot 5 and `AdditionalSkins0` is
+   `CHARS_T_BODY\CM_Fur_Ghillie_Suit_DF_SD.DTX`). Is that the mapping,
+   and does anything pick by camouflage index or figure type there?
+2. **Model colour.** 20 of the rungs' bodies have `ColorSkin{c}_UpperSkin#`,
+   `_LowerSkin#`, `_HandsSkin#` (and the ghillie one
+   `_AdditionalSkins#`) lists; characters.md 2: "if the model colour
+   index selects a colour skin list that exists, it replaces the upper
+   and lower lists". Where does a player's model colour come from (a
+   selection field, the item, the record: `Ghillie_Suit_Color_A/B/C`
+   are separate records on the same file), what is its default, and
+   does a colour list replace the additional skins too? We use none.
+3. **The leaves' render style.** The ghillie leaves piece is in render
+   style 2, `RS\MARKTRANSPARENT.LTB` (the team mark's): is it drawn
+   blended by the texture's alpha (as we do; overlapping leaves sort
+   per piece) or alpha-tested?
+4. **Bodies' render styles and second slots.** Body pieces name
+   `RS\PV_Char.ltb` (139 pieces), `RS\ENV_ALPHA_MASK.ltb` (41, the
+   specialists), `RS\PV_Char_B.ltb` (4), `RS\EdgeAmp01.ltb` (2, the
+   spy): what each does (with "Weapon skins" 2), and 163 pieces have a
+   second texture slot, mostly slot 5 or 6 (`textures\128xPV_
+   SpecialSpecR.dtx`): what the second stage does (with "Weapon skins"
+   3).
+5. **Missing bodies.** `Model279` `Medium_NM` and `Model280`
+   `medium_NM_female` name `CHARS_M_BODY\CM_Body_Medium_vest_KE.ltb` and
+   `CW_Body_Medium_Female_KE.ltb`, which the dev box's install doesn't
+   have: does the Windows PC's? What does the game draw for a record
+   whose body file is missing?
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the
