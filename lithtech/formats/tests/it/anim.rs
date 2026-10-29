@@ -313,3 +313,24 @@ fn node_evaluation() {
         assert_eq!(s, anim::IDENTITY);
     }
 }
+
+/// `AnimList::find` (an index made on the first call) gives what a
+/// case-blind scan gives: the first entry of a name in any case, none for
+/// a missing one, and a scan again once entries are added or removed.
+#[test]
+fn find_matches_a_case_blind_scan() {
+    let m = model(2, vec![record(2), record(3)]);
+    let mut list = AnimList::build(&m, &[]);
+    let rename = |list: &mut AnimList, i: usize, n: &str| list.entries[i].animation.name = n.to_string();
+    rename(&mut list, 0, "LST");
+    rename(&mut list, 1, "lst");
+    rename(&mut list, 2, "Run_Forward");
+    let scan = |list: &AnimList, q: &str| list.entries.iter().position(|e| e.name().eq_ignore_ascii_case(q));
+    for q in ["LST", "lst", "Lst", "RUN_FORWARD", "run_forward", "nope", "", &"x".repeat(80)] {
+        assert_eq!(list.find(q), scan(&list, q), "{q}");
+    }
+    assert_eq!(list.find("lst"), Some(0), "the first of a name");
+    list.entries.remove(0);
+    assert_eq!(list.find("LST"), Some(0), "scanned after a change in count");
+    assert_eq!(list.find("run_forward"), Some(1));
+}
