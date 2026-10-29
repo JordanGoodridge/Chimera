@@ -550,6 +550,13 @@ uses mounted; the server checks this before a match. Plan:
 - Never commit third-party code, assets, extracted files or keys. The goal
   is a faithful recreation built without distributing anything we don't
   own; players load assets from their own install.
+- Two ways to get assets (user decision, 2026-10-29). By default every
+  player loads from their own install. A server may instead name a
+  private asset service, behind a CDN and run by whoever hosts the
+  server, that serves assets in a packed form only after checking,
+  through the player's Steam account, that they own the game. The
+  project never ships that service or any assets. We keep an internal
+  instance for testing. Plan in the backlog's roadmap.
 
 ### Per-game notes
 

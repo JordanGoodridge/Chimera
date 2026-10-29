@@ -33,19 +33,21 @@ the user's go-ahead: no Actions runs unless asked.
   crates. Plan in docs/plans/active/ when started.
 - **Then more modern games:** Call of Duty: Modern Warfare 1 or the
   earlier Call of Duties (new engines and formats: plan first).
-- **Smaller installs.** Needing every whole game installed gets big fast.
-  Idea: package assets per round: the server sends only what the current
-  round uses, and clients cache it. **Open decision (user):** sending
-  game assets from server to client is distributing them, against
-  DESIGN.md's "never ship other games' assets; players load from their
-  own install". Options:
-  (a) per-round loading from each player's own install, reading only the
-  needed files, with a cache built locally from that install;
-  (b) partial installs, where the client fetches only the needed files
-  from the store it owns the game on (e.g. SteamCMD's per-depot or
-  per-file downloads, where a game allows);
-  (c) server-to-client transfer, the user's idea, which changes the legal
-  model.
+- **Smaller installs: a hybrid (user decision, 2026-10-29).**
+  - *Default:* every player has the games installed on disk and loads
+    from them, as now.
+  - *Asset-service mode (opt-in per server):* the server and its clients
+    load assets, in a more convenient packed form, from a private asset
+    service behind a CDN. Whoever runs the server hosts that service and
+    gives clients its IP or URL. Before allowing any download, the
+    service checks the player owns the game, through their Steam
+    account. We don't distribute the service; we keep an internal one
+    for our own testing.
+  - *To plan* (docs/plans/active/ when started): the packed format and
+    per-round manifests, the client cache, how the client proves Steam
+    ownership to the host (Steam sign-in, then the owned-apps check per
+    game's app id), and the protocol between client, server and service.
+    Games not on Steam need another ownership check, or default mode.
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
