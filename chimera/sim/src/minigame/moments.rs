@@ -28,7 +28,7 @@ use crate::{
     core::{Dead, Health, LocalPlayer, RespawnDue, SimClock},
     mode::{Match, Phase},
 };
-use chimera_core::game_parts::PartsRegistry;
+use chimera_core::{game_parts::PartsRegistry, query_cache::cached_query};
 
 /// The match's phase as a director sees it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -82,7 +82,7 @@ pub fn update(world: &mut World) {
         }
         return;
     };
-    let me = world.query_filtered::<Entity, With<LocalPlayer>>().iter(world).next();
+    let me = chimera_core::query_cache::first::<With<LocalPlayer>>(world);
     let alive =
         me.is_some_and(|e| world.get::<Dead>(e).is_none() && world.get::<Health>(e).is_some_and(|h| h.current > 0.0));
     let phase = match world.get_resource::<Match>().map(|m| m.phase) {
@@ -94,11 +94,9 @@ pub fn update(world: &mut World) {
     let last_rung = if rungs == 0 {
         0
     } else {
-        world
-            .query_filtered::<&ladder::Rung, With<super::InMinigame>>()
-            .iter(world)
-            .filter(|r| r.0 + 1 == rungs)
-            .count() as u32
+        cached_query::<&ladder::Rung, With<super::InMinigame>, _>(world, |q, w| {
+            q.iter(w).filter(|r| r.0 + 1 == rungs).count() as u32
+        })
     };
     let now = world.get_resource::<SimClock>().map_or(0.0, |c| c.now);
     let respawn_in = world

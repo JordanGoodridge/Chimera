@@ -1,15 +1,20 @@
 //! Load-independent performance metrics (docs/performance.md,
 //! "Load-independent metrics"): per-thread CPU time and hardware counters
-//! (`counters`), distributions of the last N values (`dist`), and the
-//! simulation tick's own numbers (`TickMetricsPlugin`).
+//! (`counters`), distributions of the last N values (`dist`), the
+//! simulation tick's own numbers (`TickMetricsPlugin`), and a world's
+//! counts by archetype, schedule and asset type (`census`); with `trace`,
+//! instructions per span (`span_cost`).
 //!
 //! Wall-clock times move with whatever else the machine runs; a thread's
 //! CPU time moves less (not with waiting, but with cache and frequency
 //! effects), and its user-space instruction count hardly at all: compare
 //! instructions across runs, times within one.
 
+pub mod census;
 pub mod counters;
 pub mod dist;
+#[cfg(feature = "trace")]
+pub mod span_cost;
 
 use std::time::Instant;
 

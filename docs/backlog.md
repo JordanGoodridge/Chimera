@@ -27,12 +27,22 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
-- **Frame rate drops after a few map changes.** de_dust2 started at about
-  240 fps and fell after several map changes in one session; more bots
-  may also cost more. Suspect something that outlives a map (entities,
-  meshes, materials, sounds, observers or systems added per load). Find
-  what grows per change (entity and asset counts, frame time after N
-  changes on one map) and free it; measure per bot too.
+- **Frame rate drops after a few map changes: fixed, confirm in a
+  playtest.** What grew was archetypes and tables (Bevy frees none; the
+  characters' optional components make new ones at every map change and
+  death), and exclusive systems that built their queries every tick walked
+  them all: the tick cost 78% more after ten round trips. They keep their
+  queries now (`chimera_core::query_cache`, the party frame-rate pass):
+  25% after ten, 28% less from the start (docs/performance.md, "Map
+  changes that slowed the tick"). Bots cost about linearly (1.3M
+  instructions a tick each at 16), most in Combat Arms' animation.
+- **Fewer character tables.** What the fix above left: every query that
+  matches characters steps over their empty tables (+25-70k instructions
+  a call with 2,000 more). Make the components that come and go on
+  characters (spawn protection, the gun's game's movement and view
+  parts, the body model `map::unload_map` takes off) sparse sets or
+  fewer, measured with `party_kit`'s `archetypes` test (table markers)
+  and `chimera_census diff` (new tables per round trip).
 - **Match end: everyone stops: fixed, confirm in a playtest.** From the
   winning kill every player's and bot's input keeps only the look (server
   side, `core::FreezeTime` for prediction and bots); the win callout
