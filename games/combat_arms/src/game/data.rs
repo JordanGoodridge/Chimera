@@ -88,7 +88,9 @@
 //! with its name and line), the built-in data is used unchanged.
 //! `weapon_set` and `movement::movement_data` are the merged data;
 //! `use_builtin_data_only` (the test harness, `CaSim`) turns the install
-//! off for the process.
+//! off for the process. A network server offers the merged weapon
+//! documents, attachment records and movement numbers to clients whose
+//! own differ (`served`).
 //!
 //! The other modules read data only through this one: `weapons` registers
 //! the set, `inventory` names what a player starts with.
@@ -149,6 +151,7 @@
 //!   draws its first frame only (the sprite's timing isn't in the specs).
 
 pub mod attributes;
+pub mod served;
 mod store;
 
 pub use store::{CaData, CaDataInner};
@@ -1329,3 +1332,4 @@ mod tests {
         assert_eq!(slug("K-2 (Gold)"), "k-2__gold_");
     }
 }
+

@@ -53,6 +53,24 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **A client without the Combat Arms key, or with another install
+  version, builds other weapons than the server: fixed, confirm in a
+  playtest.** The ~2,300 install copies come from the attribute file
+  (V1 key) and registry indices went over the wire unchecked: such a
+  client built the wrong weapon or none, and its clips, rates, spread
+  and attachment records were its own. Now the server's data documents
+  go to a client whose own differ (chimera_sim's `server_docs`,
+  chimera_net's `net::server_docs`, net33): the manifest offers each
+  set's hash and the registry's; the client asks for the sets that
+  differ (Combat Arms' weapons, attachment records, movement:
+  `data::served`), rebuilds its registry from them before it enters the
+  game, and leaves with the reason if its registry still differs or a
+  set is too big to send (4 MB packed; the install's weapons pack to
+  ~280 KB from 14.4 MB). Models and sounds are still the client's own.
+  Gear records aren't sent yet (multiplayer.md "Server data documents").
+  Tests: combat_arms `server_docs` (0 prediction errors on a copy's
+  burst after the documents came, the same clip; nothing sent to a
+  client with the same data; refusals).
 - **The gun game's title names Dust II on every map: fixed, confirm in a
   playtest.** The definition's name is now "Gun Game: {map}", `{map}` the
   map played ("Gun Game: Aztec"; `minigame::hud::shown_name`).

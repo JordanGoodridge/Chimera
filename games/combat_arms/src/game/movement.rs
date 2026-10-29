@@ -118,6 +118,7 @@ use std::sync::OnceLock;
 
 use avian3d::{character_controller::move_and_slide::DepenetrationConfig, prelude::*};
 use bevy::prelude::*;
+use chimera_sim::server_docs::DocsAppExt;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -144,7 +145,7 @@ const SPAWN_DROP: f32 = 100_000.0;
 pub const MOVEMENT_DATA: &str = include_str!("../../data/movement.toml");
 
 /// The movement's numbers (data/movement.toml; spec "Constants").
-#[derive(Resource, Clone, Debug, Deserialize)]
+#[derive(Resource, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MovementData {
     pub meters_per_unit: f32,
@@ -198,7 +199,7 @@ pub struct MovementData {
 }
 
 /// The crouch-spam penalty's parameters (spec "Crouch-spam penalty").
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CrouchSpamData {
     pub duration: f32,
@@ -224,7 +225,7 @@ pub struct CrouchSpamData {
 /// A player's figure type and worn gear: what the speed limit, sprint and
 /// stamina read (spec "Character and weapon data"). Absent on a player:
 /// the data's (the reference character).
-#[derive(Component, Clone, Debug, Deserialize)]
+#[derive(Component, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CaCharacter {
     pub figure: Figure,
@@ -242,7 +243,7 @@ fn one() -> f32 {
     1.0
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Figure {
     /// `DashSpeed`: sprint multiplier on the run speed.
@@ -263,7 +264,7 @@ pub struct Figure {
 }
 
 /// One worn item (vest, head piece, goggles, backpack, gear mod).
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Gear {
     pub name: String,
@@ -546,6 +547,12 @@ pub struct CaMovementPlugin;
 impl Plugin for CaMovementPlugin {
     fn build(&self, app: &mut App) {
         let movement = super::data::CaData::of(app).movement().clone();
+        // A network client whose movement numbers differ takes the server's.
+        app.server_docs(
+            super::data::served::MOVEMENT,
+            super::data::served::movement_doc(&movement),
+            chimera_sim::server_docs::DocApply::With(super::data::served::apply_movement),
+        );
         app.insert_resource(movement)
             .insert_resource(Loadout { movement: ID })
             .register_movement::<CaMovement>(ID)

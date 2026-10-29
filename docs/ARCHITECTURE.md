@@ -36,7 +36,7 @@ cs_source_app (apps/cs_source/)   the CS:S app: the game binary, SimPlugins (+ i
   |    chimera_net (chimera/net/)   net: transport, replication, prediction; harness::NetSim
   |    |
 chimera_present (chimera/present/)   render, audio, MapPlugin, assets (installs as asset sources)
-  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module, mode, minigame, identity, spawning, announce; SimBasePlugins; testkit (feature)
+  |    chimera_sim (chimera/sim/)   weapon, movement, rule_module, mode, minigame, identity, spawning, announce, server_docs; SimBasePlugins; testkit (feature)
   |    |
 chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; music; greybox, harness::Sim
   |                \
@@ -119,7 +119,10 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   on the mode runtime by Chimera's own flow, with the `chimera:ladder`
   rules; D2, L2), `identity` (a character's game identity following the
   weapon it holds: its movement in the predicted tick, its body and its
-  player's HUD; a minigame's `identity = "weapon"`)
+  player's HUD; a minigame's `identity = "weapon"`),
+  `server_docs` (a game's derived data as named documents a network
+  client whose own differ takes from the server: weapon sets rebuilt in
+  place, multiplayer.md "Server data documents")
   and `spawning` (what every game's respawn does), and, behind the `testkit` feature, `testkit` (the test kit: a weapon set as data and the base on the greybox, docs/OBSERVABILITY.md). They name no game; games fill them. It uses `chimera_world` and
   `chimera_core`, never the presentation, `mashup` or a game (checked);
   `mashup` re-exports them at their old paths. `cargo test -p chimera_sim

@@ -88,6 +88,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // The announcer's counting of kills (chimera/sim): from deaths and the
     // guns' hit regions, the server's `sv_announcer`.
     ("announce", &["core", "console", "map", "weapon"]),
+    // Server data documents (chimera/sim): a game's derived data as named
+    // documents a network client takes from the server (weapon sets
+    // rebuilt in place).
+    ("server_docs", &["weapon"]),
     // The test kit (chimera/sim, feature `testkit`): a weapon set as data
     // and the base on the greybox, for tests; nothing outside the crate's
     // frameworks.
@@ -533,6 +537,7 @@ fn simulation_builds_no_drawn_parts() {
         "rule_module",
         "mode",
         "spawning",
+        "server_docs",
         "games",
     ];
     let mut files = Vec::new();

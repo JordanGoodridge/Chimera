@@ -35,7 +35,10 @@
 //! Loaded sets are leaked (`&'static`: weapon IDs are `&'static str`
 //! everywhere); each app's registry, prices and `WeaponCatalog` list the
 //! sets it loaded, so two apps in one process can hold different data for
-//! the same IDs (code with a world reads `WeaponCatalog::get`).
+//! the same IDs (code with a world reads `WeaponCatalog::get`). A network
+//! client whose set differs from the server's puts the server's documents
+//! in its place (`replace_weapon_set`, `server_docs`): same registry
+//! position, so indices match the server's.
 //!
 //! Known shortcuts (docs/tech-debt.md): Weapon data: loaded sets are leaked
 //! (one allocation per load; IDs are `&'static str` throughout the weapon
@@ -755,33 +758,8 @@ impl WeaponDataAppExt for App {
 
     fn add_weapon_set(&mut self, set: &'static WeaponSet) -> Result<(), String> {
         let world = self.world_mut();
-        let hooks = world.get_resource_or_init::<WeaponHooks>();
-        let mut builds = Vec::new();
-        for d in &set.weapons {
-            let mut parts: Vec<HookBuild> = Vec::new();
-            for (name, params) in &d.hooks {
-                let prepare = hooks.0.get(name).ok_or_else(|| {
-                    format!(
-                        "{}: unknown hook {name} (registered: {})",
-                        d.id,
-                        hooks.names().join(", ")
-                    )
-                })?;
-                parts.push(prepare(d, params)?);
-            }
-            builds.push((d, parts));
-        }
-        for (d, parts) in builds {
-            let build = move |e: &mut EntityWorldMut| {
-                insert_parts(d, e);
-                for p in &parts {
-                    p(e);
-                }
-            };
-            let def = WeaponDef {
-                id: d.id.as_str(),
-                build: Arc::new(build),
-            };
+        let defs = weapon_defs(world, set)?;
+        for (d, def) in defs {
             let mut registry = world.get_resource_or_init::<WeaponRegistry>();
             match registry.0.iter_mut().find(|w| w.id == d.id) {
                 Some(old) => *old = def,
@@ -803,6 +781,110 @@ impl WeaponDataAppExt for App {
         self.add_weapon_set(set)?;
         Ok(set)
     }
+}
+
+/// `set`'s registry entries (its data's parts, then its hooks'); every
+/// hook must be registered.
+fn weapon_defs(world: &mut World, set: &'static WeaponSet) -> Result<Vec<(&'static WeaponData, WeaponDef)>, String> {
+    let hooks = world.get_resource_or_init::<WeaponHooks>();
+    let mut builds = Vec::new();
+    for d in &set.weapons {
+        let mut parts: Vec<HookBuild> = Vec::new();
+        for (name, params) in &d.hooks {
+            let prepare = hooks.0.get(name).ok_or_else(|| {
+                format!(
+                    "{}: unknown hook {name} (registered: {})",
+                    d.id,
+                    hooks.names().join(", ")
+                )
+            })?;
+            parts.push(prepare(d, params)?);
+        }
+        builds.push((d, parts));
+    }
+    Ok(builds
+        .into_iter()
+        .map(|(d, parts)| {
+            let build = move |e: &mut EntityWorldMut| {
+                insert_parts(d, e);
+                for p in &parts {
+                    p(e);
+                }
+            };
+            (
+                d,
+                WeaponDef {
+                    id: d.id.as_str(),
+                    build: Arc::new(build),
+                },
+            )
+        })
+        .collect())
+}
+
+/// Put the set parsed from `docs` in place of `old` (a network client
+/// taking the server's documents: `server_docs`): `old`'s weapons leave
+/// the registry and the new set's take their place, from the position of
+/// `old`'s first (the end if none was there), so the weapons registered
+/// after shift as they do on a machine that registered the new set; its
+/// prices and catalog entry are replaced too. `docs` may name bases and
+/// ammo of the other sets loaded. Err: `docs` don't parse or name a hook
+/// this app lacks (nothing changed).
+pub fn replace_weapon_set(
+    world: &mut World,
+    old: &'static WeaponSet,
+    docs: &[(String, String)],
+) -> Result<&'static WeaponSet, String> {
+    let known: Vec<&'static WeaponSet> = world
+        .get_resource_or_init::<WeaponCatalog>()
+        .sets
+        .iter()
+        .copied()
+        .filter(|s| !std::ptr::eq(*s, old))
+        .collect();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let set: &'static WeaponSet = Box::leak(Box::new(WeaponSet::parse(&refs, &known)?));
+    swap_weapon_set(world, old, set)?;
+    Ok(set)
+}
+
+/// `replace_weapon_set` with a set already parsed (a set put back: the
+/// client's own after the server's).
+pub fn swap_weapon_set(world: &mut World, old: &'static WeaponSet, set: &'static WeaponSet) -> Result<(), String> {
+    let defs = weapon_defs(world, set)?;
+    let gone: std::collections::BTreeSet<&str> = old.weapons.iter().map(|w| w.id.as_str()).collect();
+    {
+        let mut registry = world.get_resource_or_init::<WeaponRegistry>();
+        let at = registry.0.iter().position(|d| gone.contains(d.id)).unwrap_or(registry.0.len());
+        let mut kept: Vec<WeaponDef> = std::mem::take(&mut registry.0)
+            .into_iter()
+            .filter(|d| !gone.contains(d.id))
+            .collect();
+        let tail = kept.split_off(at);
+        kept.extend(defs.iter().map(|(_, def)| WeaponDef {
+            id: def.id,
+            build: def.build.clone(),
+        }));
+        kept.extend(tail);
+        registry.0 = kept;
+    }
+    let mut prices = world.get_resource_or_init::<Prices>();
+    for id in &gone {
+        prices.weapons.remove(id);
+        prices.team_only.remove(id);
+        prices.bot_weights.remove(id);
+        prices.starting_reserve.remove(id);
+        prices.ammo.remove(id);
+    }
+    for (d, _) in &defs {
+        add_prices(&mut prices, d);
+    }
+    let mut catalog = world.get_resource_or_init::<WeaponCatalog>();
+    match catalog.sets.iter().position(|s| std::ptr::eq(*s, old)) {
+        Some(i) => catalog.sets[i] = set,
+        None => catalog.sets.push(set),
+    }
+    Ok(())
 }
 
 fn add_prices(p: &mut Prices, d: &'static WeaponData) {

@@ -340,6 +340,7 @@ pub(super) fn stop(world: &mut World) {
     super::interp::reset(world);
     super::weapons::reset(world);
     super::weapon_params::reset(world);
+    super::server_docs::reset(world);
     super::cvars::restore(world);
     let remote: Vec<Entity> = world.query_filtered::<Entity, With<Remote>>().iter(world).collect();
     for e in remote {
@@ -545,7 +546,10 @@ pub fn classify(reason: &str, own_version: &str, joined: bool) -> JoinFailure {
             Some(std::cmp::Ordering::Less) => JoinFailure::NewServer,
             _ => JoinFailure::Other,
         }
-    } else if reason.starts_with(super::manifest::MISSING) || reason.starts_with(super::manifest::CANT_PLAY) {
+    } else if reason.starts_with(super::manifest::MISSING)
+        || reason.starts_with(super::manifest::CANT_PLAY)
+        || reason.starts_with(super::server_docs::DATA)
+    {
         JoinFailure::Mounts
     } else if reason.contains("network protocol differs") {
         JoinFailure::Protocol
@@ -648,6 +652,11 @@ fn check_map(world: &mut World) {
         return;
     };
     if !matches!(h.fetch, super::maps::Fetch::Loading) {
+        return;
+    }
+    // The server's data documents first (`server_docs`): the game is
+    // entered with its weapons.
+    if super::server_docs::pending(world) {
         return;
     }
     let (map, hash, tick_nanos) = (h.welcome.map.clone(), h.welcome.map_hash, h.welcome.tick_nanos);

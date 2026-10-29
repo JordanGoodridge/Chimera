@@ -30,6 +30,7 @@ pub mod minigame;
 pub mod mode;
 pub mod movement;
 pub mod rule_module;
+pub mod server_docs;
 pub mod spawning;
 #[cfg(feature = "testkit")]
 pub mod testkit;

@@ -62,7 +62,9 @@
 //! `RadioCall`, `ServerSound`, `CvarValues`, `NameRequest`, `NameChanged`,
 //! `decals::Decals`, voice (`voice::VoiceData`, `VoiceRelay`), votes' `CallVote`,
 //! `CastVote`, `VoteNews` (`vote`), `weapon_params::WeaponParams` (a weapon id's
-//! server-decided parameters, once per id per client); then the parts' (`parts`, in name order: `minigame_net`'s
+//! server-decided parameters, once per id per client), `server_docs::DocsRequest`,
+//! `DocsChunk`, `DocsDenied` (the server's data documents a client's
+//! differ from: `server_docs`); then the parts' (`parts`, in name order: `minigame_net`'s
 //! `NetMinigame`, `MinigameNews`, `InMinigame` and `Rung`; CS:S's
 //! `NetRound`, `NetBomb`, `NetHostage`, `TeamRequest`, `ClassRequest`,
 //! `ObjectiveNews`, `RoundOver`; Source's logic's `NetMover`, `MapHud`); `OwnState` also carries
@@ -227,6 +229,7 @@ pub mod udp;
 pub mod upnp;
 pub mod voice;
 pub mod vote;
+pub mod server_docs;
 pub mod weapon_params;
 pub mod weapons;
 
@@ -256,7 +259,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net32");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net33");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -1290,6 +1293,10 @@ impl Plugin for NetPlugin {
             // Weapon parameters the server decides (net32).
             .add_server_message::<weapon_params::WeaponParams>(Channel::Ordered)
             .make_message_independent::<weapon_params::WeaponParams>()
+            // The server's data documents (net33).
+            .add_client_message::<server_docs::DocsRequest>(Channel::Ordered)
+            .add_server_message::<server_docs::DocsChunk>(Channel::Ordered)
+            .add_server_message::<server_docs::DocsDenied>(Channel::Ordered)
             .init_resource::<NetSettings>()
             .init_resource::<NetVersion>()
             .init_resource::<NetHooks>()
@@ -1323,6 +1330,7 @@ impl Plugin for NetPlugin {
         vote::plugin(app);
         stats::plugin(app);
         weapon_params::plugin(app);
+        server_docs::plugin(app);
         commands(app);
     }
 
