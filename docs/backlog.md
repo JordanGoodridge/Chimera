@@ -183,13 +183,26 @@ the user's go-ahead: no Actions runs unless asked.
   `[Class] Name : $id`, which only a leading `$` resolved; the table
   (`language_pack`, V1-keyed, reads here and has all 27 chat ids) now
   resolves the ids inside radio lines at the viewer's end.
-- **CS:S grenades bounce too much.** Check our grenade against
-  specs/cs_source/grenades.md section 4: 0.4 x gravity, elasticity 0.45
-  times the surface's (1.0 world, 0.3 player) capped at 0.9, stop below
-  30 in/s, no ground friction, 0.4 x velocity through glass. Measure a
-  throw's bounce heights and slide in a test against those numbers. If
-  ours matches the spec and still looks wrong, the spec needs
-  re-checking against the reference in a spec session on the Windows PC.
+- **CS:S grenades bounce too much.** MATCHES THE SPEC; needs a spec
+  re-check on the Windows PC (2026-10-29). Checked rule by rule against
+  specs/cs_source/grenades.md section 4 (`chimera/sim/src/weapon/grenade.rs`
+  `fly`, `bounce`, `gravity_step`; numbers in `cs_source::game::grenades::
+  flight()`, shared by HE, flashbang and smoke): box 4 in, gravity 0.4 x 800,
+  elasticity 0.45 x (1.0 world, 0.3 player) capped 0.9, mirror then scale,
+  floor second sweep, wall loses the rest of the tick, stop under 30 in/s,
+  no ground friction, glass 0.4, 0.015 s ticks, metres (0.0254 per inch)
+  all agree. Test `cs_grenades::css_grenades_bounce_as_the_spec_says_on_
+  floor_and_wall` follows a tick-by-tick model of the spec: a level throw
+  (590.88, 104.19 in/s) bounces to apexes 34.96 / 7.4 / 1.9 / 1.0 in,
+  stops 1.6 s after, and a wall turns vx to -265.9. So if it still looks
+  too bouncy in play, the spec's numbers need re-checking against the
+  reference (a spec session on the Windows PC): elasticity 0.45 and the
+  world's 1.0, the 30 in/s stop speed, gravity scale 0.4, whether the
+  bounce speed test or the surface elasticity differs in CS:S's own game
+  code (the spec's rules come from the SDK template, not CS:S's DLL), and
+  whether CS:S bounces off the "grenade" surface property's elasticity
+  (not the flat 1.0). Measured data in the spec (Q7: an HE dropped on tile
+  stops in 4 contacts, a smoke in 3) is the thing to compare ours with.
 - **Combat Arms tracers look flat and wide** (fixed 2026-10-29, confirm
   in a playtest, esp. through a sniper scope). Ours already turned the
   strip toward the eye, but once for the whole strip (by its midpoint):
