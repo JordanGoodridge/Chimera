@@ -500,7 +500,7 @@ fn hurt(
         match count {
             Some(mut c) => c.0 = n,
             None => {
-                commands.entity(who).insert(HostageKills(n));
+                commands.entity(who).try_insert(HostageKills(n));
             }
         }
         if rules.penalty > 0 && n + 1 == rules.penalty {
@@ -510,7 +510,7 @@ fn hurt(
             // Computer players leave; the local player can't be kicked
             // from its own game (told only).
             if !local {
-                commands.entity(who).despawn();
+                commands.entity(who).try_despawn();
             }
         }
     }

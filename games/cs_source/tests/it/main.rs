@@ -30,6 +30,7 @@ mod auto_switch;
 mod bot_buying;
 mod bot_grenades;
 mod bot_manners;
+mod bomb_leave;
 mod bot_sight;
 mod cs_grenades;
 mod cs_guns;
