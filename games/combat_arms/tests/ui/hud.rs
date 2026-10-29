@@ -679,6 +679,32 @@ fn t30_disabled_with_dot_sight() {
     let c = hud(&sim).crosshair;
     assert!(c.elements.is_empty());
     assert_eq!((c.draws.dot_sight, c.dot_sight), (1, Some(dot_sight_rect(screen()))));
+    assert_eq!(c.dot_sight_image.as_deref(), Some("reticle"), "the record's image is the one drawn");
+}
+
+/// A weapon whose record names no reticle draws none; one that does
+/// draws it (its texture from the record) unless a scope overlay is up.
+#[test]
+fn t30b_reticle_follows_the_record_and_the_overlay() {
+    let (mut sim, me) = setup(&[RIFLE]);
+    sim.ticks(1);
+    let c = hud(&sim).crosshair;
+    assert!(c.dot_sight.is_none() && c.dot_sight_image.is_none() && c.draws.dot_sight == 0, "no DotSightName: no reticle");
+    let w = active(&sim, me);
+    sim.app.world_mut().entity_mut(w).insert(CaHudData {
+        dot_sight: Some("hud/red_dot.dtx".into()),
+        ..default()
+    });
+    sim.ticks(1);
+    let c = hud(&sim).crosshair;
+    assert_eq!((c.draws.dot_sight, c.dot_sight_image.as_deref()), (2, Some("hud/red_dot.dtx")), "drawn with the crosshair, twice (quirk 10)");
+    // A scope overlay up: nothing but the range readout (A7, step 4).
+    let d = draws(model::Visibility {
+        scope_overlay: true,
+        dot_sight: true,
+        ..shown()
+    });
+    assert_eq!(d.dot_sight, 0);
 }
 
 #[test]

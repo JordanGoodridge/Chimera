@@ -37,6 +37,7 @@ mod heavy {
     mod install_ui;
     mod kill_icons;
     mod options;
+    mod reticles;
     mod strings;
     mod view_model;
 }

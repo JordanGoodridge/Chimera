@@ -25,7 +25,7 @@ const INSTALL: &str = r#"
     ReloadSndRadius=450 SelectSndRadius=250 PVMuzzleFXName="Own_PV" HHMuzzleFXName="Own_HH"
     PVFlashHiderFXName2="PV_Hide2" HHFlashHiderFXName1="HH_Hide1"
 [Weapon1] Name="Copy Gun" Guntype=4 AmmoName0="Plain" RapidFireCount=1 FireSnd="TEST\copy\fire.wav"
-    ReloadSnd2="TEST\copy\r2.wav" SelectSnd="TEST\copy\sel.wav" PVMuzzleFXName="Copy_PV"
+    ReloadSnd2="TEST\copy\r2.wav" SelectSnd="TEST\copy\sel.wav" PVMuzzleFXName="Copy_PV" DotSightName="TEST\dot\Reticle.dtx"
 [Weapon2] Name="Bare Gun" Guntype=4 AmmoName0="EmptyNames"
 [Weapon3] Name="M67" Guntype=7 AmmoName0="Plain" FireSnd="TEST\frag\throw.wav" MiscSound1="TEST\frag\pin.wav"
 "#;
@@ -61,6 +61,17 @@ fn fx(docs: &[(String, Table)], id: &str) -> CaWeaponFx {
 
 fn view(docs: &[(String, Table)], id: &str) -> CaViewParams {
     hook(docs, id, "combat_arms:view_model").clone().try_into().unwrap()
+}
+
+/// A weapon's `DotSightName` is its reticle image (hud_crosshair.md A8):
+/// the copy's own, none for a record that names none.
+#[test]
+fn a_weapon_carries_its_records_reticle() {
+    let docs = merged();
+    let reticle = |id: &str| hook(&docs, id, "combat_arms:hud").get("dot_sight").and_then(Value::as_str).filter(|n| !n.is_empty()).map(str::to_string);
+    let copy = "combat_arms:copy_gun";
+    assert_eq!(reticle(copy).as_deref(), Some("TEST\\dot\\Reticle.dtx"));
+    assert_eq!(reticle("combat_arms:m4a1"), None);
 }
 
 /// Our own M4A1 takes its record's sounds and groups over the built-in

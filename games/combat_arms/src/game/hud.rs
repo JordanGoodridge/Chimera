@@ -37,8 +37,8 @@ pub struct CaHudData {
     /// crouching still and moving, when both are above 0 (A3).
     pub duck_perturb: i32,
     pub move_duck_perturb: i32,
-    /// `DotSightName`: the weapon's reticle image, by role (A8); no image
-    /// is loaded yet (the front end draws a placeholder).
+    /// `DotSightName`: the weapon's reticle image, by role (A8): an
+    /// install texture path; none when the record names none.
     pub dot_sight: Option<String>,
     /// The wide-fire pellet count (the double circle's minimum, A5).
     pub wide_count: i32,
@@ -55,7 +55,9 @@ pub struct CaHudDataPlugin;
 impl Plugin for CaHudDataPlugin {
     fn build(&self, app: &mut App) {
         app.register_weapon_hook::<CaHudData>(HUD_HOOK, |e, _, p| {
-            e.insert(p.clone());
+            let mut p = p.clone();
+            p.dot_sight = p.dot_sight.filter(|n| !n.trim().is_empty());
+            e.insert(p);
         });
     }
 }

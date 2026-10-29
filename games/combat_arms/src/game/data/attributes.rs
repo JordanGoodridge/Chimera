@@ -388,6 +388,8 @@ pub struct WeaponRecord {
     /// `Weaponkillimage`: the kill feed's icon of the weapon, an archive
     /// path as stored (empty when missing).
     pub kill_image: String,
+    /// `DotSightName`: the reticle image (empty: none).
+    pub dot_sight_name: String,
     /// `Pos`, `MuzzlePos`, `BreachOffset` (camera space, world units;
     /// missing: zero).
     pub pos: [f64; 3],
@@ -525,6 +527,7 @@ impl WeaponRecord {
             pv_skins: s.string_list("PVSkin").iter().map(|v| text(v)).collect(),
             hh_model: s.string("HHModel").map(text).unwrap_or_default(),
             kill_image: s.string("Weaponkillimage").map(text).unwrap_or_default(),
+            dot_sight_name: s.string("DotSightName").map(text).unwrap_or_default(),
             hh_skins: s.string_list("HHSkin").iter().map(|v| text(v)).collect(),
             pv_render_styles: s.string_list("PVRenderStyle").iter().map(|v| text(v)).collect(),
             hh_render_styles: s.string_list("HHRenderStyle").iter().map(|v| text(v)).collect(),

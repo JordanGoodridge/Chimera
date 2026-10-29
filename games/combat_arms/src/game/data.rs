@@ -110,7 +110,7 @@
 //!   view model), `TripleShot*` timing,
 
 //!   `ContinuousFire`, render styles,
-//!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
+//!   armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
 //!   and worn gear, the modification file's gear lists and per-slot
 //!   option fields.
@@ -382,6 +382,8 @@ enum When {
     Table,
     /// The key itself is already there.
     Key,
+    /// The table is made when missing (`hooks` itself must exist).
+    Create,
 }
 
 /// One mapped value: where it goes in a weapon document.
@@ -503,6 +505,14 @@ fn weapon_values(w: &WeaponRecord, ammo: Option<(&str, &AmmoRecord)>, length_sca
             set(&["hooks", RECOIL, "burst_pitch"], w.triple_shot_base_cam_recoil_pitch),
             set(&["hooks", RECOIL, "burst_max_pitch"], w.triple_shot_max_cam_recoil_pitch),
         ]);
+    }
+    // A reticle (hud_crosshair.md A8) makes the HUD table if the document
+    // has none: the knives' documents don't carry one.
+    if !w.dot_sight_name.trim().is_empty() {
+        out.push(Set {
+            when: When::Create,
+            ..set(&["hooks", HUD, "dot_sight"], w.dot_sight_name.trim())
+        });
     }
     if let Some((id, a)) = ammo {
         out.extend([
@@ -802,6 +812,9 @@ fn apply(doc: &mut Table, s: &Set) -> bool {
     };
     let mut t = doc;
     for p in parents {
+        if s.when == When::Create && !t.contains_key(p) {
+            t.insert(p.clone(), Value::Table(Table::new()));
+        }
         t = match t.get_mut(p) {
             Some(Value::Table(x)) => x,
             _ => return false,

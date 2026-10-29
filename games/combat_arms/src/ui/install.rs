@@ -167,6 +167,20 @@ pub fn kill_icons(data: &crate::game::data::CaDataInner) -> HashMap<String, Stri
         .collect()
 }
 
+/// The reticle textures the install's weapon records name
+/// (`DotSightName`), sorted, once each.
+pub fn dot_sight_names(data: &crate::game::data::CaDataInner) -> Vec<String> {
+    let Some(file) = data.attributes().and_then(|a| a.weapons.as_ref()) else { return Vec::new() };
+    let mut v: Vec<String> = crate::game::data::install_weapons_by_id(file)
+        .values()
+        .map(|r| r.dot_sight_name.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
 /// Weapon `id`'s kill icon texture key: its record's (`kill_icons`),
 /// else by its name (`kill_icon`).
 pub fn kill_art(icons: &HashMap<String, String>, id: &str) -> String {
@@ -650,6 +664,8 @@ pub fn installed(data: &crate::game::data::CaDataInner) -> Option<Arc<InstallUi>
         // Every weapon's kill icon: ours and the install's copies.
         let kills = kill_icons(data);
         let mut icons: Vec<String> = data.weapon_set().weapons.iter().map(|w| kill_art(&kills, &w.id)).collect();
+        // And each record's dot-sight reticle (`DotSightName`, hud_crosshair.md A8).
+        icons.extend(dot_sight_names(data));
         icons.sort();
         icons.dedup();
         let mut ui = load(&mount, &icons)?;
