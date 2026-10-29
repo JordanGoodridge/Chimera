@@ -27,6 +27,14 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Spawned outside de_aztec.** In a party match the user spawned outside
+  the map at `setpos 2519.69 2283.46 210.62; setang 20.09 233.12 0.00`.
+  Find which spawn picker chose it (the map's own spawn points, or our
+  generated gun game spawns), and why that spot passed; check every
+  stock map's spawns for points outside the playable space.
+- **Kill feed: Combat Arms gun icons sit at the top of the line.** The
+  generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
+  icons vertically, with every line the same height (widths may vary).
 - **Can Combat Arms guns shoot through glass?** Check that a Combat Arms
   round goes through (and breaks) glass the way Combat Arms does: CS:S
   maps' breakable glass, and Combat Arms maps' glass surfaces. The specs
