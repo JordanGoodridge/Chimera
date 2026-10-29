@@ -27,6 +27,12 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Round music loops and gets stale: fixed, confirm in a playtest.** In
+  a party match the start track plays once, then a shuffled playlist of
+  Combat Arms' menu tracks (each once before any repeats, cross-faded);
+  the last stage's music still takes over and the playlist resumes after
+  it. `party_music` 0 off, 1 playlist (default), 2 the original's loop;
+  volume is Combat Arms' `musicvolume` option (CaVolumes). Combat Arms' own modes are unchanged.
 - **Frame rate drops after a few map changes: fixed, confirm in a
   playtest.** What grew was archetypes and tables (Bevy frees none; the
   characters' optional components make new ones at every map change and

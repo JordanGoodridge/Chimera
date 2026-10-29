@@ -89,6 +89,19 @@ pub struct PartyMusic {
     /// Its interface sounds' files by attribute key (inferred, Section 7).
     #[serde(default)]
     pub interface: HashMap<String, String>,
+    /// The tracks of the playlist played during a party match (files
+    /// below `Game/`); empty: the menu playlist's entries.
+    #[serde(default)]
+    pub playlist: Vec<String>,
+    /// The `party_music` cvar's default: 0 off, 1 the start track once
+    /// then the playlist, 2 Arms Race's original (the start track
+    /// looping).
+    #[serde(default = "default_party_music")]
+    pub default_music: u8,
+}
+
+fn default_party_music() -> u8 {
+    1
 }
 
 impl MusicData {
@@ -104,6 +117,10 @@ impl MusicData {
                 *v = normalize(v);
             }
         }
+        for f in &mut d.party.playlist {
+            *f = normalize(f);
+        }
+        d.party.default_music = d.party.default_music.min(2);
         let c = &mut d.cues;
         for f in [
             &mut c.loading,
@@ -155,6 +172,8 @@ mod tests {
         assert_eq!(normalize("Game\\BGM\\Map_Loading.mp3"), "bgm/map_loading.mp3");
         assert!(d.playlist.len() >= 3);
         assert_eq!(d.party.mode, "VWRM");
+        assert_eq!(d.party.default_music, 1, "the playlist by default");
+        assert!(d.party.playlist.is_empty(), "the menu playlist's entries");
         assert_eq!(d.party.interface["RoundStartSound"], "UI_SND/ROUNDSTART.WAV");
         assert!(d.interface.is_empty(), "plain Combat Arms' interface sounds stay silent");
     }
