@@ -33,6 +33,224 @@ the user's go-ahead: no Actions runs unless asked.
   the last stage's music still takes over and the playlist resumes after
   it. `party_music` 0 off, 1 playlist (default), 2 the original's loop;
   volume is Combat Arms' `musicvolume` option (CaVolumes). Combat Arms' own modes are unchanged.
+- **Combat Arms launchers: the boss flame launcher hurt nobody, every
+  rocket was a grey ball: fixed, confirm in a playtest; the looks in
+  flight need a spec.** The "Hephaestus" is the install's
+  `Powered_Suit_Boss_Launcher` (`Guntype` 9; its ammo fires the flame
+  puff `Yellow_Flame` with a burning sphere, 10 HP/s, 999 rounds,
+  infinite: the 999 is its data). Install weapons we have no document for
+  were copied from the first of our documents of their `Guntype`, the
+  rocket launcher, so its puffs flew as rockets with no blast and no
+  sphere. Now a copy takes the document whose weapon fires the same
+  projectile record (the flamethrower), and every impact projectile
+  weapon takes from the install its record's speed, lifetime, gravity and
+  model (drawn in flight: the LAW and its NPC copy `LAW_npc` show the
+  missile, not a ball or the launcher), its ammo's sphere, its `FireSnd`
+  and its ImpactFX (the rocket's `gren.wav` and `Grenade_Dirt` at the
+  blast, the M32 family's `M32_EXPLOSION.wav` and `M32_Dirt`). Tests:
+  combat_arms `install_launchers`. Same fix for every `Guntype` 9 and 15
+  copy (the flamethrower skins and `HQRAID_BOSS_FLAME`, the LAW, RPG-7,
+  AT4 and RMS12 skins, the boss missile, the M79/MZP-1 family). Left for
+  a spec session (docs/plans/active/combat-arms.md, brief 24b): the
+  projectile record's trail group (`FXName`), flight sound (`FlySound`),
+  flare and light. A flame puff has no model in its record, so it now
+  draws nothing (no ball); until the spec answers how its `Flame_Yellow`
+  trail plays, flame weapons show no flame. The M32 family firing
+  copies of itself: fixed with the rest (the shell was drawn by the
+  weapon's key, the M32's held model; now `M32_Shell.ltb`). The
+  "Anti-Virus Flamethrower" is most likely `RMS12` (its HUD name image,
+  `Name_RMS12`): a flamethrower copy now (500 u/s puffs, no ball), but its
+  ammo has `ProgDamage` 0, so its spheres do nothing (special_weapons.md
+  4, Open question 8: as the data says); `RMS12_Bounty` burns 30 HP/s.
+  Its 134 ms single-key fire loop (spec 4) isn't taken yet (the copy has
+  the flamethrower's keys, brief 24b item 9).
+
+- **In progress (agents working, 2026-10-29):**
+  - Grey Combat Arms skins: Prismatic Eco M416, Drakeveil SIG550, Red
+    Dominion ARX160 Lv.1 (limit), AUG A3 Champions Lightning, M14
+    Cyanide Echo lv.4 (limit), and Dragunov SVD Obsidian Dragon (flat,
+    unshaded grey), and the SIG550 Clockwork, whose body alone is grey
+    while its scope (an attachment, its own model) is textured. The R870
+    isn't visible in Combat Arms characters'
+    hands (install-only guns may have no held model).
+  - Neon Outlaw ASW338LM: its texture is mapped wrongly, scattered
+    across the gun (UVs).
+  - Round music loops one short track: a party playlist instead.
+  - On the end screen, guns still play their firing animation and WASD
+    still plays footsteps.
+  - de_piranesi's sky draws blank, showing only through some
+    transparent edges.
+- **Spawned outside de_aztec.** In a party match the user spawned outside
+  the map at `setpos 2519.69 2283.46 210.62; setang 20.09 233.12 0.00`.
+  Find which spawn picker chose it (the map's own spawn points, or our
+  generated gun game spawns), and why that spot passed; check every
+  stock map's spawns for points outside the playable space.
+- **de_aztec's barrels ride on top of the water.** Physics barrels in
+  water bob up and down sitting on the surface instead of floating
+  partly under it (`map::buoyancy`). Compare with CS:S: how deep a
+  barrel of that mass and volume floats, and the damping. Check the
+  water surface height used, the submerged-volume estimate (a hull, not
+  the bounding box) and the density.
+- **Combat Arms radio menu: number keys leak through, and raw text
+  keys.** With the radio menu open (C, V, B, N), the number key that
+  picks a command also switches weapon (4 takes out the grenade): the
+  menu must consume it. The chat line then reads like
+  `$radio_message_report_chat_3` instead of the message: resolve it
+  through the install's string table in the game's language (and say
+  so if the table is in a keyed archive this box can't read).
+- **CS:S grenades bounce too much.** Check our grenade against
+  specs/cs_source/grenades.md section 4: 0.4 x gravity, elasticity 0.45
+  times the surface's (1.0 world, 0.3 player) capped at 0.9, stop below
+  30 in/s, no ground friction, 0.4 x velocity through glass. Measure a
+  throw's bounce heights and slide in a test against those numbers. If
+  ours matches the spec and still looks wrong, the spec needs
+  re-checking against the reference in a spec session on the Windows PC.
+- **Combat Arms tracers look flat and wide**, worst through a sniper
+  scope. The spec (effects_sounds.md section 4) gives a flat strip of
+  constant `Width` (15-30 u) with depth test off. It doesn't say how the
+  strip faces the camera (turned about its own axis toward the eye, or
+  fixed), nor whether the width changes while zoomed. Check ours against
+  the spec first, since a strip that doesn't turn toward the eye looks
+  flat. Then ask a spec session on the Windows PC how Combat Arms
+  orients the strip and what it does with the zoomed field of view.
+- **Ultimate Gun Game's Escape menu.** It shows Combat Arms' menu. It
+  should be Ultimate Gun Game's own, drawn above the match-end screen
+  (it's drawn under it now), and offer better options. Proposed: resume,
+  options (video, audio, mouse, binds, the party settings: hit marker,
+  swap effect, even footsteps, music), scoreboard, change map or vote,
+  disconnect, quit. The user to confirm the list.
+- **Combat Arms grenade not thrown while sprinting: matches Combat Arms.**
+  Pin pulled, then sprint, then release: the throw waits until sprint
+  ends. view_models.md says so ("Grenade and sprint": the cocked and
+  throw stages wait until sprint ends). Kept for parity; a party-mode
+  option to throw while sprinting only if the user asks.
+- **Kill feed: Combat Arms gun icons sit at the top of the line.** The
+  generic kill feed (`client::kill_feed`, `weapon_icons`) should centre
+  icons vertically, with every line the same height (widths may vary).
+- **Combat Arms guns' own sounds, scopes and models: audit** (2026-10-29,
+  with the install's attribute data read: 2,298 weapons, 61 ours and
+  2,237 copies; 1,996 have a `class` and can be given by Ultimate Gun
+  Game: 15 of ours, 1,981 copies). An install weapon none of our
+  documents matches is a copy of our first matched document of its
+  `Guntype` (`game/data.rs`, `merge_weapon_docs`), so the user is right
+  about sounds and most effects. Per field, for the 1,981 given copies
+  (how many play a value other than their own record's; "own" means
+  the record's value reaches the game):
+  - fire sound (`FireSnd`): template's on all; 1,827 play the wrong
+    file (154 variants share the template's). Not parsed at all.
+  - silenced (`SilencedFireSnd#`), dry-fire, reload 1-3, select,
+    deselect: template's. Wrong file on 48, 1,800, 1,836, 1,627 and
+    1,749 copies. Not parsed.
+  - fire-sound radii (`FireSndRadius`, `SilencedFireRadius#`): own, but
+    only in documents with a `combat_arms:attachments` table. The 46
+    copies without one (special weapons) and our 8 launchers, crossbow
+    and grenade use the effects default of 2000. `ReloadSndRadius` and
+    `SelectSndRadius` are parsed but not mapped (every stock value is
+    300, so nothing audible yet).
+  - muzzle flashes (`PVMuzzleFXName`, `HHMuzzleFXName`): template's.
+    Wrong on 339 and 36 copies (water guns, coloured variants; 1,353
+    stock weapons use `AK47_PV_Muzz`, so most match by chance).
+  - the ammo's FireFX (casings), TracerFX and ImpactFX names: the
+    template's. Wrong on 561, 599 and 49 copies. Not parsed.
+  - fitted sight (`DefaultScopeAttach`): own, and the overlay sprite
+    and zoom levels come from the install's attachment record for it.
+    The 46 copies without an attachments table get no sight
+    (`optical_buster_apollo`'s L115 scope), nor does our XM25 (its own
+    XM25 scope is dropped). `DotSightName` (4 given weapons): not read.
+  - view model and skins (`PVModelNormal`, `PVSkin#`, `PVRenderStyle#`):
+    own, loaded on demand (`view_model::on_demand`).
+  - held model (`HHModel`): own in the data, but drawn for none of the
+    1,981 copies: a map loads the held models of our ids only
+    (`characters::models`, `builtin_weapon_ids`). The copies' `AniType`,
+    `LowerAniType` and `HHSkin#` aren't merged either
+    (`characters::records::merge_install_weapons`: ours only). Without
+    the V1 key no Combat Arms weapon has a held model, because none of
+    our documents names one. This covers 11 R870 variants (R870 MCS,
+    R870SE, ...) but not Lucker Party's `combat_arms:remington_870`,
+    which is ours, has its `HHModel` mapped and loads at map load.
+  - rates: `trigger.cycle` (the rate of fire), `magazine.reload` and
+    `draw` are the template's on all 1,981 copies. Every rifle copy
+    cycles at the M4A1's 105 ms; every sniper copy, semi-automatic ones
+    included, at the L96A1's bolt 1.4 s, though the view model plays the
+    copy's own animations. `FireAniRate` is written on 812 copies and dropped
+    on 83 whose template has no `combat_arms:inventory` table.
+  - numbers (clip, damage, `FireDelay`, spread, recoil, zoom fields):
+    own, as `weapon_values` maps them (where the template has the
+    table).
+
+  Our own documents are wrong too. The LAW, RPG-7, M32, M79, MZP-1, XM25,
+  normal crossbow and the M67 have no `combat_arms:effects` table, so
+  they fire silently with no impact effect (their records name sounds,
+  `Rocket`/`M32_Exp`/`HandGrenade` impacts and `WEAPON_HH` flashes).
+  (Fixed 2026-10-29 for every impact projectile weapon, the launchers
+  and their copies: the table is made, with the record's `FireSnd`,
+  `FireSndRadius` and the ammo's ImpactFX; the crossbow, the M67 and
+  the launchers' `HHMuzzleFXName` and `FireFXName` are still open.) The
+  MP5A4 and Dragunov have no first-person muzzle flash (no view-model
+  table). The M60's FireFX should be `5.56mm`, not `7.62mm`, the R870's
+  `12Gauge_R`, not `_G`. The R870 has no deselect sound.
+
+  Fixes, most audible or visible first:
+  1. Read `FireSnd`, `SilencedFireSnd1..10`, `DryFireSnd`,
+     `ReloadSnd1..3`, `SelectSnd`, `DeselectSnd`, `PVMuzzleFXName`,
+     `HHMuzzleFXName` per weapon, and the ammo's `ImpactFXName`,
+     `FireFXName` and `TracerFXName` with effects_sounds.md's
+     missing/empty fallbacks, into `combat_arms:effects` and
+     `combat_arms:view_model`. Make the effects table for documents
+     without one (the launchers, the crossbow, the grenades). Map
+     `ReloadSndRadius` and `SelectSndRadius` there too. Ready to
+     implement: attribute_data.md's field table and effects_sounds.md
+     "How effects are described as data" and 11.
+  2. Load held models on demand for every Combat Arms weapon (as view
+     models are), not only ours at map load, and merge the copies'
+     `AniType`, `LowerAniType`, `HHSkin#` and `HHRenderStyle#`. Ready to
+     implement: characters.md 2, "Third-person weapon model and
+     animation class". This overlaps the open "R870 not in Combat Arms
+     characters' hands" work.
+  3. Take each copy's rate of fire, reload and draw from its own view
+     model's animations (`fire_0`, `reload` or the shell timings,
+     `select`; at rate 1 + `FireAniRate`), not the template's, and write
+     `FireAniRate` even where the template has no inventory table. Ready
+     to implement: weapon_classes.md "Typical weapons" and view_models.md
+     say the cycle is the fire animation's length. Reading 2,000 models
+     at merge time is too slow, so it needs a small plan (at give time,
+     or cached).
+  4. Correct our documents (M60 and R870 FireFX, R870 deselect, MP5A4
+     and Dragunov muzzle flash). Item 1 makes this automatic with the
+     install; the built-in values still matter without it.
+  5. `DotSightName` reticles. Ready to implement: hud_crosshair.md.
+  6. Special weapons' own scopes (XM25 Scope, L115 scope on specials,
+     `LGB_scope`): needs a spec session. How a special weapon zooms isn't
+     specified (data.rs "Known shortcuts").
+
+  Stale in `game/data.rs`'s "Known shortcuts": "sounds and sound radii"
+  aren't all unmapped (`MiscSound1..5`, `PlayAutoThrowSound`,
+  `FireSndRadius` and `SilencedFireRadius#` are mapped); "render styles"
+  are read, just not into the documents (`PVRenderStyle#` per weapon at
+  view-model load, `HHRenderStyle#` for ours). The claims on
+  `DotSightName`, special weapons' scopes and held models hold. Not
+  listed there: the ammo's effect names, the rates above, the muzzle
+  effect names.
+- **Can Combat Arms guns shoot through glass?** Check that a Combat Arms
+  round goes through (and breaks) glass the way Combat Arms does: CS:S
+  maps' breakable glass, and Combat Arms maps' glass surfaces. The specs
+  have a surface 41, Bullet-Proof Glass, with its own impact. What
+  Combat Arms does to rounds at glass (pass, stop, lose damage) may need
+  a spec session on the Windows PC.
+- **Random attachments on Combat Arms rungs (user idea).** Some Combat
+  Arms guns come bare. When the ladder is made, give each Combat Arms
+  rung a random fitted set from that gun's accepted attachments
+  (`game/attachments.rs`, each weapon's `combat_arms:attachments`), the
+  same for everyone who reaches the rung, so it stays fair; shown in the
+  HUD's rung text if there's room.
+  With it, a random Combat Arms character per Combat Arms rung (user,
+  2026-10-29: per rung, the same for everyone on it), drawn from every
+  character model the install has, specialists included, not only the
+  default set.
+  And the melee slot too (user, 2026-10-29): each Combat Arms rung
+  draws a random Combat Arms melee weapon (knives and the rest of the
+  melee class), the same for everyone on the rung. The ladder's knife
+  finale keeps its own knife.
 - **Frame rate drops after a few map changes: fixed, confirm in a
   playtest.** What grew was archetypes and tables (Bevy frees none; the
   characters' optional components make new ones at every map change and

@@ -42,9 +42,20 @@
 //!   `characters::records`): the record's value, or the spec's
 //!   built-in default when the install lacks it, never ours, and the
 //!   inventory class from `[WeaponOrder]` as its `slot` (the class - 1;
-//!   in no list: ours). Install
+//!   in no list: ours); an impact projectile weapon's (`projectile_patch`,
+//!   special_weapons.md 1): its projectile record's `Velocity`,
+//!   `Lifetime`, `Gravity`, `CanHitSameKind` and world model in
+//!   `combat_arms:projectile` (drawn in flight), the ammo's lasting
+//!   sphere (made when the ammo has one), the `Guntype` 9 shooter
+//!   exemption, and in `combat_arms:effects` (made) its `FireSnd`, the
+//!   ammo's `ImpactFXName` with the effect file's `ImpactFX#` record
+//!   (`impact_record`: the explosion's sound and group), launched ammo;
+//!   its frame trace keeps our document's range. Install
 //!   weapons that match none of ours are new documents, copied from our
-//!   matched document of the same `Guntype` (its parts and hooks) with
+//!   matched document of the same `Guntype` whose install weapon's ammo
+//!   fires the same projectile record (`template_for`: a flame launcher
+//!   copies the flamethrower, not the first rocket launcher), else the
+//!   first of that `Guntype` (its parts and hooks) with
 //!   their own numbers, after ours in install order (ours keep their
 //!   registry indices); a copy keeps its template's `class` (an
 //!   automatic gun game's) but a grenade's (a smoke copied from a frag
@@ -83,9 +94,14 @@
 //!   timings: they are the view model's animations). Not mapped (no field
 //!   in our data yet): the trigger's `latency` (the pre-fire's updates:
 //!   ours, 3 or a primary shotgun's 2, copied with the class's document),
-//!   the special weapons' projectile records, `TripleShot*` timing,
+//!   a projectile's box (its model's first animation box x `ModelScale`:
+//!   the template's stays), `AltVelocity`, the projectile record's
+//!   `FXName` and `FlySound` (unspecified: docs/backlog.md), a copied
+//!   flame weapon's fire keys (the flamethrower's, not read from its own
+//!   view model), a launcher ammo's `FireFXName`, `TripleShot*` timing,
 
-//!   `ContinuousFire`, sounds and sound radii, render styles,
+//!   `ContinuousFire`, sounds and sound radii (but an impact projectile
+//!   weapon's fire sound), render styles,
 //!   `DotSightName`, armour, `[Perturb]`, `[Player]` (the client's
 //!   speeds are movement.md's: the spec's open question 2), `Model#`/`Hair#`
 //!   and worn gear, the modification file's gear lists and per-slot
@@ -125,7 +141,7 @@ use toml::{Table, Value};
 use self::attributes::{
     ATTACHMENTS_FILE, AmmoRecord, PERKS_FILE, SETS_FILE, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, ServerTimeWeight, WEAPONS_FILE,
  WeaponRecord,
-    WeaponsFile, FX_FILE, ProjectileRecord,
+    WeaponsFile, FX_FILE, ImpactRecord, ProjectileRecord,
 };
 use super::{attachments::CaModTable, movement::MovementData};
 
@@ -296,6 +312,7 @@ pub fn read_attributes(read: impl Fn(&str) -> io::Result<Vec<u8>>) -> (InstallAt
     let weapons = weapons.map(|mut w| {
         if let Some(fx) = &fx {
             w.projectiles = ProjectileRecord::read_all(fx);
+            w.impacts = ImpactRecord::read_all(fx);
         }
         w
     });
@@ -784,8 +801,18 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
     {
         hooks.entry("combat_arms:zoom").or_insert_with(|| Value::Table(Table::new()));
     }
+    // An impact projectile weapon's round is its projectile: the frame's
+    // trace stays the document's (a unit's: it traces nothing), not the
+    // record's `Range`.
+    let projectile_range = hook_table(doc, super::special::PROJECTILE)
+        .and(doc.get("hitscan"))
+        .and_then(|h| h.get("range"))
+        .cloned();
     for s in weapon_values(w, ammo, length_scale) {
         apply(doc, &s);
+    }
+    if let Some(r) = projectile_range {
+        apply(doc, &set(&["hitscan", "range"], r));
     }
     // Its sounds: the effects hook is made for a weapon whose document
     // has none (the grenades') when the record names misc sounds.
@@ -808,6 +835,11 @@ fn patch(doc: &mut Table, w: &WeaponRecord, file: &WeaponsFile, mods: Option<&Mo
             for s in grenade_values(p, length_scale) {
                 apply(doc, &s);
             }
+        }
+        // An impact projectile's flight, look, lasting sphere and sounds
+        // (special_weapons.md 1, "Where the numbers live").
+        if hook_table(doc, super::special::PROJECTILE).is_some() {
+            projectile_patch(doc, w, a, file, length_scale);
         }
     }
     // The models (view_models.md 1, 2, 4; characters.md 2): the install's
@@ -889,11 +921,7 @@ pub fn merge_weapon_docs_with_mods(
             continue;
         }
         let id = format!("{NS}{}", slug(&w.name));
-        let template = matched
-            .iter()
-            .zip(&docs)
-            .find(|(m, _)| m.is_some_and(|j| install.weapons[j].gun_type == w.gun_type))
-            .map(|(_, (_, t))| t);
+        let template = template_for(install, w, &matched, &docs);
         let (Some(template), Some(ammo)) = (template, file_default_ammo(install, w)) else {
             skipped += 1;
             continue;
@@ -932,6 +960,158 @@ pub fn merge_weapon_docs_with_mods(
         .map(|(n, t)| toml::to_string(&t).map(|s| (n.clone(), s)).map_err(|e| format!("{n}: {e}")))
         .collect()
 }
+
+/// The document a new install weapon `w` is copied from: of our matched
+/// documents with its `Guntype`, the first whose install weapon's ammo
+/// fires the same projectile record (`ProjectileFXName`: a flame weapon
+/// copies the flamethrower, a rocket a rocket launcher, whatever comes
+/// first in `Guntype` 9), else the first of its `Guntype`.
+fn template_for<'a>(
+    install: &WeaponsFile,
+    w: &WeaponRecord,
+    matched: &[Option<usize>],
+    docs: &'a [(String, Table)],
+) -> Option<&'a Table> {
+    let same_class: Vec<(usize, &Table)> = matched
+        .iter()
+        .zip(docs)
+        .filter_map(|(m, (_, t))| m.filter(|j| install.weapons[*j].gun_type == w.gun_type).map(|j| (j, t)))
+        .collect();
+    let projectile = |r: &WeaponRecord| install.default_ammo(r).map(|a| a.projectile_fx.to_ascii_lowercase()).filter(|p| !p.is_empty());
+    let mine = projectile(w);
+    same_class
+        .iter()
+        .find(|(j, _)| mine.is_some() && projectile(&install.weapons[*j]) == mine)
+        .or(same_class.first())
+        .map(|(_, t)| *t)
+}
+
+/// The table of hook `name` in a weapon document, if it has one.
+fn hook_table<'a>(doc: &'a Table, name: &str) -> Option<&'a Table> {
+    doc.get("hooks")?.get(name)?.as_table()
+}
+
+/// `ProgDamageType` as the lasting sphere's kind (burn 3, poison 9,
+/// bleeding 1); another type: none.
+fn over_time_kind(ty: i32) -> Option<&'static str> {
+    match ty {
+        3 => Some("burn"),
+        9 => Some("poison"),
+        1 => Some("bleed"),
+        _ => None,
+    }
+}
+
+/// An impact projectile weapon's install values (special_weapons.md 1.1
+/// to 1.3, 4; effects_sounds.md 6, 11): its projectile record's
+/// `Velocity`, `Lifetime`, `Gravity`, `CanHitSameKind` and world model
+/// (`Model`, `ModelScale`, `Skin#`) in `combat_arms:projectile`; the
+/// ammo's lasting sphere (`ProgDamage*`, made when the ammo has one and
+/// the document doesn't: a flame weapon copied from a rocket's) and the
+/// `Guntype` 9 shooter exemption; and its sounds: the weapon's `FireSnd`
+/// and `FireSndRadius`, the ammo's `ImpactFXName` with that record
+/// (`FX.TXT`) in `combat_arms:effects` (made when missing), launched ammo.
+fn projectile_patch(doc: &mut Table, w: &WeaponRecord, a: &AmmoRecord, file: &WeaponsFile, length_scale: f64) {
+    use super::special::PROJECTILE;
+    const EFFECTS: &str = super::effects::data::EFFECTS;
+    let mut out = Vec::new();
+    if let Some(p) = file.projectile(a) {
+        if let Some(v) = p.velocity {
+            out.push(set(&["hooks", PROJECTILE, "speed"], v * length_scale));
+        }
+        if let Some(l) = p.lifetime {
+            out.push(set(&["hooks", PROJECTILE, "lifetime"], l));
+        }
+        if let Some(g) = p.gravity {
+            out.push(set(&["hooks", PROJECTILE, "gravity"], g));
+        }
+        if let Some(h) = p.can_hit_same_kind {
+            out.push(set(&["hooks", PROJECTILE, "hits_same_kind"], h));
+        }
+        if p.model.is_empty() {
+            if let Some(Value::Table(t)) = doc.get_mut("hooks").and_then(|h| h.get_mut(PROJECTILE)) {
+                for k in ["model", "model_scale", "skins"] {
+                    t.remove(k);
+                }
+            }
+        } else {
+            let skins = skin_paths(&p.skins).into_iter().map(Value::String).collect::<Vec<_>>();
+            out.extend([
+                set(&["hooks", PROJECTILE, "model"], super::model::normalize(&p.model)),
+                set(&["hooks", PROJECTILE, "model_scale"], floats(p.model_scale)),
+                set(&["hooks", PROJECTILE, "skins"], Value::Array(skins)),
+            ]);
+        }
+    }
+    out.push(set(&["hooks", PROJECTILE, "shooter_exempt"], w.gun_type == ROCKET_GUNTYPE));
+    // The lasting sphere: made for ammo that has one (its numbers are
+    // `special_values`').
+    if a.prog_damage_lifetime > 0.0
+        && let Some(kind) = over_time_kind(a.prog_damage_type)
+        && let Some(Value::Table(t)) = doc.get_mut("hooks").and_then(|h| h.get_mut(PROJECTILE))
+    {
+        let mut ot = Table::new();
+        ot.insert("kind".into(), Value::String(kind.into()));
+        ot.insert("rate".into(), Value::Float(a.prog_damage));
+        ot.insert("radius".into(), Value::Float(a.prog_damage_radius));
+        ot.insert("lifetime".into(), Value::Float(a.prog_damage_lifetime));
+        ot.insert("duration".into(), Value::Float(a.prog_damage_duration));
+        t.insert("over_time".into(), Value::Table(ot));
+    }
+    if let Some(Value::Table(hooks)) = doc.get_mut("hooks") {
+        hooks.entry(EFFECTS).or_insert_with(|| Value::Table(Table::new()));
+    }
+    out.extend([
+        set(&["hooks", EFFECTS, "ammo_kind"], "thrown"),
+        set(&["hooks", EFFECTS, "fire_sound"], super::model::normalize(&w.fire_snd)),
+        set(&["hooks", EFFECTS, "fire_radius"], w.fire_snd_radius as f64),
+    ]);
+    match file.impact(a) {
+        Some(r) => {
+            out.push(set(&["hooks", EFFECTS, "impact"], r.name.clone()));
+            out.push(set(&["hooks", EFFECTS, "impact_record"], Value::Table(impact_table(r, a))));
+        }
+        None => {
+            // No record of its own: nothing a template carried.
+            out.push(set(&["hooks", EFFECTS, "impact"], ""));
+            if let Some(Value::Table(t)) = doc.get_mut("hooks").and_then(|h| h.get_mut(EFFECTS)) {
+                t.remove("impact_record");
+            }
+        }
+    }
+    for s in out {
+        apply(doc, &s);
+    }
+}
+
+/// An impact record as our effects data writes one (`effects::data::
+/// ImpactFx`): `Surface` as `surface`, files as archive paths, `area`
+/// when the ammo does area or lasting damage. Launched burn ammo (`InstDamageType` 3)
+/// plays no surface sound (effects_sounds.md 11: "burn → none").
+fn impact_table(r: &ImpactRecord, a: &AmmoRecord) -> Table {
+    let surface = |v: &str| if v.eq_ignore_ascii_case("surface") { "surface".to_string() } else { super::model::normalize(v) };
+    let mut sound = surface(&r.sound);
+    if sound == "surface" && a.inst_damage_type == 3 {
+        sound.clear();
+    }
+    let mut t = Table::new();
+    t.insert("sound".into(), Value::String(sound));
+    t.insert("sound_radius".into(), Value::Float(r.sound_radius));
+    t.insert("create_mark".into(), Value::Boolean(r.create_mark));
+    t.insert("mark".into(), Value::String(surface(&r.mark)));
+    t.insert("mark_scale".into(), Value::Float(r.mark_scale));
+    if let Some(c) = r.mark_color_ratio {
+        t.insert("mark_color_ratio".into(), Value::Float(c));
+    }
+    t.insert("surface_fx".into(), Value::Boolean(r.do_surface_fx));
+    t.insert("fx".into(), Value::String(r.fx_name.clone()));
+    t.insert("area".into(), Value::Boolean(a.area_damage > 0 || a.prog_damage_lifetime > 0.0));
+    t
+}
+
+/// `Guntype` of the rocket class (special_weapons.md: launchers and the
+/// flamethrower): its spheres never burn the shooter.
+const ROCKET_GUNTYPE: i32 = 9;
 
 /// A weapon's default ammo record; a weapon naming ammo none of which
 /// resolves is logged ("Edge cases").
