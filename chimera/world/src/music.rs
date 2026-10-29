@@ -149,13 +149,24 @@ impl MusicPlayer {
         if self.secondary.is_some() || self.fade <= 0.0 {
             return false;
         }
+        self.near_end_within(now, self.fade, length)
+    }
+
+    /// `near_end` with a window of its own (ms) instead of the last
+    /// change's fade: the only stream has at most `window_ms` left in its
+    /// current pass. For a stream that started with no fade (a party
+    /// match's start track) whose successor does fade in.
+    pub fn near_end_within(&self, now: f64, window_ms: f64, length: impl Fn(&str) -> Option<f64>) -> bool {
+        if self.secondary.is_some() || window_ms <= 0.0 {
+            return false;
+        }
         let Some(p) = &self.primary else { return false };
         let Some(len) = length(&p.file).filter(|l| *l > 0.0) else {
             return false;
         };
         let left = len - p.position(now, Some(len));
         // A one-shot at its end has nothing left in a pass of its own.
-        left <= self.fade
+        left <= window_ms
     }
 
     /// The streams and their slot gains, old first.

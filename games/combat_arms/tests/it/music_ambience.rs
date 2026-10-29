@@ -1096,7 +1096,9 @@ const CA: Option<&str> = Some("combat_arms");
 /// it any more: the start track from its start (Arms Race loops).
 #[test]
 fn a_party_match_gets_arms_races_cues() {
+    // `party_music 2`: the original's cues.
     let mut m = all_files();
+    m.party_music = 2;
     let mut prev = MusicFacts::default();
     let loading = MusicFacts {
         screen: Screen::Loading,
@@ -1180,4 +1182,153 @@ fn another_games_party_music_leaves_combat_arms_silent() {
         step(&mut m, &mut prev, last, 2_000.0);
         assert!(playing(&m).is_empty() && m.heard.is_empty(), "{music:?}");
     }
+}
+
+// --- The party's playlist (`party_music`, director module doc).
+
+/// The table's files plus three more tracks of a minute: six in the
+/// party playlist.
+fn six_tracks() -> CaMusic {
+    let mut m = all_files();
+    for n in ["bgm/bgm_03.mp3", "bgm/bgm_05.mp3", "bgm/bgm_06.mp3"] {
+        m.files.insert(n, Some(60_000.0));
+    }
+    m
+}
+
+const LIVE: MomentPhase = MomentPhase::Live;
+
+/// Run the live party match from `from` to `to` ms in 250 ms frames; the
+/// files that came up in turn (the music's name changes).
+fn live_until(m: &mut CaMusic, prev: &mut MusicFacts, facts: &MusicFacts, from: f64, to: f64) -> Vec<String> {
+    let mut seen = Vec::new();
+    let mut last = m.current.clone();
+    let mut t = from;
+    while t <= to {
+        step(m, prev, facts.clone(), t);
+        if last != m.current && !m.current.is_empty() {
+            seen.push(m.current.clone());
+        }
+        last = m.current.clone();
+        t += 250.0;
+    }
+    seen
+}
+
+fn started(m: &mut CaMusic, prev: &mut MusicFacts) {
+    step(m, prev, party(CA, MomentPhase::Waiting, true), 0.0);
+    step(m, prev, party(CA, LIVE, true), 1_000.0);
+}
+
+/// The start track plays once (no loop) and a different track follows;
+/// no playlist track repeats before every one has played, and the second
+/// pass is another full set; the fade is the menu's cross-fade.
+#[test]
+fn the_party_plays_the_start_track_once_then_a_shuffled_playlist() {
+    let mut m = six_tracks();
+    let mut prev = MusicFacts::default();
+    started(&mut m, &mut prev);
+    let start = data().mode_track("VWRM", None).unwrap().0.to_string();
+    assert_eq!(playing(&m), [start.clone()]);
+    assert!(!m.mixed(1.0)[0].looping, "the start track does not loop");
+    let live = party(CA, LIVE, true);
+    // Before it is near its end (17.8 s long, a 10 s fade): still alone.
+    let seen = live_until(&mut m, &mut prev, &live, 1_250.0, 8_000.0);
+    assert!(seen.is_empty(), "{seen:?}");
+    assert_eq!(playing(&m), [start.clone()]);
+    // Near its end the next track cross-fades in over the menu fade.
+    let seen = live_until(&mut m, &mut prev, &live, 8_250.0, 9_000.0);
+    assert_eq!(seen.len(), 1);
+    assert_ne!(seen[0], start);
+    assert_eq!(playing(&m).len(), 2, "cross-fading");
+    // Two passes of the six tracks.
+    let mut order = seen;
+    order.extend(live_until(&mut m, &mut prev, &live, 9_250.0, 1_000_000.0));
+    assert!(!order[1..].contains(&start), "the start track does not come back: {order:?}");
+    assert!(order.len() >= 12, "{order:?}");
+    for pass in order[..12].chunks(6) {
+        let mut sorted = pass.to_vec();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 6, "every track once a pass: {order:?}");
+    }
+    assert_ne!(order[5], order[6], "not the track just played");
+}
+
+/// The last stage takes over, and once nobody is on it the playlist
+/// resumes with a track not yet played this pass (not the start track).
+#[test]
+fn the_last_stage_interrupts_the_playlist_and_it_resumes() {
+    let mut m = six_tracks();
+    let mut prev = MusicFacts::default();
+    started(&mut m, &mut prev);
+    let live = party(CA, LIVE, true);
+    let seen = live_until(&mut m, &mut prev, &live, 1_250.0, 25_000.0);
+    let first = seen[0].clone();
+    let last = with(party(CA, LIVE, true), |p| p.last_rung = 1);
+    step(&mut m, &mut prev, last.clone(), 26_000.0);
+    assert_eq!(playing(&m), [data().cues.last_stage.clone()]);
+    // The last-stage music does not hand over to the playlist by itself.
+    let seen_last = live_until(&mut m, &mut prev, &last, 26_250.0, 200_000.0);
+    assert!(seen_last.is_empty(), "{seen_last:?}");
+    step(&mut m, &mut prev, live.clone(), 201_000.0);
+    let back = playing(&m);
+    assert_eq!(back.len(), 1);
+    let start = data().mode_track("VWRM", None).unwrap().0.to_string();
+    assert_ne!(back[0], start, "the playlist, not the start track");
+    assert_ne!(back[0], data().cues.last_stage, "stopped");
+    assert_ne!(back[0], first, "one not yet played this pass");
+}
+
+/// `party_music 2`: Arms Race's loop (the start track repeats, also
+/// after the last stage); 0: nothing; the match end silences all.
+#[test]
+fn party_music_two_loops_the_start_track_and_zero_is_silent() {
+    let start = data().mode_track("VWRM", None).unwrap().0.to_string();
+    let mut m = six_tracks();
+    m.party_music = 2;
+    let mut prev = MusicFacts::default();
+    started(&mut m, &mut prev);
+    assert!(m.mixed(1.0)[0].looping);
+    let seen = live_until(&mut m, &mut prev, &party(CA, LIVE, true), 1_250.0, 120_000.0);
+    assert!(seen.is_empty(), "{seen:?}");
+    assert_eq!(playing(&m), [start]);
+
+    let mut m = six_tracks();
+    m.party_music = 0;
+    let mut prev = MusicFacts::default();
+    started(&mut m, &mut prev);
+    assert!(playing(&m).is_empty());
+    let seen = live_until(&mut m, &mut prev, &party(CA, LIVE, true), 1_250.0, 60_000.0);
+    assert!(seen.is_empty());
+    let last = with(party(CA, LIVE, true), |p| p.last_rung = 1);
+    step(&mut m, &mut prev, last, 61_000.0);
+    assert!(playing(&m).is_empty(), "off is off");
+
+    // The match end stops the playlist.
+    let mut m = six_tracks();
+    let mut prev = MusicFacts::default();
+    started(&mut m, &mut prev);
+    live_until(&mut m, &mut prev, &party(CA, LIVE, true), 1_250.0, 30_000.0);
+    let over = with(party(CA, MomentPhase::Over, true), |p| p.result = Some(Some(false)));
+    let seen = live_until(&mut m, &mut prev, &over, 30_250.0, 100_000.0);
+    assert!(seen.is_empty() && playing(&m).is_empty());
+}
+
+/// Combat Arms' own modes (no party moments) keep the original: the start
+/// track loops and comes back after the last stage, whatever `party_music`.
+#[test]
+fn combat_arms_own_modes_keep_the_original_loop() {
+    let start = data().mode_track("VWRM", None).unwrap().0.to_string();
+    let mut m = six_tracks();
+    assert_eq!(m.party_music, 1);
+    m.screen = Screen::Match;
+    m.round_start("VWRM", false, true, 0.0);
+    assert!(m.mixed(1.0)[0].looping);
+    run(&mut m, 0.0, 120_000.0, 250.0);
+    assert_eq!(playing(&m), [start.clone()]);
+    m.last_stage(1, 121_000.0);
+    assert_eq!(playing(&m), [data().cues.last_stage.clone()]);
+    m.last_stage(0, 122_000.0);
+    assert_eq!(playing(&m), [start]);
 }

@@ -149,8 +149,20 @@ loop = true
 # UI_SND.rez (Section 7). The rung-up and last-rung sounds are the cue
 # pack's (data/cues.toml), the result sounds the match-end screen's
 # (GameParts::match_won_sound, match_lost_sound).
+#
+# The party's own music (ours, not the original's): the start track plays
+# once, then a playlist of `playlist` (files below Game/; empty: the menu
+# playlist's entries, so no seasonal, loading, mode-start or zombie /
+# ambient track) in random order, each once before any repeats,
+# cross-fading over `menu_fade`; the last-stage music takes over while a
+# player is on the last rung and the playlist resumes after it.
+# `default_music` is the `party_music` cvar's default: 0 off (no party
+# music at all), 1 this playlist, 2 the original's (the start track
+# looping until the last stage).
 [party]
 mode = "VWRM"
+default_music = 1
+playlist = []
 [party.interface]
 RoundStartSound = "UI_SND/ROUNDSTART.WAV"
 RespawnCountSound = "UI_SND/RESPWANCOUNT.WAV"
