@@ -339,6 +339,7 @@ pub(super) fn stop(world: &mut World) {
     super::predict::reset(world);
     super::interp::reset(world);
     super::weapons::reset(world);
+    super::weapon_params::reset(world);
     super::cvars::restore(world);
     let remote: Vec<Entity> = world.query_filtered::<Entity, With<Remote>>().iter(world).collect();
     for e in remote {

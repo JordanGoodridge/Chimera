@@ -1727,3 +1727,48 @@ the server's minigame definition when its own differs or is missing.
 `minigame_net`'s `PartyOffer` (server message: the minigames every
 connected player can play, from their reports) goes to clients when the
 set or the players change.
+
+
+### net32 (2026-10-29)
+
+Server-pushed weapon parameters (user decision 2026-10-29: "help the
+clients as much as possible by pushing from the server where there are
+desyncs"): a new server message, `net::weapon_params::WeaponParams` (a
+weapon's registry index and each game codec's bytes), ordered, registered
+after `ServerStats`.
+
+## Server-pushed weapon parameters
+
+The seam: a game registers a codec by name (`weapon::params`,
+`App::weapon_param(name, encode, apply)`): `encode` reads what it derived
+off a weapon the server built, `apply` writes it onto a client's weapon.
+When a client's player first carries a weapon of some id, the server
+sends that id's parameters once per connection (`ParamsSent` on the
+client's entity), in the same send as the own state that first lists
+it; the client keeps them by id (`PushedParams`) and every weapon of that
+id takes them after its build (`spawn_weapon`), over what its own hooks
+derived; ones already built take them on arrival. Only the client's own
+player's weapons (what it predicts). Combat Arms' timing from the view
+model (`combat_arms:timing`: `CaTimingValues`, the cycle, reload, shell
+reload, draw, stock and third-person reload the hook settled) is the
+first codec.
+
+Audit (2026-10-29) of what a client derives from install data that the
+server derives too, for a client lacking the data (keys, files) or with
+another install version:
+
+| Value | Read from | From the server? | Risk |
+|---|---|---|---|
+| CA copies' fire cycle, reload, draw, shell reload | view models (V2-keyed archives) | **Pushed** (`combat_arms:timing`) | none left |
+| Fitted parts (rung extras, loadouts) | the server's fitting | Yes: `CaFitted` slot ids, a predicted part | none |
+| Rung extras (parts, body, melee) | the server's ladder draw | Yes: `NetMinigame::rung_extras` | none |
+| The weapon registry (ids by index: the install's ~2,000 copies) | `ATTRIBUTES.rez` (V1 key) | No: indices go unchecked | **High**: a client without the V1 key has no copies, another install version can shift or change them; it builds the wrong weapon or none. Fix: a registry hash in the match manifest (refuse with the reason), or the server's merged weapon documents sent for what a client carries. Too big for a per-weapon codec: the client must have the weapon id to build |
+| Copies' record numbers (clip size, `FireAniRate`, spread, recoil, alt modes) | `ATTRIBUTES.rez` | No | Medium: another install version mispredicts fire and reload (clip and reserve are corrected from the server every state; damage and hits are the server's). Same fix as the registry |
+| Attachment records' terms (rates, spread, recoil, clip) | built-in + the install's mods file by name | No (only the slot ids) | Medium, another version only: the parts' rates differ |
+| Movement (body type) and gear records (vest movement penalty, armour) | `ATTRIBUTES.rez` + built-in | No (armour replicates; the penalty is derived) | Medium, another version only: movement corrections. A codec per character (an own-state part, `net::parts`) if seen |
+| A rung body's look and gear | the install's character data | Body id: yes; its gear: derived | Low: same as gear above |
+| Hit spheres, body and held models | install models | Not needed: hits are the server's (lag compensated, the stock rig on a dedicated server) | none for hits; looks only |
+| Ladders, volumes, map props | the map file | Map hash checked at join | none (props don't collide) |
+| Projectiles (launchers, grenades) | records | The server's `NetItem`s | none |
+| `ReloadCheckTime` | `[TimeWeight]` | Server only | none |
+

@@ -3,7 +3,9 @@
 //! models: audit", fix 3; docs/plans/active/ca-weapon-timings.md): copies
 //! made from an install written here, their view models' lengths set in
 //! the test (`weapons::timing::ViewTimes`), on the server and predicted;
-//! ours keep their spec numbers; `FireAniRate` reaches every copy.
+//! ours keep their spec numbers; `FireAniRate` reaches every copy; a
+//! client that can't read the models, or reads others, predicts on the
+//! server's timing (`net::weapon_params`).
 
 use std::time::Duration;
 
@@ -11,7 +13,7 @@ use bevy::prelude::*;
 use chimera_core::core::{Health, Intent, SimClock};
 use chimera_net::{
     harness::NetSim,
-    net::{memory::LinkConditions, predict::NetGraph},
+    net::{memory::LinkConditions, predict::NetGraph, weapon_params::ParamsHeard},
 };
 use chimera_sim::weapon::{self, Inventory, Magazine, ShellReload, Trigger, Weapon, data::WeaponDataAppExt};
 use chimera_world::{greybox::GreyboxMapPlugin, harness::Sim};
@@ -250,30 +252,50 @@ fn a_copy_without_an_inventory_template_keeps_its_fire_rate() {
     assert_eq!(world.get::<Weapon>(w).unwrap().draw_time, 1.0, "the MP5A4's draw");
 }
 
-/// The server and the client build the copy with the same timing, so
-/// its fire is predicted without error and the server's rounds come at
-/// the copy's cycle.
-#[test]
-fn a_copys_timing_is_the_servers_and_predicted() {
+/// A network game: the server reads the copies' models (the test's
+/// `ViewTimes`); one client whose world `client` prepares (its own reads)
+/// joins.
+fn net(client: impl FnOnce(&mut World)) -> NetSim {
     let copies = copies();
     let link = LinkConditions {
         latency: Duration::from_millis(50),
         jitter: Duration::ZERO,
         loss: 0.0,
     };
-    let mut sim = NetSim::new(CaSim, link, 11, 1, move |app| {
+    let mut sim = NetSim::new(CaSim, link, 11, 0, move |app| {
         app.add_plugins(GreyboxMapPlugin);
         register(app, &copies);
     });
+    sim.add_client(client);
     sim.set_frame(TICK_INTERVAL);
     sim.until_joined(600);
     sim.ticks(240);
+    sim
+}
+
+/// The client's weapon of `id` (the newest one).
+fn client_weapon(sim: &mut NetSim, id: &str) -> Entity {
+    let me = sim.local_player(0).unwrap();
+    let w = sim.clients[0].app.world();
+    *w.get::<Inventory>(me)
+        .unwrap()
+        .weapons
+        .iter()
+        .rev()
+        .find(|&&e| w.get::<Weapon>(e).unwrap().id == id)
+        .unwrap()
+}
+
+/// The server gives the rifle copy, the client fires it for 1.6 s: the
+/// server fires at the copy's 160 ms cycle and the client predicts every
+/// round without error.
+fn burst(sim: &mut NetSim) -> Entity {
     let theirs = sim.character_of(0).unwrap();
     let sw = weapon::give(sim.server.app.world_mut(), theirs, RIFLE).unwrap();
     sim.ticks(150);
+    let cw = client_weapon(sim, RIFLE);
     let me = sim.local_player(0).unwrap();
-    let cw = sim.clients[0].app.world().get::<Inventory>(me).unwrap().active.unwrap();
-    assert_eq!(sim.clients[0].app.world().get::<Weapon>(cw).unwrap().id, RIFLE);
+    assert_eq!(sim.clients[0].app.world().get::<Inventory>(me).unwrap().active, Some(cw));
     assert!((sim.clients[0].app.world().get::<Trigger>(cw).unwrap().cycle - 0.16).abs() < 1e-6);
     *sim.clients[0].app.world_mut().resource_mut::<NetGraph>() = NetGraph::default();
     let intent = |sim: &mut NetSim, fire: bool| {
@@ -282,12 +304,12 @@ fn a_copys_timing_is_the_servers_and_predicted() {
     };
     let clip = |w: &World, e: Entity| w.get::<Magazine>(e).unwrap().clip;
     let before = clip(sim.server.app.world(), sw);
-    intent(&mut sim, true);
+    intent(sim, true);
     // 1.6 s held: 1.6 / 0.16 + 1 = 11 rounds at the copy's cycle (16 at
     // the M4A1's), give or take one for the frame the press lands on.
     let ticks = (1.6 / TICK_INTERVAL).round() as u64;
     sim.ticks(ticks);
-    intent(&mut sim, false);
+    intent(sim, false);
     sim.ticks(60);
     let fired = before - clip(sim.server.app.world(), sw);
     assert!((10..=12).contains(&fired), "the server fired {fired} rounds");
@@ -295,7 +317,85 @@ fn a_copys_timing_is_the_servers_and_predicted() {
     println!("timings: {} states checked, {} errors ({:?})", g.checked, g.errors, g.last_differing);
     assert!(g.checked > 0);
     assert_eq!(g.errors, 0, "mispredicted ({:?})", g.last_differing);
-    let me = sim.local_player(0).unwrap();
-    let cw = sim.clients[0].app.world().get::<Inventory>(me).unwrap().active.unwrap();
+    let cw = client_weapon(sim, RIFLE);
     assert_eq!(clip(sim.clients[0].app.world(), cw), clip(sim.server.app.world(), sw));
+    sw
+}
+
+/// The server and the client read the same models: the copy's timing is
+/// the server's and predicted.
+#[test]
+fn a_copys_timing_is_the_servers_and_predicted() {
+    let mut sim = net(|_| {});
+    burst(&mut sim);
+}
+
+/// A client whose reads of the copies' models fail (no key for their
+/// archive, no file) predicts on the server's timing, sent once per
+/// weapon id (`net::weapon_params`), kept for the weapons it builds again.
+#[test]
+fn a_client_without_the_models_predicts_on_the_servers_timing() {
+    let mut sim = net(|w| {
+        let mut times = w.resource_mut::<ViewTimes>();
+        for path in ["test/timing/pv_rifle.ltb", "test/timing/pv_shotgun.ltb", "test/timing/pv_smg.ltb"] {
+            times.0.insert(path.into(), None);
+        }
+    });
+    burst(&mut sim);
+    // The shell copy's shell timings and pump, and its draw.
+    let theirs = sim.character_of(0).unwrap();
+    let ss = weapon::give(sim.server.app.world_mut(), theirs, SHOTGUN).unwrap();
+    // A second rifle: the client builds its weapons again.
+    weapon::give(sim.server.app.world_mut(), theirs, RIFLE).unwrap();
+    sim.ticks(60);
+    let cs = client_weapon(&mut sim, SHOTGUN);
+    let me = sim.local_player(0).unwrap();
+    let (server, client) = (sim.server.app.world(), sim.clients[0].app.world());
+    let shell = |w: &World, e: Entity| {
+        let s = w.get::<ShellReload>(e).unwrap();
+        (s.start, s.insert, s.finish)
+    };
+    assert_eq!(shell(client, cs), (0.25, 0.4, 0.6));
+    assert_eq!(shell(client, cs), shell(server, ss));
+    assert_eq!(client.get::<Trigger>(cs).unwrap().cycle, server.get::<Trigger>(ss).unwrap().cycle);
+    assert_eq!(client.get::<Weapon>(cs).unwrap().draw_time, 0.8);
+    let rifles: Vec<Entity> = client
+        .get::<Inventory>(me)
+        .unwrap()
+        .weapons
+        .iter()
+        .copied()
+        .filter(|&e| client.get::<Weapon>(e).unwrap().id == RIFLE)
+        .collect();
+    assert_eq!(rifles.len(), 2);
+    for r in rifles {
+        assert!((client.get::<Trigger>(r).unwrap().cycle - 0.16).abs() < 1e-6);
+        assert_eq!(client.get::<Magazine>(r).unwrap().reload_time, 1.0);
+        assert_eq!(client.get::<CaAttachSlots>(r).unwrap().stock.cycle, 0.2);
+    }
+    // Once per weapon id.
+    let heard = &client.resource::<ParamsHeard>().0;
+    assert_eq!(heard.get(RIFLE), Some(&1), "{heard:?}");
+    assert_eq!(heard.get(SHOTGUN), Some(&1), "{heard:?}");
+    // Our own documents carry no timing: nothing sent for them.
+    assert!(heard.keys().all(|id| [RIFLE, SHOTGUN].contains(id)), "{heard:?}");
+}
+
+/// A client that reads other lengths for the rifle's model (another
+/// install version) still takes the server's.
+#[test]
+fn a_client_with_its_own_models_takes_the_servers_timing() {
+    let mut sim = net(|w| {
+        w.resource_mut::<ViewTimes>().set("test/timing/pv_rifle.ltb", AnimTimes {
+            fire: Some(0.3),
+            reload: Some(2.0),
+            select: Some(0.9),
+            ..default()
+        });
+    });
+    burst(&mut sim);
+    let cw = client_weapon(&mut sim, RIFLE);
+    let client = sim.clients[0].app.world();
+    assert_eq!(client.get::<Magazine>(cw).unwrap().reload_time, 1.0);
+    assert_eq!(client.get::<Weapon>(cw).unwrap().draw_time, 0.5);
 }
