@@ -30,6 +30,8 @@ the user's go-ahead: no Actions runs unless asked.
 - **In progress (agents working, 2026-10-29):**
   - Hephaestus and the LAW NPC fire grey balls (999 ammo, no damage, no
     explosion or sounds): Combat Arms launcher projectiles.
+    The M32 fires copies of its own model instead of grenades; the
+    Anti-Virus Flamethrower fires slow grey balls instead of flames.
   - Grey Combat Arms skins: Prismatic Eco M416, Drakeveil SIG550, Red
     Dominion ARX160 Lv.1 (limit), M14
     Cyanide Echo lv.4 (limit), and Dragunov SVD Obsidian Dragon (flat,
