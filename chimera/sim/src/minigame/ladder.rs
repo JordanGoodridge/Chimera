@@ -43,6 +43,19 @@
 //! turns them all off; a table turns a hook's options off by key
 //! (`rung_extras = { attachments = false }`; every key is on by default;
 //! a key no hook reads is warned about at the start).
+//! **Rung characters** (`RungExtras::character`, `RungCharacter`): a
+//! game's draw may make a rung a special character's, tied to its one
+//! weapon (Combat Arms' infected and their hands): on that rung a player
+//! holds the character's weapon alone (no gun, no kit: `no_kit`; the HUD
+//! names it as the rung's weapon, `Ladder::weapon_at`), and the next rung,
+//! up or down, takes it back and gives the kit again. Becoming and
+//! leaving the character are the game's moments (`RungCharacterHook`,
+//! `RungExtrasAppExt::add_rung_character`): `enter` once when a player is
+//! armed for the character's rung and wasn't it (`AsRungCharacter`, the
+//! host's), `leave` once when armed for another; a respawn on the rung
+//! fires neither. A draw sees every rung's weapon and the rungs drawn
+//! before it (`RungDraw::rungs`, `drawn`), so a game can put one such
+//! rung where it wants.
 //! The ladder gives the weapons, so nobody drops one at death
 //! (`weapon::drop::NoDeathDrops`).
 //! At the time limit the highest rung wins, then the most kills; a tie is
@@ -239,7 +252,52 @@ pub struct RungExtras {
     pub values: Vec<(String, String)>,
     /// Shown after the rung's weapon in the HUD's rung line.
     pub label: Option<String>,
+    /// A character every player on the rung becomes (`RungCharacter`):
+    /// they hold its weapon alone, in place of the rung's gun.
+    #[serde(default)]
+    pub character: Option<RungCharacter>,
 }
+
+/// A special character a rung makes its players (a game's: Combat Arms'
+/// infected), tied to its one weapon: on the rung a player holds that
+/// weapon alone (no kit, no gun) and is the character; the next rung
+/// (up or down) makes them themselves again. Its game's
+/// `RungCharacterHook` plays the moments of becoming and leaving it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RungCharacter {
+    /// `game:name` (its game: the prefix).
+    pub id: String,
+    /// The weapon it holds (a weapon id the definition allows).
+    pub weapon: String,
+}
+
+impl RungCharacter {
+    /// Its game (the id's prefix).
+    pub fn game(&self) -> &str {
+        self.id.split_once(':').map_or(self.id.as_str(), |(g, _)| g)
+    }
+}
+
+/// A game's moments of a player becoming a rung's character and leaving
+/// it (registered with `RungExtrasAppExt::add_rung_character`), the
+/// host's: `enter` once when a player is armed for a rung of that
+/// character (`arm`) and was not it, `leave` once when it is armed for
+/// another rung (another character's, or none). A respawn on the same
+/// rung fires neither.
+#[derive(Clone, Copy)]
+pub struct RungCharacterHook {
+    pub game: &'static str,
+    pub enter: fn(&mut World, Entity, &RungCharacter),
+    pub leave: fn(&mut World, Entity, &RungCharacter),
+}
+
+/// The registered `RungCharacterHook`s.
+#[derive(Resource, Clone, Default)]
+pub struct RungCharacterHooks(pub Vec<RungCharacterHook>);
+
+/// The character a player is now (`RungCharacter`; the host's).
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct AsRungCharacter(pub RungCharacter);
 
 impl RungExtras {
     /// Value `key`'s (the first).
@@ -255,6 +313,10 @@ pub struct RungDraw<'a> {
     pub rung: usize,
     pub weapon: &'static str,
     pub options: &'a RungOptions,
+    /// Every rung's weapon, in order (the knife finale's last).
+    pub rungs: &'a [&'static str],
+    /// The extras drawn for the rungs before this one.
+    pub drawn: &'a [Option<RungExtras>],
 }
 
 /// A game's per-rung draw for the ladder (registered with
@@ -282,11 +344,20 @@ pub struct RungExtrasHooks(pub Vec<RungExtrasHook>);
 pub trait RungExtrasAppExt {
     /// `hook` (one per game: a second replaces the first).
     fn add_rung_extras(&mut self, hook: RungExtrasHook) -> &mut Self;
+    /// A game's rung character moments (one per game).
+    fn add_rung_character(&mut self, hook: RungCharacterHook) -> &mut Self;
 }
 
 impl RungExtrasAppExt for App {
     fn add_rung_extras(&mut self, hook: RungExtrasHook) -> &mut Self {
         let mut hooks = self.world_mut().get_resource_or_init::<RungExtrasHooks>();
+        hooks.0.retain(|h| h.game != hook.game);
+        hooks.0.push(hook);
+        self
+    }
+
+    fn add_rung_character(&mut self, hook: RungCharacterHook) -> &mut Self {
+        let mut hooks = self.world_mut().get_resource_or_init::<RungCharacterHooks>();
         hooks.0.retain(|h| h.game != hook.game);
         hooks.0.push(hook);
         self
@@ -383,6 +454,33 @@ impl Ladder {
     /// Rung `rung`'s extras.
     pub fn extras(&self, rung: usize) -> Option<&RungExtras> {
         self.extras.get(rung).and_then(Option::as_ref)
+    }
+
+    /// Rung `rung`'s character (`RungExtras::character`).
+    pub fn character(&self, rung: usize) -> Option<&RungCharacter> {
+        self.extras(rung)?.character.as_ref()
+    }
+
+    /// What a player on `rung` holds as the rung's weapon: its
+    /// character's weapon (as the catalogue has it), else the rung's gun.
+    pub fn weapon_at(&self, rung: usize, catalog: Option<&WeaponCatalog>) -> Option<&'static str> {
+        if let Some(c) = self.character(rung) {
+            return catalog?.get(&c.weapon).map(|w| w.id.as_str());
+        }
+        self.rungs.get(rung).copied()
+    }
+
+    /// Every rung character's weapon, as the catalogue has them.
+    fn character_weapons(&self, catalog: &WeaponCatalog) -> Vec<&'static str> {
+        let mut out: Vec<&'static str> = Vec::new();
+        for c in self.extras.iter().flatten().filter_map(|x| x.character.as_ref()) {
+            if let Some(w) = catalog.get(&c.weapon)
+                && !out.contains(&w.id.as_str())
+            {
+                out.push(&w.id);
+            }
+        }
+        out
     }
 
     /// Every rung's melee weapon (`RungExtras::melee`), as the catalogue
@@ -503,10 +601,9 @@ fn draw_extras(
     let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
     let melee = |m: &str| super::weapon(def, &catalog, m).ok();
     let world: &World = world;
-    rungs
-        .iter()
-        .enumerate()
-        .map(|(rung, weapon)| {
+    let mut drawn: Vec<Option<RungExtras>> = Vec::new();
+    for (rung, weapon) in rungs.iter().enumerate() {
+        let x = (|| {
             if knife_finale && rung + 1 == rungs.len() {
                 return None;
             }
@@ -517,13 +614,19 @@ fn draw_extras(
                 rung,
                 weapon,
                 options,
+                rungs,
+                drawn: &drawn,
             };
             let mut x = (hook.draw)(world, &draw, &mut rng)?;
             x.game = game.to_string();
             x.melee = x.melee.as_deref().and_then(melee).map(str::to_string);
+            // A character whose weapon the definition doesn't allow: none.
+            x.character = x.character.filter(|c| melee(&c.weapon).is_some());
             Some(x)
-        })
-        .collect()
+        })();
+        drawn.push(x);
+    }
+    drawn
 }
 
 /// `e` armed for `rung` (the host's, before its weapons are given): the
@@ -547,6 +650,30 @@ pub fn arm(world: &mut World, e: Entity, ladder: &Ladder, rung: usize) {
     for h in &hooks.0 {
         (h.apply)(world, e, extras.as_ref().filter(|x| x.game == h.game));
     }
+    become_character(world, e, extras.and_then(|x| x.character));
+}
+
+/// `e` becomes `want` (none: itself): the old character's `leave`, then
+/// the new one's `enter`, each once, only when it changes.
+fn become_character(world: &mut World, e: Entity, want: Option<RungCharacter>) {
+    let have = world.get::<AsRungCharacter>(e).map(|c| c.0.clone());
+    if have == want {
+        return;
+    }
+    let hooks = world.get_resource::<RungCharacterHooks>().cloned().unwrap_or_default();
+    let hook = |c: &RungCharacter| hooks.0.iter().find(|h| h.game == c.game()).copied();
+    if let Some(old) = have {
+        world.entity_mut(e).remove::<AsRungCharacter>();
+        if let Some(h) = hook(&old) {
+            (h.leave)(world, e, &old);
+        }
+    }
+    if let Some(new) = want {
+        world.entity_mut(e).insert(AsRungCharacter(new.clone()));
+        if let Some(h) = hook(&new) {
+            (h.enter)(world, e, &new);
+        }
+    }
 }
 
 /// A life's arming (`RulesModule::arming`): for the player's rung.
@@ -556,10 +683,12 @@ fn arming(world: &mut World, e: Entity) {
     arm(world, e, &ladder, rung);
 }
 
-/// The knife-only last rung's life has no kit (the knife is its weapon).
+/// The knife-only last rung's life has no kit (the knife is its
+/// weapon), nor does a character's rung (its weapon alone).
 fn no_kit(world: &World, e: Entity) -> bool {
     let Some(ladder) = world.get_resource::<Ladder>() else { return false };
-    ladder.knife_only(world.get::<Rung>(e).map_or(0, |r| r.0))
+    let rung = world.get::<Rung>(e).map_or(0, |r| r.0);
+    ladder.knife_only(rung) || ladder.character(rung).is_some()
 }
 
 /// A joiner's rung: in a live match the others' lowest (or average, or
@@ -586,11 +715,11 @@ pub fn join_rung(world: &mut World, e: Entity, ladder: &Ladder) -> usize {
     rung.min(ladder.rungs.len().saturating_sub(2))
 }
 
-/// The rung's weapon.
+/// The rung's weapon (its character's, on a character's rung).
 fn loadout(world: &World, e: Entity) -> Vec<&'static str> {
     let Some(ladder) = world.get_resource::<Ladder>() else { return Vec::new() };
-    let rung = world.get::<Rung>(e).map_or(0, |r| r.0);
-    ladder.rungs.get(rung.min(ladder.rungs.len().saturating_sub(1))).copied().into_iter().collect()
+    let rung = world.get::<Rung>(e).map_or(0, |r| r.0).min(ladder.rungs.len().saturating_sub(1));
+    ladder.weapon_at(rung, world.get_resource::<WeaponCatalog>()).into_iter().collect()
 }
 
 /// The ladder's tick: the guns refilled, the lead followed.
@@ -802,6 +931,11 @@ pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     if ladder.knife_only(rung) {
         return knife_alone(world, e, ladder.rungs[rung]);
     }
+    if ladder.character(rung).is_some() {
+        if let Some(w) = ladder.weapon_at(rung, world.get_resource::<WeaponCatalog>()) {
+            return knife_alone(world, e, w);
+        }
+    }
     let before = carried_slots(world, e, ladder);
     let old: Vec<Entity> = world
         .get::<Inventory>(e)
@@ -818,7 +952,16 @@ pub fn set_rung(world: &mut World, e: Entity, rung: usize, ladder: &Ladder) {
     }
     // A kit by game (the gun game's knife) goes with the new gun's game,
     // a rung's melee weapon in place of the kit's.
-    let melees = world.get_resource::<WeaponCatalog>().map(|c| ladder.melees(c)).unwrap_or_default();
+    // The rungs' melee weapons and characters' weapons: taken when not
+    // this rung's (the kit given back after a character's rung).
+    let melees = world
+        .get_resource::<WeaponCatalog>()
+        .map(|c| {
+            let mut m = ladder.melees(c);
+            m.extend(ladder.character_weapons(c));
+            m
+        })
+        .unwrap_or_default();
     runtime::refit_kit(world, e, ladder.rungs[rung], &melees);
     give(world, e, ladder.rungs[rung]);
     keep_slot_order(world, e, &before, ladder);
@@ -923,12 +1066,14 @@ fn status(world: &mut World, viewer: Entity) -> Vec<HudLine> {
     let total = ladder.rungs.len();
     let rung = world.get::<Rung>(viewer).map_or(0, |r| r.0).min(total.saturating_sub(1));
     let mut lines = Vec::new();
-    if let Some(w) = ladder.rungs.get(rung) {
+    let catalog = world.get_resource::<WeaponCatalog>();
+    let (now, next) = (ladder.weapon_at(rung, catalog), ladder.weapon_at(rung + 1, catalog));
+    if let Some(w) = &now {
         // The rung's label (its fitted parts) after the weapon.
         let label = ladder.extras(rung).and_then(|x| x.label.as_deref()).map(|l| format!(" ({})", l.replace(['{', '}'], "")));
         lines.push(HudLine::new(format!("Rung {}/{total}: {{weapon}}{}", rung + 1, label.unwrap_or_default())).weapon(w));
     }
-    match ladder.rungs.get(rung + 1) {
+    match next {
         Some(w) => lines.push(HudLine::new("Next: {weapon}").weapon(w)),
         None => lines.push(HudLine::new("Last rung: a kill wins")),
     }
@@ -964,7 +1109,7 @@ fn notice(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<HudLin
     }
     let ladder = world.get_resource::<Ladder>()?;
     let total = ladder.rungs.len();
-    let weapon = ladder.rungs.get(usize::try_from(event.value).ok()?).copied()?;
+    let weapon = ladder.weapon_at(usize::try_from(event.value).ok()?, world.get_resource::<WeaponCatalog>())?;
     let text = match event.name {
         "rung_up" => format!("Rung up! {}/{total}: {{weapon}}", event.value + 1),
         "rung_down" => format!("Knifed! Down to {}/{total}: {{weapon}}", event.value + 1),
@@ -980,7 +1125,7 @@ fn callout(world: &World, viewer: Entity, event: &MinigameEvent) -> Option<Callo
     let ladder = world.get_resource::<Ladder>()?;
     let total = ladder.rungs.len();
     let rung = usize::try_from(event.value).ok()?;
-    let weapon = ladder.rungs.get(rung).copied();
+    let weapon = ladder.weapon_at(rung, world.get_resource::<WeaponCatalog>());
     let own = event.player == Some(viewer);
     let level_line = || HudLine::new(format!("Level {}/{total}", rung + 1));
     let gun = |text: &str| {

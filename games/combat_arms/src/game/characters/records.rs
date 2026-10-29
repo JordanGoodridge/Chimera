@@ -52,6 +52,30 @@ pub struct ModelRecord {
     /// 2026-10-22, 6). Only the install's models file gives it.
     #[serde(default)]
     pub footprint_volume: f32,
+    /// `InfectedOveridable`: its infection override (`CharacterData::
+    /// infection` id; -1 none). Only the install's models file gives it.
+    #[serde(default = "no_override")]
+    pub infected: i32,
+}
+
+fn no_override() -> i32 {
+    -1
+}
+
+/// An infection override (`Overidable_Model#`, characters.md 2): the
+/// face an infected body wears (`FaceIndex`), its render styles and
+/// first-person hands (read, not drawn).
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct InfectionRecord {
+    pub id: i32,
+    pub name: String,
+    #[serde(default = "no_override")]
+    pub face: i32,
+    #[serde(default = "no_override")]
+    pub hand: i32,
+    #[serde(default)]
+    pub render_styles: Vec<String>,
 }
 
 /// A head piece (`Hair#`): its file per skeleton index and its skins by
@@ -298,6 +322,9 @@ pub struct CharacterData {
     /// Seconds a body stays after its owner respawned, by mode key.
     pub body_removal: BTreeMap<String, f32>,
     pub skeleton: Vec<SkeletonRecord>,
+    /// The infection overrides (`Overidable_Model#`, the install's).
+    #[serde(default)]
+    pub infection: Vec<InfectionRecord>,
 }
 
 /// The built-in character data without any install, a read-only table
@@ -391,6 +418,7 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
             m.faces = r.faces.clone();
         }
         m.footprint_volume = r.footprint_volume;
+        m.infected = r.infected;
     }
     // The install's other bodies (named mercenaries and specialists,
     // cosmetics, NPCs: characters.md 1 counts 431 records), each `Model#`
@@ -421,8 +449,21 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
             additional_skins: dtx(&r.additional_skins),
             render_styles: r.render_styles.clone(),
             footprint_volume: r.footprint_volume,
+            infected: r.infected,
         });
     }
+    data.infection = models
+        .overrides
+        .iter()
+        .enumerate()
+        .map(|(i, o)| InfectionRecord {
+            id: i as i32,
+            name: o.name.clone(),
+            face: o.face,
+            hand: o.hand,
+            render_styles: o.render_styles.clone(),
+        })
+        .collect();
     for (i, r) in models.hair_pieces.iter().enumerate() {
         let id = i as i32;
         let head = HeadRecord {
@@ -540,6 +581,37 @@ impl CharacterData {
     pub fn additional_skin<'a>(&self, record: &'a ModelRecord, slot: i32) -> Option<&'a str> {
         let k = usize::try_from(slot.checked_sub(5)?).ok()?;
         record.additional_skins.get(k).map(String::as_str).filter(|s| !s.is_empty())
+    }
+
+    /// The player bodies a gun game's infected rung may draw
+    /// (`game::rungs`): the rung bodies with an infection override (all
+    /// of them without one, our stock six).
+    pub fn infected_bodies(&self) -> Vec<i32> {
+        let all = self.rung_bodies();
+        let with: Vec<i32> = all.iter().copied().filter(|&b| self.infection_of(b).is_some()).collect();
+        if with.is_empty() { all } else { with }
+    }
+
+    /// Body `body`'s infection override (`InfectedOveridable`).
+    pub fn infection_of(&self, body: i32) -> Option<&InfectionRecord> {
+        let id = self.model(body)?.infected;
+        self.infection.iter().find(|r| r.id == id && id >= 0)
+    }
+
+    /// The look body `body` has infected: its override's face (game_modes.md
+    /// M8, characters.md 2), else its default face. The override's render
+    /// styles and hands aren't drawn (docs/plans/active/combat-arms.md).
+    pub fn infected_look(&self, body: i32) -> Selection {
+        let face = self
+            .infection_of(body)
+            .map(|r| r.face)
+            .filter(|f| self.face.iter().any(|x| x.id == *f))
+            .unwrap_or_else(|| self.default_face(body));
+        Selection {
+            model: body,
+            face,
+            ..Selection::default()
+        }
     }
 
     /// Model 0, the default.

@@ -196,6 +196,18 @@ pub struct MovementData {
     pub pusher_max_up: f32,
     pub crouch_spam: CrouchSpamData,
     pub character: CaCharacter,
+    /// The body types (`FigureType#`) by index, the install's (gear_perks.md
+    /// 2: a vest record's `FigureType` picks one); empty, or an index past
+    /// the list: `character.figure` (the reference body, `FigureType0`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub figures: Vec<Figure>,
+}
+
+impl MovementData {
+    /// Body type `figure`'s numbers (`figures`, else the reference body's).
+    pub fn figure_of(&self, figure: usize) -> &Figure {
+        self.figures.get(figure).unwrap_or(&self.character.figure)
+    }
 }
 
 /// The crouch-spam penalty's parameters (spec "Crouch-spam penalty").

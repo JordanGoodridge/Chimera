@@ -142,8 +142,10 @@
 //!   choices too, rigid on their socket's node at its bind transform
 //!   (`models::attach`), only the pool's (another shows none), and not
 //!   hidden for a first-person owner (bodies aren't drawn there anyway);
-//!   cosmetics, the clan pieces and infection overrides aren't loaded
-//!   (nothing selects them); a face's skins by camouflage index (its
+//!   cosmetics and the clan pieces aren't loaded (nothing selects them);
+//!   of an infection override (`records::InfectionRecord`, read from the
+//!   install) only its face is worn (a gun game's infected rung:
+//!   `CharacterData::infected_look`), not its render styles or hands; a face's skins by camouflage index (its
 //!   colour overrides not read); render styles as `render_style` reads
 //!   them; a corpse (`CaBody`) is drawn by Chimera's `map::Corpse` body
 //!   from the same models, posed by `corpses` at its age on the receiving
@@ -444,6 +446,8 @@ impl Plugin for CaCharactersPlugin {
 fn register(app: &mut App) {
     app.replicate::<Selection>()
         .ordered::<Selection>()
+        .replicate::<CaRungLook>()
+        .ordered::<CaRungLook>()
         .replicate::<CaAnimNet>()
         .ordered::<CaAnimNet>()
         .replicate::<CaBody>()
@@ -557,8 +561,9 @@ fn look_seed(name: Option<&Name>, e: Entity) -> u64 {
 
 /// A look every player on a ladder rung wears in place of their own
 /// (`game::rungs`: the rung's character, the same for all on it); the
-/// server's, its `Selection` replicating as any look's.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+/// server's, replicated with the `Selection` it puts on, so every side's
+/// gear reads the rung's baseline vest for it (`gear::vest_of`).
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CaRungLook(pub Selection);
 
 /// A bot's own look (`CharacterData::bot_look` by its name's seed): what

@@ -93,14 +93,29 @@ the user's go-ahead: no Actions runs unless asked.
   - Clearer name tags when you aim at someone (their name and more),
     kept unobtrusive.
   - A flaming aura around the current leader.
-- **A rung's character: stats only when intrinsic (user, 2026-10-29).**
-  A drawn Combat Arms character changes armour or movement only if that
-  character has them by default in Combat Arms (its own movement, its
-  own built-in armour). Otherwise players keep a balanced baseline, so
-  Combat Arms players are no harder to kill than CS:S ones. Today a
-  body counts as its vest, so its armour and movement apply. Fix: take
-  only the body's intrinsic values, never a random vest's.
-- **Zombies: a character tied to its weapon (user idea, 2026-10-29).**
+- **A rung's character: stats only when intrinsic (user, 2026-10-29):
+  done, confirm in a playtest.** A drawn Combat Arms body keeps only its
+  body type (`FigureType`: sprint, stamina, variable terms), what is its
+  own; its armour, protection, penalty, sprint and stamina bonuses, hit
+  points and animation rates are the vest's (the body record is the
+  vest, gear_perks.md 3), and every rung body wears the baseline vest
+  (model 0's Normal, `gear::RUNG_VEST`; `characters::CaRungLook` now
+  replicates, so a client derives the same and isn't corrected at a
+  swap). The install's two body types are identical, so in practice
+  every rung body plays as the stock one.
+- **Zombies: a character tied to its weapon (user idea, 2026-10-29):
+  done, confirm in a playtest.** Chimera's `ladder::RungCharacter` and
+  `RungCharacterHook` (enter and leave once each); Combat Arms' infected
+  rung (`combat_arms::game::rungs`, `rung_extras.infected`, default on):
+  one Combat Arms gun rung of the top third, the Quarantine hands alone
+  (191, else any install hand: `combat_arms:infected` weapons), an
+  infected body with its override's face, the infection sound
+  (`infected_male.wav` / `infected_female.wav`, ours: unspecified) and
+  `Quarantine_Exp_01` at the player; baseline health and movement, no
+  knock-back. Not drawn yet (unspecified, open questions in
+  docs/plans/active/combat-arms.md): the screen overlay, the eye
+  trails, the override's virus render styles and hands. The idea as
+  given:
   Some Combat Arms characters can only use certain weapons: the infected
   (zombies) fight with their hands. Make them a special class. A rung
   that gives the infected hands turns the player into the zombie, and a

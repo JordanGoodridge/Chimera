@@ -466,8 +466,33 @@ that):
   free-for-all player's body follows too) for everyone on the rung, named
   in the rung's HUD line. Each part turns off by key
   (`rung_extras = { attachments = false, character = false, melee =
-  false }`), all with `rung_extras = false`. The apps seed them anew at
-  each launch (Ultimate Gun Game with its launch seed).
+  false, infected = false }`), all with `rung_extras = false`. The apps
+  seed them anew at each launch (Ultimate Gun Game with its launch seed).
+- **A rung's character changes looks, not the odds** (user,
+  2026-10-29): a drawn Combat Arms body keeps only what is intrinsic to
+  it, its body type (`FigureType`: sprint, stamina, the variable terms);
+  armour, protection, speed penalty, sprint and stamina bonuses, hit
+  points and animation rates are a Combat Arms vest's (the body record
+  is the vest, gear_perks.md 3), and on a rung every body wears the
+  baseline vest, model 0's Normal, what the party's players wear without
+  gear (`gear::RUNG_VEST`). So Combat Arms players are no harder to kill
+  than CS:S ones whatever body a rung draws. The install's two body types
+  have the same numbers, so every rung body plays as the stock one; a
+  body type of its own would apply.
+- **A special character tied to its weapon** (user, 2026-10-29):
+  a game's draw may make a rung a character's (`ladder::RungCharacter`):
+  on it everyone holds the character's weapon alone (no gun, no kit),
+  the next rung, up or down, makes them themselves again, and the game
+  plays the moments of becoming and leaving it
+  (`ladder::RungCharacterHook`, once each; a respawn on the rung fires
+  neither). Combat Arms' is the infected (Quarantine's zombies, their
+  hands: the install's knife-class weapons with the infected leg set):
+  one rung of its guns in the ladder's top third, never the last
+  (`rung_extras.infected`, default on; a rung whose own weapon is a hand
+  too), an infected body and face, the infection's sound and change
+  effect. Not copied: the infected's large health and their slow-down
+  and knock-back from bullets; they keep the gun game's baseline health
+  and movement, so it stays fair.
 
 ### Automatic gun games (variety)
 

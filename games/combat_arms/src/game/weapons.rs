@@ -1709,6 +1709,8 @@ impl Plugin for CaWeaponsPlugin {
             e.insert((*p, p.burst()));
         })
         .register_weapon_hook::<timing::TimingParams>(timing::TIMING, timing::apply)
+        // An infected's weapon: a mark for the gun game's rungs only.
+        .register_weapon_hook::<toml::Table>(super::rungs::INFECTED, |_, _, _| {})
         // The server's timing goes to its clients (`weapon::params`).
         .weapon_param(timing::TIMING, timing::encode, timing::push);
         let data = super::data::CaData::of(app);

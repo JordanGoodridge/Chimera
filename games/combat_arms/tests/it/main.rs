@@ -54,6 +54,7 @@ mod radio_chat_net;
 mod other_modes;
 mod radar;
 mod schedules;
+mod rung_character;
 mod search_destroy;
 mod server_docs;
 mod skeleton;
@@ -78,6 +79,7 @@ mod heavy {
     mod bots;
     mod characters;
     mod effects_sounds;
+    mod infected;
     mod junk_flea2;
     mod map_load;
     mod missions;

@@ -1084,6 +1084,32 @@ pub struct BodyLook {
     pub skeleton: i32,
     /// `GearID`.
     pub gear: i32,
+    /// `InfectedOveridable`: its infection override (`Overidable_Model#`
+    /// index; -1 none).
+    pub infected: i32,
+}
+
+/// `Overidable_Model<N>`: an infection override's look (characters.md 2:
+/// it replaces render styles, armour, hit points and hands; its face).
+#[derive(Clone, Debug, PartialEq)]
+pub struct InfectionLook {
+    pub name: String,
+    /// `FaceIndex` (-1: none).
+    pub face: i32,
+    /// `HandIndex` (-1: none).
+    pub hand: i32,
+    pub render_styles: Vec<String>,
+}
+
+impl InfectionLook {
+    pub fn read(s: &Section) -> Self {
+        Self {
+            name: name_of(s),
+            face: s.int("FaceIndex", -1),
+            hand: s.int("HandIndex", -1),
+            render_styles: s.string_list("RenderStyle").iter().map(|v| text(v)).collect(),
+        }
+    }
 }
 
 impl BodyLook {
@@ -1099,6 +1125,7 @@ impl BodyLook {
             footprint_volume: s.number("FootprintSndVolume", 0.0) as f32,
             skeleton: s.int("Skeleton", 0),
             gear: s.int("GearID", -1),
+            infected: s.int("InfectedOveridable", -1),
         }
     }
 }
@@ -1114,6 +1141,8 @@ pub struct ModelsFile {
     pub faces: Vec<PieceRecord>,
     /// `Model<N>`'s looks, by record index.
     pub bodies: Vec<BodyLook>,
+    /// `Overidable_Model<N>`, by record index.
+    pub overrides: Vec<InfectionLook>,
 }
 
 impl ModelsFile {
@@ -1125,6 +1154,7 @@ impl ModelsFile {
             hair_pieces: doc.records("Hair").into_iter().map(PieceRecord::read).collect(),
             faces: doc.records("Face").into_iter().map(PieceRecord::read).collect(),
             bodies: doc.records("Model").into_iter().map(BodyLook::read).collect(),
+            overrides: doc.records("Overidable_Model").into_iter().map(InfectionLook::read).collect(),
         }
     }
 }
