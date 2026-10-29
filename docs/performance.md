@@ -1543,7 +1543,9 @@ effort (S/M/L):
   it (0.05 ms).
 
 No behaviour or look changes: the same queries over the same entities,
-the same comparisons. The changed crates' tests pass (pre-commit).
+the same comparisons. The fast tier of the changed crates passes
+(chimera_core, chimera_client, chimera_sim, chimera_net, source_logic,
+combat_arms; `profsum`'s own tests with `--features tools`).
 
 ### Left
 
