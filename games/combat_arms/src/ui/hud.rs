@@ -119,7 +119,7 @@
 //!   carries when the HUD reads the kill (gone if the rules took the flag
 //!   first); no damage kind of ours is poison or bleeding.
 //! - Not driven by anything yet (the model has them): crosshair items,
-//!   video and AI freeze, infection, dot-sight mode (A6, A8: no sight has
+//!   video and AI freeze, infection, dot-sight mode (A6: no sight has
 //!   `Type` 2), revealing items, the state viewer, the pickup prompt's
 //!   non-human, buff, VIP and Spy Hunt conditions. The heartbeat is
 //!   counted in `CaHud::heartbeats` and sounds by `heartbeat_sound`. The
@@ -131,14 +131,15 @@
 //!   textures: the silhouette (a grey box standing or crouched), the
 //!   fire-mode icon (a word), kill-feed weapon icons and badges (words),
 //!   the hit overlay (a red frame), the direction indicator (a red bar
-//!   along the square's top edge), the dot-sight image (a red outline),
+//!   along the square's top edge), the dot-sight image (a red outline, only when the install lacks the
+//!   named file),
 //!   the panels' backgrounds (dark boxes), the action message at (312,
 //!   430) 400 x 20 (the game's `Action` panel places it). With it, the
 //!   direction indicator is drawn as a rotated rectangle of its sides'
 //!   lengths (no shear on non-4:3 screens) with the rows past the
 //!   texture's last left empty (C's v overrun, no clamp addressing); the
-//!   crosshair stays lines (A5); the dot-sight image stays a placeholder
-//!   (no sight in our data names one); name tags stay ours (the spec
+//!   crosshair stays lines (A5); the weapon's dot-sight image (`DotSightName`: the knives' and
+//!   robots' reticles, A8) is the install's own texture over the A8 rect; name tags stay ours (the spec
 //!   gives no layout for them).
 
 pub mod action;
@@ -253,6 +254,8 @@ pub struct CrosshairView {
     pub elements: Vec<Element>,
     pub colour: Rgba,
     pub dot_sight: Option<PxRect>,
+    /// The reticle's texture (`DotSightName`, A8); the install's art draws it.
+    pub dot_sight_image: Option<String>,
     /// The sight's range readout (A9): text and colour.
     pub range: Option<(String, Rgba)>,
     /// The gauge sight's images (attachments.md, "Crosshair, HUD and
@@ -987,6 +990,7 @@ fn update(
         draws,
         colour,
         dot_sight: (draws.dot_sight > 0).then(|| dot_sight_rect(screen)),
+        dot_sight_image: data.dot_sight.clone(),
         ..default()
     };
     if let (Some((w, (id, scan, _, modes, burst, _, _, spread, _))), Some(p)) = (weapon, player) {
@@ -1671,6 +1675,19 @@ pub fn range_text(fonts: &FontList, screen: Screen, text: &str, colour: Rgba) ->
     layout::boxed_text(at, IVec2::new(width, 0), IVec2::ZERO, look, scale(screen), fonts)
 }
 
+/// The weapon's reticle image over the A8 rect (an outline while the
+/// install has no such image).
+fn spawn_reticle(p: &mut ChildSpawnerCommands, c: &CrosshairView, art: Option<&draw::CaArt>) {
+    let Some(r) = c.dot_sight else { return };
+    if let Some((image, size)) = c.dot_sight_image.as_deref().and_then(|n| art?.get(n)) {
+        let full = Rect::new(0.0, 0.0, size.x as f32, size.y as f32);
+        draw::image_part(p, image, [r.min.x, r.min.y, r.max.x, r.max.y], full, [255; 4]);
+    } else {
+        // PLACEHOLDER: a red outline.
+        p.spawn((rect(r, Color::NONE), Outline::new(px(1.0), px(0.0), Color::srgba(1.0, 0.1, 0.1, 0.5))));
+    }
+}
+
 fn draw_crosshair(
     hud: Res<CaHud>,
     params: PenParams,
@@ -1719,10 +1736,7 @@ fn draw_crosshair(
             hud_text(p, pen, right, &format!("{clip} AMMO"), looks::ICON_WORD, r, Effect::Shadow, white);
         }
         for _ in 0..c.draws.dot_sight {
-            // PLACEHOLDER for the weapon's reticle image: a red outline.
-            if let Some(r) = c.dot_sight {
-                p.spawn((rect(r, Color::NONE), Outline::new(px(1.0), px(0.0), Color::srgba(1.0, 0.1, 0.1, 0.5))));
-            }
+            spawn_reticle(p, c, art.as_deref());
         }
         for e in &c.elements {
             match e {
@@ -2383,6 +2397,35 @@ mod foreign_gun_tests {
         let (mut world, root) = drawn("cs_source:weapon_m4a1", &WeaponIcons::default());
         assert!(images(&mut world).is_empty());
         assert!(world.get::<Children>(root).is_some_and(|c| !c.is_empty()));
+    }
+
+    /// A8: the reticle is the record's image over the 129 x 129 rect;
+    /// without the image, the placeholder outline (no image node).
+    #[test]
+    fn the_reticle_is_the_records_image() {
+        let screen = Screen::default();
+        let view = CrosshairView {
+            dot_sight: Some(dot_sight_rect(screen)),
+            dot_sight_image: Some("Test\\Reticle.dtx".into()),
+            ..default()
+        };
+        let mut art = draw::CaArt::default();
+        art.0.insert(crate::ui::install::texture_key("test/reticle.dtx"), (Handle::default(), IVec2::new(128, 128)));
+        let spawn = |art: Option<&draw::CaArt>, view: &CrosshairView| {
+            let mut world = World::new();
+            let root = world.spawn_empty().id();
+            let mut queue = CommandQueue::default();
+            let mut commands = Commands::new(&mut queue, &world);
+            commands.entity(root).with_children(|p| spawn_reticle(p, view, art));
+            queue.apply(&mut world);
+            images(&mut world)
+        };
+        let nodes = spawn(Some(&art), &view);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!((nodes[0].left, nodes[0].top), (px(448.0), px(320.0)));
+        assert!(spawn(Some(&art), &CrosshairView { dot_sight_image: Some("other.dtx".into()), ..view.clone() }).is_empty());
+        assert!(spawn(None, &view).is_empty());
+        assert!(spawn(Some(&art), &CrosshairView { dot_sight: None, ..view }).is_empty());
     }
 
     #[test]

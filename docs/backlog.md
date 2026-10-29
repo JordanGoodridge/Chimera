@@ -289,7 +289,7 @@ the user's go-ahead: no Actions runs unless asked.
     and zoom levels come from the install's attachment record for it.
     The 46 copies without an attachments table get no sight
     (`optical_buster_apollo`'s L115 scope), nor does our XM25 (its own
-    XM25 scope is dropped). `DotSightName` (4 given weapons): not read.
+    XM25 scope is dropped). `DotSightName` is read (fix 5, below).
   - view model and skins (`PVModelNormal`, `PVSkin#`, `PVRenderStyle#`):
     own, loaded on demand (`view_model::on_demand`).
   - held model (`HHModel`): own in the data, but drawn for none of the
@@ -356,7 +356,7 @@ the user's go-ahead: no Actions runs unless asked.
   4. (Done 2026-10-29, with 1: the install gives them, and the built-in values are fixed.) Correct our documents (M60 and R870 FireFX, R870 deselect, MP5A4
      and Dragunov muzzle flash). Item 1 makes this automatic with the
      install; the built-in values still matter without it.
-  5. `DotSightName` reticles. Ready to implement: hud_crosshair.md.
+  5. (Done 2026-10-29: `DotSightName` is read into `combat_arms:hud`'s `dot_sight`, creating the table, and `ui::hud` draws the install's texture over A8's rect; on 161 weapons, all knives, robot guns and infected hands, none a rifle's red dot. Open questions: docs/plans/active/combat-arms.md, "Dot-sight reticles".) `DotSightName` reticles. Covered by hud_crosshair.md.
   6. Special weapons' own scopes (XM25 Scope, L115 scope on specials,
      `LGB_scope`): needs a spec session. How a special weapon zooms isn't
      specified (data.rs "Known shortcuts").

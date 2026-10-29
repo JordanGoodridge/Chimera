@@ -519,6 +519,26 @@ reference:
    have: does the Windows PC's? What does the game draw for a record
    whose body file is missing?
 
+## Dot-sight reticles: open questions for a spec session (2026-10-29)
+
+`DotSightName` (hud_crosshair.md A8) is a weapon-record key, not a
+sight attachment's: in the install it names the knives' and robot guns'
+reticles (`Knife_Sight_01/02`, `PVE_Robot_*`, `quarantine-crosshair`),
+none of the rifles' red dots. It is drawn from `ui::hud` (the install's
+texture over the 129 x 129 rect, twice on a weapon with a crosshair,
+once with `DisableCrosshair`, not while a scope overlay is up). Open:
+1. The image's colour and blend: drawn here with its own RGBA, white
+   tint, plain alpha. Does the original tint it (e.g. by the
+   crosshair colour) or blend additively?
+2. Is the reticle still drawn when the weapon is not the current one
+   in a spectated or killcam view, or during the weapon's draw
+   animation? (A7 is read here: always while the crosshair item draws.)
+3. A red-dot sight shows no image of its own: is the red dot only in the
+   view model's lens (attachment model), and is the sight's `Type` 2
+   `DSightColor` mode (Q7) really dormant in the shipped data?
+4. Size at non-4:3 screens: x and y are scaled independently (A8), so
+   the image is stretched; confirm that is what the original shows.
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the
