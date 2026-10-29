@@ -53,6 +53,27 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **A natural power curve for the random ladder (user idea, 2026-10-29).**
+  Weak guns first, power rising, then the hard-hitting ones, then
+  specials, a grenade, melee last. Proposed design, waiting on the
+  user's three choices:
+  - *Score:* time to kill one baseline player (100 health, the same
+    armour) at a typical range of 10-20 m: shots to kill (damage per
+    shot with pellets and range falloff, over baseline health) times
+    the fire interval plus the pre-fire delay. Scaled by the hit rate
+    from spread at that range; small headshot and magazine terms.
+  - *Bands by category:* the score orders guns only inside a band.
+    1 warm-up (pistols, weak SMGs, weakest first); 2 rising (SMGs,
+    shotguns, carbines); 3 peak (rifles, LMGs); 4 heavy (snipers,
+    heavy calibre); 5 special (launchers, flame; one or two at most);
+    6 a grenade; 7 the melee finale. So rung 1 is always a pistol or a
+    weak SMG.
+  - *Generation:* split the rungs over the bands; draw each band's guns
+    at random from its pool, sort them by score, and mix the games. A
+    console command prints each rung's band and score.
+  - *Open:* whether the heavy band is a step down or power keeps rising;
+    a grenade rung before melee or a grenade plus knife; band sizes for
+    10 rungs (proposed 2/2/2/1/1/1/1).
 - **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
   - The party gun games' protection becomes 2 s (from 1.5 s); retime the
     tests that assume 1.5 s.
