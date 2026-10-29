@@ -1,12 +1,17 @@
-//! Every Combat Arms copy in the gun game's pool (a `class`) fires,
-//! reloads and draws on its own view model's animations, from the user's
-//! install (docs/plans/active/ca-weapon-timings.md): each weapon with a
-//! `combat_arms:timing` table is built as the game builds it (its parts,
-//! its inventory item, the timing hook) and its cycle, reload and draw
-//! must be its model's `fire_0` / (1 + `FireAniRate`), `reload` and
-//! `select`. Prints the counts (copies whose template's numbers already
-//! were their own, before; read, after; the read times) and the first
-//! few that differ.
+//! Every Combat Arms copy with a timing table (the gun game's pool and the
+//! rest: knives, specials) fires,
+//! reloads, draws and swings on its own view model's animations, from the
+//! user's install (docs/plans/active/ca-weapon-timings.md): each weapon
+//! with a `combat_arms:timing` table is built as the game builds it (its
+//! registry entry: every hook) and must carry its model's numbers: a gun's
+//! cycle `fire_0` / (1 + `FireAniRate`), reload `reload`, draw `select`,
+//! post-fire `postfire` (none without one) and latency (3 to 2 without a
+//! `prefire`); a spinning gun's spin-up, spin-down and loop, a round per
+//! loop key; a flame gun's loop, keys and spacing; a knife's swings and hit
+//! keys. Prints the counts (copies whose template's cycle already was their
+//! own, before; read, after; post-fires, latencies, spinning, flame and
+//! knife copies, guns with a pre-fire of non-zero length; the read times)
+//! and the first few that differ.
 //!
 //! Needs the V1 key (the weapons file) and, for the rifles', SMGs' and
 //! snipers' view models, the V2 key in chimera.local.toml. Skips with a
@@ -17,14 +22,46 @@ use std::time::Instant;
 
 use bevy::prelude::*;
 use chimera_core::mount::config::LocalConfig;
-use chimera_sim::weapon::{Magazine, ShellReload, Trigger, Weapon, data::insert_parts};
-use combat_arms::game::{
-    GAME,
-    attachments::fire_animation_rate,
-    data::CaData,
-    inventory::CaItem,
-    weapons::timing::{self, TIMING, TimingParams, ViewTimes},
+use chimera_sim::weapon::{self, Magazine, ShellReload, Trigger, Weapon};
+use chimera_world::harness::Sim;
+use combat_arms::{
+    game::{
+        GAME,
+        attachments::fire_animation_rate,
+        data::CaData,
+        gear::records::GearData,
+        inventory::{CaItem, Knife},
+        movement,
+        special::CaFlame,
+        weapons::{
+            classes::CaSpin,
+            timing::{self, AnimTimes, TIMING, ViewTimes},
+        },
+    },
+    harness::CaSimWith,
 };
+
+#[derive(Default, Debug)]
+struct Counts {
+    pool: usize,
+    timed: usize,
+    unread: usize,
+    no_fire: usize,
+    own_before: usize,
+    own_after: usize,
+    guns: usize,
+    postfire: usize,
+    semi_postfire: usize,
+    latency_2: usize,
+    long_prefire: usize,
+    spin: usize,
+    flame: usize,
+    knife: usize,
+}
+
+fn close(a: f32, b: f32) -> bool {
+    (a - b).abs() < 1e-5
+}
 
 #[test]
 fn every_copy_times_on_its_own_view_model() {
@@ -37,26 +74,28 @@ fn every_copy_times_on_its_own_view_model() {
         eprintln!("skipping: the install's weapons file isn't readable (the V1 key)");
         return;
     }
-    let (mut pool, mut timed, mut unread, mut no_fire, mut own_before, mut own_after) = (0, 0, 0, 0, 0, 0);
+    let mut sim = Sim::with(CaSimWith(ca.clone()), |_| {});
+    let owner = sim.spawn_character(Vec3::new(0.0, 1.0, 0.0), movement::ID);
+    let mut n = Counts::default();
     let (mut read_s, mut slowest) = (0.0f64, (0.0f64, String::new()));
     let mut wrong = Vec::new();
-    let mut paths = std::collections::HashSet::new();
-    let mut world = World::new();
-    world.init_resource::<ViewTimes>();
+    let mut paths = std::collections::BTreeSet::new();
     for d in &ca.weapon_set().weapons {
-        if d.class.is_none() {
-            continue;
+        // The gun game's pool, and every other copy with a timing table
+        // (knives, specials).
+        if d.class.is_some() {
+            n.pool += 1;
         }
-        pool += 1;
         if !d.hooks.contains_key(TIMING) {
             continue;
         }
-        timed += 1;
+        n.timed += 1;
         let path = d.models.view.as_deref().unwrap();
         paths.insert(path.to_string());
         let key = combat_arms::game::model::normalize(path);
+        let world = sim.app.world_mut();
         let t = match world.resource::<ViewTimes>().0.get(&key) {
-            Some(t) => *t,
+            Some(t) => t.clone(),
             None => {
                 let t0 = Instant::now();
                 let t = timing::read(path);
@@ -65,68 +104,154 @@ fn every_copy_times_on_its_own_view_model() {
                 if took > slowest.0 {
                     slowest = (took, path.to_string());
                 }
-                world.resource_mut::<ViewTimes>().0.insert(key, t);
+                world.resource_mut::<ViewTimes>().0.insert(key, t.clone());
                 t
             }
         };
         let Some(t) = t else {
-            unread += 1;
+            n.unread += 1;
             println!("  unread: {} ({path})", d.id);
             continue;
         };
         let Some(fire) = t.fire else {
-            no_fire += 1;
+            n.no_fire += 1;
             println!("  no fire_0: {} ({path})", d.id);
             continue;
         };
-        let item: Option<CaItem> =
-            d.hooks.get("combat_arms:inventory").map(|v| v.clone().try_into().expect("inventory table"));
-        let rate = item.as_ref().map_or(0.0, |i| i.fire_rate);
-        let cycle = fire / fire_animation_rate(rate, 0.0);
-        let template = d.trigger.as_ref().map(|tr| tr.cycle);
-        if template.is_some_and(|c| (c - cycle).abs() < 1e-6) {
-            own_before += 1;
-        }
-        // Built as the game builds it.
-        let mut e = world.spawn_empty();
-        insert_parts(d, &mut e);
-        if let Some(i) = item {
-            e.insert(i);
-        }
-        timing::apply(&mut e, d, &TimingParams::default());
-        let built = e.get::<Trigger>().map(|tr| tr.cycle);
-        let reload = e.get::<ShellReload>().map(|s| s.insert).or(e.get::<Magazine>().map(|m| m.reload_time));
-        let draw = e.get::<Weapon>().map(|w| w.draw_time);
-        let ok = built.is_some_and(|c| (c - cycle).abs() < 1e-6)
-            && t.reload.is_none_or(|r| reload == Some(r))
-            && t.select.is_none_or(|s| draw.is_some_and(|dr| (dr - s).abs() < 1e-6 || item_select(d) != 0.0));
-        if ok {
-            own_after += 1;
+        // Built as the game builds it: every hook.
+        let e = weapon::spawn_weapon(world, &d.id, owner).expect("registered");
+        let problem = check(world, e, d, &t, fire, &mut n);
+        if let Some(p) = problem {
+            wrong.push(format!("{}: {p}", d.id));
         } else {
-            wrong.push(format!("{}: cycle {built:?} (model {cycle}), reload {reload:?} ({:?}), draw {draw:?} ({:?})", d.id, t.reload, t.select));
+            n.own_after += 1;
         }
-        e.despawn();
+        world.despawn(e);
     }
+    let gear = GearData::built_in();
+    let gear_doc = ca.gear().to_doc();
     println!(
-        "pool {pool}; {timed} copies timed by their view model: {own_after} on their own timing (before: {own_before} by chance); \
-         {unread} models unread, {no_fire} without fire_0; reading {} distinct models took {read_s:.2} s ({:.1} ms a model, slowest {:.1} ms {})",
+        "pool {} (with a class); {} copies timed by their view model: {} on their own timing (before: {} by chance); \
+         {} models unread, {} without fire_0; reading {} distinct models took {read_s:.2} s ({:.1} ms a model, slowest {:.1} ms {})",
+        n.pool,
+        n.timed,
+        n.own_after,
+        n.own_before,
+        n.unread,
+        n.no_fire,
         paths.len(),
         1000.0 * read_s / paths.len().max(1) as f64,
         1000.0 * slowest.0,
         slowest.1
     );
+    println!(
+        "guns {}: {} with a post-fire ({} semi-automatic), {} on latency 2 (no prefire), {} with a pre-fire of non-zero length; \
+         spinning {}, flame {}, knives {}",
+        n.guns, n.postfire, n.semi_postfire, n.latency_2, n.long_prefire, n.spin, n.flame, n.knife
+    );
+    println!(
+        "gear records as a document: {} bytes (ours alone: {})",
+        gear_doc.len(),
+        gear.to_doc().len()
+    );
+    assert_eq!(GearData::parse(&gear_doc).unwrap(), *ca.gear(), "the install's gear records round-trip");
     for w in wrong.iter().take(20) {
         println!("  {w}");
     }
-    assert!(timed > 0, "no copy has a timing table");
+    assert!(n.timed > 0, "no copy has a timing table");
     assert!(wrong.is_empty(), "{} copies don't time on their models", wrong.len());
 }
 
-/// A weapon's item select rate (a draw then isn't the bare length).
-fn item_select(d: &chimera_sim::weapon::data::WeaponData) -> f32 {
-    d.hooks
-        .get("combat_arms:inventory")
-        .and_then(|v| v.get("select_rate"))
-        .and_then(|v| v.as_float())
-        .unwrap_or(0.0) as f32
+/// Whether weapon `e` (built from `d`) carries model `t`'s numbers; counts.
+fn check(
+    world: &World,
+    e: Entity,
+    d: &chimera_sim::weapon::data::WeaponData,
+    t: &AnimTimes,
+    fire: f32,
+    n: &mut Counts,
+) -> Option<String> {
+    let item = world.get::<CaItem>(e);
+    let rate = fire_animation_rate(item.map_or(0.0, |i| i.fire_rate), 0.0);
+    let draw = world.get::<Weapon>(e).map(|w| w.draw_time);
+    if t.select.is_some_and(|s| item.is_none_or(|i| i.select_rate == 0.0) && !draw.is_some_and(|dr| close(dr, s))) {
+        return Some(format!("draw {draw:?} (model {:?})", t.select));
+    }
+    if let Some(k) = world.get::<Knife>(e) {
+        n.knife += 1;
+        let a = &k.attacks[0];
+        if !close(a.length, fire) || (!t.fire_keys.is_empty() && a.hits != t.fire_keys) {
+            return Some(format!("slash {} {:?} (model {fire} {:?})", a.length, a.hits, t.fire_keys));
+        }
+        if let (Some(stab), Some(alt)) = (k.attacks.get(1), t.alt_fire)
+            && (!close(stab.length, alt) || (!t.alt_fire_keys.is_empty() && stab.hits != t.alt_fire_keys))
+        {
+            return Some(format!("stab {} {:?} (model {alt} {:?})", stab.length, stab.hits, t.alt_fire_keys));
+        }
+        return None;
+    }
+    let tr = world.get::<Trigger>(e)?;
+    let keys = t.fire_keys.iter().filter(|&&k| k < fire - 1e-6).count();
+    if let Some(s) = world.get::<CaSpin>(e) {
+        n.spin += 1;
+        let p = s.params;
+        let cycle = fire / keys.max(1) as f32 / rate;
+        println!(
+            "  spinning: {} (spin-up {}, spin-down {}, loop {} with {keys} keys: {:.1} ms a round, reversible {})",
+            d.id,
+            p.prefire,
+            p.postfire,
+            p.loop_len,
+            1000.0 * cycle,
+            p.reversible
+        );
+        if !close(p.loop_len, fire) || !close(p.prefire, t.prefire.unwrap_or(0.0)) || !close(tr.cycle, cycle) || tr.latency != 1 {
+            return Some(format!("spin {p:?}, cycle {}, latency {}", tr.cycle, tr.latency));
+        }
+        return None;
+    }
+    if let Some(f) = world.get::<CaFlame>(e) {
+        n.flame += 1;
+        let p = f.params;
+        if !close(p.loop_len, fire) || !close(tr.cycle, p.interval / rate) || (keys > 0 && p.keys as usize != keys) {
+            return Some(format!("flame {p:?}, cycle {}", tr.cycle));
+        }
+        return None;
+    }
+    n.guns += 1;
+    let cycle = fire / rate;
+    if d.trigger.as_ref().is_some_and(|tr| close(tr.cycle, cycle)) {
+        n.own_before += 1;
+    }
+    let postfire = t.postfire.unwrap_or(0.0) / rate;
+    if postfire > 0.0 {
+        n.postfire += 1;
+        if !tr.automatic {
+            n.semi_postfire += 1;
+        }
+    }
+    if tr.latency == 2 && d.trigger.as_ref().is_some_and(|tr| tr.latency == 3) {
+        n.latency_2 += 1;
+    }
+    if t.prefire.is_some() {
+        n.long_prefire += 1;
+    }
+    let want_latency = match d.trigger.as_ref().map_or(0, |tr| tr.latency) {
+        3 if !t.has_prefire => 2,
+        l => l,
+    };
+    let reload = world
+        .get::<ShellReload>(e)
+        .map(|s| s.insert)
+        .or(world.get::<Magazine>(e).map(|m| m.reload_time));
+    let ok = close(tr.cycle, cycle)
+        && close(tr.postfire, postfire)
+        && tr.latency == want_latency
+        && t.reload.is_none_or(|r| reload == Some(r));
+    (!ok).then(|| {
+        format!(
+            "cycle {} (model {cycle}), post-fire {} ({postfire}), latency {} ({want_latency}), reload {reload:?} ({:?})",
+            tr.cycle, tr.postfire, tr.latency, t.reload
+        )
+    })
 }

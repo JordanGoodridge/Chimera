@@ -205,6 +205,10 @@ pub struct TriggerData {
     /// (`Trigger::latency`; 0: none).
     #[serde(default)]
     pub latency: u32,
+    /// Seconds of the closing part after a pull's last cycle
+    /// (`Trigger::postfire`; 0: none).
+    #[serde(default)]
+    pub postfire: f32,
 }
 
 /// `Magazine` (and `ShellReload`): the reserve starts full and holds the
@@ -951,6 +955,7 @@ pub fn insert_parts(d: &'static WeaponData, e: &mut EntityWorldMut) {
             },
             per_press: t.per_press,
             latency: t.latency,
+            postfire: t.postfire,
         });
     }
     if let (Some(m), Some(a)) = (&d.magazine, &d.ammo) {

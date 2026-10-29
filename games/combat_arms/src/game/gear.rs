@@ -27,6 +27,14 @@
 //!   (`derive`): `CaCharacter` (the figure and every worn item's
 //!   penalty, sprint and stamina terms, set speed and stamina, Fighting
 //!   Chance's 1.03) and `CaGearEffects` (sets, Fighting Chance).
+//! - The animation rates (`CaGearRates`, `weapon_rates`): the vest's
+//!   `ReloadAniRate` and `SelectAniRate` and the sets' fire, reload and
+//!   draw rates go into each held weapon's own reload, draw and cycle
+//!   (attachments.md "Animation rates"), on every side from the
+//!   replicated look and loadout.
+//! - The records go to network clients whose own differ (`data::served`
+//!   `GEAR`: `GearData::to_doc`), so both sides derive the same speed
+//!   penalties and rates.
 //! - The server builds the armour (`armour`): at every spawn the pool is
 //!   the vest's `MaxArmor` and the piece list is vest, head, face,
 //!   goggle, then the head, face and vest mods' pieces, the set
@@ -53,10 +61,10 @@
 //!   expiry, no account flags, and the server trusts the client's
 //!   fast-respawn counts up to a sanity cap (the lobby's counter would
 //!   be the server's).
-//! - Set items: the effect kinds 0-4, 6, 9, 13-15 are applied (damage,
-//!   protection, speed, extra magazines, stamina, spread's max); kind 5
-//!   (protection against AI attackers) counts as 4; the rewards (7, 8)
-//!   and animation rates (10-12) are read and unused. A per-weapon bonus
+//! - Set items: the effect kinds 0-4, 6, 9-15 are applied (damage,
+//!   protection, speed, extra magazines, animation rates, stamina,
+//!   spread's max); kind 5 (protection against AI attackers) counts as 4;
+//!   the rewards (7, 8) are read and unused. A per-weapon bonus
 //!   names its weapon through `[[item]]` (ours; the stock sets are the
 //!   install's). Set speed and stamina fold into the worn items' terms
 //!   (the penalty clamp comes after the set's speed rather than before).
@@ -77,6 +85,7 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
+use chimera_sim::server_docs::DocsAppExt;
 use serde::{Deserialize, Serialize};
 
 use self::records::{GearData, GearMod, ModSlot, SetDef, SetEffect};
@@ -310,6 +319,11 @@ pub struct SetBonus {
     pub stamina: f32,
     pub magazines: f32,
     pub spread: f32,
+    /// Fire, reload and draw animation rates +v (10, 11, 12): the
+    /// attachments' `f_set`, `r_set`, `s_set`.
+    pub fire_rate: f32,
+    pub reload_rate: f32,
+    pub select_rate: f32,
     /// The bonuses of a condition list that name a weapon's item: (item
     /// number, effect kind, value).
     pub per_item: Vec<(i32, i32, f32)>,
@@ -335,6 +349,76 @@ impl SetBonus {
                 .filter(|(item, kind, _)| *kind == 9 && data.items.get(item).is_some_and(|w| w == weapon))
                 .map(|(_, _, v)| v)
                 .sum::<f32>()
+    }
+
+    /// The fire, reload and draw rate bonuses for a weapon (10, 11, 12):
+    /// the player-wide sums and the weapon's own.
+    pub fn weapon_rates(&self, data: &GearData, weapon: &str) -> (f32, f32, f32) {
+        let own = |kind: i32| -> f32 {
+            self.per_item
+                .iter()
+                .filter(|(item, k, _)| *k == kind && data.items.get(item).is_some_and(|w| w == weapon))
+                .map(|(_, _, v)| v)
+                .sum()
+        };
+        (
+            self.fire_rate + own(10),
+            self.reload_rate + own(11),
+            self.select_rate + own(12),
+        )
+    }
+}
+
+/// The gear's animation rate bonuses on a weapon (attachments.md
+/// "Animation rates": the character model's `ReloadAniRate` and
+/// `SelectAniRate`, the sets' fire, reload and draw rates): its owner's
+/// vest (`Selection::model`) and set tiers (`CaGearEffects`), derived on
+/// every side each predicted tick (`weapon_rates`) from the replicated
+/// look and loadout, so a client predicts its own reload and draw on the
+/// server's numbers. The attachments add them to the parts' sums
+/// (`attachments::apply_fitted`, `apply_draw`); the view model plays at
+/// the same rates.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct CaGearRates {
+    pub fire: f32,
+    pub reload: f32,
+    pub select: f32,
+}
+
+impl CaGearRates {
+    /// The rates a weapon `weapon` held by a player of `look` (None: the
+    /// default body) with set bonuses `effects` gets.
+    pub fn of(data: &GearData, look: Option<&Selection>, effects: Option<&CaGearEffects>, weapon: &str) -> Self {
+        let vests = &data.vests;
+        let (reload, select) = vests
+            .get(&look.map_or(0, |l| l.model))
+            .or(vests.get(&0))
+            .map_or((0.0, 0.0), |v| (v.reload_ani_rate, v.select_ani_rate));
+        let (f, r, s) = effects.map_or((0.0, 0.0, 0.0), |e| e.set.weapon_rates(data, weapon));
+        CaGearRates {
+            fire: f,
+            reload: reload + r,
+            select: select + s,
+        }
+    }
+}
+
+/// Each weapon's `CaGearRates` from its owner (none: 0); in the predicted
+/// tick, before the attachments apply them.
+pub fn weapon_rates(
+    data: Option<Res<CaGearData>>,
+    owners: Query<(Option<&Selection>, Option<&CaGearEffects>)>,
+    mut weapons: Query<(&Weapon, &mut CaGearRates)>,
+) {
+    let Some(data) = data else { return };
+    for (w, mut rates) in &mut weapons {
+        let owner = w.owner.filter(|o| *o != Entity::PLACEHOLDER).and_then(|o| owners.get(o).ok());
+        let want = owner.map_or_else(CaGearRates::default, |(look, effects)| {
+            CaGearRates::of(&data.0, look, effects, w.id)
+        });
+        if *rates != want {
+            *rates = want;
+        }
     }
 }
 
@@ -365,6 +449,9 @@ fn apply_effect(data: &GearData, equipped: &[i32], e: &SetEffect, out: &mut SetB
             4 | 5 => out.protection.push((e.value, e.locations.clone())),
             6 => out.speed += e.value,
             9 => out.magazines += e.value,
+            10 => out.fire_rate += e.value,
+            11 => out.reload_rate += e.value,
+            12 => out.select_rate += e.value,
             13 => out.stamina += e.value,
             14 => out.spread += e.value,
             _ => {}
@@ -627,6 +714,13 @@ impl Plugin for CaGearPlugin {
             let data = CaData::of(app).gear().clone();
             app.insert_resource(CaGearData(Arc::new(data)));
         }
+        // A network client whose gear records differ takes the server's.
+        let doc = super::data::served::gear_doc(&app.world().resource::<CaGearData>().0);
+        app.server_docs(
+            super::data::served::GEAR,
+            doc,
+            chimera_sim::server_docs::DocApply::With(super::data::served::apply_gear),
+        );
         app.init_resource::<CaGearQuirks>()
             .init_resource::<CaOwnGear>()
             .net_part("combat_arms_gear", register)

@@ -45,11 +45,25 @@ const INSTALL: &str = r#"
     PVModelNormal="TEST\Timing\PV_Shotgun.LTB"
 [Weapon5] Name="Timing SMG" Guntype=3 AmmoName0="9mm" ShotsPerClip=30 FireAniRate=0.5
     PVModelNormal="TEST\Timing\PV_SMG.LTB"
+[Weapon6] Name="Beretta_M92FS" Guntype=1 AmmoName0="9mm" ShotsPerClip=15 RapidFireCount=1
+    PVModelNormal="GUNS_M_PV_Pistol\PV_Pistol_M92FS.LTB"
+[Weapon7] Name="M60" Guntype=5 AmmoName0="762" ShotsPerClip=100 PVModelNormal="GUNS_M_PV_MG\PV_MG_M60_SH.LTB"
+[Weapon8] Name="M9" Guntype=0 AmmoName0="knife" PVModelNormal="GUNS_M_PV_MELEE\PV_Melee_M9_SH.ltb"
+[Weapon9] Name="Timing Pistol" Guntype=1 AmmoName0="9mm" ShotsPerClip=15 RapidFireCount=1
+    PVModelNormal="TEST\Timing\PV_Pistol.LTB"
+[Weapon10] Name="Timing Minigun" Guntype=5 AmmoName0="762" ShotsPerClip=500 AccumPreFire=1 RapidFireCount=0
+    PVModelNormal="TEST\Timing\PV_Minigun.LTB"
+[Weapon11] Name="Timing Knife" Guntype=0 AmmoName0="knife" PVModelNormal="TEST\Timing\PV_Knife.LTB"
+[Ammo3] Name="762" Type=1 MaxAmount=1000
+[Ammo4] Name="knife" Type=1 MaxAmount=1000 InstDamage=45 AltInstDamage=75
 "#;
 
 const RIFLE: &str = "combat_arms:timing_rifle";
 const SHOTGUN: &str = "combat_arms:timing_shotgun";
 const SMG: &str = "combat_arms:timing_smg";
+const PISTOL: &str = "combat_arms:timing_pistol";
+const MINIGUN: &str = "combat_arms:timing_minigun";
+const KNIFE: &str = "combat_arms:timing_knife";
 
 /// The copies' view models, as the test writes them (s at rate 1).
 fn models(app: &mut App) {
@@ -58,6 +72,8 @@ fn models(app: &mut App) {
         fire: Some(0.2),
         reload: Some(1.0),
         select: Some(0.5),
+        // A 0 ms pre-fire, as the M4A1's: the update it takes stays.
+        has_prefire: true,
         ..default()
     });
     times.set("test/timing/pv_shotgun.ltb", AnimTimes {
@@ -66,6 +82,39 @@ fn models(app: &mut App) {
         pre_reload: Some(0.25),
         post_reload: Some(0.6),
         select: Some(0.8),
+        ..default()
+    });
+    // Semi-automatic, no pre-fire in its file: a 200 ms shot, a 300 ms
+    // post-fire.
+    times.set("test/timing/pv_pistol.ltb", AnimTimes {
+        fire: Some(0.2),
+        reload: Some(1.2),
+        select: Some(0.5),
+        postfire: Some(0.3),
+        ..default()
+    });
+    // The spin of weapon_classes.md 3.3 at other lengths: a 1 s spin-up,
+    // a 0.8 s spin-down, a 200 ms loop with keys at 0, 40, ..., 200 (a
+    // round each, the one at the end the next loop's).
+    times.set("test/timing/pv_minigun.ltb", AnimTimes {
+        fire: Some(0.2),
+        reload: Some(3.0),
+        has_prefire: true,
+        prefire: Some(1.0),
+        postfire: Some(0.8),
+        fire_keys: vec![0.0, 0.04, 0.08, 0.12, 0.16, 0.2],
+        ..default()
+    });
+    // A slash of 500 ms hitting at 100 and 300 ms, a stab of 900 ms
+    // hitting at 450 ms.
+    times.set("test/timing/pv_knife.ltb", AnimTimes {
+        fire: Some(0.5),
+        alt_fire: Some(0.9),
+        select: Some(0.3),
+        fire_keys: vec![0.1, 0.3],
+        alt_fire_keys: vec![0.45],
+        postfire: Some(0.001),
+        ..default()
     });
     // No select: the template's draw stays.
     times.set("test/timing/pv_smg.ltb", AnimTimes {
@@ -85,6 +134,9 @@ fn merged() -> Vec<(String, Table)> {
         ("m4a1.toml", include_str!("../../data/weapons/m4a1.toml")),
         ("remington_870.toml", include_str!("../../data/weapons/remington_870.toml")),
         ("mp5a4.toml", include_str!("../../data/weapons/mp5a4.toml")),
+        ("beretta_m92fs.toml", include_str!("../../data/weapons/beretta_m92fs.toml")),
+        ("m60.toml", include_str!("../../data/weapons/m60.toml")),
+        ("m9.toml", include_str!("../../data/weapons/m9.toml")),
     ];
     merge_weapon_docs(&ours, weapons, meters_per_unit())
         .unwrap()
@@ -108,7 +160,7 @@ fn hooks(t: &Table) -> &Table {
 /// The copies' documents as text, to register.
 fn copies() -> Vec<(String, String)> {
     let docs = merged();
-    [RIFLE, SHOTGUN, SMG]
+    [RIFLE, SHOTGUN, SMG, PISTOL, MINIGUN, KNIFE]
         .iter()
         .map(|id| (id.to_string(), toml::to_string(doc(&docs, id)).unwrap()))
         .collect()
@@ -126,9 +178,12 @@ fn register(app: &mut App, copies: &[(String, String)]) {
 #[test]
 fn copies_get_a_timing_table_and_their_fire_rate() {
     let docs = merged();
-    for id in [RIFLE, SHOTGUN, SMG] {
+    for id in [RIFLE, SHOTGUN, SMG, PISTOL, MINIGUN, KNIFE] {
         assert!(hooks(doc(&docs, id)).contains_key(TIMING), "{id}");
     }
+    // `AccumPreFire`: a spin table, its lengths left to the model.
+    assert!(hooks(doc(&docs, MINIGUN)).contains_key("combat_arms:spin"));
+    assert!(!hooks(doc(&docs, "combat_arms:m60")).contains_key("combat_arms:spin"));
     for id in ["combat_arms:m4a1", "combat_arms:remington_870", "combat_arms:mp5a4"] {
         assert!(!hooks(doc(&docs, id)).contains_key(TIMING), "ours: {id}");
     }
@@ -398,4 +453,261 @@ fn a_client_with_its_own_models_takes_the_servers_timing() {
     let client = sim.clients[0].app.world();
     assert_eq!(client.get::<Magazine>(cw).unwrap().reload_time, 1.0);
     assert_eq!(client.get::<Weapon>(cw).unwrap().draw_time, 0.5);
+}
+
+// ---------------------------------------------------------------------------
+// The gear's animation rates (docs/plans/active/ca-weapon-timings.md,
+// part 2): the vest's `ReloadAniRate` and `SelectAniRate` in the weapon's
+// own reload and draw, server-authoritative and predicted; the gear
+// records go to a client whose own differ (`data::served::GEAR`).
+
+/// The server's gear data: every vest with `ReloadAniRate` 0.25 and
+/// `SelectAniRate` 0.5 (rates 1.25 and 1.5).
+fn fast_vests() -> combat_arms::game::gear::records::GearData {
+    let mut g = combat_arms::game::gear::records::GearData::built_in();
+    for v in g.vests.values_mut() {
+        v.reload_ani_rate = 0.25;
+        v.select_ani_rate = 0.5;
+    }
+    g
+}
+
+/// The first app built (the server) wears `fast_vests`; the clients
+/// keep ours.
+#[derive(Clone)]
+struct ServerGear(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl Plugin for ServerGear {
+    fn build(&self, app: &mut App) {
+        if self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            app.insert_resource(combat_arms::game::gear::CaGearData(std::sync::Arc::new(fast_vests())));
+        }
+        CaSim.build(app);
+    }
+}
+
+/// A vest's reload and select bonuses shorten the M4A1's own reload
+/// (2.3 s / 1.25 = 1.84 s) and draw (1.2 s / 1.5 = 0.8 s) on the server,
+/// and the client, whose gear records were ours, takes the server's
+/// (`combat_arms:gear`) before it enters and predicts the reload without
+/// error.
+#[test]
+fn a_vests_rates_shorten_the_reload_and_draw_on_both_sides() {
+    use chimera_net::net::server_docs::DocsHeard;
+    use combat_arms::game::{data::served::GEAR, gear::CaGearData};
+    let link = LinkConditions {
+        latency: Duration::from_millis(50),
+        jitter: Duration::ZERO,
+        loss: 0.0,
+    };
+    let pick = ServerGear(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)));
+    let mut sim = NetSim::new(pick, link, 17, 0, |app| {
+        app.add_plugins(GreyboxMapPlugin);
+    });
+    sim.add_client(|w| assert_ne!(*w.resource::<CaGearData>().0, fast_vests(), "the client starts on ours"));
+    sim.set_frame(TICK_INTERVAL);
+    sim.until_joined(900);
+    sim.ticks(240);
+    {
+        let client = sim.clients[0].app.world();
+        let heard = &client.resource::<DocsHeard>().0;
+        assert!(heard.iter().any(|h| h.0 == GEAR), "the gear set came: {heard:?}");
+        assert_eq!(*client.resource::<CaGearData>().0, fast_vests());
+    }
+    let theirs = sim.character_of(0).unwrap();
+    let sw = weapon::give(sim.server.app.world_mut(), theirs, "combat_arms:m4a1").unwrap();
+    sim.ticks(150);
+    let cw = client_weapon(&mut sim, "combat_arms:m4a1");
+    for (side, w, e) in [("server", sim.server.app.world(), sw), ("client", sim.clients[0].app.world(), cw)] {
+        let reload = w.get::<Magazine>(e).unwrap().reload_time;
+        let draw = w.get::<Weapon>(e).unwrap().draw_time;
+        assert!((reload - 1.84).abs() < 1e-5, "{side}: reload {reload}");
+        assert!((draw - 0.8).abs() < 1e-5, "{side}: draw {draw}");
+    }
+    // Fire a few rounds, then reload: timed on the server, predicted.
+    let intent = |sim: &mut NetSim, f: &dyn Fn(&mut Intent)| {
+        let me = sim.local_player(0).unwrap();
+        f(&mut sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap());
+    };
+    intent(&mut sim, &|i| i.fire = true);
+    sim.ticks(30);
+    intent(&mut sim, &|i| i.fire = false);
+    sim.ticks(30);
+    *sim.clients[0].app.world_mut().resource_mut::<NetGraph>() = NetGraph::default();
+    let clip = |w: &World, e: Entity| w.get::<Magazine>(e).unwrap().clip;
+    assert!(clip(sim.server.app.world(), sw) < 30);
+    intent(&mut sim, &|i| i.reload = true);
+    sim.ticks(2);
+    intent(&mut sim, &|i| i.reload = false);
+    let (mut started, mut filled) = (None, None);
+    for _ in 0..((3.0 / TICK_INTERVAL) as u64) {
+        sim.ticks(1);
+        let w = sim.server.app.world();
+        let now = w.resource::<SimClock>().now;
+        let st = w.get::<chimera_sim::weapon::WeaponState>(sw).unwrap();
+        if started.is_none() && st.reload_end.is_some() {
+            started = Some(now);
+        }
+        if started.is_some() && filled.is_none() && clip(w, sw) == 30 {
+            filled = Some(now);
+        }
+    }
+    let took = filled.unwrap() - started.unwrap();
+    assert!((took - 1.84).abs() < 0.05, "the server reloaded in {took} s, not 2.3");
+    let g = sim.clients[0].app.world().resource::<NetGraph>().clone();
+    println!("vest reload: {took:.3} s, {} states checked, {} errors ({:?})", g.checked, g.errors, g.last_differing);
+    assert!(g.checked > 0);
+    assert_eq!(g.errors, 0, "mispredicted ({:?})", g.last_differing);
+    let cw = client_weapon(&mut sim, "combat_arms:m4a1");
+    assert_eq!(clip(sim.clients[0].app.world(), cw), 30);
+}
+
+// ---------------------------------------------------------------------------
+// The rest of the fire sequence from the model (the plan's part 3).
+
+/// Ticks until weapon `w`'s clip goes down (at most `max`); the time it did.
+fn next_shot(sim: &mut Sim, w: Entity, max: u64) -> Option<f64> {
+    let clip = |sim: &Sim| sim.app.world().get::<Magazine>(w).unwrap().clip;
+    let before = clip(sim);
+    for _ in 0..max {
+        sim.ticks(1);
+        if clip(sim) < before {
+            return Some(now(sim));
+        }
+    }
+    None
+}
+
+/// A semi-automatic copy takes its model's `postfire` (300 ms) and, with
+/// no `prefire` in its file, the shorter chain (latency 2): a press during
+/// the post-fire fires on that update (weapon_classes.md 4: it cuts the
+/// post-fire short); a reload asked after a shot waits for the post-fire
+/// (view_models.md 7, "Reload after firing"); a press after the post-fire
+/// pays the chain again.
+#[test]
+fn a_semi_automatic_copy_takes_its_postfire() {
+    let (mut sim, p) = sim();
+    let w = weapon::give(sim.app.world_mut(), p, PISTOL).unwrap();
+    {
+        let tr = sim.app.world().get::<Trigger>(w).unwrap();
+        assert!(!tr.automatic);
+        assert!((tr.cycle - 0.2).abs() < 1e-6 && (tr.postfire - 0.3).abs() < 1e-6, "{tr:?}");
+        assert_eq!(tr.latency, 2, "no prefire in its file");
+    }
+    sim.seconds(1.0);
+    let tick = TICK_INTERVAL as f64;
+    // From idle: the chain's 2 updates.
+    sim.intent(p).fire = true;
+    let pressed = now(&sim);
+    let t0 = next_shot(&mut sim, w, 30).expect("a shot");
+    sim.intent(p).fire = false;
+    // The update that sees the press, then the chain's 2.
+    assert!((t0 - pressed - 3.0 * tick).abs() < tick * 0.5 + 1e-6, "first round {} s after the press", t0 - pressed);
+    // Pressed 250 ms on (the shot's 200 over, the post-fire playing): at once.
+    while now(&sim) < t0 + 0.25 {
+        sim.ticks(1);
+    }
+    sim.intent(p).fire = true;
+    let pressed = now(&sim);
+    let t1 = next_shot(&mut sim, w, 30).expect("a shot");
+    sim.intent(p).fire = false;
+    assert!(t1 - pressed <= tick + 1e-6, "cut the post-fire short: {} s after the press", t1 - pressed);
+    // A reload asked now starts when the shot (200 ms) and the post-fire
+    // (300 ms) are over.
+    sim.intent(p).reload = true;
+    let mut started = None;
+    for _ in 0..90 {
+        sim.ticks(1);
+        if started.is_none() && sim.app.world().get::<chimera_sim::weapon::WeaponState>(w).unwrap().reload_end.is_some() {
+            started = Some(now(&sim));
+        }
+    }
+    sim.intent(p).reload = false;
+    let started = started.expect("reloaded");
+    assert!(started - t1 >= 0.5 - tick, "the reload waited for the post-fire: {} s", started - t1);
+    assert!(started - t1 <= 0.5 + 2.0 * tick, "and no longer: {} s", started - t1);
+    // After the post-fire: the chain again.
+    sim.seconds(2.0);
+    sim.intent(p).fire = true;
+    let pressed = now(&sim);
+    let t2 = next_shot(&mut sim, w, 30).expect("a shot");
+    sim.intent(p).fire = false;
+    assert!(t2 - pressed > 2.5 * tick, "the chain again: {} s", t2 - pressed);
+}
+
+/// A minigun copy (`AccumPreFire`) spins on its own model: a 1 s spin-up,
+/// a 0.8 s spin-down, its 200 ms loop's five keys a round each (40 ms),
+/// latency 1, no trigger post-fire; held fire's first round comes when the
+/// spin-up ends.
+#[test]
+fn a_minigun_copy_spins_on_its_own_model() {
+    use combat_arms::game::weapons::classes::CaSpin;
+    let (mut sim, p) = sim();
+    let w = weapon::give(sim.app.world_mut(), p, MINIGUN).unwrap();
+    {
+        let world = sim.app.world();
+        let s = world.get::<CaSpin>(w).unwrap().params;
+        assert_eq!((s.prefire, s.postfire, s.loop_len, s.reversible), (1.0, 0.8, 0.2, true));
+        let tr = world.get::<Trigger>(w).unwrap();
+        assert!((tr.cycle - 0.04).abs() < 1e-6, "{tr:?}");
+        assert_eq!((tr.latency, tr.postfire), (1, 0.0));
+    }
+    sim.seconds(2.0);
+    let t = shots(&mut sim, p, w, 2.0);
+    let first = t[0] - (now(&sim) - 2.0);
+    assert!((first - 1.0).abs() < 0.06, "first round {first} s after the press");
+    let gap = mean_gap(&t);
+    assert!((gap - 0.04).abs() < 0.006, "{gap} s a round");
+}
+
+/// A knife copy swings on its own model: the slash `fire_0` (500 ms) with
+/// its `FIRE_KEY`s (100, 300 ms), the stab `alt_fire_0` (900 ms) with its
+/// `ALT_FIRE_KEY` (450 ms), the draw its `select`.
+#[test]
+fn a_knife_copys_swings_come_from_its_model() {
+    use combat_arms::game::inventory::Knife;
+    let (mut sim, p) = sim();
+    let w = weapon::give(sim.app.world_mut(), p, KNIFE).unwrap();
+    let world = sim.app.world();
+    let k = world.get::<Knife>(w).unwrap();
+    assert_eq!((k.attacks[0].length, k.attacks[0].hits.clone()), (0.5, vec![0.1, 0.3]));
+    assert_eq!((k.attacks[1].length, k.attacks[1].hits.clone()), (0.9, vec![0.45]));
+    assert_eq!(k.attacks[0].postfire, 0.001);
+    assert_eq!(world.get::<Weapon>(w).unwrap().draw_time, 0.3);
+    // Ours: the spec's M9.
+    let ours = weapon::give(sim.app.world_mut(), p, "combat_arms:m9_knife").unwrap();
+    let k = sim.app.world().get::<Knife>(ours).unwrap();
+    assert_eq!((k.attacks[0].length, k.attacks[0].hits.clone()), (0.65, vec![0.155, 0.402]));
+}
+
+/// A client that can't read the models takes the server's spin, knife
+/// swings, post-fire and latency (`combat_arms:timing`).
+#[test]
+fn a_client_without_the_models_takes_the_servers_sequence() {
+    use combat_arms::game::{inventory::Knife, weapons::classes::CaSpin};
+    let mut sim = net(|w| {
+        let mut times = w.resource_mut::<ViewTimes>();
+        for path in ["test/timing/pv_pistol.ltb", "test/timing/pv_minigun.ltb", "test/timing/pv_knife.ltb"] {
+            times.0.insert(path.into(), None);
+        }
+    });
+    let theirs = sim.character_of(0).unwrap();
+    let mut server = Vec::new();
+    for id in [PISTOL, MINIGUN, KNIFE] {
+        server.push(weapon::give(sim.server.app.world_mut(), theirs, id).unwrap());
+    }
+    sim.ticks(150);
+    let (cp, cm, ck) = (client_weapon(&mut sim, PISTOL), client_weapon(&mut sim, MINIGUN), client_weapon(&mut sim, KNIFE));
+    let (s, c) = (sim.server.app.world(), sim.clients[0].app.world());
+    let tr = |w: &World, e: Entity| {
+        let t = w.get::<Trigger>(e).unwrap();
+        (t.cycle, t.postfire, t.latency)
+    };
+    assert_eq!(tr(c, cp), tr(s, server[0]));
+    assert_eq!(tr(c, cp).2, 2);
+    assert_eq!(tr(c, cm), tr(s, server[1]));
+    assert_eq!(c.get::<CaSpin>(cm).unwrap().params, s.get::<CaSpin>(server[1]).unwrap().params);
+    assert_eq!(c.get::<CaSpin>(cm).unwrap().params.prefire, 1.0);
+    assert_eq!(c.get::<Knife>(ck).unwrap().attacks, s.get::<Knife>(server[2]).unwrap().attacks);
+    assert_eq!(c.get::<Knife>(ck).unwrap().attacks[1].hits, vec![0.45]);
 }

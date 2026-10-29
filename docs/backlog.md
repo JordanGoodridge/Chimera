@@ -53,6 +53,44 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **A natural power curve for the random ladder (user idea, 2026-10-29).**
+  Weak guns first, power rising, then the hard-hitting ones, then
+  specials, a grenade, melee last. Proposed design, waiting on the
+  user's three choices:
+  - *Score:* time to kill one baseline player (100 health, the same
+    armour) at a typical range of 10-20 m: shots to kill (damage per
+    shot with pellets and range falloff, over baseline health) times
+    the fire interval plus the pre-fire delay. Scaled by the hit rate
+    from spread at that range; small headshot and magazine terms.
+  - *Bands by category:* the score orders guns only inside a band.
+    1 warm-up (pistols, weak SMGs, weakest first); 2 rising (SMGs,
+    shotguns, carbines); 3 peak (rifles, LMGs); 4 heavy (snipers,
+    heavy calibre); 5 special (launchers, flame; one or two at most);
+    6 a grenade; 7 the melee finale. So rung 1 is always a pistol or a
+    weak SMG.
+  - *Generation:* split the rungs over the bands; draw each band's guns
+    at random from its pool, sort them by score, and mix the games. A
+    console command prints each rung's band and score.
+  - *Open:* whether the heavy band is a step down or power keeps rising;
+    a grenade rung before melee or a grenade plus knife; band sizes for
+    10 rungs (proposed 2/2/2/1/1/1/1).
+- **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
+  - The party gun games' protection becomes 2 s (from 1.5 s); retime the
+    tests that assume 1.5 s.
+  - While protected, a character draws about 50% transparent, on every
+    client, so others can see their bullets won't do anything.
+  - Bullets pass through a protected player and hit what's behind:
+    no damage, blood, impact or decal on them. That part is already
+    true for damage and effects. Firing already ends the protection
+    (`fire_ends`, the default).
+- **CS:S rungs get a character too (user, 2026-10-29).** As for Combat
+  Arms rungs, the ladder maps a CS:S player model to each CS:S rung (from
+  every T and CT model the install has), the same for everyone on it.
+  Extend the rung extras hook (`RungExtrasHook`) with CS:S's.
+- **Later: let individual players stand out (user ideas).**
+  - Clearer name tags when you aim at someone (their name and more),
+    kept unobtrusive.
+  - A flaming aura around the current leader.
 - **A rung's character: stats only when intrinsic (user, 2026-10-29).**
   A drawn Combat Arms character changes armour or movement only if that
   character has them by default in Combat Arms (its own movement, its
@@ -88,10 +126,12 @@ the user's go-ahead: no Actions runs unless asked.
   game, and leaves with the reason if its registry still differs or a
   set is too big to send (4 MB packed; the install's weapons pack to
   ~280 KB from 14.4 MB). Models and sounds are still the client's own.
-  Gear records aren't sent yet (multiplayer.md "Server data documents").
+  The gear and perk records go too (`combat_arms:gear`, net34), so a
+  vest's movement penalty and reload and select bonuses agree.
   Tests: combat_arms `server_docs` (0 prediction errors on a copy's
   burst after the documents came, the same clip; nothing sent to a
-  client with the same data; refusals).
+  client with the same data; refusals),
+  `weapon_timings::a_vests_rates_shorten_the_reload_and_draw_on_both_sides`.
 - **The gun game's title names Dust II on every map: fixed, confirm in a
   playtest.** The definition's name is now "Gun Game: {map}", `{map}` the
   map played ("Gun Game: Aztec"; `minigame::hud::shown_name`).
@@ -400,7 +440,9 @@ the user's go-ahead: no Actions runs unless asked.
     included, at the L96A1's bolt 1.4 s, though the view model plays the
     copy's own animations. `FireAniRate` is written on 812 copies and dropped
     on 83 whose template has no `combat_arms:inventory` table. (Fixed:
-    fix 3.)
+    fix 3; with parts 2 and 3 also the post-fire, pre-fire latency,
+    spin, flame keys, knife swings and the vest's and sets' rates:
+    2,152 of 2,160 timed copies on their own model's numbers.)
   - numbers (clip, damage, `FireDelay`, spread, recoil, zoom fields):
     own, as `weapon_values` maps them (where the template has the
     table).
@@ -442,7 +484,12 @@ the user's go-ahead: no Actions runs unless asked.
   3. (Done 2026-10-29: `weapons::timing`, the `combat_arms:timing` hook
      on every copied gun reads its view model when first built, server
      and client alike; `FireAniRate` in every weapon's inventory table;
-     plan and open questions: docs/plans/active/ca-weapon-timings.md.)
+     plan and open questions: docs/plans/active/ca-weapon-timings.md;
+     part 2, the vest's and sets' reload, draw and fire rates in the
+     weapon's own times, done the same day: `gear::CaGearRates`; part 3,
+     the post-fire (Chimera's `Trigger::postfire`), the pre-fire's
+     presence, spinning guns' spin, flame keys and knife swings from the
+     model, done too; its open questions 5-8 remain.)
      Take each copy's rate of fire, reload and draw from its own view
      model's animations (`fire_0`, `reload` or the shell timings,
      `select`; at rate 1 + `FireAniRate`), not the template's, and write

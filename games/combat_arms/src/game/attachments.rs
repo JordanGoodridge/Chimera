@@ -52,9 +52,10 @@
 //!   - the clip (`Magazine::size` = `ShotsPerClip` + the magazine's
 //!     `ShotsPerClipPlus` in the weapon's column; the reserve's ceiling
 //!     shrinks or grows with it, so the total stays `MaxAmount`: Q3) and
-//!     the reload, draw and fire cycle times (length / rate, the rates
-//!     summed over the socket slots, played at 1 above 2.0, clamped to
-//!     `MIN_RATE` at or below 0);
+//!     the reload (a shell reload's three parts too), draw and fire cycle
+//!     times (length / rate, the rates summed over the socket slots with
+//!     the gear's, `gear::CaGearRates`: the vest's and the sets'; played
+//!     at 1 above 2.0, clamped to `MIN_RATE` at or below 0);
 //!   - zoom (`weapons::CaZoom::scope`): the sight's levels and FOVs; no
 //!     sight, no zoom (Q10); the sight's sway additions.
 //! - **Stun** (`movement::StunPenalty`): a player hit by another team's
@@ -102,7 +103,7 @@
 //!   picture (Chimera's placeholder overlay), the part models themselves (`part_models` says where), dot-sight mode (`Type` 2, Q7:
 //!   no record has it), `VectorsPerRoundPer`, `InstDamagePer` (no
 //!   secondary attacks), the client ammo ceiling `MaxAmountPlus` (Q3:
-//!   invisible), gear mods (`Kinds` 5..7), set items and the gunsmith
+//!   invisible), gear mods (`Kinds` 5..7), set items (their animation rates are applied: `gear`) and the gunsmith
 //!   conversion.
 //! - A loose weapon placed by a map or a test (no owner) is fitted with
 //!   its defaults and keeps its clip.
@@ -114,13 +115,14 @@ use chimera_sim::server_docs::DocsAppExt;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    gear::CaGearRates,
     inventory::{CaItem, played_rate},
     movement::StunPenalty,
     weapons::{CaDamage, CaRecoil, CaSpread, CaZoom, Scope},
 };
 use crate::{
     core::{PredictedAppExt, Predict},
-    weapon::{CarriedAppExt, Magazine, NetPart, SelectWeapons, Trigger, Weapon, data::WeaponDataAppExt},
+    weapon::{CarriedAppExt, Magazine, NetPart, SelectWeapons, ShellReload, Trigger, Weapon, data::WeaponDataAppExt},
 };
 
 /// The hook's name (docs/weapon-data.md, "Hooks").
@@ -575,6 +577,12 @@ pub struct Stock {
     /// The fire cycle and the draw (select animation) lengths, s.
     pub cycle: f32,
     pub draw: f32,
+    /// A shell-by-shell reload's start, each shell and finish
+    /// (`ShellReload`), s: at the reload rate too.
+    pub shell: Option<(f32, f32, f32)>,
+    /// The trigger's closing part (`Trigger::postfire`, the `postfire`
+    /// animation), s: at the fire rate.
+    pub postfire: f32,
 }
 
 /// What a weapon accepts (`combat_arms:attachments`) and its stock numbers.
@@ -1202,21 +1210,31 @@ fn apply_fitted(
             Option<&mut Magazine>,
             Option<&mut Trigger>,
             (Option<&mut CaSpread>, Option<&mut CaRecoil>, Option<&mut CaDamage>, Option<&mut CaZoom>),
-            Option<&CaItem>,
+            (Option<&CaItem>, Option<&CaGearRates>, Option<&mut ShellReload>),
         ),
-        Changed<CaFitted>,
+        Or<(Changed<CaFitted>, Changed<CaGearRates>)>,
     >,
     table: Res<CaModTable>,
     last_wins: Res<RecoilLastWins>,
 ) {
-    for (slots, fitted, mut have, mag, trigger, (spread, recoil, damage, zoom), item) in &mut weapons {
+    for (slots, fitted, mut have, mag, trigger, (spread, recoil, damage, zoom), (item, gear, shells)) in &mut weapons {
         let mods = mods_of(&table, slots, fitted);
         let stock = slots.stock;
         let (fire, reload, _) = mods.rates();
+        // The gear's terms (the vest's and the sets'): one sum with the
+        // parts' (attachments.md "Animation rates").
+        let gear = gear.copied().unwrap_or_default();
+        let reload_rate = animation_rate(1.0 + reload + gear.reload);
+        if let (Some((start, insert, finish)), Some(mut s)) = (stock.shell, shells) {
+            let want = (start / reload_rate, insert / reload_rate, finish / reload_rate);
+            if (s.start, s.insert, s.finish) != want {
+                (s.start, s.insert, s.finish) = want;
+            }
+        }
         if let Some(mut m) = mag {
             let size = mods.clip_max(stock.clip);
             let reserve_max = reserve_ceiling(&stock, size);
-            let reload_time = stock.reload / animation_rate(1.0 + reload);
+            let reload_time = stock.reload / reload_rate;
             if m.size != size || m.reserve_max != reserve_max || m.reload_time != reload_time {
                 m.size = size;
                 m.reserve_max = reserve_max;
@@ -1225,9 +1243,11 @@ fn apply_fitted(
         }
         if let Some(mut t) = trigger {
             // The weapon's own `FireAniRate` is part of the rate (Corrections 6).
-            let cycle = stock.cycle / fire_animation_rate(item.map_or(0.0, |i| i.fire_rate), fire);
-            if t.cycle != cycle {
+            let rate = fire_animation_rate(item.map_or(0.0, |i| i.fire_rate), fire + gear.fire);
+            let (cycle, postfire) = (stock.cycle / rate, stock.postfire / rate);
+            if t.cycle != cycle || t.postfire != postfire {
                 t.cycle = cycle;
+                t.postfire = postfire;
             }
         }
         if let Some(mut s) = spread {
@@ -1262,15 +1282,20 @@ fn apply_fitted(
     }
 }
 
-/// The draw time of each weapon whose fitted set changed: the select
-/// animation over its summed rate (the item's own bonuses with the
-/// parts', inventory.md 6.4).
+/// The draw time of each weapon whose fitted set or gear rates changed:
+/// the select animation over its summed rate (the item's own bonuses with
+/// the parts' and the gear's, inventory.md 6.4).
+#[allow(clippy::type_complexity)]
 fn apply_draw(
-    mut weapons: Query<(&mut Weapon, &CaAttachSlots, &CaMods, Option<&CaItem>), Changed<CaMods>>,
+    mut weapons: Query<
+        (&mut Weapon, &CaAttachSlots, &CaMods, Option<&CaItem>, Option<&CaGearRates>),
+        Or<(Changed<CaMods>, Changed<CaGearRates>)>,
+    >,
 ) {
-    for (mut w, slots, mods, item) in &mut weapons {
+    for (mut w, slots, mods, item, gear) in &mut weapons {
         let (_, _, select) = mods.rates();
-        let draw = slots.stock.draw / animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + select);
+        let gear = gear.map_or(0.0, |g| g.select);
+        let draw = slots.stock.draw / animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + select + gear);
         if w.draw_time != draw {
             w.draw_time = draw;
         }
@@ -1294,6 +1319,8 @@ impl Plugin for CaAttachmentsPlugin {
                 reload: mag.map_or(0.0, |m| m.reload_time),
                 cycle: e.get::<Trigger>().map_or(0.0, |t| t.cycle),
                 draw: d.draw,
+                shell: e.get::<ShellReload>().map(|s| (s.start, s.insert, s.finish)),
+                postfire: e.get::<Trigger>().map_or(0.0, |t| t.postfire),
             };
             e.insert((
                 CaAttachSlots {
@@ -1302,6 +1329,7 @@ impl Plugin for CaAttachmentsPlugin {
                 },
                 CaFitted::default(),
                 CaMods::default(),
+                CaGearRates::default(),
             ));
         })
         .server_docs(
@@ -1315,7 +1343,14 @@ impl Plugin for CaAttachmentsPlugin {
         .init_resource::<CaSpecialRoll>()
         .add_systems(
             Predict::Select,
-            (fit_given.run_if(crate::core::authoritative), apply_fitted, apply_draw).chain().before(SelectWeapons),
+            (
+                fit_given.run_if(crate::core::authoritative),
+                super::gear::weapon_rates,
+                apply_fitted,
+                apply_draw,
+            )
+                .chain()
+                .before(SelectWeapons),
         )
         .predicted_part::<CaFitted>()
         .predicted_net::<StunPenalty>();
