@@ -580,6 +580,9 @@ pub struct Stock {
     /// A shell-by-shell reload's start, each shell and finish
     /// (`ShellReload`), s: at the reload rate too.
     pub shell: Option<(f32, f32, f32)>,
+    /// The trigger's closing part (`Trigger::postfire`, the `postfire`
+    /// animation), s: at the fire rate.
+    pub postfire: f32,
 }
 
 /// What a weapon accepts (`combat_arms:attachments`) and its stock numbers.
@@ -1240,9 +1243,11 @@ fn apply_fitted(
         }
         if let Some(mut t) = trigger {
             // The weapon's own `FireAniRate` is part of the rate (Corrections 6).
-            let cycle = stock.cycle / fire_animation_rate(item.map_or(0.0, |i| i.fire_rate), fire + gear.fire);
-            if t.cycle != cycle {
+            let rate = fire_animation_rate(item.map_or(0.0, |i| i.fire_rate), fire + gear.fire);
+            let (cycle, postfire) = (stock.cycle / rate, stock.postfire / rate);
+            if t.cycle != cycle || t.postfire != postfire {
                 t.cycle = cycle;
+                t.postfire = postfire;
             }
         }
         if let Some(mut s) = spread {
@@ -1315,6 +1320,7 @@ impl Plugin for CaAttachmentsPlugin {
                 cycle: e.get::<Trigger>().map_or(0.0, |t| t.cycle),
                 draw: d.draw,
                 shell: e.get::<ShellReload>().map(|s| (s.start, s.insert, s.finish)),
+                postfire: e.get::<Trigger>().map_or(0.0, |t| t.postfire),
             };
             e.insert((
                 CaAttachSlots {

@@ -40,9 +40,10 @@
 //!   170 ms loop, Open question 3's lower count), not by its fire keys.
 //! - The double barrel's `reload_1` (one round left) isn't separate: one
 //!   reload time. An alt-fire volley needs a fresh press.
-//! - No continuous-fire mode (`ContinuousFire`), no post-fire on other
-//!   weapons (a pistol's post-fire never delays a press; an automatic's
-//!   post-fire isn't waited for); the pre-fire is the trigger's latency
+//! - No continuous-fire mode (`ContinuousFire`); the post-fire is the
+//!   trigger's (`Trigger::postfire`: an install copy's from its view
+//!   model, `timing`; ours have none, the M92FS's 150 ms included); the
+//!   pre-fire is the trigger's latency
 //!   (`Trigger::latency`: 3 updates from the press, 2 on primary shotguns,
 //!   Corrections 3; the minigun's 1 with its spin-up), none on an alt-fire
 //!   volley; no launchers, M32, snowball gun or crossbow (projectiles:
@@ -79,15 +80,21 @@ fn ms(secs: f64) -> f64 {
     (secs * 1000.0 + 1e-6).floor()
 }
 
-/// `combat_arms:spin`: a minigun's spin (3.3), seconds.
+/// `combat_arms:spin`: a minigun's spin (3.3), seconds. An install
+/// copy's table (written by the merge where `AccumPreFire` is set) has
+/// only `reversible`: its lengths come from its view model
+/// (`timing`; 0 where the model doesn't read).
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SpinParams {
     /// The pre-fire animation: the spin-up.
+    #[serde(default)]
     pub prefire: f32,
     /// The post-fire animation: the spin-down.
+    #[serde(default)]
     pub postfire: f32,
     /// The fire loop's length (`fire_0`).
+    #[serde(default)]
     pub loop_len: f32,
     /// `AccumPreFire` non-zero: spin-up and spin-down are reversible.
     #[serde(default)]

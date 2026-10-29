@@ -1,6 +1,6 @@
 # Plan: Combat Arms weapons' own fire, reload and draw timings
 
-Status: 2026-10-29, parts 1 and 2 implemented (below); backlog
+Status: 2026-10-29, parts 1 to 3 implemented (below); backlog
 item "Combat Arms guns' own sounds, scopes and models: audit", fix 3.
 
 Today every install copy fires, reloads and draws at its template's
@@ -121,10 +121,47 @@ combat_arms --features dev --test it heavy::timings -- --nocapture`):
    (the M4A1's 2.3 s reload in 1.84 s and 1.2 s draw in 0.8 s on both
    sides, a client on our gear records takes the server's, 0 prediction
    errors over the reload).
-3. Open: the rest of the fire sequence from the model: a semi-automatic's
-   `postfire` (M92FS 180 + 150 ms), the pre-fire's presence
-   (`trigger.latency`), a minigun copy's spin lengths, a knife copy's
-   swing and hit keys, a flame copy's fire keys.
+3. (Done 2026-10-29.) The rest of the fire sequence from the model
+   (`weapons::timing`, `AnimTimes` now also reads `prefire`'s presence
+   and length, `postfire`, `alt_fire_0` and the `FIRE_KEY` /
+   `ALT_FIRE_KEY` times):
+   - **Post-fire**: Chimera's `Trigger::postfire` (data
+     `trigger.postfire`, `WeaponState::postfire_end`): after a pull's last
+     cycle with the trigger let go (or the clip empty) the closing part
+     plays in the firing state; a semi-automatic's press cuts it short and
+     fires on that update, an automatic waits for its end and fires on the
+     update that sees it over (view_models.md 7 and Corrections 1); the
+     key's and the automatic reloads wait for it ("Reload after firing").
+     A copy's is its model's `postfire` / the fire rate (none without
+     one; `Stock::postfire` under the parts' rates).
+   - **Pre-fire's presence**: a copy of a class that plays it (the
+     template's latency 3) whose model has no `prefire` gets latency 2.
+   - **Spinning guns**: the merge writes `combat_arms:spin` on copies with
+     `AccumPreFire` (their template, the M60, has none); the hook fills
+     its spin-up (`prefire`), spin-down (`postfire`) and loop (`fire_0`),
+     the cycle the loop over its keys before the end (0.17 / 5 = 34 ms),
+     latency 1, no trigger post-fire.
+   - **Flame guns**: `CaFlame`'s pre-fire, loop, key count and mean key
+     spacing (the trigger's cycle), post-fire.
+   - **Knives**: the merge now writes the timing table on knife copies;
+     slash `fire_0` with its `FIRE_KEY`s, stab `alt_fire_0` with its
+     `ALT_FIRE_KEY`s, post-fire, played at 1 + `FireAniRate`.
+   All of it is in the pushed `CaTimingValues` (net35). Tests
+   (`tests/it/weapon_timings.rs`): `a_semi_automatic_copy_takes_its_postfire`
+   (a press 250 ms after a shot fires on that update, a reload waits the
+   300 ms post-fire, latency 2 without a prefire),
+   `a_minigun_copy_spins_on_its_own_model` (first round at the 1 s
+   spin-up, 40 ms a round), `a_knife_copys_swings_come_from_its_model`,
+   `a_client_without_the_models_takes_the_servers_sequence`; the heavy
+   `heavy::timings` over every timed copy.
+
+Measured 2026-10-29 (`heavy::timings`, both keys): 2,160 copies with a
+timing table (1,989 in the pool), 2,152 on their own model's numbers
+(2 models unread, 6 without `fire_0`: the emote "weapons" and the
+Groza); of 1,962 guns 96 have a post-fire (92 semi-automatic), 3 lose
+the pre-fire's update, 32 have a pre-fire of non-zero length (question
+5); 10 spinning, 6 flame, 174 knives. The gear records as a document:
+513 KB (ours alone 22 KB).
 
 ## Open questions
 
@@ -144,3 +181,22 @@ combat_arms --features dev --test it heavy::timings -- --nocapture`):
    gun): a knife's, grenade's or special weapon's draw keeps its own
    length, though inventory.md 6.4 adds the model's select bonus to
    every draw. The view model plays those at the vest's rates as before.
+5. A pre-fire of non-zero length on a gun that doesn't spin (32 copies):
+   weapon_firing.md says the first round waits for the pre-fire to end;
+   we count it as one update (latency 3), as for a 0 ms one. Taking its
+   length needs a timed pre-fire in the trigger (the spin's mechanism
+   without the reversal): left until a spec case or a playtest shows it.
+6. Pistols' pre-fire: view_models.md 7 and C2 say pistols and knives
+   never play `prefire`; weapon_firing.md and weapon_classes.md case 40
+   count it for pistols (M92FS: round on update 3). The data keeps the
+   M92FS's latency 3 (a pistol copy whose model has none: 2). A knife
+   copy keeps its template's 1 ms pre-fire (inventory.md 8.2 against
+   view_models.md C1). Needs a spec decision.
+7. Our documents keep their spec numbers and no post-fire: the M92FS's
+   150 ms (weapon_classes.md 4) isn't in beretta_m92fs.toml yet, so ours
+   doesn't hold a reload after a shot. Adding `trigger.postfire = 0.15`
+   is a one-line change once its tests are checked.
+8. The spin's and the flame's lengths play at rate 1 (no `FireAniRate`
+   or parts on them; every stock value found is 0); the semi-automatic
+   cancel of a primary with a `prefire` (view_models.md Corrections 2:
+   through `prefire`, one update more) fires at once as a pistol's.

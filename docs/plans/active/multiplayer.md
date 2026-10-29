@@ -1751,6 +1751,13 @@ A new server data set, `combat_arms:gear` (the gear and perk records as
 one gear.toml-format document, `GearData::to_doc`): an older client
 doesn't know the set the manifest offers.
 
+### net35 (2026-10-29)
+
+`WeaponState` (a predicted weapon part) gains `postfire_end` (the
+trigger's closing part, `Trigger::postfire`); Combat Arms' pushed timing
+(`CaTimingValues`, codec `combat_arms:timing`) gains the post-fire,
+latency, spin, flame and knife lengths and a stock post-fire.
+
 ## Server-pushed weapon parameters
 
 The seam: a game registers a codec by name (`weapon::params`,
@@ -1764,8 +1771,9 @@ id takes them after its build (`spawn_weapon`), over what its own hooks
 derived; ones already built take them on arrival. Only the client's own
 player's weapons (what it predicts). Combat Arms' timing from the view
 model (`combat_arms:timing`: `CaTimingValues`, the cycle, reload, shell
-reload, draw, stock and third-person reload the hook settled) is the
-first codec.
+reload, draw, stock and third-person reload the hook settled, and since
+net35 the trigger's post-fire and latency, a spinning gun's spin, a flame
+gun's keys and a knife's swings) is the first codec.
 
 Audit (2026-10-29) of what a client derives from install data that the
 server derives too, for a client lacking the data (keys, files) or with
@@ -1773,7 +1781,7 @@ another install version:
 
 | Value | Read from | From the server? | Risk |
 |---|---|---|---|
-| CA copies' fire cycle, reload, draw, shell reload | view models (V2-keyed archives) | **Pushed** (`combat_arms:timing`) | none left |
+| CA copies' fire cycle, reload, draw, shell reload, post-fire, latency, spin, flame keys, knife swings | view models (V2-keyed archives) | **Pushed** (`combat_arms:timing`) | none left |
 | Fitted parts (rung extras, loadouts) | the server's fitting | Yes: `CaFitted` slot ids, a predicted part | none |
 | Rung extras (parts, body, melee) | the server's ladder draw | Yes: `NetMinigame::rung_extras` | none |
 | The weapon registry (ids by index: the install's ~2,300 copies) | `ATTRIBUTES.rez` (V1 key) | **Sent** when it differs (`combat_arms:weapons`, "Server data documents"); the registry's hash checked at join | none left: a client whose registry still differs leaves with the reason |

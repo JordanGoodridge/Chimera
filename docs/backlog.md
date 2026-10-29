@@ -367,7 +367,9 @@ the user's go-ahead: no Actions runs unless asked.
     included, at the L96A1's bolt 1.4 s, though the view model plays the
     copy's own animations. `FireAniRate` is written on 812 copies and dropped
     on 83 whose template has no `combat_arms:inventory` table. (Fixed:
-    fix 3.)
+    fix 3; with parts 2 and 3 also the post-fire, pre-fire latency,
+    spin, flame keys, knife swings and the vest's and sets' rates:
+    2,152 of 2,160 timed copies on their own model's numbers.)
   - numbers (clip, damage, `FireDelay`, spread, recoil, zoom fields):
     own, as `weapon_values` maps them (where the template has the
     table).
@@ -411,7 +413,10 @@ the user's go-ahead: no Actions runs unless asked.
      and client alike; `FireAniRate` in every weapon's inventory table;
      plan and open questions: docs/plans/active/ca-weapon-timings.md;
      part 2, the vest's and sets' reload, draw and fire rates in the
-     weapon's own times, done the same day: `gear::CaGearRates`.)
+     weapon's own times, done the same day: `gear::CaGearRates`; part 3,
+     the post-fire (Chimera's `Trigger::postfire`), the pre-fire's
+     presence, spinning guns' spin, flame keys and knife swings from the
+     model, done too; its open questions 5-8 remain.)
      Take each copy's rate of fire, reload and draw from its own view
      model's animations (`fire_0`, `reload` or the shell timings,
      `select`; at rate 1 + `FireAniRate`), not the template's, and write
