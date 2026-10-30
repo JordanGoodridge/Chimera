@@ -24,7 +24,8 @@
 use bevy::prelude::*;
 
 use super::{
-    super::missions, ARMS_RACE, CaMode, CaStats, Hooks, NO_HOOKS, free_for_all, objectives,
+    super::missions, ARMS_RACE, CaMode, CaStats, NO_HOOKS, free_for_all,
+    objectives::{self, Roster},
     state::{Death, DeathKind},
 };
 use crate::weapon::{Inventory, Weapon};
@@ -37,7 +38,7 @@ pub const MODE: CaMode = CaMode {
         shown_as: "Arms Race",
         description: "Arms Race: One Man Army with a weapon ladder (a step's weapon at its kill count), first to G kills wins",
         on_death,
-        hooks: Hooks { update, ..NO_HOOKS },
+        hooks: NO_HOOKS,
         ..free_for_all::MODE.rules
     },
     death_drops: false,
@@ -127,23 +128,34 @@ fn step(world: &mut World, e: Entity, kills: i32, exact: bool) {
     world.entity_mut(e).insert(ladder);
 }
 
-/// At each spawn (a rebuilt loadout), the step in force.
-fn update(world: &mut World) {
-    let players: Vec<Entity> = super::flow::players(world).into_iter().map(|(e, _)| e).collect();
-    for e in players {
-        if world.get::<Inventory>(e).is_none_or(|i| i.weapons.is_empty()) {
+/// At each spawn (a rebuilt loadout), the step in force (the mode's
+/// per-tick system, `rules::mode_updates`): a player whose ladder life's
+/// weapon is gone rolls its step again; the step gives and takes weapons
+/// (world work, queued in order).
+pub(super) fn update(
+    roster: Roster,
+    inventories: Query<&Inventory>,
+    ladders: Query<&CaLadder>,
+    weapons: Query<(), With<Weapon>>,
+    stats: Query<&CaStats>,
+    mut commands: Commands,
+) {
+    for (e, _) in roster.players() {
+        if inventories.get(e).map_or(true, |i| i.weapons.is_empty()) {
             continue;
         }
-        let fresh = world
-            .get::<CaLadder>(e)
-            .is_none_or(|l| l.life.is_none_or(|w| world.get::<Weapon>(w).is_none()));
+        let fresh = ladders
+            .get(e)
+            .map_or(true, |l| l.life.is_none_or(|w| !weapons.contains(w)));
         if fresh {
-            if let Some(mut l) = world.get_mut::<CaLadder>(e) {
-                l.given = None;
-                l.replaced.clear();
-            }
-            let kills = world.get::<CaStats>(e).map_or(0, |s| s.kills) as i32;
-            step(world, e, kills, false);
+            let kills = stats.get(e).map_or(0, |s| s.kills) as i32;
+            commands.queue(move |world: &mut World| {
+                if let Some(mut l) = world.get_mut::<CaLadder>(e) {
+                    l.given = None;
+                    l.replaced.clear();
+                }
+                step(world, e, kills, false);
+            });
         }
     }
 }

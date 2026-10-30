@@ -4,8 +4,8 @@ Status: the audit (roadmap item 1) done 2026-10-29 on main at
 a5e70668, read-only. Section 4's step 1 (guards) done 2026-10-29:
 `checks/tests/it/ecs.rs` and `determinism.rs` over every simulation
 crate, DESIGN.md "ECS style" (what landed: step 1 below). Steps 2
-(single-slot hooks keyed by game), 3 (the weapon seam) and 10 done
-2026-10-30. Next: step 4.
+(single-slot hooks keyed by game), 3 (the weapon seam), 4 (a mode's
+per-tick hooks as systems) and 10 done 2026-10-30. Next: step 5.
 The roadmap item's other parts (docs/backlog.md, "First: ECS cleanup
 where new games plug in") follow section 4's order. Goal (user, 2026-10-29): outcomes, not a rewrite. The
 next games (Half-Life 2: Deathmatch, Team Fortress 2, later Call of
@@ -633,6 +633,59 @@ what must pass, beyond each crate's fast tier. The guards:
   third pass's per-system cost, docs/performance.md).
 - Effect: about 20 world functions become systems with declared
   access. A TF2 mode is a system set up like any other.
+- **Done 2026-10-30.** `mode::mode_is(id)` and `mode_in(ids)` (a mode
+  and its variants sharing a system): run conditions on the playing mode
+  (`current_mode`). `Hooks::update`/`touches` and `flow::update`/
+  `touches` are gone. The ladder: `refill`, `follow_lead`
+  (`ladder::per_tick`, in the minigame runtime's chain after `join`,
+  before `step_phases`). Combat Arms: every mode's update and touches
+  are normal systems with declared queries in the rules' chain where
+  the dispatchers ran (`rules::mode_updates` between
+  `update_team_counts` and `flow::mission_update`, `mode_touches`
+  between `scoring::handle_deaths` and `publish`), gated by `mode_is`/
+  `mode_in` (S&D's also play in Go4CA and Clan S&D, CTF's in Clan CTF,
+  Seize's in Squad Match 2, VIP Escort's in Clan VIP Escort) and chained
+  with `chain_ignore_deferred` (one mode plays at a time; a mode's own
+  steps keep a sync point: `hand_out` then `bombs`, `carry` then
+  `bombs`). Clan modes compose by chaining (`clan::ctf_half`,
+  `leaver_ends_round` after the base mode's systems), not by wrapping
+  (`clan_update` gone). Shared pieces in `rules::objectives`: `Roster`
+  (players, living, takers, alive from declared queries), `Edits<T>`
+  (component writes a system reads back in the same run, applied at
+  its end), the `_in` helpers (carry, gauges, statistics, weapons, the
+  floor ray, draws); `missions::seize_in`, `activate_time_in`,
+  `spy_hunt_in`, `quarantine_in`; `bomb::Bombs`. World work stays world
+  work, queued through `Commands` in order and applied at the sync
+  point before the step (O1): building and taking weapons (Arms Race's
+  step, Hunted's fist, S&D's hand-out, a Bombing Run pick-up,
+  Quarantine's kits), VIP ranking, Spy Hunt's stage 2. Where a mode read
+  back in the same tick what it wrote (Quarantine's hosts counted
+  infected by that tick's kits, heal and win test; Spy Hunt's free ids;
+  CTF's take then capture; Hired Guns' pockets), the system keeps its
+  writes (`Edits`, local lists) so the tick sees what it saw before.
+  **Order flag (O4), checked:** the rules' chain keeps its order
+  (`schedules::mode_systems_run_where_the_dispatchers_ran`, server and
+  client); the single-threaded sort moved unordered neighbours that
+  were already unordered with the dispatchers (the weapon chain's
+  `pick_up`, `use_pick_up`, `debug_pickups`, the map's `record_poses`,
+  `pose_hitboxes`, the client's `hold_local`, `bots::roster::
+  keep_quota`, `read_map_objects`, a few more: `FixedUpdate` orders
+  dumped before and after and compared); every Combat Arms, Chimera
+  sim, network, CS:S and party test passes. The mode systems are
+  `ambiguous_with` the client's `characters::client_clock` (it runs
+  only where the rules don't). Ratchets: Combat Arms' `FixedUpdate`
+  ambiguous pairs 718 to 662, server/client opposite pairs 253 to 149;
+  `ecs.rs` `chimera/sim` 13 to 11 (Combat Arms' count is unchanged: its
+  modes' hooks weren't counted and none of their systems is exclusive).
+  Tests: `chimera_sim` `mode::a_modes_tick_runs_only_while_it_plays_
+  before_the_step`, `minigame::the_ladders_tick_refills_each_tick_after_
+  the_join_and_before_the_step`; Combat Arms `schedules::mode_systems_
+  run_where_the_dispatchers_ran`, `free_for_all::a_modes_tick_runs_only_
+  in_its_mode`. Combat Arms in one commit, not two halves: half the
+  modes alone kept the dispatcher's pairs and added the systems', over
+  the ratchet. Not in this step (the plan's other steps): `Hooks::died`
+  (step 5), `decide` (a decision hook, kept), `Flow::players` (a kept
+  state, later).
 
 ### Step 5: death and spawn pollers (S each)
 

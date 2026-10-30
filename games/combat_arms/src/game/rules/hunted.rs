@@ -23,10 +23,14 @@
 use bevy::prelude::*;
 
 use super::{
-    CaMode, CaStats, HUNTED, Hooks, ScoreOrder, Spawns, last_man, objectives,
+    CaMode, CaStats, HUNTED, Hooks, ScoreOrder, Spawns, last_man,
+    objectives::{self, Roster},
     state::{CaMatch, Phase},
 };
-use crate::core::{Dead, Health, SimClock};
+use crate::{
+    core::SimClock,
+    weapon::{Inventory, Weapon},
+};
 
 /// The fist's weapon record (the start loadout).
 pub const FIST: i32 = 934;
@@ -41,7 +45,6 @@ pub const MODE: CaMode = CaMode {
                       starting with fists",
         hooks: Hooks {
             setup,
-            update,
             ..last_man::MODE.rules.hooks
         },
         ..last_man::MODE.rules
@@ -71,41 +74,50 @@ fn setup(world: &mut World) {
     }
 }
 
-fn update(world: &mut World) {
+/// The mode's per-tick system (`rules::mode_updates`): a fist kit's
+/// loadout becomes the fist once it is there (giving and taking weapons:
+/// world work, queued); in the live phase of real rounds, the living's
+/// time hunted.
+pub(super) fn update(
+    kits: Query<(Entity, Option<&Inventory>), With<CaFistKit>>,
+    weapons: Query<&Weapon>,
+    data: Res<super::super::data::CaData>,
+    m: Res<CaMatch>,
+    clock: Res<SimClock>,
+    roster: Roster,
+    mut stats: Query<&mut CaStats>,
+    mut commands: Commands,
+) {
     // The fist only, once the loadout is there.
-    let kits: Vec<Entity> = world.query_filtered::<Entity, With<CaFistKit>>().iter(world).collect();
-    let fist = start_weapon(world.resource::<super::super::data::CaData>());
-    for e in kits {
-        let ids: Vec<&'static str> = world
-            .get::<crate::weapon::Inventory>(e)
-            .map(|i| i.weapons.iter().filter_map(|w| world.get::<crate::weapon::Weapon>(*w).map(|w| w.id)).collect())
+    let fist = start_weapon(&data);
+    for (e, inv) in &kits {
+        let ids: Vec<&'static str> = inv
+            .map(|i| i.weapons.iter().filter_map(|w| weapons.get(*w).ok().map(|w| w.id)).collect())
             .unwrap_or_default();
         if ids.is_empty() {
             continue;
         }
-        if let Some(w) = objectives::give_weapon(world, e, fist)
-            && let Some(mut inv) = world.get_mut::<crate::weapon::Inventory>(e)
-        {
-            inv.wanted = Some(w);
-        }
-        for id in ids.into_iter().filter(|id| *id != fist) {
-            objectives::take_weapon(world, e, id);
-        }
-        world.entity_mut(e).remove::<CaFistKit>();
+        commands.queue(move |world: &mut World| {
+            if let Some(w) = objectives::give_weapon(world, e, fist)
+                && let Some(mut inv) = world.get_mut::<Inventory>(e)
+            {
+                inv.wanted = Some(w);
+            }
+            for id in ids.into_iter().filter(|id| *id != fist) {
+                objectives::take_weapon(world, e, id);
+            }
+            world.entity_mut(e).remove::<CaFistKit>();
+        });
     }
     // Time hunted, in the Live phase of real rounds.
-    let m = world.resource::<CaMatch>();
     if m.phase != Phase::Live || m.warmup {
         return;
     }
-    let ms = (world.resource::<SimClock>().dt() * 1000.0).round() as u32;
-    let living: Vec<Entity> = super::flow::players(world)
-        .into_iter()
-        .map(|(e, _)| e)
-        .filter(|e| world.get::<Dead>(*e).is_none() && world.get::<Health>(*e).is_some_and(|h| h.current > 0.0))
-        .collect();
-    for e in living {
-        if let Some(mut s) = world.get_mut::<CaStats>(e) {
+    let ms = (clock.dt() * 1000.0).round() as u32;
+    for (e, _) in roster.players() {
+        if roster.breathing(e)
+            && let Ok(mut s) = stats.get_mut(e)
+        {
             s.hunted_ms += ms;
         }
     }

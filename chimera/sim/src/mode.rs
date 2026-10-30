@@ -10,8 +10,8 @@
 //!   picks it by (Combat Arms' room key), whether the dead respawn, a
 //!   warm-up (with revives), a forced setup length, how it makes teams
 //!   (`Teams`), what a counted death does (`on_death`), its time-out rule,
-//!   when the match ends, and `Hooks` on the steps: a round's setup, a
-//!   per-tick update and touches, the round over and its end, any death,
+//!   when the match ends, and `Hooks` on the steps: a round's setup, the
+//!   round over and its end, any death,
 //!   respawning, holding joiners (with whether the game's player count
 //!   also holds them, `counts_joiners`), before the spawns, after a round,
 //!   a live round's decision (`decide`) and the match's end after a
@@ -28,11 +28,17 @@
 //! - Which mode plays: the gameplay's rules game's (`chimera_core::
 //!   gameplay`; without one, the first game registered), the one its
 //!   `ModeGame::chosen` names (Combat Arms: the `ca_mode` cvar). A game
-//!   chains the runtime's systems (`flow::mission_update`, `flow::update`,
-//!   `flow::touches`) into its own rules' set, gated as its rules are, or
-//!   steps its own match from its rules' system (`flow::step_game`, with
-//!   `current_of`: CS:S, whose rules' system does its own work around the
-//!   step).
+//!   chains the runtime's step (`flow::mission_update`) into its own
+//!   rules' set, gated as its rules are, or steps its own match from its
+//!   rules' system (`flow::step_game`, with `current_of`: CS:S, whose
+//!   rules' system does its own work around the step).
+//! - A mode's per-tick work (its objects, timers, touches) is its own
+//!   systems with declared queries, gated by `mode_is(id)` (`mode_in` for
+//!   a mode and its variants: the playing mode) and chained where its
+//!   game runs the runtime: the update's before the step (a tick's
+//!   update comes before the step it may decide), the touches' after the
+//!   tick's deaths (Combat Arms' `rules::mode_updates`, `mode_touches`;
+//!   the minigame runtime's ladder, `ladder::refill`, `follow_lead`).
 //! - `assign_team`: a player's team as the mode makes teams (two sides,
 //!   free-for-all, everyone on the first side, or the game's as joined).
 //! - `chimera_modes` lists the registered modes, the one playing marked.
@@ -75,9 +81,6 @@ pub struct Hooks {
     /// The round's setup, after everyone was respawned (`Match::warmup`
     /// says whether it is the warm-up).
     pub setup: fn(&mut World),
-    /// Every server tick before the phases step: the mode's objects
-    /// (touches, timers).
-    pub update: fn(&mut World),
     /// The round is over (its winner decided, the win counted).
     pub round_over: fn(&mut World),
     /// The round's end, before the game's clean-up.
@@ -94,9 +97,6 @@ pub struct Hooks {
     /// After a round's end, its intermission set: the mode may lengthen it
     /// or ask for a warm-up next.
     pub after_round: fn(&mut World),
-    /// Every server tick after the tick's damage and deaths: touches of
-    /// the mode's objects.
-    pub touches: fn(&mut World),
     /// Every live step before the round's end is tested (`time_up`: the
     /// round timer is at 0): the mode may decide the round now
     /// (`Match::win`, `Match::end_without_winner`), which ends it in the
@@ -116,7 +116,6 @@ pub struct Hooks {
 /// No hooks.
 pub const NO_HOOKS: Hooks = Hooks {
     setup: |_| {},
-    update: |_| {},
     round_over: |_| {},
     round_end: |_| {},
     died: |_, _| {},
@@ -124,7 +123,6 @@ pub const NO_HOOKS: Hooks = Hooks {
     holds_joiner: |_| false,
     before_spawns: |_| {},
     after_round: |_| {},
-    touches: |_| {},
     decide: |_, _| {},
     warmup_end: |_| None,
     counts_joiners: true,

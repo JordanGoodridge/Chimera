@@ -655,7 +655,7 @@ pub(super) fn plugin(app: &mut App) {
                 )
                     .chain()
                     .in_set(SimSet::Rules),
-                (handle_deaths, mode::flow::touches).chain().after(crate::core::apply_damage),
+                handle_deaths.after(crate::core::apply_damage),
             )
                 .run_if(crate::core::authoritative)
                 .run_if(on),

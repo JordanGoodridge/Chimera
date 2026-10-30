@@ -34,12 +34,13 @@ use bevy::prelude::*;
 
 use super::{
     BOMBING_RUN, CaMode, CaRuleSettings, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, Spawns, TEAM_POINTS, Teams, bomb,
-    objectives::{self, BOMB, CaObjectives},
+    objectives::{self, BOMB, CaCarry, CaObjectives, Edits, Roster, carry_in, set_carry_in},
     objects::{CaMapObjects, FLAG_DIMS, ObjBox},
     scoring::round_mode,
     state::{ALPHA, BRAVO, CaMatch, Phase, enemy, side},
 };
-use crate::core::{Dead, Died};
+use crate::core::{Dead, Died, Intent};
+use avian3d::prelude::SpatialQuery;
 
 /// The drop points' and sites' game type.
 pub const FAMILY: &str = "Sabotage";
@@ -62,7 +63,6 @@ pub const MODE: CaMode = CaMode {
         match_end,
         hooks: Hooks {
             setup,
-            update,
             died,
             round_over: bomb::credit_planter,
             warmup_end: match_end,
@@ -131,53 +131,73 @@ fn died(world: &mut World, d: &Died) {
     drop_bomb(world, d.entity, at);
 }
 
-/// The carrier kept (a leaver drops it), the pick-up, then the sites.
-fn update(world: &mut World) {
-    if let Some((e, last)) = world.resource::<CaCarrier>().0 {
-        match world.get::<Transform>(e) {
-            Some(t) if world.get::<Dead>(e).is_none() => {
-                let at = t.translation;
-                world.resource_mut::<CaCarrier>().0 = Some((e, at));
-            }
-            Some(_) => {}
-            None => {
-                world.resource_mut::<CaCarrier>().0 = None;
-                let floor = objectives::floor_below(world, last);
-                world.resource_mut::<CaObjectives>().loose_bomb = Some(floor);
+/// The carrier kept (a leaver drops it) and the pick-up (the mode's
+/// per-tick system, `rules::mode_updates`; then `bombs`). The taker's
+/// weapons are world work, queued before its carry.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn carry(
+    mut carrier: ResMut<CaCarrier>,
+    mut o: ResMut<CaObjectives>,
+    m: Res<CaMatch>,
+    places: Query<(&Transform, Has<Dead>)>,
+    spatial: Option<SpatialQuery>,
+    characters: Query<Entity, With<Intent>>,
+    roster: Roster,
+    inventories: Query<&crate::weapon::Inventory>,
+    mut carries: Query<&mut CaCarry>,
+    mut commands: Commands,
+) {
+    if let Some((e, last)) = carrier.0 {
+        match places.get(e) {
+            Ok((t, false)) => carrier.0 = Some((e, t.translation)),
+            Ok(_) => {}
+            Err(_) => {
+                carrier.0 = None;
+                o.loose_bomb = Some(objectives::floor_below_in(spatial.as_ref(), &characters, last));
             }
         }
     }
-    if let Some(at) = world.resource::<CaObjectives>().loose_bomb
-        && world.resource::<CaMatch>().counting()
+    if let Some(at) = o.loose_bomb
+        && m.counting()
     {
         let area = ObjBox {
             centre: at,
             half: FLAG_DIMS * super::super::inventory::UNIT,
         };
         let half = objectives::player_half();
-        let taker = objectives::takers(world)
+        let taker = roster
+            .takers()
             .into_iter()
             .find(|p| side(p.team).is_some() && area.touches(p.at, half));
         if let Some(p) = taker
-            && world.get::<crate::weapon::Inventory>(p.e).is_some_and(|i| !i.weapons.is_empty())
+            && inventories.get(p.e).is_ok_and(|i| !i.weapons.is_empty())
         {
-            world.resource_mut::<CaObjectives>().loose_bomb = None;
+            o.loose_bomb = None;
             // The taker's own team's field (missions.md F3: `JSFWeapon` for
             // JSF, `CreedWeapon` for Creed; both `XK-2`).
-            let mut ids = super::super::missions::objective_weapons(world, p.team);
-            if ids.is_empty() {
-                ids.push(BOMB);
-            }
-            for id in ids {
-                objectives::give_weapon(world, p.e, id);
-            }
-            let mut c = objectives::carry(world, p.e);
+            let (e, team) = (p.e, p.team);
+            commands.queue(move |world: &mut World| {
+                let mut ids = super::super::missions::objective_weapons(world, team);
+                if ids.is_empty() {
+                    ids.push(BOMB);
+                }
+                for id in ids {
+                    objectives::give_weapon(world, e, id);
+                }
+            });
+            let mut edits = Edits::default();
+            let mut c = carry_in(&edits, &carries, p.e);
             c.bomb = true;
-            objectives::set_carry(world, p.e, c);
-            world.resource_mut::<CaCarrier>().0 = Some((p.e, p.at));
+            set_carry_in(&mut edits, p.e, c);
+            edits.apply(&mut carries, &mut commands);
+            carrier.0 = Some((p.e, p.at));
         }
     }
-    bomb::update(world, FAMILY);
+}
+
+/// Plants, defuses and the fuse on Bombing Run's sites (after `carry`).
+pub(super) fn bombs(mut bombs: bomb::Bombs) {
+    bombs.tick(FAMILY);
 }
 
 /// The only player of a team leaving, or none of its teammates alive (dead

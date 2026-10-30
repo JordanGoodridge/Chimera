@@ -39,15 +39,18 @@
 use bevy::prelude::*;
 
 use super::{
-    CaMode, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, SEIZE_AND_SECURE, SQUAD_MATCH_2, ScoreOrder, Spawns,
+    CaMode, CaRuleSettings, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, SEIZE_AND_SECURE, SQUAD_MATCH_2, ScoreOrder, Spawns,
     TEAM_POINTS, Teams,
     ctf::pick,
     flow::players,
-    objectives::{self, ActionKind, CaObjectives, Pole},
+    objectives::{ActionKind, CaAction, CaObjectives, Edits, Pole, Roster, add_stats, hold_action_in},
     objects::CaMapObjects,
-    scoring::{round_mode, stats},
+    scoring::round_mode,
     state::{ALPHA, BRAVO, CaMatch, CaStats, Phase, enemy, side},
 };
+use std::ops::DerefMut;
+
+use super::super::missions::{self, CaMission};
 use crate::core::SimClock;
 
 /// The mode.
@@ -76,7 +79,6 @@ pub const MODE: CaMode = CaMode {
                 let real = !w.resource::<CaMatch>().warmup;
                 w.resource_mut::<CaObjectives>().pole = real.then(Pole::default);
             },
-            update,
             warmup_end,
             ..NO_HOOKS
         },
@@ -147,53 +149,79 @@ pub fn trigger_of(name: &str, team: u8) -> bool {
 
 /// The points of the rising flag brought up to now.
 fn score_pole(world: &mut World, now: f64) {
-    let Some(pole) = world.resource::<CaObjectives>().pole else { return };
+    world.resource_scope::<CaObjectives, _>(|world, mut o| {
+        score_pole_in(&mut world.resource_mut::<CaMatch>(), &mut o, now);
+    });
+}
+
+/// `score_pole` on the resources (only what changes is written).
+fn score_pole_in(m: &mut impl DerefMut<Target = CaMatch>, o: &mut impl DerefMut<Target = CaObjectives>, now: f64) {
+    let Some(pole) = o.pole else { return };
     let Some(team) = pole.team else { return };
     let whole = (now - pole.since + 1e-9).floor().max(0.0) as u32;
     if whole > pole.scored {
         let add = (whole - pole.scored) as i32;
         if let Some(i) = side(team) {
-            world.resource_mut::<CaMatch>().score[i] += add;
+            m.score[i] += add;
         }
-        if let Some(p) = &mut world.resource_mut::<CaObjectives>().pole {
+        if let Some(p) = &mut o.pole {
             p.scored = whole;
         }
     }
 }
 
-fn update(world: &mut World) {
-    let now = world.resource::<SimClock>().now;
-    let (move_time, _) = super::super::missions::seize(world);
-    let counting = world.resource::<CaMatch>().counting() && world.resource::<CaMatch>().winner.is_none();
-    let Some(pole) = world.resource::<CaObjectives>().pole else { return };
-    let triggers = world.resource::<CaMapObjects>().triggers.clone();
-    for p in objectives::takers(world) {
-        let inside = triggers
+/// Seizing, the rising flag's points and the win (the mode's per-tick
+/// system, `rules::mode_updates`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn update(
+    clock: Res<SimClock>,
+    mission: Option<Res<CaMission>>,
+    settings: Res<CaRuleSettings>,
+    objects: Res<CaMapObjects>,
+    mut m: ResMut<CaMatch>,
+    mut o: ResMut<CaObjectives>,
+    roster: Roster,
+    mut actions: Query<&mut CaAction>,
+    mut stats: Query<&mut CaStats>,
+    mut commands: Commands,
+) {
+    let now = clock.now;
+    let mission = mission.as_deref();
+    let (move_time, _) = missions::seize_in(mission, &settings);
+    let counting = m.counting() && m.winner.is_none();
+    let Some(pole) = o.pole else { return };
+    let dt = clock.dt() as f32;
+    let mut gauges = Edits::default();
+    for p in roster.takers() {
+        let inside = objects
+            .triggers
             .iter()
             .find(|t| trigger_of(&t.name, p.team) && t.area.contains(p.at, 0.0));
         let on = counting && p.intent.use_key && inside.is_some() && pole.team != Some(p.team);
         // The use time the mission sets on that trigger (5 s stock).
-        let time = inside.map_or(0.0, |t| super::super::missions::activate_time(world, &t.name));
-        if objectives::hold_action(world, p.e, ActionKind::Seize, time, on) {
-            score_pole(world, now);
-            world.resource_mut::<CaObjectives>().pole = Some(Pole {
+        let time = inside.map_or(0.0, |t| missions::activate_time_in(mission, &settings, &t.name));
+        if hold_action_in(&mut gauges, &actions, dt, p.e, ActionKind::Seize, time, on) {
+            score_pole_in(&mut m, &mut o, now);
+            o.pole = Some(Pole {
                 team: Some(p.team),
                 since: now,
                 scored: 0,
             });
-            stats(world, p.e).mission_points += 1;
+            add_stats(&mut stats, &mut commands, p.e, |s| s.mission_points += 1);
             info!("pole seized by team {}", p.team);
+            gauges.apply(&mut actions, &mut commands);
             return;
         }
     }
+    gauges.apply(&mut actions, &mut commands);
     if !counting {
         return;
     }
-    score_pole(world, now);
-    if let Some(Pole { team: Some(t), since, .. }) = world.resource::<CaObjectives>().pole
+    score_pole_in(&mut m, &mut o, now);
+    if let Some(Pole { team: Some(t), since, .. }) = o.pole
         && now + 1e-9 >= since + move_time as f64
     {
-        world.resource_mut::<CaMatch>().win(t);
+        m.win(t);
     }
 }
 

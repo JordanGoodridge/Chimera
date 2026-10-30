@@ -42,12 +42,13 @@ use bevy::prelude::*;
 use super::{
     CaMode, Hooks, Leaver, NO_HOOKS, Panel, RoundTime, SPY_HUNT, ScoreOrder, Spawns, Teams,
     flow::{alive, players},
-    objectives::{self, CaObjectives},
+    objectives::{self, CaCarry, CaObjectives, Edits, Roster, add_stats, carry_in, set_carry_in},
     objects::{CaMapObjects, FLAG_DIMS, ObjBox},
     scoring::free_for_all,
     spawns,
-    state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, FFA_FIRST, FFA_LAST, Phase},
+    state::{ALPHA, BRAVO, CaMatch, CaStats, Death, DeathKind, FFA_FIRST, FFA_LAST, Phase},
 };
+use super::super::missions::{self, CaMission};
 use crate::core::{Dead, Died, Health, Team};
 
 /// The intel drop points' and the start points' game type.
@@ -72,7 +73,6 @@ pub const MODE: CaMode = CaMode {
         match_end: |w| Some(w.resource::<CaMatch>().winner),
         hooks: Hooks {
             setup,
-            update,
             died,
             may_respawn: |w, _| w.resource::<CaObjectives>().stage != 2,
             ..NO_HOOKS
@@ -113,12 +113,6 @@ fn setup(world: &mut World) {
     o.intel = if warmup { Vec::new() } else { points.into_iter().take(count).collect() };
 }
 
-/// A free-for-all id nobody has.
-fn free_id(world: &mut World) -> Option<u8> {
-    let used: Vec<u8> = players(world).into_iter().map(|(_, t)| t).collect();
-    (FFA_FIRST..=FFA_LAST).find(|t| !used.contains(t))
-}
-
 /// A spy's death drops their intel and makes them a hunter.
 fn died(world: &mut World, d: &Died) {
     let c = objectives::carry(world, d.entity);
@@ -137,20 +131,36 @@ fn died(world: &mut World, d: &Died) {
     world.entity_mut(d.entity).insert(Team(ALPHA));
 }
 
-/// Pick-ups, then stage 2 when one player holds it all.
-fn update(world: &mut World) {
-    let now = world.resource::<crate::core::SimClock>().now;
-    if world.resource::<CaObjectives>().camera_until.is_some_and(|t| now + 1e-9 >= t) {
-        world.resource_mut::<CaObjectives>().camera_until = None;
+/// Pick-ups, then stage 2 when one player holds it all (the mode's
+/// per-tick system, `rules::mode_updates`; stage 2's respawns are world
+/// work, queued after the pick-up's changes).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn update(
+    clock: Res<crate::core::SimClock>,
+    mission: Option<Res<CaMission>>,
+    settings: Res<super::CaRuleSettings>,
+    m: Res<CaMatch>,
+    mut o: ResMut<CaObjectives>,
+    roster: Roster,
+    mut carries: Query<&mut CaCarry>,
+    mut stats: Query<&mut CaStats>,
+    mut commands: Commands,
+) {
+    let now = clock.now;
+    if o.camera_until.is_some_and(|t| now + 1e-9 >= t) {
+        o.camera_until = None;
     }
-    if !world.resource::<CaMatch>().counting() || world.resource::<CaObjectives>().stage != 1 {
+    if !m.counting() || o.stage != 1 {
         return;
     }
-    let total = super::super::missions::spy_hunt(world).0 as u8;
+    let total = missions::spy_hunt_in(mission.as_deref(), &settings).0 as u8;
     let half = objectives::player_half();
-    for p in objectives::takers(world) {
-        let items = world.resource::<CaObjectives>().intel.clone();
-        let Some(i) = items.iter().position(|at| {
+    // The players' teams as this tick changes them (a free id is free of
+    // the ones given before it).
+    let mut teams = roster.players();
+    let mut carry = Edits::default();
+    for p in roster.takers() {
+        let Some(i) = o.intel.iter().position(|at| {
             ObjBox {
                 centre: *at,
                 half: FLAG_DIMS * super::super::inventory::UNIT,
@@ -159,21 +169,29 @@ fn update(world: &mut World) {
         }) else {
             continue;
         };
-        world.resource_mut::<CaObjectives>().intel.remove(i);
-        let mut c = objectives::carry(world, p.e);
+        o.intel.remove(i);
+        let mut c = carry_in(&carry, &carries, p.e);
         c.intel += 1;
-        objectives::set_carry(world, p.e, c);
-        super::scoring::stats(world, p.e).mission_points += 1;
+        set_carry_in(&mut carry, p.e, c);
+        add_stats(&mut stats, &mut commands, p.e, |s| s.mission_points += 1);
         if p.team == ALPHA
-            && let Some(id) = free_id(world)
+            && let Some(id) = (FFA_FIRST..=FFA_LAST).find(|t| !teams.iter().any(|(_, x)| x == t))
         {
-            world.entity_mut(p.e).insert(Team(id));
+            if let Ok(mut ec) = commands.get_entity(p.e) {
+                ec.try_insert(Team(id));
+            }
+            if let Some(x) = teams.iter_mut().find(|(e, _)| *e == p.e) {
+                x.1 = id;
+            }
         }
         if c.intel >= total {
-            stage_two(world, p.e);
+            carry.apply(&mut carries, &mut commands);
+            let spy = p.e;
+            commands.queue(move |world: &mut World| stage_two(world, spy));
             return;
         }
     }
+    carry.apply(&mut carries, &mut commands);
 }
 
 /// `spy` holds all the intel: the final spy against everyone else. The

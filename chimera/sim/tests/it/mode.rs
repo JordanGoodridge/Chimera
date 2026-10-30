@@ -160,7 +160,7 @@ fn sim(key: &'static str) -> Sim {
         .add_modes(kit_game("kit"), &[&DEATHMATCH, &ROUNDS, &WARMUP_ENDS, &FREE_FOR_ALL])
         .add_systems(
             FixedUpdate,
-            (flow::update, flow::mission_update).chain().in_set(SimSet::Rules),
+            flow::mission_update.in_set(SimSet::Rules),
         );
     sim
 }

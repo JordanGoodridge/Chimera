@@ -242,11 +242,11 @@ reactions to them (`On<Insert<C>>`, `On<Discard<C>>`), messages for
 per-tick flows (hits, deaths, weapon events) read by normal systems,
 events triggered at a known moment (`world.trigger`, so the observers
 run at once, where a hook would have run), and systems with declared
-queries gated by run conditions (`gameplay_is`, `hud_is`; never a new
-set, whose flattening reorders unordered systems) for per-tick logic. A
-fact other machines must see the same way is put on locally from
-replicated state, as `ladder::OnRung` is (see "Arriving on a rung is a
-component" under "Gun game rules"). Data hooks stay for decisions the
+queries gated by run conditions (`gameplay_is`, `hud_is`, `mode_is`;
+never a new set, whose flattening reorders unordered systems) for
+per-tick logic. A fact other machines must see the same way is put on
+locally from replicated state, as `ladder::OnRung` is (see "Arriving
+on a rung is a component" under "Gun game rules"). Data hooks stay for decisions the
 runtime asks (`fn(&World, ..) -> answer`) and for what is keyed by an
 id (weapon builds, movements, codecs). Whole-world access (`&mut World`,
 exclusive systems, callback registries) only where the job is the
@@ -255,9 +255,10 @@ console, menus, tools.
 
 How a game registers its hooks: its plugin adds its systems to the
 schedule's existing sets gated by `gameplay_is(<its id>)` (its HUD's by
-`hud_is`), its observers filtered by its own components (a thrown weapon's
-projectile: an observer of `grenade::Launch` that skips weapons without
-the game's part), and its data hooks under its own id
+`hud_is`, a mode's per-tick work by `mode::mode_is(<mode id>)`, chained
+where the game runs the mode runtime), its observers filtered by its
+own components (a thrown weapon's projectile: an observer of
+`grenade::Launch` that skips weapons without the game's part), and its data hooks under its own id
 (`ModeAppExt::add_modes(game, ..)`, `WeaponDataAppExt::add_weapon_data`,
 `ViewAnimAppExt::view_anim_rules(game, ..)`, a movement by id,
 `NetAppExt::net_part`). It never inserts a single-slot hook resource

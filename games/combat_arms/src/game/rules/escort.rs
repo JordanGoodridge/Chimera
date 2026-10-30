@@ -63,6 +63,8 @@
 //! match end; its spawn family and the reference's unapplied side swap
 //! aren't reproduced.
 
+use std::ops::DerefMut;
+
 use bevy::{ecs::message::MessageMutator, prelude::*};
 use serde::{Deserialize, Serialize};
 
@@ -109,8 +111,6 @@ pub const MODE: CaMode = CaMode {
         hooks: Hooks {
             before_spawns,
             setup,
-            update,
-            touches,
             round_over,
             after_round,
             warmup_end: match_end,
@@ -354,11 +354,23 @@ fn setup(world: &mut World) {
 fn decide(world: &mut World, winner: u8, freeze: bool, hold: bool) {
     let now = world.resource::<SimClock>().now;
     let wait = world.resource::<CaRuleSettings>().escort.end_hold as f64;
+    world.resource_scope::<FreezeTime, _>(|world, mut frozen| {
+        decide_in(&mut frozen, &mut world.resource_mut::<CaMatch>(), now, wait, winner, freeze, hold);
+    });
+}
+
+/// `decide` on the resources (`wait`: the escort's `end_hold`).
+fn decide_in(
+    frozen: &mut impl DerefMut<Target = FreezeTime>,
+    m: &mut impl DerefMut<Target = CaMatch>,
+    now: f64,
+    wait: f64,
+    winner: u8,
+    freeze: bool,
+    hold: bool,
+) {
     if freeze {
-        world.resource_mut::<FreezeTime>().0 = true;
-    }
-    let mut m = world.resource_mut::<CaMatch>();
-    if freeze {
+        frozen.0 = true;
         m.immune = true;
     }
     if hold {
@@ -369,86 +381,112 @@ fn decide(world: &mut World, winner: u8, freeze: bool, hold: bool) {
     info!("VIP Escort round to team {winner}");
 }
 
-/// The swap, the exit's opening, the escape, the time-out.
-fn update(world: &mut World) {
-    world.init_resource::<CaEscort>();
-    let now = world.resource::<SimClock>().now;
+/// The modes playing VIP Escort's per-tick systems (`update`, `touches`).
+pub const RUNS_IN: &[&str] = &[VIP_ESCORT, CLAN_VIP_ESCORT];
+
+/// The escort team as `CaEscort` says.
+fn escort_of(state: &CaEscort) -> u8 {
+    if state.swapped { BRAVO } else { ALPHA }
+}
+
+/// The swap, the exit's opening, the time-out (the mode's per-tick
+/// system, `rules::mode_updates`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn update(
+    clock: Res<SimClock>,
+    settings: Res<CaRuleSettings>,
+    mut state: ResMut<CaEscort>,
+    mut cursors: ResMut<CaSpawnCursors>,
+    mut o: ResMut<CaObjectives>,
+    mut m: ResMut<CaMatch>,
+    mut frozen: ResMut<FreezeTime>,
+) {
+    let now = clock.now;
     // The side swap (M13.7).
-    if world.resource::<CaEscort>().swap_at.is_some_and(|t| now + 1e-9 >= t) {
-        let notice = world.resource::<CaRuleSettings>().escort.swap_notice as f64;
-        {
-            let mut s = world.resource_mut::<CaEscort>();
-            s.swap_at = None;
-            s.swapped = !s.swapped;
-        }
-        *world.resource_mut::<CaSpawnCursors>() = CaSpawnCursors::default();
-        let escort = escort_team(world);
-        let mut o = world.resource_mut::<CaObjectives>();
+    if state.swap_at.is_some_and(|t| now + 1e-9 >= t) {
+        let notice = settings.escort.swap_notice as f64;
+        state.swap_at = None;
+        state.swapped = !state.swapped;
+        *cursors = CaSpawnCursors::default();
+        let escort = escort_of(&state);
         o.escort = escort;
         o.swap_notice = Some(now + notice);
         info!("VIP Escort sides swapped: team {escort} escorts");
     }
     // The exit's timer from the round's start (the setup of 0 s is the
     // live phase's first frame in the reference: M13.5's "120 s left").
-    if let Some(x) = world.resource::<CaObjectives>().exit
+    if let Some(x) = o.exit
         && x.opens.is_infinite()
-        && world.resource::<CaMatch>().phase == Phase::Live
+        && m.phase == Phase::Live
     {
-        let exit_time = world.resource::<CaRuleSettings>().escort.exit_time as f64;
-        let length = world.resource::<CaRuleSettings>().mode_data().time_limit.unwrap_or(0.0) as f64;
-        let start = world.resource::<CaMatch>().round_ends.map_or(now, |e| e - length);
-        world.resource_mut::<CaObjectives>().exit = Some(Exit {
+        let exit_time = settings.escort.exit_time as f64;
+        let length = settings.mode_data().time_limit.unwrap_or(0.0) as f64;
+        let start = m.round_ends.map_or(now, |e| e - length);
+        o.exit = Some(Exit {
             opens: start + exit_time,
             ..x
         });
     }
     // The exit opens.
-    if let Some(x) = world.resource::<CaObjectives>().exit
+    if let Some(x) = o.exit
         && !x.open
         && now + 1e-9 >= x.opens
-        && world.resource::<CaMatch>().phase == Phase::Live
+        && m.phase == Phase::Live
     {
-        world.resource_mut::<CaObjectives>().exit = Some(Exit { open: true, ..x });
+        o.exit = Some(Exit { open: true, ..x });
         info!("the exit is open");
     }
     // The clock at 0: the elimination team, unfrozen, after the hold.
-    let m = world.resource::<CaMatch>().clone();
     if m.counting() && !m.decided() && m.round_ends.is_some_and(|e| now + 1e-9 >= e) {
-        let e = elimination_team(world);
-        decide(world, e, false, true);
+        let e = enemy(escort_of(&state));
+        let wait = settings.escort.end_hold as f64;
+        decide_in(&mut frozen, &mut m, now, wait, e, false, true);
     }
 }
 
-/// The escape (after the tick's deaths).
-fn touches(world: &mut World) {
-    let now = world.resource::<SimClock>().now;
-    let m = world.resource::<CaMatch>().clone();
+/// The escape, after the tick's deaths (the mode's per-tick touches,
+/// `rules::mode_touches`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn touches(
+    clock: Res<SimClock>,
+    settings: Res<CaRuleSettings>,
+    objects: Res<CaMapObjects>,
+    state: Res<CaEscort>,
+    o: Res<CaObjectives>,
+    mut m: ResMut<CaMatch>,
+    mut frozen: ResMut<FreezeTime>,
+    vips: Query<(Entity, Option<&Team>, Option<&Health>, Has<crate::core::Dead>, Option<&Transform>), With<CaVip>>,
+    mut stats: Query<&mut CaStats>,
+    mut commands: Commands,
+) {
+    let now = clock.now;
     if !m.counting() || m.decided() {
         return;
     }
     // The escape: the raw clock (Quirk 7).
-    let open = world.resource::<CaObjectives>().exit.is_some_and(|x| x.open);
+    let open = o.exit.is_some_and(|x| x.open);
     let running = m.round_ends.is_some_and(|e| now + 1e-9 < e);
+    let escort = escort_of(&state);
     if open
         && running
-        && let Some(v) = vip(world)
-        && world.get::<Team>(v).is_some_and(|t| t.0 == escort_team(world))
-        && world.get::<Health>(v).is_some_and(|h| h.current > 0.0)
-        && world.get::<crate::core::Dead>(v).is_none()
-        && let Some(at) = world.get::<Transform>(v).map(|t| t.translation)
-        && escape_zone(world).is_some_and(|z| z.touches(at, objectives::player_half()))
+        && let Some((v, team, health, dead, t)) = vips.iter().next()
+        && team.is_some_and(|t| t.0 == escort)
+        && health.is_some_and(|h| h.current > 0.0)
+        && !dead
+        && let Some(at) = t.map(|t| t.translation)
+        && escape_zone(&settings, &objects).is_some_and(|z| z.touches(at, objectives::player_half()))
     {
-        stats(world, v).vip_escapes += 1;
-        let escort = escort_team(world);
-        decide(world, escort, true, true);
+        objectives::add_stats(&mut stats, &mut commands, v, |s| s.vip_escapes += 1);
+        let wait = settings.escort.end_hold as f64;
+        decide_in(&mut frozen, &mut m, now, wait, escort, true, true);
     }
 }
 
 /// The exit's box: the zone the mission names, else the family's first,
 /// else the map's first.
-fn escape_zone(world: &World) -> Option<super::objects::ObjBox> {
-    let name = &world.resource::<CaRuleSettings>().escort.escape_zone;
-    let zones = &world.resource::<CaMapObjects>().escape_zones;
+fn escape_zone(settings: &CaRuleSettings, objects: &CaMapObjects) -> Option<super::objects::ObjBox> {
+    let name = &settings.escort.escape_zone;
+    let zones = &objects.escape_zones;
     zones
         .iter()
         .find(|z| z.name.eq_ignore_ascii_case(name))

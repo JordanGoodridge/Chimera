@@ -36,9 +36,9 @@ use combat_arms::game::CombatArmsPlugins;
 const RATCHET: &[ScheduleRatchet] = &[
     ScheduleRatchet {
         schedule: "FixedUpdate",
-        server: 718,
-        client: 718,
-        opposite: 253,
+        server: 662,
+        client: 662,
+        opposite: 149,
     },
     ScheduleRatchet {
         schedule: "FixedPostUpdate",
@@ -102,5 +102,65 @@ fn client() -> App {
 fn schedule_ratchet() {
     if let Err(report) = check_schedule_ratchet(&mut server(), &mut client(), RATCHET) {
         panic!("{report}");
+    }
+}
+
+/// Each mode's own per-tick systems (plan ecs-cleanup step 4: gated by
+/// `mode::mode_is`, in place of the runtime's update and touches
+/// dispatchers) run where those ran, on the server and the client: the
+/// updates after `update_team_counts` and before the phases' step
+/// (`flow::mission_update`), a mode's own steps in order and a clan mode's
+/// after its base mode's; the touches after the tick's deaths
+/// (`scoring::handle_deaths`) and before `publish`.
+#[test]
+fn mode_systems_run_where_the_dispatchers_ran() {
+    use chimera_world::harness::schedule_systems;
+    const UPDATES: &[&str] = &[
+        "search_destroy::hand_out",
+        "search_destroy::bombs",
+        "ctf::update",
+        "clan::ctf_half",
+        "clan::leaver_ends_round",
+        "bombing_run::carry",
+        "bombing_run::bombs",
+        "seize::update",
+        "vip::update",
+        "arms_race::update",
+        "hunted::update",
+        "spy_hunt::update",
+        "quarantine::update",
+        "hired_guns::update",
+        "escort::update",
+    ];
+    const TOUCHES: &[&str] = &["hired_guns::touches", "escort::touches"];
+    for (name, mut app) in [("server", server()), ("client", client())] {
+        let order = schedule_systems(app.world_mut(), FixedUpdate);
+        let find = |what: &str, from: usize| {
+            order
+                .iter()
+                .skip(from)
+                .position(|s| s == what)
+                .map(|i| i + from)
+                .unwrap_or_else(|| panic!("{name}: {what} not after {from} in {order:#?}"))
+        };
+        let rules = |what: &str| format!("combat_arms::game::rules::{what}");
+        let counts = find(&rules("update_team_counts"), 0);
+        let step = find("chimera_sim::mode::flow::mission_update", 0);
+        let mut last = counts;
+        for u in UPDATES {
+            let at = find(&rules(u), 0);
+            assert!(last < at && at < step, "{name}: {u} at {at}, not between {last} and the step at {step}");
+            last = at;
+        }
+        assert!(!order.iter().any(|s| s.starts_with("chimera_sim::mode::flow::update")));
+        let deaths = find(&rules("scoring::handle_deaths"), 0);
+        let mut last = deaths;
+        for t in TOUCHES {
+            let at = find(&rules(t), 0);
+            assert!(last < at, "{name}: {t} at {at}, before {last}");
+            last = at;
+        }
+        let publish = find(&rules("publish"), last);
+        assert!(last < publish);
     }
 }

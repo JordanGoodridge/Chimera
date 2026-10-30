@@ -79,7 +79,6 @@ pub const TDM: CaMode = CaMode {
         match_end: halves_match_end,
         hooks: Hooks {
             setup,
-            update: |w| clan_update(w, |_| {}),
             before_spawns: swap_teams,
             after_round: half_after_round,
             ..super::NO_HOOKS
@@ -107,7 +106,6 @@ pub const CTF: CaMode = CaMode {
                 (ctf::MODE.hooks.setup)(w);
                 setup(w);
             },
-            update: |w| clan_update(w, ctf_update),
             before_spawns: swap_teams,
             after_round: half_after_round,
             ..ctf::MODE.rules.hooks
@@ -132,7 +130,6 @@ pub const SEARCH_DESTROY: CaMode = CaMode {
                 (search_destroy::HOOKS.setup)(w);
                 setup(w);
             },
-            update: |w| clan_update(w, search_destroy::HOOKS.update),
             round_over: completions,
             before_spawns: swap_teams,
             after_round: rounds_after_round,
@@ -157,7 +154,6 @@ pub const ELIMINATION_PRO: CaMode = CaMode {
         match_end: rounds_match_end,
         hooks: Hooks {
             setup,
-            update: |w| clan_update(w, |_| {}),
             before_spawns: swap_teams,
             after_round: rounds_after_round,
             ..super::NO_HOOKS
@@ -167,6 +163,14 @@ pub const ELIMINATION_PRO: CaMode = CaMode {
     leaving: rounds_leaving,
     ..elimination::MODE
 };
+
+/// The clan modes' ids (`leaver_ends_round`'s).
+pub const MODES: &[&str] = &[
+    super::CLAN_TDM,
+    super::CLAN_CTF,
+    super::CLAN_SEARCH_DESTROY,
+    super::CLAN_ELIMINATION_PRO,
+];
 
 /// The clan modes' room keys.
 pub const KEYS: &[&str] = &["CDM", "CCTF", "CMM", "CTSV", "CESC"];
@@ -188,10 +192,9 @@ fn bomb_ends(world: &mut World) -> u32 {
     world.query::<&CaStats>().iter(world).map(|s| s.detonations + s.defuses).sum()
 }
 
-/// The mode's own update, then: a match a leaver decided ends its round.
-fn clan_update(world: &mut World, base: fn(&mut World)) {
-    base(world);
-    let mut m = world.resource_mut::<CaMatch>();
+/// The clan modes (`MODES`), after the base mode's per-tick system
+/// (`rules::mode_updates`): a match a leaver decided ends its round.
+pub(super) fn leaver_ends_round(mut m: ResMut<CaMatch>) {
     if m.result.is_some() && m.phase == Phase::Live && !m.end_requested {
         m.end_requested = true;
     }
@@ -270,14 +273,13 @@ fn tdm_death(world: &mut World, d: &Death) {
     }
 }
 
-/// CCTF: CTF's update; the first half ends at ⌊G / 2⌋ captures.
-fn ctf_update(world: &mut World) {
-    (ctf::MODE.hooks.update)(world);
-    if clan(world).second_half {
+/// CCTF, after CTF's update (`rules::mode_updates`): the first half ends
+/// at ⌊G / 2⌋ captures.
+pub(super) fn ctf_half(clan: Option<Res<CaClan>>, settings: Res<CaRuleSettings>, mut m: ResMut<CaMatch>) {
+    if clan.is_some_and(|c| c.second_half) {
         return;
     }
-    let half = (world.resource::<CaRuleSettings>().goal() / 2) as i32;
-    let mut m = world.resource_mut::<CaMatch>();
+    let half = (settings.goal() / 2) as i32;
     if m.counting() && !m.decided() && m.score.iter().any(|s| *s >= half) {
         m.end_without_winner();
     }

@@ -83,15 +83,17 @@ pub type CaMissionFrames = crate::mode::flow::MissionFrames;
 /// connecting, spectating or an NPC), in the order they came in
 /// (`CaJoinOrder`).
 pub fn players(world: &mut World) -> Vec<(Entity, u8)> {
-    let mut all: Vec<(u64, Entity, u8)> = world
-        .query_filtered::<(Entity, &Team, Option<&CaJoinOrder>), (
-            With<Intent>,
-            With<Health>,
-            Without<Connecting>,
-            Without<Spectating>,
-            Without<Npc>,
-        )>()
-        .iter(world)
+    let mut q = world.query_filtered::<(Entity, &Team, Option<&CaJoinOrder>), Playing>();
+    in_join_order(q.iter(world))
+}
+
+/// Who `players` lists (with a team that plays): in the game, not
+/// connecting, spectating or an NPC.
+pub type Playing = (With<Intent>, With<Health>, Without<Connecting>, Without<Spectating>, Without<Npc>);
+
+/// `players` from a query's rows (a system's: `objectives::Roster`).
+pub fn in_join_order<'a>(rows: impl Iterator<Item = (Entity, &'a Team, Option<&'a CaJoinOrder>)>) -> Vec<(Entity, u8)> {
+    let mut all: Vec<(u64, Entity, u8)> = rows
         .filter(|(_, t, _)| plays(t.0))
         .map(|(e, t, o)| (o.map_or(u64::MAX, |o| o.0), e, t.0))
         .collect();
