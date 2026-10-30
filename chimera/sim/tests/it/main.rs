@@ -13,4 +13,5 @@ mod movement;
 mod noclip_damage;
 mod rung_extras;
 mod spawns;
+mod view_anim;
 mod weapon_frame;

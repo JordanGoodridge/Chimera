@@ -21,12 +21,15 @@
 //!   `zoom_in`/`zoom_out` when the owner's `Zoomed` comes and goes.
 //!   Each action names one or more sequences (one at random); a missing
 //!   action plays nothing (the sequence playing goes on).
-//! - Any other weapon asks the game's `ViewAnimRules` (draw and idle
-//!   choices, a reaction per event, the effects of animation events); CS:S
-//!   picks Source activities by its weapons' rules. Without rules, such a
-//!   weapon's view model shows its reference pose.
+//! - Any other weapon asks its game's `ViewAnimRules` (draw and idle
+//!   choices, a reaction per event, the effects of animation events): the
+//!   entry in `GameViewAnimRules` of the game its id names (`game:name`);
+//!   CS:S picks Source activities by its weapons' rules. Without rules for
+//!   its game, such a weapon's view model shows its reference pose.
 //!
-//! Games add `ViewAnimPlugin` and insert their `ViewAnimRules` and
+//! Games add `ViewAnimPlugin`, register their `ViewAnimRules` under their
+//! game id (`app.view_anim_rules(game, rules)`; several games' rules live
+//! side by side, a game registering again replaces its own) and insert
 //! `map::ViewModelSettings` (field of view, hand). A game that drives a
 //! character's view model itself (its `ViewAnimator`, e.g. Combat Arms'
 //! own state machine) puts `OwnViewAnim` on it and the driver leaves it
@@ -254,8 +257,9 @@ impl ViewFrame<'_, '_> {
     }
 }
 
-/// A game's view-model rules, for weapons without `[anim.sequences]`.
-#[derive(Resource, Clone, Copy)]
+/// A game's view-model rules, for its weapons without `[anim.sequences]`
+/// (registered per game: `GameViewAnimRules`).
+#[derive(Clone, Copy)]
 pub struct ViewAnimRules {
     /// What plays when the weapon is drawn.
     pub draw: fn(&ViewState) -> Pick,
@@ -267,6 +271,49 @@ pub struct ViewAnimRules {
     /// What an animation event shows (muzzle flash, brass); for every view
     /// model.
     pub effect: fn(&AnimEvent) -> Option<ViewModelEventKind>,
+}
+
+/// Each game's `ViewAnimRules`, by game id (the prefix of its weapons'
+/// ids, `game:name`). The driver asks the held weapon's game's.
+#[derive(Resource, Clone, Default)]
+pub struct GameViewAnimRules(Vec<(&'static str, ViewAnimRules)>);
+
+impl GameViewAnimRules {
+    /// `game`'s rules (ids compare ignoring case).
+    pub fn get(&self, game: &str) -> Option<&ViewAnimRules> {
+        self.0.iter().find(|(g, _)| g.eq_ignore_ascii_case(game)).map(|(_, r)| r)
+    }
+
+    /// The rules of the game weapon `id` belongs to (`game:name`).
+    pub fn for_weapon(&self, id: &str) -> Option<&ViewAnimRules> {
+        self.get(id.split_once(':')?.0)
+    }
+
+    /// `game`'s rules from now on (replacing its own, if it had some).
+    pub fn set(&mut self, game: &'static str, rules: ViewAnimRules) {
+        match self.0.iter_mut().find(|(g, _)| g.eq_ignore_ascii_case(game)) {
+            Some(entry) => entry.1 = rules,
+            None => self.0.push((game, rules)),
+        }
+    }
+
+    /// The games with rules, in registration order.
+    pub fn games(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.0.iter().map(|(g, _)| *g)
+    }
+}
+
+/// Registering a game's `ViewAnimRules`.
+pub trait ViewAnimAppExt {
+    /// `game`'s view-model rules (`GameViewAnimRules::set`).
+    fn view_anim_rules(&mut self, game: &'static str, rules: ViewAnimRules) -> &mut Self;
+}
+
+impl ViewAnimAppExt for App {
+    fn view_anim_rules(&mut self, game: &'static str, rules: ViewAnimRules) -> &mut Self {
+        self.world_mut().get_resource_or_init::<GameViewAnimRules>().set(game, rules);
+        self
+    }
 }
 
 /// The data's sequences for `action` (None: the data has no table).
@@ -318,7 +365,7 @@ fn no_effect(_: &AnimEvent) -> Option<ViewModelEventKind> {
 pub fn drive(
     time: Res<Time>,
     models: Option<Res<ViewModels>>,
-    rules: Option<Res<ViewAnimRules>>,
+    rules: Option<Res<GameViewAnimRules>>,
     catalog: Option<Res<WeaponCatalog>>,
     mut characters: Query<
         (
@@ -344,8 +391,7 @@ pub fn drive(
     mut commands: Commands,
 ) {
     let (dt, now) = (time.delta_secs(), time.elapsed_secs_f64());
-    let rules = rules.as_deref().copied();
-    let effect = rules.map_or(no_effect as fn(&AnimEvent) -> _, |r| r.effect);
+    let rules = rules.as_deref();
     let events: Vec<&WeaponEvent> = events.read().filter(|e| e.shown()).collect();
     for (e, inventory, health, view, dice, zoomed) in &mut characters {
         let (Some(mut view), Some(mut dice)) = (view, dice) else {
@@ -374,6 +420,9 @@ pub fn drive(
             }
         });
         let by_data = state.as_ref().is_some_and(|s| s.data.is_some_and(|d| !d.anim.sequences.is_empty()));
+        // The held weapon's game's rules.
+        let rules = weapon.and_then(|w| rules?.for_weapon(w)).copied();
+        let effect = rules.map_or(no_effect as fn(&AnimEvent) -> _, |r| r.effect);
         let draw = |s: &ViewState| {
             if by_data {
                 data_pick(s.data, "draw").or_else(|| data_pick(s.data, "idle"))

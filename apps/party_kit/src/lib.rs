@@ -232,7 +232,7 @@ impl Plugin for PartyPartsPlugin {
         // CS:S's guns' view models: Chimera's generic driver with CS:S's
         // rules plays them (Combat Arms' driver lets go of a character
         // holding another game's gun).
-        app.insert_resource(cs_source::game::view_anim::rules());
+        cs_source::game::view_anim::add_rules(app);
         add_view_model_fovs(app);
         // ... and CS:S's bob and sway (`cl_bobcycle`, `cl_wpn_sway_*`) while
         // Combat Arms' driver has let go of the local player (its own sway

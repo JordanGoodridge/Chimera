@@ -438,12 +438,16 @@ pub fn carried_bomb(world: &World, owner: Entity) -> Option<Entity> {
     inv.weapons.iter().copied().find(|w| world.get::<C4>(*w).is_some())
 }
 
-enum ArmStep {
-    Start(Entity),
-    Continue,
-    Abort { left_zone: bool },
-    Refuse(&'static str),
-    Plant(Entity, Option<usize>),
+/// What `arm` writes: the objective's, the weapon's and the sounds'
+/// messages.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct ArmMessages<'w> {
+    objective: MessageWriter<'w, ObjectiveEvent>,
+    weapon: MessageWriter<'w, WeaponEvent>,
+    predicted: MessageWriter<'w, PredictedSound>,
+    play: MessageWriter<'w, PlaySound>,
+    game: MessageWriter<'w, GameSound>,
+    outputs: MessageWriter<'w, FireEntityOutput>,
 }
 
 /// Primary fire with the bomb in hand (spec 3): arming, its key presses,
@@ -453,85 +457,84 @@ enum ArmStep {
 /// bomb leaving its hands) live and in replays; the server's state of
 /// that player corrects it. What only the server does (the planted bomb,
 /// the HUD's words, the rules' sounds) happens where `authoritative`.
-pub fn arm(world: &mut World) {
-    let now = world.resource::<SimClock>().now;
-    let authority = world.get_resource::<NetRole>() != Some(&NetRole::Client);
-    let first = world.get_resource::<FirstTimePredicted>().is_none_or(|f| f.0);
-    let rules = world.resource::<BombRules>().clone();
-    let open = world.get_resource::<RoundOpen>().is_none_or(|o| o.0);
-    let mut steps: Vec<(Entity, ArmStep)> = Vec::new();
-    {
-        let mut q = world.query_filtered::<(
+/// `Arming` comes and goes, the bomb leaves the inventory and the planted
+/// bomb appears through `Commands` (the schedule's next sync point, before
+/// `predict_defuse` and at the latest when the command's weapon schedule
+/// ends, where prediction saves the state).
+#[allow(clippy::type_complexity)]
+pub fn arm(
+    mut characters: Query<
+        (
             Entity,
             &Intent,
-            &Inventory,
+            &mut Inventory,
             &Transform,
             Option<&MovementState>,
             Option<&Health>,
-            Option<&Arming>,
-        ), Without<NetDrawn>>();
-        let objectives = world.resource::<MapObjectives>();
-        let last = world.resource::<LastButtons>();
-        for (e, intent, inv, t, state, health, arming) in q.iter(world) {
-            let bomb = inv.active.filter(|w| world.get::<C4>(*w).is_some());
-            let alive = health.is_none_or(|h| h.current > 0.0);
-            let Some(bomb) = bomb.filter(|_| alive) else {
-                if arming.is_some() {
-                    steps.push((e, ArmStep::Abort { left_zone: false }));
-                }
-                continue;
-            };
-            let (lo, hi) = hull(t, state);
-            let site = objectives.bomb_target_at(lo, hi);
-            let ground = state.is_none_or(|s| s.on_ground);
-            let pressed = intent.fire && !last.get(e).fire;
-            match arming {
-                Some(_) if !intent.fire || !open || !ground => steps.push((e, ArmStep::Abort { left_zone: false })),
-                Some(_) if site.is_none() => steps.push((e, ArmStep::Abort { left_zone: true })),
-                Some(a) if now - a.since + TIME_SLACK >= rules.plant_time as f64 => {
-                    steps.push((e, ArmStep::Plant(bomb, site)))
-                }
-                Some(_) => steps.push((e, ArmStep::Continue)),
-                None if !intent.fire || !open || now + TIME_SLACK < inv.next_attack => {}
-                None if site.is_none() => {
-                    if pressed {
-                        steps.push((e, ArmStep::Refuse("C4 must be planted at a bomb site.")));
-                    }
-                }
-                None if !ground => {
-                    if pressed {
-                        steps.push((
-                            e,
-                            ArmStep::Refuse("You must be standing on the ground to plant the C4."),
-                        ));
-                    }
-                }
-                None => steps.push((e, ArmStep::Start(bomb))),
+            Option<&mut Arming>,
+        ),
+        Without<NetDrawn>,
+    >,
+    weapons: Query<(&Weapon, Has<C4>)>,
+    (clock, role, first, open): (
+        Res<SimClock>,
+        Option<Res<NetRole>>,
+        Option<Res<FirstTimePredicted>>,
+        Option<Res<RoundOpen>>,
+    ),
+    (rules, objectives, last): (Res<BombRules>, Res<MapObjectives>, Res<LastButtons>),
+    mut state: ResMut<BombState>,
+    mut out: ArmMessages,
+    mut commands: Commands,
+) {
+    let now = clock.now;
+    let authority = role.as_deref() != Some(&NetRole::Client);
+    let first = first.is_none_or(|f| f.0);
+    let open = open.is_none_or(|o| o.0);
+    let is_bomb = |w: Entity| weapons.get(w).is_ok_and(|(_, c4)| c4);
+    for (e, intent, mut inv, t, mstate, health, arming) in &mut characters {
+        let bomb = inv.active.filter(|w| is_bomb(*w));
+        let alive = health.is_none_or(|h| h.current > 0.0);
+        let abort = |inv: &Inventory, a: &Arming, left_zone: bool, commands: &mut Commands, out: &mut ArmMessages| {
+            commands.entity(e).remove::<Arming>();
+            if authority {
+                out.objective.write(ObjectiveEvent::AbortPlant { who: e, left_zone });
             }
-        }
-    }
-    for (e, step) in steps {
-        match step {
-            ArmStep::Start(weapon) => {
-                world.entity_mut(e).insert(Arming {
-                    since: now,
-                    weapon,
-                    clicks: 0,
-                });
+            let weapon = inv.weapons.iter().copied().find(|w| is_bomb(*w)).unwrap_or(a.weapon);
+            out.weapon.write(WeaponEvent {
+                owner: e,
+                weapon,
+                kind: WeaponEventKind::ArmingStopped,
+                replay: !first,
+            });
+        };
+        let Some(bomb) = bomb.filter(|_| alive) else {
+            if let Some(a) = arming {
+                abort(&inv, &a, false, &mut commands, &mut out);
+            }
+            continue;
+        };
+        let (lo, hi) = hull(t, mstate);
+        let site = objectives.bomb_target_at(lo, hi);
+        let ground = mstate.is_none_or(|s| s.on_ground);
+        let pressed = intent.fire && !last.get(e).fire;
+        let refuse = |reason: &'static str, out: &mut ArmMessages| {
+            if pressed && authority {
+                out.objective.write(ObjectiveEvent::PlantRefused { who: e, reason });
+            }
+        };
+        match arming {
+            Some(a) if !intent.fire || !open || !ground => abort(&inv, &a, false, &mut commands, &mut out),
+            Some(a) if site.is_none() => abort(&inv, &a, true, &mut commands, &mut out),
+            Some(a) if now - a.since + TIME_SLACK >= rules.plant_time as f64 => {
+                // The bomb leaves its hands; the server plants it.
+                take_bomb(&mut commands, e, &mut inv, bomb, |w| weapons.get(w).ok().map(|(w, _)| w.slot));
                 if authority {
-                    world.write_message(ObjectiveEvent::BeginPlant { who: e });
+                    let yaw = intent.yaw;
+                    plant(&mut commands, &mut state, &mut out, &objectives, (e, t, mstate, yaw), site, now, &rules);
                 }
-                world.write_message(WeaponEvent {
-                    owner: e,
-                    weapon,
-                    kind: WeaponEventKind::ArmingStarted,
-                    replay: !first,
-                });
             }
-            ArmStep::Continue => {
-                let Some(mut a) = world.get_mut::<Arming>(e) else {
-                    continue;
-                };
+            Some(mut a) => {
                 let elapsed = (now - a.since) as f32;
                 let due = rules
                     .clicks
@@ -544,42 +547,35 @@ pub fn arm(world: &mut World) {
                     && first
                     && let Some(s) = &rules.sounds.click
                 {
-                    let at = world.get::<Transform>(e).map(|t| t.translation);
                     let sound = PlaySound {
                         pitch: None,
                         entry: s.clone(),
-                        at,
+                        at: Some(t.translation),
                         volume: None,
                         source: Some(e),
                         channel: Some(crate::weapon::CHAN_WEAPON),
                     };
-                    own_sound(world, authority, e, sound);
+                    own_sound(&mut out, authority, e, sound);
                 }
             }
-            ArmStep::Abort { left_zone } => {
-                if let Some(a) = world.entity_mut(e).take::<Arming>() {
-                    if authority {
-                        world.write_message(ObjectiveEvent::AbortPlant { who: e, left_zone });
-                    }
-                    let weapon = carried_bomb(world, e).unwrap_or(a.weapon);
-                    world.write_message(WeaponEvent {
-                        owner: e,
-                        weapon,
-                        kind: WeaponEventKind::ArmingStopped,
-                        replay: !first,
-                    });
-                }
-            }
-            ArmStep::Refuse(reason) => {
+            None if !intent.fire || !open || now + TIME_SLACK < inv.next_attack => {}
+            None if site.is_none() => refuse("C4 must be planted at a bomb site.", &mut out),
+            None if !ground => refuse("You must be standing on the ground to plant the C4.", &mut out),
+            None => {
+                commands.entity(e).insert(Arming {
+                    since: now,
+                    weapon: bomb,
+                    clicks: 0,
+                });
                 if authority {
-                    world.write_message(ObjectiveEvent::PlantRefused { who: e, reason });
+                    out.objective.write(ObjectiveEvent::BeginPlant { who: e });
                 }
-            }
-            ArmStep::Plant(weapon, site) => {
-                take_bomb(world, e, weapon);
-                if authority {
-                    plant(world, e, site, now, &rules);
-                }
+                out.weapon.write(WeaponEvent {
+                    owner: e,
+                    weapon: bomb,
+                    kind: WeaponEventKind::ArmingStarted,
+                    replay: !first,
+                });
             }
         }
     }
@@ -588,58 +584,49 @@ pub fn arm(world: &mut World) {
 /// A sound of a character's own predicted action (a key press, starting
 /// a defuse): the authority plays it and sends it to every client but the
 /// actor's (`map::PredictedSound`); a client plays its own at once.
-fn own_sound(world: &mut World, authority: bool, by: Entity, sound: PlaySound) {
+fn own_sound(out: &mut ArmMessages, authority: bool, by: Entity, sound: PlaySound) {
     if authority {
-        world.write_message(PredictedSound { by, sound });
+        out.predicted.write(PredictedSound { by, sound });
     } else {
-        world.write_message(sound);
+        out.play.write(sound);
     }
 }
 
 /// The bomb leaves `who`'s hands (planted): out of its inventory, the
-/// last weapon (else the best) wanted. Predicted with `arm`.
-fn take_bomb(world: &mut World, who: Entity, weapon: Entity) {
-    world.entity_mut(who).remove::<Arming>();
+/// last weapon (else the best, by `slot`) wanted. Predicted with `arm`.
+fn take_bomb(commands: &mut Commands, who: Entity, inv: &mut Inventory, weapon: Entity, slot: impl Fn(Entity) -> Option<u8>) {
+    commands.entity(who).remove::<Arming>();
     // The bomb goes; the last weapon (else the best) comes back up.
-    if let Some(mut inv) = world.get_mut::<Inventory>(who) {
-        inv.weapons.retain(|w| *w != weapon);
-        if inv.active == Some(weapon) {
-            inv.active = None;
-        }
-        let last = inv.last.filter(|l| inv.weapons.contains(l));
-        inv.last = None;
-        inv.wanted = last;
+    inv.weapons.retain(|w| *w != weapon);
+    if inv.active == Some(weapon) {
+        inv.active = None;
     }
-    let fallback = {
-        let inv = world.get::<Inventory>(who);
-        inv.and_then(|inv| {
-            inv.weapons
-                .iter()
-                .copied()
-                .min_by_key(|w| world.get::<Weapon>(*w).map_or(u8::MAX, |w| w.slot))
-        })
-    };
-    if let Some(mut inv) = world.get_mut::<Inventory>(who)
-        && inv.wanted.is_none()
-    {
-        inv.wanted = fallback;
+    let last = inv.last.filter(|l| inv.weapons.contains(l));
+    inv.last = None;
+    inv.wanted = last;
+    if inv.wanted.is_none() {
+        inv.wanted = inv.weapons.iter().copied().min_by_key(|w| slot(*w).unwrap_or(u8::MAX));
     }
-    if let Ok(w) = world.get_entity_mut(weapon) {
-        w.despawn();
-    }
+    commands.entity(weapon).try_despawn();
 }
 
 /// The bomb sits at `who`'s feet, ticking (the server's; `take_bomb` took
 /// it out of its hands).
-fn plant(world: &mut World, who: Entity, site: Option<usize>, now: f64, rules: &BombRules) {
-    let Some(t) = world.get::<Transform>(who).copied() else {
-        return;
-    };
-    let (lo, _) = hull(&t, world.get::<MovementState>(who));
+#[allow(clippy::too_many_arguments)]
+fn plant(
+    commands: &mut Commands,
+    state: &mut BombState,
+    out: &mut ArmMessages,
+    objectives: &MapObjectives,
+    (who, t, mstate, yaw): (Entity, &Transform, Option<&MovementState>, f32),
+    site: Option<usize>,
+    now: f64,
+    rules: &BombRules,
+) {
+    let (lo, _) = hull(t, mstate);
     let feet = t.translation.with_y(lo.y);
-    let yaw = world.get::<Intent>(who).map_or(0.0, |i| i.yaw);
     let timer = rules.timer;
-    let mut bomb = world.spawn((
+    let mut bomb = commands.spawn((
         Name::new("Planted bomb"),
         PlantedBomb {
             planter: Some(who),
@@ -657,30 +644,21 @@ fn plant(world: &mut World, who: Entity, site: Option<usize>, now: f64, rules: &
     if let Some(model) = &rules.planted_model {
         bomb.insert((ShownItem(model.clone()), SitOnOrigin(rules.planted_turn)));
     }
-    let bomb = bomb.id();
-    {
-        let mut state = world.resource_mut::<BombState>();
-        state.planted = Some(bomb);
-        state.planter = Some(who);
-    }
+    state.planted = Some(bomb.id());
+    state.planter = Some(who);
     if let Some(s) = &rules.sounds.plant {
-        world.write_message(GameSound(PlaySound::at(s.clone(), feet)));
+        out.game.write(GameSound(PlaySound::at(s.clone(), feet)));
     }
     if let Some(s) = &rules.sounds.announce_planted {
-        world.write_message(GameSound(PlaySound::ui(s.clone())));
+        out.game.write(GameSound(PlaySound::ui(s.clone())));
     }
-    world.write_message(ObjectiveEvent::Planted { who, at: feet, site });
-    fire_site(world, site, "BombPlanted", Some(who));
-}
-
-/// The bomb target's output, if the map gave it one.
-fn fire_site(world: &mut World, site: Option<usize>, output: &str, activator: Option<Entity>) {
-    let index = site.and_then(|s| world.resource::<MapObjectives>().bomb_targets.get(s)?.map_index);
-    if let Some(map_index) = index {
-        world.write_message(FireEntityOutput {
+    out.objective.write(ObjectiveEvent::Planted { who, at: feet, site });
+    // The bomb target's output, if the map gave it one.
+    if let Some(map_index) = site.and_then(|s| objectives.bomb_targets.get(s)?.map_index) {
+        out.outputs.write(FireEntityOutput {
             map_index,
-            output: output.into(),
-            activator,
+            output: "BombPlanted".into(),
+            activator: Some(who),
         });
     }
 }

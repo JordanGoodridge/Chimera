@@ -437,6 +437,7 @@ impl Plugin for CaSpecialPlugin {
         .add_message::<Damage>()
         .add_message::<Died>()
         .add_message::<WeaponEvent>()
+        .add_observer(devices::on_launch)
         // The flame's keys pace the frame's trigger; predicted with it.
         .add_systems(Predict::Weapons, flame_pace.before(WeaponFrame))
         .predicted_part::<CaFlame>()

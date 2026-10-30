@@ -3,8 +3,9 @@
 //! turret, first-aid kits, the medkit and air strike designators.
 //!
 //! The weapon is Chimera's `Throwable` with the device's pre-fire, key and
-//! post-fire (6.12; `device_weapon`), whose launch (`launch`) makes the
-//! object: thrown at the record's speed from the eye along the view bent by
+//! post-fire (6.12; `device_weapon`), whose launch (`launch`, from this
+//! module's observer of Chimera's `Launch` on a weapon with
+//! `CaDeviceData`) makes the object: thrown at the record's speed from the eye along the view bent by
 //! the cone (the meters at 0), or placed (a claymore: the owner's position
 //! plus the aim's horizontal part by his depth, dropped to the floor, facing
 //! his yaw), or, for the medkit, a heal of its user. A thrown device flies
@@ -128,7 +129,7 @@ pub(super) fn device_weapon(e: &mut EntityWorldMut, d: &'static WeaponData, p: &
             release_at_pin_end: true,
             hold_loop: (p.throw_loop > 0.0).then_some(p.throw_loop),
             drop_primed: false,
-            launch: Some(launch),
+            game_launch: true,
         },
         CaDeviceData {
             params: std::sync::Arc::new(p.clone()),
@@ -136,6 +137,16 @@ pub(super) fn device_weapon(e: &mut EntityWorldMut, d: &'static WeaponData, p: &
             hp: d.units.damage,
         },
     ));
+}
+
+/// A throw leaving the hand of one of our devices (Chimera's `Launch`,
+/// the server's): the device (`launch`), in the throw's place among its
+/// commands.
+pub(super) fn on_launch(l: On<Launch>, ours: Query<(), With<CaDeviceData>>, mut commands: Commands) {
+    if ours.contains(l.weapon) {
+        let l = *l.event();
+        commands.queue(move |w: &mut World| launch(w, l));
+    }
 }
 
 /// The device leaves the hand (6): made by its kind.
