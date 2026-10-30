@@ -28,8 +28,20 @@ use party_kit::{DEFAULT_MINIGAME, PartyPartsPlugin};
 pub(crate) fn party() -> Sim {
     let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, PartyPartsPlugin));
     plain_rungs(sim.app.world_mut());
+    no_finale(sim.app.world_mut());
     minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     sim
+}
+
+/// The host's setting "Knife finale: off" for this world: the tests of
+/// the guns' ladder (ten rungs) predate the melee finale, which is on by
+/// default (`the_gun_game_ends_on_a_melee_rung_by_default` and the full
+/// game test play it).
+pub(crate) fn no_finale(world: &mut World) {
+    world
+        .get_resource_or_init::<chimera_sim::minigame::overrides::MinigameOverrides>()
+        .keys
+        .insert("rules.knife_finale".into(), "false".into());
 }
 
 /// The ladders this world makes from now on draw no rung extras (no
@@ -131,18 +143,22 @@ fn the_gun_game_checks_against_both_games_and_takes_the_rules() {
 }
 
 /// A scripted player shoots the other with every rung's gun, CS:S's and
-/// Combat Arms' in turn, to the last rung's kill and the match's end.
+/// Combat Arms' in turn, then kills with the melee finale's weapon (the
+/// definition ends on one melee rung for ten guns): the match's end.
 #[test]
 fn a_full_gun_game_runs_to_a_winner_with_both_games_guns() {
-    let mut sim = party();
+    let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, PartyPartsPlugin));
+    plain_rungs(sim.app.world_mut());
+    minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     let a = soldier(&mut sim);
     let b = soldier(&mut sim);
     sim.seconds(1.0);
     assert_eq!(phase(&sim), Phase::Live);
     let mut fired_with = Vec::new();
     let mut events = Vec::new();
-    for kill in 0..10 {
-        line_up(&mut sim, a, b, 4.0);
+    for kill in 0..11 {
+        // The melee rung: close up.
+        line_up(&mut sim, a, b, if kill == 10 { 1.2 } else { 4.0 });
         let gun = held(&sim, a).expect("a weapon in hand");
         assert!(
             shoot_until_dead(&mut sim, a, b, 8.0),
@@ -157,14 +173,18 @@ fn a_full_gun_game_runs_to_a_winner_with_both_games_guns() {
                 .drain()
                 .map(|e| (e.name, e.value)),
         );
-        if kill < 9 {
+        if kill < 10 {
             assert_eq!(rung(&sim, a), kill + 1, "a rung a kill");
         }
     }
     assert!(fired_with.iter().any(|g| g.starts_with("cs_source:")), "{fired_with:?}");
     assert!(fired_with.iter().any(|g| g.starts_with("combat_arms:")), "{fired_with:?}");
-    assert_eq!(fired_with.last(), Some(&cs_source::game::weapons::AWP), "the last rung");
-    assert!(events.contains(&("rung_up", 9)), "{events:?}");
+    assert_eq!(fired_with[9], cs_source::game::weapons::AWP, "the last gun");
+    let melee = fired_with[10];
+    let catalog = sim.app.world().resource::<chimera_sim::weapon::data::WeaponCatalog>();
+    let is_melee = catalog.get(melee).is_some_and(|w| w.melee.is_some() || w.has_hook(combat_arms::game::inventory::KNIFE_HOOK));
+    assert!(is_melee, "the finale's rung is a melee weapon: {melee}");
+    assert!(events.contains(&("rung_up", 10)), "{events:?}");
     assert!(
         events.iter().all(|(n, _)| minigame::EVENT_NAMES.contains(n)),
         "every event the match raises is one the network can send: {events:?}"
@@ -174,8 +194,37 @@ fn a_full_gun_game_runs_to_a_winner_with_both_games_guns() {
     sim.seconds(9.0);
     assert_eq!(phase(&sim), Phase::MatchOver);
     assert_eq!(sim.app.world().resource::<Match>().result, Some(Some(team_a)));
-    assert_eq!(sim.app.world().get::<Score>(a).unwrap().kills, 10);
-    assert_eq!(sim.app.world().get::<Score>(b).unwrap().deaths, 10);
+    assert_eq!(sim.app.world().get::<Score>(a).unwrap().kills, 11);
+    assert_eq!(sim.app.world().get::<Score>(b).unwrap().deaths, 11);
+}
+
+/// The original gun game ends on melee by default: one melee rung for its
+/// ten guns, a melee weapon of the installed games' (never the infected's
+/// hands unless as the infected, once at most), on every seed; Host
+/// settings off take the finale away.
+#[test]
+fn the_gun_game_ends_on_a_melee_rung_by_default() {
+    use chimera_sim::minigame::ladder::{Ladder, RungSeed};
+    for seed in 0..40 {
+        let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, PartyPartsPlugin));
+        sim.app.insert_resource(RungSeed(seed));
+        minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+        let w = sim.app.world();
+        let l = w.resource::<Ladder>();
+        let catalog = w.resource::<chimera_sim::weapon::data::WeaponCatalog>();
+        assert!(l.knife_finale && l.melee_rungs == 1 && l.rungs.len() == 11, "seed {seed}: {:?}", l.rungs);
+        let last = *l.rungs.last().unwrap();
+        let is_melee = |id: &str| catalog.get(id).is_some_and(|w| w.melee.is_some() || w.has_hook(combat_arms::game::inventory::KNIFE_HOOK));
+        assert!(is_melee(last), "{last}");
+        assert!(!catalog.get(last).unwrap().has_hook(combat_arms::game::rungs::INFECTED), "{last}: hands only as the character");
+        let characters = (0..l.rungs.len()).filter(|i| l.character(*i).is_some()).count();
+        assert!(characters <= 1 && (0..10).all(|i| l.character(i).is_none()), "seed {seed}: {:?}", l.extras);
+    }
+    let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, PartyPartsPlugin));
+    sim.app.world_mut().resource_mut::<chimera_sim::minigame::overrides::MinigameOverrides>().keys.insert("rules.knife_finale".into(), "false".into());
+    minigame::start(sim.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+    let l = sim.app.world().resource::<chimera_sim::minigame::ladder::Ladder>();
+    assert!(!l.knife_finale && l.rungs.len() == 10, "no finale with the host's setting off");
 }
 
 /// CS:S's knife (the kit's, with the Glock) kills a player on the fourth

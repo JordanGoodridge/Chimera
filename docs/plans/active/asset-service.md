@@ -585,3 +585,22 @@ the same commit.
   `login`, `fetch <game> <set>` (prefetch, e.g. `heavy-tests`), `status`,
   `verify`, `gc`, `lock` (the repo's `assets.lock`). Tests that need an
   install accept "install or asset service".
+- **More decisions (user, 2026-10-30).** The packer, sign-in and server
+  code live in this public repo, outside releases. The asset URL
+  setting will be `chimera:asset_url` (see the backlog's console
+  namespaces item), not an `sv_` name. Budget: only needed when moving to
+  a VPS (open). Encrypted game connections (netcode's secure mode) before
+  host-served downloads are used outside Tailscale.
+- **Hosting size and encryption (user, 2026-10-30).** No VPS now; the
+  design should suit a medium-to-large VPS later: big disk, good network,
+  plenty of RAM for caching, modest CPU. The game connection stays
+  unencrypted for now. Netcode's secure mode encrypts the whole
+  connection or nothing, costs little CPU or bandwidth (ChaCha20-Poly1305,
+  ~16-30 bytes a packet), but needs signed connect tokens for every join,
+  including LAN and direct IP. Instead, only the sensitive parts are
+  encrypted: access tokens and asset files go over HTTPS, to the host's
+  small endpoint next to the game server (mode 1) or to the download
+  server (mode 2). The match manifest names the endpoint and its
+  certificate's fingerprint, so a self-signed certificate can't be
+  impersonated. Full secure mode waits until something needs it (anti-
+  cheat, public matchmaking).

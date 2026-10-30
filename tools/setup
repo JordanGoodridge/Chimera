@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# One-time setup of a clone (AGENTS.md, "Setup"): the repository's commit
+# identity in this clone's local git config (never the global one), the
+# hooks (core.hooksPath .githooks) and LF line endings. Safe to rerun.
+# Windows: scripts\setup.ps1. Then run tools/doctor.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+git config --local user.name r0pi0x
+git config --local user.email 339403489+r0pi0x@users.noreply.github.com
+git config --local core.hooksPath .githooks
+git config --local core.autocrlf false
+chmod +x .githooks/pre-commit .githooks/pre-push 2>/dev/null || true
+echo "setup: identity r0pi0x <339403489+r0pi0x@users.noreply.github.com>, hooks .githooks, autocrlf false (this clone only)."
+echo "setup: commit with TZ=UTC (e.g. TZ=UTC git commit). Now run tools/doctor."

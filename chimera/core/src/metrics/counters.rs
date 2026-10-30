@@ -370,22 +370,26 @@ mod tests {
     fn counts_grow_with_work() {
         let mut c = ThreadCounters::current();
         let a = c.read();
-        // Burn work until the thread's CPU clock moves. A short loop is
-        // enough where the clock is fine (Linux: nanoseconds), but Windows
-        // reads it from GetThreadTimes in 15.6 ms steps
-        // (docs/performance.md), so how much work it takes is the clock's
-        // business, not the test's.
+        // Burn work at least once, then until the thread's CPU clock moves.
+        // One round is enough where the clock is fine (Linux: nanoseconds),
+        // but Windows reads it from GetThreadTimes in 15.6 ms steps
+        // (docs/performance.md), so how much more it takes is the clock's
+        // business, not the test's. (Checking the clock before the first
+        // round skipped the work on Linux, where two reads always differ.)
         let started = std::time::Instant::now();
         let mut x = 0u64;
-        while c.read().cpu_ns == a.cpu_ns {
-            assert!(
-                started.elapsed() < std::time::Duration::from_secs(10),
-                "the thread's CPU clock did not move in 10 s: {a:?}"
-            );
+        loop {
             for i in 0..2_000_000u64 {
                 x = x.wrapping_mul(31).wrapping_add(std::hint::black_box(i));
             }
             std::hint::black_box(x);
+            if c.read().cpu_ns != a.cpu_ns {
+                break;
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(10),
+                "the thread's CPU clock did not move in 10 s: {a:?}"
+            );
         }
         let d = c.read() - a;
         assert!(d.cpu_ns > 0, "{d:?}");

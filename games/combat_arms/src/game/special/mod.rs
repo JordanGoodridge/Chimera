@@ -34,7 +34,13 @@
 //! `special_frames` after `grenades::server_frames`, in the spec's
 //! per-tick order): each object in creation order (the removal tests, its
 //! marks and triggers, its lifetime, then its physics: the first step in
-//! the frame it was made in, its start time the frame before), lasting
+//! the frame it was made in, its start time the frame before). Its
+//! `Transform` (what the presentation and the network's `NetItem` show)
+//! is drawn between those frames, one frame behind, as the grenades are
+//! (`sync_objects`: from its place at the frame before to its place now),
+//! so a client's snapshots, taken at its own update rate, see it move
+//! every tick instead of 20 times a second (backlog, "Gun game playtest,
+//! 2026-10-28"); its box (`CaTarget`) is where it is. Lasting
 //! explosion spheres and over-time entries being `grenades`' (the
 //! flames' and the napalm's spheres are `CaDamageSphere`s, the caltrops'
 //! bleeding an `OverTime` entry keyed by the caltrops), the heals
@@ -112,9 +118,9 @@ use super::{
     rules::state::{CaMatch, Phase},
 };
 use crate::{
-    core::{Damage, DamageKind, Died, Health, NetRole, Predict, SimClock, SimSet, Team},
+    core::{Damage, DamageKind, Died, Health, LocalPlayer, NetRole, Predict, SimClock, SimSet, Team},
     map::loose::ShownItem,
-    net::NetItem,
+    net::{NetCharacter, NetItem, own_items::{OwnItemSettings, PredictedItem}},
     weapon::{
         CarriedAppExt, NetPart, Weapon, WeaponEvent, WeaponEventKind, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
@@ -197,6 +203,12 @@ pub struct CaObject {
     /// u, u/s.
     pub pos: Vec3,
     pub velocity: Vec3,
+    /// Where it was and which way it was drawn facing at the server frame
+    /// before (u, unit): it is drawn on the way from there to `pos` over
+    /// the frame that follows (`sync_objects`), one server frame behind,
+    /// as the grenades are (`grenades::draw_between_frames`).
+    pub drawn_from: Vec3,
+    pub drawn_dir_from: Vec3,
     /// Its box's half-extents, u.
     pub half: Vec3,
     /// Hit points left, and gone at 1 or less.
@@ -226,6 +238,8 @@ impl CaObject {
             hp,
             pos,
             velocity,
+            drawn_from: pos,
+            drawn_dir_from: Vec3::ZERO,
             half,
             health,
             destroyed: false,
@@ -244,6 +258,20 @@ impl CaObject {
     /// Its world position, metres.
     pub fn at(&self) -> Vec3 {
         self.pos * self.unit
+    }
+
+    /// Which way it is drawn facing (unit; zero: not turned): an impact
+    /// projectile or bolt along its flight (a stuck bolt as it went in),
+    /// else its facing.
+    pub fn drawn_dir(&self) -> Vec3 {
+        if !matches!(self.kind, Kind::Impact(_) | Kind::Bolt(_)) {
+            return Vec3::ZERO;
+        }
+        if self.s.stuck.is_some() || self.velocity.length_squared() > 1.0 {
+            self.velocity.normalize_or_zero()
+        } else {
+            self.s.facing
+        }
     }
 
     /// Hit points taken by damage of `kind` (`weak`'s multipliers).
@@ -425,8 +453,67 @@ impl Plugin for CaSpecialPlugin {
         )
         // A death marks the owner's devices; seen by the next frame.
         .add_systems(FixedUpdate, on_death.after(crate::core::apply_damage).run_if(crate::core::authoritative))
-        // On a network server the clients draw the objects from `NetItem`s.
-        .add_systems(FixedLast, net_items.run_if(resource_equals(NetRole::Server)));
+        // On a network server the clients draw the objects from `NetItem`s;
+        // a client draws its own projectiles from the shot (`predict_shots`).
+        .add_systems(FixedLast, net_items.run_if(resource_equals(NetRole::Server)))
+        .add_systems(
+            FixedUpdate,
+            predict_shots
+                .after(WeaponFrame)
+                .in_set(SimSet::Weapons)
+                .run_if(resource_equals(NetRole::Client)),
+        );
+    }
+}
+
+/// A network client's own impact projectiles and bolts, drawn from the
+/// shot with `cl_predict_projectiles 1` (Chimera's `net::own_items`; the
+/// original makes no client copy): the first time its predicted
+/// weapon frame fires one, the same direction from the shared seed as
+/// the server's (`fire`), at the record's speed, on the server's 20 Hz
+/// steps (`SERVER_FRAME`) under the object gravity with its quarter term
+/// (`grenades::flight_step`).
+fn predict_shots(
+    mut events: MessageReader<WeaponEvent>,
+    local: Query<(), With<LocalPlayer>>,
+    projectiles: Query<&CaProjectileData>,
+    bolts: Query<(&CaBoltData, &Weapon)>,
+    settings: Option<Res<OwnItemSettings>>,
+    mut commands: Commands,
+) {
+    if !settings.is_some_and(|s| s.on()) {
+        events.clear();
+        return;
+    }
+    for e in events.read() {
+        let WeaponEventKind::Fired {
+            origin,
+            yaw,
+            pitch,
+            seed,
+            ..
+        } = e.kind
+        else {
+            continue;
+        };
+        if e.replay || !local.contains(e.owner) {
+            continue;
+        }
+        let step = super::grenades::SERVER_FRAME as f32;
+        let predicted = if let Ok(d) = projectiles.get(e.weapon) {
+            let p = &d.params;
+            let dir = cone_dir(p.perturb, p.dynamic_perturb, yaw, pitch, seed, PROJECTILE);
+            let gravity = if p.gravity { -super::grenades::OBJECT_GRAVITY * d.unit } else { 0.0 };
+            PredictedItem::new(p.shown_key(), origin, dir * p.speed * d.unit, step)
+                .with_gravity(gravity, super::grenades::GRAVITY_INTEGRATION_FACTOR)
+        } else if let Ok((d, w)) = bolts.get(e.weapon) {
+            let p = &d.params;
+            let dir = cone_dir(p.perturb, p.dynamic_perturb, yaw, pitch, seed, BOLT);
+            PredictedItem::new(w.id, origin, dir * p.speed * d.unit, step)
+        } else {
+            continue;
+        };
+        commands.spawn(predicted.with_shooter(e.owner).bundle());
     }
 }
 
@@ -595,14 +682,16 @@ pub(super) fn apply_heals(mut heals: ResMut<CaHeals>, mut health: Query<&mut Hea
 /// `NetItem` (the weapon's `ShownItem` key and the pose), replicated from
 /// the first one on.
 fn net_items(
-    mut q: Query<(Entity, &Transform, &ShownItem, Option<&mut NetItem>), With<CaObject>>,
+    mut q: Query<(Entity, &Transform, &ShownItem, &CaObject, Option<&mut NetItem>)>,
+    characters: Query<&NetCharacter>,
     mut commands: Commands,
 ) {
-    for (e, t, item, have) in &mut q {
+    for (e, t, item, o, have) in &mut q {
         let now = NetItem {
             model: item.0.clone(),
             origin: t.translation.to_array(),
             rotation: t.rotation.to_array(),
+            owner: o.owner.and_then(|w| characters.get(w).ok()).and_then(|c| c.owner),
         }
         .quantized();
         match have {
@@ -616,23 +705,39 @@ fn net_items(
     }
 }
 
-/// Objects' transforms and boxes follow their positions.
-fn sync_objects(mut objects: Query<(&CaObject, &mut Transform, &mut CaTarget)>) {
+/// Objects' boxes follow their positions; their transforms (what the
+/// presentation and the network's `NetItem` show) follow them between
+/// server frames: on the way from the frame before (`drawn_from`) to now,
+/// by how far the clock is into the next frame (`CaServerFrames::blend`).
+/// Objects move only on the server's 20 frames a second: drawn at them
+/// they hopped 50 ms at a time, and a client's snapshots (taken at its
+/// update rate, held at the ticks between) drew a staircase of stops and
+/// jumps (backlog, "Gun game playtest, 2026-10-28").
+pub(super) fn sync_objects(
+    frames: Res<CaServerFrames>,
+    clock: Res<SimClock>,
+    mut objects: Query<(&CaObject, &mut Transform, &mut CaTarget)>,
+) {
+    let a = frames.blend(clock.now);
     for (o, mut t, mut target) in &mut objects {
-        let at = o.at();
+        let at = o.drawn_from.lerp(o.pos, a) * o.unit;
         if t.translation != at {
             t.translation = at;
         }
-        let dir = if o.s.stuck.is_some() || o.velocity.length_squared() > 1.0 {
-            o.velocity.normalize_or_zero()
+        let to = o.drawn_dir();
+        let dir = if o.drawn_dir_from == Vec3::ZERO {
+            to
         } else {
-            o.s.facing
+            o.drawn_dir_from.lerp(to, a).normalize_or(to)
         };
-        if dir != Vec3::ZERO && matches!(o.kind, Kind::Impact(_) | Kind::Bolt(_)) {
-            t.rotation = Transform::IDENTITY.looking_to(dir, Vec3::Y).rotation;
+        if dir != Vec3::ZERO {
+            let r = Transform::IDENTITY.looking_to(dir, Vec3::Y).rotation;
+            if t.rotation != r {
+                t.rotation = r;
+            }
         }
         let tg = CaTarget {
-            centre: at,
+            centre: o.at(),
             half: o.half * o.unit,
         };
         if *target != tg {
@@ -775,6 +880,8 @@ fn special_frames(
                 round_over,
             };
             o.created.get_or_insert(mine.frame - 1);
+            o.drawn_from = o.pos;
+            o.drawn_dir_from = o.drawn_dir();
             match o.kind.clone() {
                 Kind::Impact(p) => impact::update(&mut cx, e, &mut o, &p),
                 Kind::Device(p) => devices::update(&mut cx, e, &mut o, &p),

@@ -25,6 +25,26 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## Roadmap after the gun game settles (user, 2026-10-29)
 
+- **Order (user, 2026-10-30):** the asset service's first milestone (M1:
+  per-file packer, local cache mount, recording what a load opens), then
+  the ECS cleanup, then the main menu. No PR test runner or CI for now;
+  AGENTS.md asks contributors to test before merging (a guideline). A
+  friend's test VM may come later.
+- **Console namespaces (user idea, 2026-10-30).** With several games in
+  one app, flat command and setting names (`sv_cheats`, `cl_hitmarker`)
+  collide. Proposed:
+  - Every command and setting gets a namespace like our ids:
+    `cs_source:sv_cheats`, `combat_arms:musicvolume`,
+    `chimera:asset_url`. The full name always works.
+  - Original names stay inside each game's namespace for parity.
+  - `scope <game>` makes short names resolve in that game first, then
+    `chimera`. The default scope is the current game; in the party apps,
+    the game of the gun in hand.
+  - Configs and binds with short names keep working, and are saved with
+    full names from now on. An ambiguous short name prints a hint.
+  - Our general settings move to `chimera:` with no sv_/cl_ prefix.
+  Do it with the ECS cleanup, before the next game; the user to confirm
+  the design.
 - **First: ECS cleanup where new games plug in (2026-10-29).** Order (user, 2026-10-30): after the current gameplay work, before any new game; performance is fine today. Plan: [plans/active/ecs-cleanup.md](plans/active/ecs-cleanup.md) (step 1 done). For
   extensibility more than speed. Counts today: ~350 functions taking the
   whole world (`&mut World`), ~720 queries built inside them, 78
@@ -81,7 +101,31 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
-- **Spawn facing toward open space (user idea, 2026-10-30).** Today the gun
+- **The grenade launcher's projectile is choppy on a client, "maybe all
+  projectiles" (user, 2026-10-29): fixed, confirm in a playtest.** Not
+  the client's interpolation (every `NetItem` was already drawn between
+  snapshots): Combat Arms' objects (rockets, launcher shells, flame puffs,
+  crossbow bolts, thrown devices) moved only on the server's 20 Hz
+  frames and their `Transform`, which the `NetItem` carries, hopped with
+  them, so a client's snapshots (at its update rate, held at the ticks
+  between) drew stops and jumps: worst frame step 1.6-1.7x the speed
+  with 8-13 still frames per flight at 30 updates/s, 2.9-3.5x and 23-38
+  still frames at 66, uneven at 20 (a bolt 7-8x); the listen server's
+  host saw the 20 Hz hops too. Now drawn between frames as Combat Arms'
+  grenades already were (`special::sync_objects`): every kind 1.0-1.1x,
+  none still, at 20/30/66 (`net_projectiles`). Combat Arms' grenades and
+  CS:S's (which fly every tick) were smooth before and after
+  (`grenades_in_flight_drawn_smoothly`). An option, off by default
+  (parity: the original's client makes no copy of its own projectile,
+  special_weapons.md "Projectile looks and sounds in flight"):
+  `cl_predict_projectiles 1` makes the shooter's own rockets, shells,
+  flame puffs and bolts leave the muzzle on the fire frame, his client
+  flying its own copy from the shot until the server's rests or goes
+  (`net::own_items`, net36); the user decides whether it becomes the
+  default. Thrown grenades stay the server's (Source predicts the throw
+  only).
+- **Spawn facing toward open space (user idea, 2026-10-30; fixed, confirm in a
+  playtest).** Was: today the gun
   game spawns face one of eight fixed directions (`minigame::spawns`), so
   a player can face a wall, and views can line up with map edges (the
   de_dust2 seam).
@@ -95,13 +139,19 @@ the user's go-ahead: no Actions runs unless asked.
     picks the facing and sends it.
   - Test: a spawn beside a wall faces away from it, and the facing varies
     within its open sector.
-- **Melee finale on by default, longer for longer games (user, 2026-10-30).**
-  Both gun games (Lucker Party's `gun_game_dust2` and Ultimate Gun Game's
-  automatic definition) end on melee by default. A longer ladder gets
-  more melee rungs (e.g. one per ~10 rungs, at most 3). Each melee rung
-  draws its own melee weapon from the games' knives and melee weapons,
-  the infected hands among them at their odds. Host settings can still
-  turn it off.
+- **Melee finale on by default, longer for longer games (user, 2026-10-30):
+  fixed, confirm in a playtest.** Both gun games (Lucker Party's
+  `gun_game_dust2` and Ultimate Gun Game's automatic definition) end on
+  melee by default (`knife_finale = true`; Host settings "Knife finale"
+  turn it off). The number of melee rungs is `melee_rungs`, `"auto"` by
+  default (7% of the gun rungs, `melee_share`, rounded, at least 1) or a number, also a
+  Host setting ("Melee rungs"). Each melee rung draws its own weapon from
+  the installed games' knives and melee weapons (CS:S's knife, Combat
+  Arms' knife-class weapons), none twice while there are enough; the
+  infected's hands come up on a melee rung at their odds, once a ladder
+  at most; the last rung is melee either way and its kill wins. The
+  draw is the host's and replicated (`NetMinigame::rungs`). Docs/DESIGN.md
+  "Gun game rules".
 - **Tracers seen through walls (user, 2026-10-29): done, decided by the
   user 2026-10-30.** Found: CS:S's tracers (and impacts, flashes, every
   effect group's particles) were already depth tested

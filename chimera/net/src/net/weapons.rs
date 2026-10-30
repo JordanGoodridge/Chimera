@@ -37,7 +37,8 @@
 //! (`DropRequest`); a client puts others' weapons in their hands
 //! (`weapon::remote::show_held`), traces their rounds again
 //! (`weapon::remote::RemoteShot`), draws items from snapshots as
-//! `map::loose::ShownItem`s, starts smoke clouds, writes `Died`, `Detonated`,
+//! `map::loose::ShownItem`s (not its own projectiles while it predicts
+//! them: `own_items`), starts smoke clouds, writes `Died`, `Detonated`,
 //! `Blinded`, `Deafened`, `DamageTaken` for its own effects and HUD.
 
 use bevy::{app::RunFixedMainLoopSystems, prelude::*};
@@ -113,6 +114,7 @@ pub(super) fn plugin(app: &mut App) {
         .add_systems(
             RunFixedMainLoop,
             draw_items
+                .in_set(DrawItems)
                 .in_set(RunFixedMainLoopSystems::AfterFixedMainLoop)
                 .after(InterpSystems::Ease)
                 .after(super::interp::draw_others)
@@ -197,6 +199,7 @@ fn write_items(
         ),
         Or<(With<LooseItem>, With<Projectile>)>,
     >,
+    characters: Query<&NetCharacter>,
     mut commands: Commands,
 ) {
     for (e, t, loose, projectile, shown, have) in &mut q {
@@ -210,10 +213,15 @@ fn write_items(
         };
         // On the network's grid (`quant`): an item shaking below it sends
         // nothing.
+        let owner = projectile
+            .and_then(|p| p.thrower)
+            .and_then(|t| characters.get(t).ok())
+            .and_then(|c| c.owner);
         let now = NetItem {
             model,
             origin: t.translation.to_array(),
             rotation: t.rotation.to_array(),
+            owner,
         }
         .quantized();
         match have {
@@ -786,19 +794,32 @@ fn send_drops(mut asked: MessageReader<DropRequested>, mut out: MessageWriter<Dr
     }
 }
 
-/// A loose weapon or grenade from the server: drawn with its model.
-fn item_arrived(add: On<Add<NetItem>>, q: Query<&NetItem>, role: Option<Res<NetRole>>, mut commands: Commands) {
+/// A loose weapon or grenade from the server: drawn with its model,
+/// unless it is this client's own projectile a prediction draws
+/// (`own_items::claim`).
+fn item_arrived(
+    add: On<Add<NetItem>>,
+    q: Query<&NetItem>,
+    role: Option<Res<NetRole>>,
+    me: Option<Res<super::client::LocalClientId>>,
+    mut predictions: Query<(Entity, &mut super::own_items::PredictedItem)>,
+    mut commands: Commands,
+) {
     if role.as_deref() != Some(&NetRole::Client) {
         return;
     }
     let Ok(item) = q.get(add.entity) else { return };
-    commands.entity(add.entity).insert((
-        ShownItem(item.model.clone()),
-        Transform::from_translation(Vec3::from_array(item.origin))
-            .with_rotation(Quat::from_array(item.rotation).normalize()),
-        NetDrawn,
-    ));
+    let pose = Transform::from_translation(Vec3::from_array(item.origin))
+        .with_rotation(Quat::from_array(item.rotation).normalize());
+    commands.entity(add.entity).insert((pose, NetDrawn));
+    if !super::own_items::claim(add.entity, item, me.as_deref(), &mut predictions, &mut commands) {
+        commands.entity(add.entity).insert(ShownItem(item.model.clone()));
+    }
 }
+
+/// Where a client draws items from snapshots (`draw_items`).
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DrawItems;
 
 /// Loose weapons and grenades where the server had them at the render
 /// time.

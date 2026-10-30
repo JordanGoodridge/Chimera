@@ -685,6 +685,14 @@ impl CaServerFrames {
     pub fn time(&self) -> f64 {
         self.frame as f64 * self.interval
     }
+
+    /// How far the clock (`now`, s) is into the server frame after the
+    /// last one run (0..1): what is drawn between frames is this far from
+    /// its place at the frame before to its place now (`draw_between_frames`,
+    /// `special::sync_objects`).
+    pub fn blend(&self, now: f64) -> f32 {
+        (((now - self.time()) / self.interval) as f32).clamp(0.0, 1.0)
+    }
 }
 
 /// A pending flash: the victim's server timer (10).
@@ -1495,7 +1503,7 @@ pub(crate) fn server_frames(
 /// rendered frame between, so the arc looked wrong. The look is one
 /// server frame behind, as a client between two server updates.
 pub(crate) fn draw_between_frames(frames: &CaServerFrames, now: f64, grenades: &mut Grenades) {
-    let a = (((now - frames.time()) / frames.interval) as f32).clamp(0.0, 1.0);
+    let a = frames.blend(now);
     for (_, g, mut transform, _) in grenades.iter_mut() {
         let at = g.drawn_from.lerp(g.pos, a) * g.unit;
         if transform.translation != at {

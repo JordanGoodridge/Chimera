@@ -449,7 +449,7 @@ pub fn definition(caps: &[Capabilities], opts: &AutoOptions, installed: &dyn Fn(
          [spawn]\nrespawn = {{ delay = \"2s\", protection = \"2s\" }}\npoints = \"random_hidden\"\n\
          min_distance = 20.32\nkit = {kit}\n\n\
          [rules]\nmodule = \"chimera:ladder\"\nladder = {ladder}\nadvance_on = \"kill\"\n\
-         demote_on = \"melee_death\"\nrefill_ammo = true\nwin = {{ kind = \"ladder_end\" }}\n",
+         demote_on = \"melee_death\"\nknife_finale = true\nrefill_ammo = true\nwin = {{ kind = \"ladder_end\" }}\n",
         seed = opts.seed,
         id = q(&opts.id),
         name = q(&opts.name),

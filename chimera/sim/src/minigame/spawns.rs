@@ -24,9 +24,17 @@
 //!   least `min_distance` m from every living enemy (a character of
 //!   another team) and out of their sight (rays from each enemy's eye to
 //!   the spot's head, chest and feet blocked); else the first that is
-//!   far enough; else the one farthest from its nearest enemy. It faces
-//!   its longest open direction. Never fails once the map has a spawn
-//!   point.
+//!   far enough; else the one farthest from its nearest enemy. Never
+//!   fails once the map has a spawn point.
+//! - Facing (`face`, the minigame's `[spawn] facing`, `def::Facing`): at
+//!   the picked spot, 32 horizontal rays from eye height against the
+//!   static world (characters excluded), each capped at 30 m; the
+//!   distances are smoothed over 5 neighbours, and the most open direction
+//!   is faced (among those within 10% of it, the one toward the middle of
+//!   the spots), turned a random +-10 degrees by the seeded draws, pitched
+//!   2 degrees down. About 20 microseconds a spawn
+//!   (`facing_costs_well_under_a_millisecond` measures it). `rays = 0`
+//!   brings back eight fixed directions.
 //! - Determinism: the shuffle and the picks draw on a seeded generator
 //!   (`SpawnSeed`, else a hash of the minigame's id), started over with
 //!   the match (`reset`); candidates and enemies are walked in a fixed
@@ -58,6 +66,8 @@ use crate::{
     },
     weapon::random::{Rng, crc32},
 };
+
+use super::def::Facing;
 
 /// The grid of spots in a navigation area (m).
 pub const SPOT_GRID: f32 = 1.5;
@@ -112,7 +122,7 @@ fn seed_of(world: &World) -> u32 {
 
 /// `e`'s spawn: a spot as the module docs say; None when the map has no
 /// spawn point at all.
-pub fn pick(world: &mut World, e: Entity, min_distance: f32) -> Option<Transform> {
+pub fn pick(world: &mut World, e: Entity, min_distance: f32, facing: Facing) -> Option<Transform> {
     let mut points: Vec<Vec3> = world
         .query_filtered::<(Entity, &Transform), (With<SpawnPoint>, Without<Intent>)>()
         .iter(world)
@@ -185,30 +195,85 @@ pub fn pick(world: &mut World, e: Entity, min_distance: f32) -> Option<Transform
         }
     }
     let spot = chosen.or(far_enough).or(farthest.map(|(_, s)| s));
+    let centroid = (!spots.spots.is_empty()).then(|| spots.spots.iter().sum::<Vec3>() / spots.spots.len() as f32);
     let at = spot.map(|s| {
-        let yaw = open_direction(&q, &sight, s);
-        Transform::from_translation(s + Vec3::Y * SPAWN_LIFT).with_rotation(Quat::from_rotation_y(yaw))
+        let (yaw, pitch) = face(&q, &sight, s, &facing, centroid, &mut draws.0);
+        Transform::from_translation(s + Vec3::Y * SPAWN_LIFT)
+            .with_rotation(Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0))
     });
     world.insert_resource(draws);
     at
 }
 
-/// The yaw (radians) of the longest clear line from `feet` among eight.
-fn open_direction(q: &SpatialQuery, filter: &SpatialQueryFilter, feet: Vec3) -> f32 {
+/// The yaw and pitch (radians) a spawn at `feet` would face, for a seed
+/// (the draws start there): what `pick` does at its spot, for tests and
+/// tools. None without a physics world.
+pub fn facing_at(world: &mut World, feet: Vec3, facing: &Facing, seed: u32) -> Option<(f32, f32)> {
+    let characters: Vec<Entity> = world.iter_entities().filter(|r| r.contains::<Intent>()).map(|r| r.id()).collect();
+    let centroid = world
+        .get_resource::<SpawnSpots>()
+        .filter(|s| !s.spots.is_empty())
+        .map(|s| s.spots.iter().sum::<Vec3>() / s.spots.len() as f32);
+    let mut state = SystemState::<SpatialQuery>::new(world);
+    let q = state.get(world).ok()?;
+    let filter = SpatialQueryFilter::from_mask(SOLID_LAYERS).with_excluded_entities(characters);
+    Some(face(&q, &filter, feet, facing, centroid, &mut Rng::new(seed)))
+}
+
+/// The yaw and pitch (radians) a spawn at `feet` faces: `Facing`'s rule.
+/// With `rays == 0`, the longest of eight fixed directions, level.
+fn face(
+    q: &SpatialQuery,
+    filter: &SpatialQueryFilter,
+    feet: Vec3,
+    f: &Facing,
+    centroid: Option<Vec3>,
+    rng: &mut Rng,
+) -> (f32, f32) {
     let eye = feet + Vec3::Y * 1.6;
-    let mut best = (-1.0f32, 0.0f32);
-    for k in 0..8 {
-        let yaw = k as f32 * std::f32::consts::FRAC_PI_4;
-        let dir = Quat::from_rotation_y(yaw) * Vec3::NEG_Z;
-        let free = Dir3::new(dir)
-            .ok()
-            .and_then(|d| q.cast_ray(eye, d, 30.0, true, filter))
-            .map_or(30.0, |h| h.distance);
-        if free > best.0 + 1e-3 {
-            best = (free, yaw);
+    let n = if f.rays == 0 { 8 } else { f.rays as usize };
+    let range = if f.rays == 0 { 30.0 } else { f.range.max(1.0) };
+    let yaw_of = |k: usize| k as f32 * std::f32::consts::TAU / n as f32;
+    let free: Vec<f32> = (0..n)
+        .map(|k| {
+            let dir = Quat::from_rotation_y(yaw_of(k)) * Vec3::NEG_Z;
+            Dir3::new(dir)
+                .ok()
+                .and_then(|d| q.cast_ray(eye, d, range, true, filter))
+                .map_or(range, |h| h.distance)
+        })
+        .collect();
+    if f.rays == 0 {
+        let mut best = (-1.0f32, 0usize);
+        for (k, d) in free.iter().enumerate() {
+            if *d > best.0 + 1e-3 {
+                best = (*d, k);
+            }
         }
+        return (yaw_of(best.1), 0.0);
     }
-    best.1
+    // Each direction's distance averaged with its neighbours' (a ring).
+    let half = ((f.smooth.max(1) as usize - 1) / 2).min(n / 2);
+    let smooth: Vec<f32> = (0..n)
+        .map(|k| {
+            let sum: f32 = (0..=2 * half).map(|t| free[(k + n + t - half) % n]).sum();
+            sum / (2 * half + 1) as f32
+        })
+        .collect();
+    let top = smooth.iter().copied().fold(0.0f32, f32::max);
+    let mut pick = (0..n).max_by(|a, b| smooth[*a].total_cmp(&smooth[*b]).then(b.cmp(a))).unwrap_or(0);
+    if f.tie > 0.0
+        && let Some(c) = centroid
+        && let Some(to) = Dir3::new(Vec3::new(c.x - feet.x, 0.0, c.z - feet.z)).ok()
+    {
+        let toward = |k: usize| (Quat::from_rotation_y(yaw_of(k)) * Vec3::NEG_Z).dot(*to);
+        pick = (0..n)
+            .filter(|k| smooth[*k] >= top * (1.0 - f.tie))
+            .max_by(|a, b| toward(*a).total_cmp(&toward(*b)).then(b.cmp(a)))
+            .unwrap_or(pick);
+    }
+    let turn = rng.range(-f.jitter, f.jitter).to_radians();
+    (yaw_of(pick) + turn, f.pitch.to_radians())
 }
 
 /// The map's spots, made now if they aren't kept yet. `points`: the map's

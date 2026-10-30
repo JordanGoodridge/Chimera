@@ -200,6 +200,7 @@ struct ItemWire {
     model: String,
     origin: [i32; 3],
     rotation: [i16; 4],
+    owner: Option<u64>,
 }
 
 impl From<&NetItem> for ItemWire {
@@ -208,6 +209,7 @@ impl From<&NetItem> for ItemWire {
             model: p.model.clone(),
             origin: q3(p.origin, POSITION_STEP),
             rotation: q_rotation(p.rotation),
+            owner: p.owner,
         }
     }
 }
@@ -218,6 +220,7 @@ impl From<ItemWire> for NetItem {
             model: w.model,
             origin: dq3(w.origin, POSITION_STEP),
             rotation: dq_rotation(w.rotation),
+            owner: w.owner,
         }
     }
 }
@@ -317,6 +320,7 @@ mod tests {
                 model: "models/weapons/w_rif_ak47.mdl".into(),
                 origin: p.origin,
                 rotation,
+                owner: Some(3),
             }
             .quantized();
             let bytes = postcard::to_allocvec(&item).unwrap();

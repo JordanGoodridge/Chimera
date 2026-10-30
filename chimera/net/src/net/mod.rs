@@ -217,6 +217,7 @@ pub mod maps;
 pub mod memory;
 pub mod motd;
 pub mod ordered;
+pub mod own_items;
 pub mod parts;
 pub mod predict;
 pub mod props;
@@ -259,7 +260,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net35");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net37");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -505,6 +506,10 @@ pub struct NetCmd {
     /// `cl_lagcompensation 0`): the server traces its shots against others
     /// where they were then (`weapon::lagcomp`).
     pub view_tick: f64,
+    /// The count of the server's last look turn the client has taken
+    /// (`core::ViewSet`, `OwnState::look`); the server keeps its own look
+    /// over this command's until it matches.
+    pub look_ack: u8,
 }
 
 /// `NetCmd::buttons` bits (Chimera's own buttons; a game's named actions
@@ -554,6 +559,7 @@ impl NetCmd {
             select: i.select,
             actions: i.actions,
             view_tick: 0.0,
+            look_ack: 0,
         }
     }
 
@@ -694,6 +700,10 @@ pub struct OwnState {
     /// The map camera the player views through (`core::MapView`: origin,
     /// rotation), if any.
     pub view: Option<([f32; 3], [f32; 4])>,
+    /// The server's last turn of the player's look (`core::ViewSet`: count,
+    /// yaw, pitch): a client that hasn't taken that count turns to it and
+    /// echoes the count (`NetCmd::look_ack`).
+    pub look: Option<(u8, f32, f32)>,
     /// The times the server changed the player's predicted state outside
     /// its commands (`core::Rebased`: a rules' weapon swap). When it
     /// changes, the client takes the state as a restart, as for `alive`.
@@ -797,13 +807,17 @@ pub struct NetHeld {
 
 /// Something small the server simulates and clients draw from snapshots
 /// (`weapons`): a loose weapon or a grenade in flight, by its held-model
-/// key (`map::loose::ShownItem`) and pose. Sent quantized as `NetProp`
-/// (`quant`, `NetItem::quantized`).
+/// key (`map::loose::ShownItem`) and pose, and the client id of the player
+/// who threw or fired it (`NetCharacter::owner`; None: a bot's, the
+/// world's): that player's client draws its own predicted copy instead
+/// (`own_items`). Sent quantized as `NetProp` (`quant`,
+/// `NetItem::quantized`).
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct NetItem {
     pub model: String,
     pub origin: [f32; 3],
     pub rotation: [f32; 4],
+    pub owner: Option<u64>,
 }
 
 /// A smoke cloud (`weapon::grenade::SmokeCloud`): where, and the grenade
@@ -1313,6 +1327,7 @@ impl Plugin for NetPlugin {
         anchors::plugin(app);
         ragdolls::plugin(app);
         weapons::plugin(app);
+        own_items::plugin(app);
         game::plugin(app);
         chat::plugin(app);
         cheats::plugin(app);
@@ -1706,6 +1721,7 @@ mod tests {
             select: Some(200),
             actions: 0b101,
             view_tick: f64::NAN,
+            look_ack: 0,
         }
         .apply(&mut i);
         assert_eq!(i.move_axis, Vec2::new(1.0, 0.0));

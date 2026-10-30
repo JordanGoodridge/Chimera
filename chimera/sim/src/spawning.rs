@@ -52,11 +52,8 @@ pub fn revive(world: &mut World, e: Entity, at: Option<Transform>) -> bool {
         if let Some(mut p) = ent.get_mut::<Position>() {
             p.0 = at.translation;
         }
-        if let Some(mut i) = ent.get_mut::<Intent>() {
-            let (yaw, _, _) = at.rotation.to_euler(EulerRot::YXZ);
-            i.yaw = yaw;
-            i.pitch = 0.0;
-        }
+        let (yaw, pitch, _) = at.rotation.to_euler(EulerRot::YXZ);
+        chimera_core::core::set_view(world, e, yaw, pitch);
     }
     true
 }
