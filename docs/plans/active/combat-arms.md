@@ -666,6 +666,14 @@ socket's angles, third person composes them after the socket's rotation;
 (3) the flash stays at the data flash point; (4) the lens style is
 alpha-tested at 160, two-sided, opaque; (5) default animation, no
 sockets used.
+**Done (2026-10-30):** our reading was the difference: a part model is
+drawn in the pose of its first animation, not its bind pose (as the
+held weapons already were); `PV_silencerA`'s animation turns it half a
+turn, so posed it straddles the M4A1's muzzle (-0.3 to +0.9 u) with no
+turn of ours. `parts::turn_ahead` is gone; first person uses
+`parts::first_person_frame` (angles added), third person the offset
+after the socket; the lens style is a cut-out (`render_style`). Tests:
+attachments t41-t43, heavy `rung_attachments`.
 
 ## View-model attached effects and melee sounds: open questions for a spec session (2026-10-29)
 

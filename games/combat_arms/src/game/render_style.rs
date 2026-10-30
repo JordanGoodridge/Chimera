@@ -5,15 +5,14 @@
 //! weapon's `PVRenderStyle#` / `HHRenderStyle#`, a head piece's or
 //! face's); a missing entry is the engine's default style. How each file
 //! draws is our data (data/render_styles.toml, by file name: opaque,
-//! blended by the texture's alpha, added, or glowing), applied to the
-//! piece's mesh (`apply`).
+//! blended by the texture's alpha, added, glowing, or alpha-tested cut
+//! out as models_ltb.md "Render styles and sprite skins" reads the
+//! files), applied to the piece's mesh (`apply`).
 //!
-//! Known shortcuts: the render-style files' format isn't in the specs
-//! (models_ltb.md "Other files": "not covered"), so what each one does
-//! is our reading of its name (the transparent team mark, characters.md
-//! 2: "drawn with the transparent mark render style, so enemies show
-//! nothing", is the texture's alpha blended); a file not in our table
-//! draws opaque, as the default style.
+//! Known shortcuts: the files aren't read (their format is in
+//! models_ltb.md now); the table is our summary of them, so a style
+//! not in it draws opaque, as the default style, and the environment and
+//! rim maps of slot 1 (`envmap`, `itemedge`, `pv_char`...) aren't drawn.
 
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -34,6 +33,31 @@ pub enum Style {
     Add,
     /// At its texture's own brightness, ignoring the lighting.
     Glow,
+    /// Alpha-tested, not blended (models_ltb.md "Render styles and sprite
+    /// skins"): drawn opaque where the texture's alpha passes the test
+    /// against `reference`/255 (≥, or > when `strict`), discarded
+    /// elsewhere; `unlit`: the texture's colour alone; `two_sided`: no
+    /// culling.
+    Cutout {
+        reference: u8,
+        #[serde(default)]
+        strict: bool,
+        #[serde(default)]
+        unlit: bool,
+        #[serde(default)]
+        two_sided: bool,
+    },
+}
+
+impl Style {
+    /// Whether a texel of alpha `alpha` (0..255) is drawn.
+    pub fn keeps(self, alpha: u8) -> bool {
+        match self {
+            Style::Cutout { reference, strict: false, .. } => alpha >= reference,
+            Style::Cutout { reference, strict: true, .. } => alpha > reference,
+            _ => alpha > 0,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -79,6 +103,13 @@ pub fn apply(mesh: &mut MapMesh, style: Style) {
             mesh.unlit = true;
         }
         Style::Glow => mesh.unlit = true,
+        Style::Cutout { reference, strict, unlit, two_sided } => {
+            // The cut between the passing and failing texel values.
+            let cut = if strict { f32::from(reference) + 0.5 } else { f32::from(reference) - 0.5 };
+            mesh.alpha = MapAlpha::Mask(cut / 255.0);
+            mesh.unlit |= unlit;
+            mesh.double_sided |= two_sided;
+        }
     }
 }
 

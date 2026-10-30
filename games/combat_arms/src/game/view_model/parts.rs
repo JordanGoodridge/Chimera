@@ -15,20 +15,20 @@
 //! (`on_demand::load_weapon`) from the weapon's view model with the parts'
 //! meshes added (`attach`); until it is ready the bare gun's stands in.
 //!
-//! Known shortcuts (docs/plans/active/combat-arms.md, "Attachment
-//! models"): the rotation offset is read as radians (yaw about the
-//! socket's up axis, pitch about its right, roll about its forward;
-//! every stock first-person value is zero); the muzzle flash stays at
-//! the gun's `Flash` socket (not moved to a silencer's end); a part
-//! model's own animations aren't played.
-
-use std::f32::consts::PI;
+//! The part sits in the socket's own frame (`first_person_frame`: the
+//! socket's axes, the offset's angles added to the socket's; no turn of
+//! our own), its model in the pose of its first animation
+//! (`view_model::load_part`); attachments.md Corrections (2026-10-30)
+//! 1 and 5.
+//!
+//! A part never moves the muzzle flash (Corrections 3); part models play
+//! no animations and their sockets are unused (Corrections 5).
 
 use bevy::prelude::*;
 
 use super::{VIEW_SCALE, load_part};
 use super::super::{
-    attachments::{AttachParams, CaMods, CaModTable, MUZZLE, ModRecord, PartOffset},
+    attachments::{AttachParams, CaMods, CaModTable, ModRecord, PartOffset},
     render_style,
 };
 use crate::map::{MapData, MapViewModel};
@@ -92,14 +92,37 @@ pub fn parts_of<'a>(
         .collect()
 }
 
-/// The socket transform `offset` adds, in the socket's frame (the game's
-/// axes converted, units): the position, then yaw, pitch and roll.
+/// The socket transform `offset` adds in the third person, in the
+/// socket's frame (the game's axes converted, units): the position, then
+/// the rotation built from (pitch = its y, yaw = its x, roll = its z),
+/// composed after the socket's rotation (attachments.md Corrections
+/// (2026-10-30) 2).
 pub fn offset_matrix(offset: &PartOffset) -> Mat4 {
     let pos = Vec3::from(lithtech_formats::ltb::to_rh_vec(offset.pos));
     // Z mirrored: turns about x and y change sign, about z keep it.
     let [yaw, pitch, roll] = offset.rot;
     let rot = Quat::from_euler(EulerRot::YXZ, -yaw, -pitch, roll);
     Mat4::from_rotation_translation(rot, pos)
+}
+
+/// A first-person part's frame (attachments.md Corrections (2026-10-30)
+/// 1): the socket's world transform `socket` moved along the socket's
+/// own axes by the offset's position, its rotation the socket's split
+/// into yaw, pitch and roll with the offset's angles (radians: x yaw, y
+/// pitch, z roll) added (`added_angles`); no other turn.
+pub fn first_person_frame(socket: Mat4, offset: &PartOffset) -> Mat4 {
+    let (scale, rot, at) = socket.to_scale_rotation_translation();
+    let pos = at + rot * (scale * Vec3::from(lithtech_formats::ltb::to_rh_vec(offset.pos)));
+    Mat4::from_scale_rotation_translation(scale, added_angles(rot, offset.rot), pos)
+}
+
+/// Rotation `socket` (right-handed) with the game's angles `rot` (x yaw
+/// about up, y pitch about right, z roll about forward, radians, in the
+/// game's left-handed frame) added to its own yaw, pitch and roll and
+/// rebuilt in the same order. Z mirrored: yaw and pitch change sign.
+pub fn added_angles(socket: Quat, rot: [f32; 3]) -> Quat {
+    let (yaw, pitch, roll) = socket.to_euler(EulerRot::YXZ);
+    Quat::from_euler(EulerRot::YXZ, yaw - rot[0], pitch - rot[1], roll + rot[2])
 }
 
 /// Put `part`'s model (read through `file`) onto `view` at its socket,
@@ -128,13 +151,7 @@ pub fn attach(
     let bone = globals.get(socket.bone).copied().unwrap_or(Mat4::IDENTITY);
     let scale = Mat4::from_scale(Vec3::from(record.attach_scale.unwrap_or([1.0; 3])));
     let socket_m = view.root.to_matrix() * bone * socket.local.to_matrix();
-    let offset = offset_matrix(&part.offset);
-    let turn = if record.slot() == Some(MUZZLE) {
-        muzzle_turn(view, socket_m, offset * scale, &meshes)
-    } else {
-        Mat4::IDENTITY
-    };
-    let to_eye = socket_m * offset * turn * scale;
+    let to_eye = first_person_frame(socket_m, &part.offset) * scale;
     for (mesh, style) in meshes.iter_mut().zip(lods) {
         render_style::apply(mesh, render_style::of_list(&record.attach_render_styles, style));
         for p in &mut mesh.positions {
@@ -150,47 +167,6 @@ pub fn attach(
     }
     Ok(())
 }
-
-/// How a muzzle part's model turns at its socket (ours, pending the
-/// spec: docs/plans/active/combat-arms.md "Attachment models"): with the
-/// spec's reading (the model in the socket's frame) the stock rifles'
-/// silencers sit backwards inside the gun while the M24's and the
-/// pistols' fit, so of the model as it is and turned half a turn about
-/// each axis, the one that reaches farthest ahead of the muzzle without
-/// leaving it (its back end within `MUZZLE_GAP` units of the socket),
-/// ahead meaning away from the gun's middle.
-fn muzzle_turn(view: &MapViewModel, socket: Mat4, offset: Mat4, meshes: &[crate::map::MapMesh]) -> Mat4 {
-    let gun: Vec<Vec3> = view.model.meshes.iter().flat_map(|m| m.positions.iter()).map(|p| Vec3::from(*p)).collect();
-    let part: Vec<Vec3> = meshes.iter().flat_map(|m| m.positions.iter()).map(|p| Vec3::from(*p) / VIEW_SCALE).collect();
-    turn_ahead(socket, &gun, offset, &part)
-}
-
-/// `muzzle_turn` for any model: `gun`'s points (where the socket matrix
-/// `socket` maps to), the part's `points` in its own frame, placed by
-/// `offset` in the socket's frame.
-pub fn turn_ahead(socket: Mat4, gun: &[Vec3], offset: Mat4, points: &[Vec3]) -> Mat4 {
-    if gun.is_empty() {
-        return Mat4::IDENTITY;
-    }
-    let inv = socket.inverse();
-    let middle = gun.iter().fold(Vec3::ZERO, |a, p| a + inv.transform_point3(*p)) / gun.len() as f32;
-    let ahead = -middle.normalize_or_zero();
-    let mut best = (Mat4::IDENTITY, f32::MIN);
-    for turn in [Mat4::IDENTITY, Mat4::from_rotation_x(PI), Mat4::from_rotation_y(PI), Mat4::from_rotation_z(PI)] {
-        let m = offset * turn;
-        let along = points.iter().map(|p| m.transform_point3(*p).dot(ahead));
-        let (lo, hi) = along.fold((f32::MAX, f32::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
-        let reach = if lo <= MUZZLE_GAP { hi } else { hi - 1.0e4 };
-        if reach > best.1 + 1e-3 {
-            best = (turn, reach);
-        }
-    }
-    best.0
-}
-
-/// How far ahead of the muzzle (units) a muzzle part may start
-/// (`muzzle_turn`).
-const MUZZLE_GAP: f32 = 0.3;
 
 #[cfg(test)]
 mod tests {
