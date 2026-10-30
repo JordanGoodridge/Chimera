@@ -492,6 +492,17 @@ From the reference's overlay creation, the engine's sprite drawing for objects i
    - Ours: `games/combat_arms/src/ui/scope.rs` hands the picture to the shell's overlay, which draws it centred at its own aspect, filling the view's height, between black bars; `ZoomSpriteScale` is not applied.
    - Why it matters: with the stock picture and s = 0.001 the game's lens fills about 94 % of the screen height and the black ring reaches past the screen's top, bottom and (at 4:3) sides; ours shows the whole picture, ring and all, at less than half that size, with black bars instead of the world at the sides.
 
+## Corrections (2026-10-30)
+
+From the client weapon's fire-animation choice and its pre-fire lookup, the shared animation-rate calculation and the client's zoom command. Settles `view_models.md` contradictions C1 and C2 in favour of `view_models.md`.
+
+1. **Pistols play no pre-fire** (replaces "pistols: their 0 ms pre-fires count" in Corrections (2026-10-28) 3 and case 40's M92FS number).
+   - Reference: the pre-fire animation is looked up only for weapons outside the secondary (2) and melee (3) classes, and skipped for shop items of the primary-shotgun type; for those the press goes straight to `fire_0`. Every other weapon plays its model's `prefire` if the file has one. A pistol press from idle therefore fires on the **2nd** weapon update (as a primary shotgun), a rifle with a 0 ms `prefire` on the 3rd.
+   - A **non-zero** pre-fire (on any weapon that plays one, not only the minigun) delays the first round by its full length: `fire_0` starts on the update that sees `prefire` done (`animation.md`'s done-needs-L+1 rule), and its key at 0 ms is consumed on the next update.
+   - Ours: the M92FS's latency 3 (as the old case 40) and one update for any non-spinning pre-fire.
+   - Expect: test cases 43 and 44.
+2. **Special weapons zoom like guns.** There is no class rule for zoom: a special weapon zooms exactly when its scope slot holds a scope part with zoom levels (its `DefaultScopeAttach`, e.g. `XM25 Scope`, `LGB_scope`), with that part's levels, FOVs, overlay and `ZoomTime` (`attachments.md` "Zoom"), refused while reloading or (unzoomed) while firing a `ReloadAfterFire` weapon, the same as for a rifle. A dot-sight-type part only toggles dot-sight mode.
+
 ## Test cases
 
 Data as in "Typical weapons". Reference character for speeds. "Exact time" means the fire cycle, transitions and spread run on exact time (`weapon_firing.md` Q2 recommendation); frame-quantised cases say so. Unarmoured male victim, damage roll 1.0, unless stated.
@@ -543,6 +554,8 @@ Data as in "Typical weapons". Reference character for speeds. "Exact time" means
 44. **Scope overlay size, 2560 x 1440**: card 3162.2 x 3162.2 px at (−301.1, −861.1); 3.0881 px per texel; visible texels as at 1920 x 1080; ring edge at x ≈ 233.1 and 2345.4, world visible outside; readout right end (1225, 750), font height 37.5.
 45. **Scale and zoom independence**: the same scope with `ZoomSpriteScale` 0.002 at 1920 x 1080 → card 4743.3 px square (twice 43). Stepping the Barrett from 30° to 10° → card size unchanged. A 512 x 256 picture at s = 0.001, 1024 x 768 → 843.3 x 421.6 px, centred (texels stay square: no stretch at any aspect).
 46. **No fill outside the picture**: a test picture 256 x 256, opaque, s = 0.001, 1920 x 1080 → card 592.9 px square centred at (960, 540); every pixel outside it shows the world (with the focus blur's mix where that pass is on), none is black from the overlay.
+43. **Pistol latency (Corrections 2026-10-30, 1).** 60 fps, press seen on update 0: M92FS → round on update 2 (33.3 ms), the same as Remington_870; M4A1 (0 ms `prefire`) → update 3 (50.0 ms). Case 40's M92FS value is replaced by this.
+44. **Long pre-fire (Corrections 2026-10-30, 1).** A rifle copy whose `prefire` is 200 ms at rate 1, 60 fps, press on update 0 → `prefire` from update 1, seen done on the first update at least 200 ms (+1 ms) later (update 14, 233.3 ms), `fire_0` started there, round on update 15 (250 ms).
 
 ## Open questions
 

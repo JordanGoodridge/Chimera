@@ -600,6 +600,12 @@ the user's go-ahead: no Actions runs unless asked.
   tracer start (the view model's muzzle, the eye, a point ahead of it),
   and is it drawn at all while scoped? Ours starts at the view model's
   flash point, which keeps its camera offset when zoomed.
+  **Answered (2026-10-30)**, effects_sounds.md Corrections (2026-10-30)
+  3: one width direction for the whole strip, parallel to the screen and
+  perpendicular to its camera-space direction; world width `Width`/2, no
+  zoom or distance compensation; texture only (no colour or alpha fade);
+  depth-tested, not written (so not through walls); own tracer from the
+  data flash point, drawn while scoped.
 - **Ultimate Gun Game's Escape menu (user, 2026-10-29): fixed, confirm
   in a playtest** (`party_kit::esc_menu`, `party_kit::host`; DESIGN.md
   "The party apps' Escape menu"). It's
@@ -744,6 +750,8 @@ the user's go-ahead: no Actions runs unless asked.
   6. Special weapons' own scopes (XM25 Scope, L115 scope on specials,
      `LGB_scope`): needs a spec session. How a special weapon zooms isn't
      specified (data.rs "Known shortcuts").
+     **Answered (2026-10-30):** exactly like a gun, through its scope
+     part's zoom levels (weapon_classes.md Corrections (2026-10-30) 2).
 
   Stale in `game/data.rs`'s "Known shortcuts": "sounds and sound radii"
   aren't all unmapped (`MiscSound1..5`, `PlayAutoThrowSound`,

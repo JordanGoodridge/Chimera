@@ -685,6 +685,15 @@ A second pass over the reference's HUD (the crosshair item, the health, weapon, 
     - Reference: the shop item table's name for the weapon id.
     - Ours: `hud.rs:781-783` the weapon data's `hud.name`, else the id in capitals. Low impact while our data copies the item names.
 
+## Corrections (2026-10-30)
+
+From the client's crosshair element, the HUD manager's draw set-up and the interface resource manager. Answers the plan's "Dot-sight reticles" questions; adds to A7 and A8 (where they disagree, this wins).
+
+1. **How the reticle image is drawn** (A8). The weapon's `DotSightName` texture is drawn with white vertices (no tint by the crosshair colour or anything else), texture colour × white, **ordinary alpha blending** by the texture's alpha (not additive), no depth test, clamped addressing: exactly the texture's own colours.
+2. **When** (A7, A8). The reticle shares the crosshair's early exits that come before it: not drawn while a scope overlay is up, and not drawn while you are dead in the free-look or chase death cameras. It is drawn in the first-person views of another player (first-person spectating, the first-person chase of your killer), with that player's current weapon's `DotSightName`. Nothing tests the weapon's state: it is drawn during the draw (select) animation, reloads and sprint, as long as that weapon is the current one. It is drawn before the `DisableCrosshair` test, and a second time after the lines when the weapon has a crosshair (A8, unchanged).
+3. **Red-dot sights draw no HUD image.** Every shipped red dot is a scope-type part (`attachments.md` Q7): its red dot is only what its zoom overlay and its attachment model show. The HUD's own dot-sight-mode image (a per-colour image of a `Type` 2 sight) is **switched off in the code**, not just unused in the data: even a `Type` 2 sight would draw no HUD image; only the crosshair colour change of A6 remains reachable for such a sight.
+4. **Aspect.** The rectangle's x and y are scaled independently by width/1024 and height/768, so at 16:9 the 129 × 129 image is stretched horizontally by (16/9)/(4/3) = 1.333. That is what the original shows.
+
 ## Test cases
 
 All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" values are in section B. Rects are [x0, x1) x [y0, y1) in px.
@@ -852,6 +861,10 @@ All at 1024x768 (x_r = y_r = 1, cx = 512, cy = 384) unless stated. The "M4A1" va
 98. Gauge sight images (Corrections 13): gauge-style sight fitted, health 67 of 100, clip 14 of 30 -> left image `CrossHairLeftTex` + "70.dtx", right image `CrossHairRightTex` + "50.dtx". Health 4 -> "0"; health 95 -> "100"; clip 30 of 30 -> "100". Shown while the weapon panel shows, crosshair or not.
 99. Range readout look (Corrections 15): target at 2000 units at 1024 x 768 -> "50.0" in `SysFont13` at 20 px, its right end at x 490 and its top at y 400. At 1920 x 1080 -> right end at 918.75, top at 562.5, font height trunc(20 x 1.40625) = 28. A hit at 0.6 units -> empty text.
 100. Weapon name source (Corrections 16): weapon id W whose item-table name is "M4A1 Custom" while its weapon data's name differs -> the panel shows "M4A1 Custom".
+
+101. Reticle look (Corrections (2026-10-30) 1): a reticle texel (255, 0, 0, 128) over a grey (100, 100, 100) background -> (178, 50, 50) (alpha blend), whatever the crosshair colour.
+102. Reticle gates (Corrections (2026-10-30) 2): knife with `Knife_Sight_01` during its 450 ms draw -> drawn; dead in the chase camera -> not drawn; first-person spectating a player holding that knife -> drawn.
+103. Reticle stretch (Corrections (2026-10-30) 4): 1920 x 1080 -> x = floor(448 x 1.875) = 840, y = floor(320 x 1.40625) = 450, w = floor(128 x 1.875) + 1 = 241, h = floor(128 x 1.40625) + 1 = 181.
 
 ## Open questions
 

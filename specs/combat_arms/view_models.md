@@ -290,6 +290,13 @@ styles; piece texture index k uses skin k.
     `PVAttachFXAlwaysShow` is 1;
   - when the weapon is hidden, each effect remembers whether it was
     showing, and all are hidden; they are destroyed with the model.
+  - **While hidden** an attached group is frozen: its clock stops, its
+    sound keys' sounds are stopped at once, and when it is shown again
+    those sounds start from the beginning of their files. A looping sound
+    key that spans the whole group (the chainsaw idle) is started once
+    when the group is shown and then loops by itself; it is not restarted
+    at each pass (`effects_sounds.md` Corrections (2026-10-30) 1, its test
+    cases 67–70).
 - **Hidden pieces**: the weapon's `HiddenPiece0..` names are pieces of the
   weapon model hidden while the weapon's **total** ammunition is below 1
   (checked when the model is created and at the end of each fire sequence;
@@ -1034,6 +1041,19 @@ match. Ordered by what a player notices.
      6 frames instead of 7). Check which stock weapons carry a non-zero
      value (attribute data).
 
+## Corrections (2026-10-30): attached effects beyond your own view model
+
+From the client's effect database loader, the client weapon's attached-effect handling, the character effects' held-weapon effect and the effect plug-ins (light, particles). Answers the plan's attached-effect questions 1, 4 and 6 (2, 3 and 5 are in `effects_sounds.md` Corrections (2026-10-30) 1 and `special_weapons.md` 5.1).
+
+1. **The XK-2's lights.** The client loads every `.fxf` file in the `ClientFX` folder of the mounted archives; the Steam install has exactly one (`CLIENTFX\CLIENTFX.FXF`), and it has no `Timebomb*` group. A group missing from the database plays nothing, so the stock XK-2 shows **no lights** in this build.
+2. **Others and spectators.**
+   - The **held** (third-person) weapon has its own single effect: the weapon record's `HHAttachFXName`. When another player's current weapon changes to one that names it, a looping instance is created on that held weapon object (the old one is shut down); it is made for **other** characters only (never for yourself, who are in first person), and its keys (sounds included) play like any group, on every client that sees that player. `PVAttachFXName#` groups are never shown on the held model. So others see and hear a chainsaw's idle or a PSY bomb's wick only if the weapon record names an `HHAttachFXName`.
+   - A **first-person spectator** builds a real client view model for the watched player's weapon, so its `PVAttachFXName#` groups are created and shown exactly as for the owner (sounds included, played on the spectator's client).
+3. **Space of an attached light and particles.**
+   - A `DynaLight` key is never a camera-relative object: the engine creates every effect light as an ordinary world light (the "really close" flag is removed from it); its `ForceLightWorld` property additionally forces it to light the world geometry. Whether a world light also lights the camera-relative view model is the renderer's and stays open (Open question 18).
+   - A particle system key's particles follow its `MoveParticlesWithSystem` property: Yes (the property's default) keeps every live particle relative to the emitter, so attached particles move with the view model; No leaves particles in world space where they were emitted. The stock attached groups' values are in the effect file.
+   - A key in placement mode 2 (player view): no stock attached key uses it; not traced.
+
 ## Test cases
 
 Each case says which data it needs. **[S]** = needs the Steam install
@@ -1239,6 +1259,9 @@ Follow-up cases (Open questions 9–16):
     `HIDE_PVATTACHFX 1` hides `TimebombRed`; after hiding and showing the
     weapon (scope in and out) it is still hidden until a `SHOW_PVATTACHFX 1`
     key.
+45. **Missing groups (Corrections 2026-10-30, 1).** XK-2 drawn with the Steam effect file → its five `Timebomb*` groups are created as nothing: no light, no sound.
+46. **Held weapon effect (Corrections 2026-10-30, 2).** Another player switches to a weapon with `HHAttachFXName` g → g starts looping on his held weapon on your client; he switches away → g is shut down; the same weapon in your own hands → no held-model effect, only its `PVAttachFXName#` groups.
+47. **Particles in emitter space (Corrections 2026-10-30, 3).** An attached particle key with `MoveParticlesWithSystem` Yes, the view model swaying 2 u right over 0.1 s → its live particles shift 2 u right with it; with No → they stay where emitted.
 
 ## Open questions
 
@@ -1358,3 +1381,4 @@ differs; the other specs are not edited here):
   The model position gets the sum of the three draws on all axes; only the
   flash point gets them per axis (Quirk 2). No stock weapon has a non-zero
   `Recoil`, so nothing visible changes.
+18. **An attached light on the view model** (Corrections 2026-10-30, 3): whether the engine's world light from a view-model `DynaLight` key also lights the view model itself (renderer behaviour).
