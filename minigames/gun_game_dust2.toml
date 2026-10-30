@@ -55,7 +55,9 @@ join_rung = "lowest"       # a late joiner starts on the others' lowest rung (th
 knife_finale = false       # true: a knife-only rung after the AWP (the default: off)
 refill_ammo = true   # the ladder gives each gun once: 200 rounds of M60 run out
 # Each Combat Arms rung's fitted parts, character and melee weapon, the
-# same for everyone on it (the default; `false`, or by part:
-# { attachments = false, character = false, melee = false }).
+# same for everyone on it, and one rung of the top third the infected's
+# (their hands alone, when the install has them) (the default; `false`,
+# or by part: { attachments = false, character = false, melee = false,
+# infected = false }).
 rung_extras = true
 win = { kind = "ladder_end" }

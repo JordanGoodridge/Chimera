@@ -604,6 +604,7 @@ fn drive(
             Has<OwnViewAnim>,
             Has<LocalPlayer>,
             Option<&super::characters::records::Selection>,
+            Has<super::characters::CaRungLook>,
         ),
     )>,
     gear: Option<Res<super::gear::CaGearData>>,
@@ -622,7 +623,7 @@ fn drive(
     if models.as_ref().is_some_and(|m| m.is_changed()) {
         tables.clear();
     }
-    for (e, inventory, intent, (state, health, velocity, transform, movement), (view, vm, offset, owned, local, look)) in &mut characters {
+    for (e, inventory, intent, (state, health, velocity, transform, movement), (view, vm, offset, owned, local, look, rung)) in &mut characters {
         // Another game's gun in hand (a mashup's): its view model is
         // Chimera's generic driver's, with that game's rules
         // (`weapon::view_anim`). Ours lets go of the character until a gun
@@ -655,13 +656,9 @@ fn drive(
         let alive = health.is_none_or(|h| h.current > 0.0);
         // The character model's reload and select bonuses (Corrections 6),
         // for a weapon without its own `CaGearRates`.
-        let model = gear.as_deref().map_or((0.0, 0.0), |g| {
-            let vests = &g.0.vests;
-            vests
-                .get(&look.map_or(0, |l| l.model))
-                .or(vests.get(&0))
-                .map_or((0.0, 0.0), |v| (v.reload_ani_rate, v.select_ani_rate))
-        });
+        let model = gear
+            .as_deref()
+            .map_or((0.0, 0.0), |g| g.0.vest_rates(look.map_or(0, |l| super::gear::vest_of(l, rung))));
         let active = inventory.active.filter(|_| alive);
         let parts = active.and_then(|w| weapons.get(w).ok());
         let key = parts.as_ref().map(|p| p.0.id);

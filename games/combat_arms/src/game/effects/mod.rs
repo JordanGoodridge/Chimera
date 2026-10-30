@@ -308,6 +308,7 @@ impl Plugin for CaEffectsPlugin {
                 crate::game::grenades::callout::hear,
                 grenade_effects,
                 bomb::bomb_effects,
+                crate::game::rungs::infection_moments,
                 footsteps,
                 voice::voices,
                 step_effects,

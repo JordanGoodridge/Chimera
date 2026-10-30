@@ -74,10 +74,15 @@
 //!   own view model's animations, read when it is first built
 //!   (`weapons::timing`), not the template's; a copy with `AccumPreFire`
 //!   gets a `combat_arms:spin` table (its spin's lengths from the model);
+//!   a copied knife whose record plays the infected leg set
+//!   (`LowerAniType` 1 or 2: the Quarantine hands) gets a
+//!   `combat_arms:infected` table (`infected_table`: a gun game's infected
+//!   rung, `rungs`);
 //!   every weapon's `FireAniRate` goes in `combat_arms:inventory` (made
 //!   when the template has none, the record's other item fields with it);
 //! - movement (`merge_movement`): the body type `FigureType0` replaces
-//!   `character.figure` (`StiffDuration` with it);
+//!   `character.figure` (`StiffDuration` with it), and every `FigureType#`
+//!   is `MovementData::figures` (each vest record's body type, `gear`);
 //! - attachments (`attachment_table`): the modification file's `Mod#`
 //!   records over ours by name (ours not in it stay); a weapon document
 //!   with a `combat_arms:attachments` table takes the install weapon's
@@ -137,8 +142,8 @@
 //!   to ammo records on their own.
 //! - Lengths are converted with movement's `meters_per_unit` and the
 //!   document's own `units.length` (not its base's).
-//! - Only `FigureType0` (the male body, the reference character) is used:
-//!   our movement data has one figure.
+//! - Without the install our movement data has one figure (the
+//!   reference body's) for every body type.
 //! - Test case 29's install document has no `Ammo0`, which case 26 says
 //!   fails to load; its test adds one.
 //! - The install adds some 2,000 weapons; a map loads the held
@@ -166,9 +171,12 @@ use toml::{Table, Value};
 use self::attributes::{
     ATTACHMENTS_FILE, AmmoRecord, PERKS_FILE, SETS_FILE, AttachmentsFile, MARKS_FILE, MOD_FILE, MODELS_FILE, MarksFile, ModFile, ModelsFile, SERVER_FILE, ServerPlayer, ServerTimeWeight, WEAPONS_FILE,
  WeaponRecord,
-    WeaponsFile, FX_FILE, ImpactRecord, ProjectileRecord,
+    WeaponsFile, FX_FILE, FigureTypeRecord, ImpactRecord, ProjectileRecord,
 };
-use super::{attachments::CaModTable, movement::MovementData};
+use super::{
+    attachments::CaModTable,
+    movement::{Figure, MovementData},
+};
 
 macro_rules! data_file {
     ($name:literal) => {
@@ -1076,6 +1084,7 @@ pub fn merge_weapon_docs_with_mods(
         }
         patch(&mut t, w, install, mods, meters_per_unit);
         timing_table(&mut t);
+        infected_table(&mut t, w);
         new.push((format!("install:{}", w.name), t));
     }
     if skipped > 0 {
@@ -1101,6 +1110,21 @@ fn timing_table(doc: &mut Table) {
     }
     if let Some(Value::Table(hooks)) = doc.get_mut("hooks") {
         hooks.insert(TIMING.into(), Value::Table(Table::new()));
+    }
+}
+
+/// An infected's weapon (a knife-class copy whose record plays the
+/// infected leg set, `LowerAniType` 1 or 2: characters.md 5, the
+/// Quarantine hands): the `combat_arms:infected` table (`rungs::INFECTED`,
+/// a gun game's infected rung).
+fn infected_table(doc: &mut Table, w: &WeaponRecord) {
+    if !matches!(w.lower_ani_type, 1 | 2) {
+        return;
+    }
+    if let Some(Value::Table(hooks)) = doc.get_mut("hooks")
+        && hooks.contains_key(super::inventory::KNIFE_HOOK)
+    {
+        hooks.insert(super::rungs::INFECTED.into(), Value::Table(Table::new()));
     }
 }
 
@@ -1266,21 +1290,25 @@ fn file_default_ammo<'a>(file: &'a WeaponsFile, w: &WeaponRecord) -> Option<&'a 
     a
 }
 
-/// The install's body type `FigureType0` over our movement data's
-/// figure.
+/// The install's body types over our movement data's figure:
+/// `FigureType0` replaces `character.figure` (the reference body) and
+/// every `FigureType#` is `figures` (a vest record's body type).
 pub fn merge_movement(data: &mut MovementData, models: &ModelsFile) {
-    let Some(f) = models.figure_types.first() else {
+    let Some(first) = models.figure_types.first() else {
         return;
     };
-    let fig = &mut data.character.figure;
-    fig.dash_speed = f.dash_speed as f32;
-    fig.dash_gauge = f.dash_gauge as f32;
-    fig.gauge_recovery = f.gauge_rec as f32;
-    fig.max_stamina = f.max_stamina as f32;
-    fig.variable_speed = f.variable_speed as f32;
-    fig.variable_weight = f.variable_weight as f32;
-    fig.variable_jump = f.variable_jump as f32;
-    fig.stiff_duration = f.stiff_duration as f32;
+    let figure = |f: &FigureTypeRecord| Figure {
+        dash_speed: f.dash_speed as f32,
+        dash_gauge: f.dash_gauge as f32,
+        gauge_recovery: f.gauge_rec as f32,
+        max_stamina: f.max_stamina as f32,
+        variable_speed: f.variable_speed as f32,
+        variable_weight: f.variable_weight as f32,
+        variable_jump: f.variable_jump as f32,
+        stiff_duration: f.stiff_duration as f32,
+    };
+    data.character.figure = figure(first);
+    data.figures = models.figure_types.iter().map(figure).collect();
 }
 
 /// Combat Arms' data (`CaData`), loaded as the game starts (so a bad file

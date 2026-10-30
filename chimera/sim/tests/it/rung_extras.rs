@@ -4,7 +4,9 @@
 //! every player on a rung (its value applied to each, its melee weapon in
 //! place of the kit's), again after a respawn and for a late joiner;
 //! another seed draws others; the knife finale draws none; `rung_extras =
-//! false` turns them off; the HUD's rung line carries the label.
+//! false` turns them off; the HUD's rung line carries the label; a
+//! character's rung (`RungCharacter`) gives its weapon alone and fires its
+//! game's enter and leave moments once each.
 
 use bevy::prelude::*;
 use chimera_core::core::{Damage, DamageKind, Hitgroup, LocalPlayer};
@@ -13,7 +15,10 @@ use chimera_sim::{
         self, MinigameAppExt, MinigamePlugin,
         auto::Rng,
         hud::MinigameHud,
-        ladder::{Ladder, Rung, RungDraw, RungExtras, RungExtrasAppExt, RungExtrasHook, RungSeed},
+        ladder::{
+            AsRungCharacter, Ladder, Rung, RungCharacter, RungCharacterHook, RungDraw, RungExtras, RungExtrasAppExt,
+            RungExtrasHook, RungSeed,
+        },
     },
     movement::placeholder,
     testkit::{self, PISTOL, RIFLE},
@@ -37,6 +42,7 @@ kit = ["kit:knife"]
 [rules]
 module = "chimera:ladder"
 ladder = ["kit:pistol", "kit:rifle", "kit:shotgun"]
+rung_extras = { ghost = false }
 "#;
 
 fn knife(id: &str) -> String {
@@ -58,6 +64,11 @@ fn draw(_: &World, d: &RungDraw, rng: &mut Rng) -> Option<RungExtras> {
         values: vec![("n".into(), n.to_string())],
         label: d.options.on("label").then(|| format!("L{n}")),
         melee: d.options.on("melee").then(|| MELEES[rng.below(MELEES.len())].to_string()),
+        // `ghost`: the second rung makes its players a ghost, its knife alone.
+        character: (d.options.on("ghost") && d.rung == 1 && d.rungs.len() == 3).then(|| RungCharacter {
+            id: "kit:ghost".into(),
+            weapon: GHOST_KNIFE.into(),
+        }),
         ..default()
     })
 }
@@ -75,9 +86,25 @@ fn apply(world: &mut World, e: Entity, x: Option<&RungExtras>) {
 
 const HOOK: RungExtrasHook = RungExtrasHook {
     game: "kit",
-    options: &["label", "melee"],
+    options: &["label", "melee", "ghost"],
     draw,
     apply,
+};
+
+/// The ghost's one weapon.
+const GHOST_KNIFE: &str = "kit:knife_ghost";
+
+/// The ghost's moments, as they came: (player, "enter" or "leave").
+#[derive(Resource, Default)]
+struct Moments(Vec<(Entity, &'static str)>);
+
+const GHOST: RungCharacterHook = RungCharacterHook {
+    game: "kit",
+    enter: |w, e, c| {
+        assert_eq!(c.id, "kit:ghost");
+        w.resource_mut::<Moments>().0.push((e, "enter"));
+    },
+    leave: |w, e, _| w.resource_mut::<Moments>().0.push((e, "leave")),
 };
 
 fn sim_with(def: &str, seed: u64) -> Sim {
@@ -85,10 +112,10 @@ fn sim_with(def: &str, seed: u64) -> Sim {
         app.add_plugins((greybox::GreyboxMapPlugin, MinigamePlugin));
         testkit::add_weapons(app);
         let docs: Vec<(String, String)> =
-            ["kit:knife"].iter().chain(MELEES.iter()).map(|id| (format!("{id}.toml"), knife(id))).collect();
+            ["kit:knife", GHOST_KNIFE].iter().chain(MELEES.iter()).map(|id| (format!("{id}.toml"), knife(id))).collect();
         let docs: Vec<(&str, &str)> = docs.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
         app.add_weapon_data(&docs).expect("the knives load");
-        app.add_rung_extras(HOOK);
+        app.add_rung_extras(HOOK).add_rung_character(GHOST).init_resource::<Moments>();
         app.insert_resource(RungSeed(seed));
         app.add_minigames(&[("kit_gun_game.toml", def)]).expect("the definition reads");
     });
@@ -204,7 +231,7 @@ fn the_knife_finale_draws_nothing_and_keeps_its_knife() {
 
 #[test]
 fn rung_extras_off_draws_none_and_an_option_off_leaves_its_part_out() {
-    let def = DEF.replace("[rules]", "[rules]\nrung_extras = false");
+    let def = DEF.replace("rung_extras = { ghost = false }", "rung_extras = false");
     let mut sim = sim_with(&def, 1);
     assert!(ladder(&sim).extras.is_empty());
     let a = player(&mut sim);
@@ -213,7 +240,7 @@ fn rung_extras_off_draws_none_and_an_option_off_leaves_its_part_out() {
     assert_eq!(drawn(&sim, a), None);
     assert_eq!(carried(&sim, a), ["kit:knife", PISTOL], "the kit's knife, as without extras");
 
-    let def = DEF.replace("[rules]", "[rules]\nrung_extras = { melee = false }");
+    let def = DEF.replace("rung_extras = { ghost = false }", "rung_extras = { melee = false, ghost = false }");
     let mut sim = sim_with(&def, 1);
     let l = ladder(&sim);
     assert!(l.extras(0).is_some_and(|x| x.melee.is_none() && x.value("n").is_some()), "{:?}", l.extras(0));
@@ -234,4 +261,52 @@ fn the_huds_rung_line_carries_the_label() {
     let n = rung_set(&ladder(&sim), 0).0;
     let lines: Vec<String> = sim.app.world().resource::<MinigameHud>().lines.iter().map(|l| l.text.clone()).collect();
     assert!(lines.iter().any(|l| l.starts_with("Rung 1/3") && l.ends_with(&format!("(L{n})"))), "{lines:?}");
+}
+
+#[test]
+fn a_characters_rung_makes_its_players_the_character_holding_its_weapon_alone_until_the_next_rung() {
+    let def = DEF.replace("rung_extras = { ghost = false }", "demote_on_suicide = false");
+    let mut sim = sim_with(&def, 1);
+    let l = ladder(&sim);
+    assert_eq!(l.character(1).map(|c| c.id.as_str()), Some("kit:ghost"));
+    assert_eq!(l.weapon_at(1, sim.app.world().get_resource()), Some(GHOST_KNIFE), "the rung's weapon is the ghost's");
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    settle(&mut sim);
+    let moments = |sim: &Sim| sim.app.world().resource::<Moments>().0.clone();
+    assert!(moments(&sim).is_empty(), "nobody is the ghost on the first rung");
+    // a climbs onto the ghost's rung: its knife alone, the moment once.
+    kill(&mut sim, b, a);
+    settle(&mut sim);
+    assert_eq!(sim.app.world().get::<Rung>(a).map(|r| r.0), Some(1));
+    assert_eq!(carried(&sim, a), [GHOST_KNIFE], "the character's weapon alone: no gun, no kit");
+    assert!(sim.app.world().get::<AsRungCharacter>(a).is_some());
+    assert_eq!(moments(&sim), [(a, "enter")]);
+    // Killed by the world and back on the same rung: still the ghost, no
+    // new moment.
+    let at = sim.position(a);
+    sim.app.world_mut().write_message(Damage {
+        target: a,
+        attacker: None,
+        amount: 500.0,
+        point: at,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Chest,
+        kind: DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+    sim.ticks(2);
+    settle(&mut sim);
+    assert_eq!(carried(&sim, a), [GHOST_KNIFE], "a respawn on the rung: the same");
+    assert_eq!(moments(&sim), [(a, "enter")], "no second enter for a respawn");
+    // The next rung: itself again, its gun and the kit back, the leave once.
+    kill(&mut sim, b, a);
+    settle(&mut sim);
+    assert_eq!(sim.app.world().get::<Rung>(a).map(|r| r.0), Some(2));
+    let have = carried(&sim, a);
+    assert!(!have.contains(&GHOST_KNIFE), "the ghost's weapon gone: {have:?}");
+    assert!(have.contains(&"kit:shotgun"), "the next rung's gun: {have:?}");
+    assert!(sim.app.world().get::<AsRungCharacter>(a).is_none());
+    assert_eq!(moments(&sim), [(a, "enter"), (a, "leave")]);
 }
