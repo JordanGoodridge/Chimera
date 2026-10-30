@@ -656,6 +656,17 @@ sit right on the rail; muzzle parts did not, so ours turns them. Open:
    render-style table's reading, drawn opaque red)?
 5. **A part model's own animations and sockets** (none played or used).
 
+**Answered (2026-10-30)**, attachments.md "Corrections (2026-10-30):
+placing part models" 1-5 (test cases 41-43): (1) the part takes the
+socket's own axes exactly, offset along the socket's local x, y, z; no
+turn of any kind, so ours' turn-ahead has no counterpart and a part
+inside the barrel points at our socket reading (Open question 8); (2)
+first person adds yaw/pitch/roll (radians, x yaw, y pitch, z roll) to the
+socket's angles, third person composes them after the socket's rotation;
+(3) the flash stays at the data flash point; (4) the lens style is
+alpha-tested at 160, two-sided, opaque; (5) default animation, no
+sockets used.
+
 ## View-model attached effects and melee sounds: open questions for a spec session (2026-10-29)
 
 The view model's attached effects (view_models.md 3, `game::view_model::
