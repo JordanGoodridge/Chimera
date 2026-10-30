@@ -57,8 +57,8 @@ fn the_server_runs_the_gun_game_on_dust2() {
         assert_eq!(testkit::active_id(sim.app.world(), p), Some(cs_source::game::weapons::GLOCK));
     }
     // a at the first point, b at the nearest other one (the spawns of a
-    // side stand together in the open), protection over.
-    sim.seconds(1.0);
+    // side stand together in the open), protection (2 s) over.
+    sim.seconds(1.5);
     let near = spawns[1..]
         .iter()
         .copied()

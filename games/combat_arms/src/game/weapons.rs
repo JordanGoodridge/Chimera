@@ -67,7 +67,9 @@
 //!   (`movement::CaInfected`) of the other team gets the ammo's knock-back
 //!   (`movement::HitKnockback`). A hit on a spawn-protected character
 //!   (Chimera's `core::SpawnProtected`, a party match's) shows nothing:
-//!   the round's events go through `weapon::impact::hide_protected`.
+//!   the round's events go through `weapon::impact::hide_protected`; in
+//!   its bullets window the character isn't among the round's bodies at
+//!   all (`Delivery::bodies`), so the round hits what is behind.
 //! - `combat_arms:spread` (`CaSpread`): the firing and movement meters on
 //!   fixed 1/80 s sub-steps (an exact accumulator keeping the remainder,
 //!   Q2's recommendation; `SpreadOptions::quantised` discards it as the
@@ -2024,6 +2026,10 @@ impl Delivery<'_, '_> {
         self.characters
             .iter()
             .filter(|(e, .., h, _, _, _)| *e != owner && h.current > 0.0)
+            // The spawn-protected in their bullets window aren't there
+            // (Chimera's `core::SpawnProtected::passes_attacks`, a party's):
+            // the round goes on to what is behind.
+            .filter(|(e, ..)| !self.spawn_protected.get(*e).is_ok_and(|p| p.passes_attacks(self.now.now)))
             .filter_map(|(entity, t, intent, state, _, aabb, spheres, (pose, boxes, identity))| {
                 let data = spheres.map_or(*MALE, |s| s.0);
                 let rewound = rewound.iter().find(|r| r.entity == entity);

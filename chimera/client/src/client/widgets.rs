@@ -486,6 +486,18 @@ pub struct WorldPicture(pub Option<(Handle<Image>, Vec2)>);
 /// entries under the frame hidden): a darkened, see-through look.
 pub const WORLD_UNDER_DIALOGS: f32 = 0.4;
 
+/// `color` with its alpha raised so it covers what is under it as much as
+/// that alpha does blended in display (gamma) space, VGUI's way and what
+/// a panel's or shade's alpha is chosen for. Bevy's UI blends in linear
+/// light: a black shade at 0.55 there leaves the world at ~70% of its
+/// brightness (not 45%), and a panel at 0.96 lets bright text behind it
+/// show through as a ~25% grey. Exact for black over anything, close for
+/// dark panels: `1 - (1 - a)^2.2`.
+pub fn display_alpha(color: Color) -> Color {
+    let a = color.alpha().clamp(0.0, 1.0);
+    color.with_alpha(1.0 - (1.0 - a).powf(2.2))
+}
+
 impl Backing {
     /// The part of the picture under a frame at `pos`, `size` (window
     /// pixels) in its own pixels.
@@ -2411,6 +2423,26 @@ mod tests {
     use super::*;
 
     const SCREEN: Vec2 = Vec2::new(1280.0, 720.0);
+
+    /// A shade's alpha covers in linear light (Bevy's UI blending) as
+    /// the asked alpha does in display space: black at 0.55 over a
+    /// display-space grey leaves about 45% of it (the sRGB curve is not a
+    /// pure 2.2 power: within 0.03), not ~70%; opaque stays opaque.
+    #[test]
+    fn display_alpha_darkens_as_a_display_space_blend_would() {
+        let over = |under: f32, shade: Color| {
+            let a = shade.alpha();
+            let lin = LinearRgba::from(Color::srgb(under, under, under)).red * (1.0 - a);
+            Srgba::from(LinearRgba::rgb(lin, lin, lin)).red
+        };
+        let shade = Color::srgba(0.0, 0.0, 0.0, 0.55);
+        for under in [0.2, 0.5, 0.9] {
+            assert!((over(under, display_alpha(shade)) - under * 0.45).abs() < 0.03, "{under}");
+            assert!(over(under, shade) > under * 0.6, "Bevy's own blend: barely darker");
+        }
+        assert_eq!(display_alpha(Color::BLACK).alpha(), 1.0);
+        assert_eq!(display_alpha(Color::srgba(0.0, 0.0, 0.0, 0.0)).alpha(), 0.0);
+    }
 
     /// A scroll bar's thumb: sized for the rows shown, placed for the
     /// first; dragged, its travel maps onto every first row there is, the

@@ -38,7 +38,7 @@ use bevy::{
     prelude::*,
     window::CursorOptions,
 };
-use chimera_client::client::{binds, input::release_cursor};
+use chimera_client::client::{binds, input::release_cursor, widgets::display_alpha};
 use chimera_core::console::{Console, ConsoleAppExt, quote};
 
 /// An action: its words and the console command its keys run.
@@ -417,6 +417,9 @@ fn show(
     *shown = Some(now);
 }
 
+/// The shade over the world and the panel: alphas as blended in display
+/// space (`widgets::display_alpha`).
+const SHADE: Color = Color::srgba(0.0, 0.0, 0.0, 0.5);
 const PANEL: Color = Color::srgba(0.08, 0.09, 0.11, 0.96);
 const BUTTON: Color = Color::srgb(0.2, 0.22, 0.26);
 const ACTIVE: Color = Color::srgb(0.75, 0.45, 0.1);
@@ -454,7 +457,7 @@ fn spawn(commands: &mut Commands, page: &ControlsPage, console: &Console) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+            BackgroundColor(display_alpha(SHADE)),
         ))
         .with_children(|root| {
             root.spawn((
@@ -465,7 +468,7 @@ fn spawn(commands: &mut Commands, page: &ControlsPage, console: &Console) {
                     row_gap: px(4.0),
                     ..default()
                 },
-                BackgroundColor(PANEL),
+                BackgroundColor(display_alpha(PANEL)),
             ))
             .with_children(|panel| {
                 panel.spawn(text("Controls", 22.0));

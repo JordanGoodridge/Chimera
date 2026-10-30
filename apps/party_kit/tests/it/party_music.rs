@@ -105,6 +105,46 @@ fn a_protected_player_shows_and_takes_no_hit_from_either_games_guns() {
     }
 }
 
+/// The bullets window lets rounds through (user, 2026-10-29): with
+/// either game's gun (CS:S's delivery and Combat Arms' own), a round at
+/// a protected player hits the player behind it, never the protected one.
+#[test]
+fn rounds_pass_through_a_protected_player_into_the_one_behind_with_either_games_guns() {
+    let mut sim = party();
+    let a = soldier(&mut sim);
+    let b = soldier(&mut sim);
+    let c = soldier(&mut sim);
+    sim.seconds(1.5);
+    for gun in [cs_source::game::weapons::GLOCK, "combat_arms:beretta_m92fs"] {
+        if held(&sim, a) != Some(gun) {
+            let w = chimera_sim::testkit::active(sim.app.world(), a).unwrap();
+            chimera_sim::minigame::runtime::take_weapon(sim.app.world_mut(), a, w);
+            chimera_sim::weapon::give(sim.app.world_mut(), a, gun);
+            sim.seconds(1.2);
+        }
+        let now = sim.app.world().resource::<chimera_core::core::SimClock>().now;
+        sim.app.world_mut().entity_mut(b).insert((
+            SpawnProtected {
+                damage_until: now + 4.0,
+                bullets_until: now + 4.0,
+            },
+            chimera_core::core::God,
+        ));
+        sim.app.world_mut().entity_mut(c).remove::<(SpawnProtected, chimera_core::core::God)>();
+        let from = sim.position(a);
+        place(&mut sim, b, from + Vec3::new(0.0, 0.0, -4.0));
+        place(&mut sim, c, from + Vec3::new(0.0, 0.0, -6.0));
+        sim.ticks(3);
+        for e in [b, c] {
+            sim.app.world_mut().get_mut::<Health>(e).unwrap().current = 1000.0;
+        }
+        let before = sim.app.world().get::<Health>(c).unwrap().current;
+        assert_eq!(fire_at(&mut sim, a, b), (0, 0.0), "{gun}: nothing on the protected player");
+        let lost = before - sim.app.world().get::<Health>(c).unwrap().current;
+        assert!(lost > 0.0, "{gun}: the one behind takes the rounds");
+    }
+}
+
 /// The `party_music` cvar (0 off, 1 playlist, 2 the original's loop) is
 /// on the party's console, defaults to the playlist and sets the music.
 #[test]

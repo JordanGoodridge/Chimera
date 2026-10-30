@@ -25,10 +25,11 @@
 //!   "weapon"` the player follows its weapon's game (`slots::
 //!   FollowsWeapon`; `identity::follow` at once for the drawn one),
 //!   protected (`Protected`, with `core::SpawnProtected`'s two windows:
-//!   `core::God` for `protection.damage` s, a bullet stopping at the
-//!   player and doing nothing for `protection.bullets` s, a hit showing
+//!   `core::God` for `protection.damage` s, attacks passing through the
+//!   player for `protection.bullets` s, a hit showing
 //!   nothing while either runs) until they run out or, with
-//!   `protection.fire_ends`, it fires. The dead respawn after `delay` s (`respawn_dead`) unless the
+//!   `protection.fire_ends`, it attacks (the fire key, or any round,
+//!   swing or throw of its weapons: `end_protection`). The dead respawn after `delay` s (`respawn_dead`) unless the
 //!   match is over or the mode refuses (`respawn_due`: when, which the
 //!   HUD's countdown and the shell's death view read as
 //!   `core::RespawnDue`).
@@ -440,15 +441,26 @@ fn respawn_dead(world: &mut World) {
     }
 }
 
-/// Protection ends with its windows or (`fire_ends`) the first shot;
-/// `God` goes with the damage window.
-fn end_protection(world: &mut World) {
+/// Protection ends with its windows or (`fire_ends`) the first attack:
+/// the fire key held (a gun, a knife's swing, a grenade's pin), or any
+/// weapon's round, swing or throw (a knife's secondary stab); `God` goes
+/// with the damage window.
+fn end_protection(world: &mut World, mut cursor: Local<MessageCursor<crate::weapon::WeaponEvent>>) {
+    use crate::weapon::{WeaponEvent, WeaponEventKind as K};
     let now = world.resource::<SimClock>().now;
+    let attacked: Vec<Entity> = match world.get_resource::<Messages<WeaponEvent>>() {
+        Some(events) => cursor
+            .read(events)
+            .filter(|e| matches!(e.kind, K::Fired { .. } | K::Swing { .. } | K::Thrown | K::Shot { .. }))
+            .map(|e| e.owner)
+            .collect(),
+        None => Vec::new(),
+    };
     let mut done = Vec::new();
     let mut damage_over = Vec::new();
     cached_query::<(Entity, &SpawnProtected, &Protected, &Intent, Has<God>), (), _>(world, |q, world| {
         for (e, sp, p, i, god) in q.iter(world) {
-            if (p.fire_ends && i.fire) || sp.over(now) {
+            if (p.fire_ends && (i.fire || attacked.contains(&e))) || sp.over(now) {
                 done.push(e);
             } else if god && now + 1e-9 >= sp.damage_until {
                 damage_over.push(e);

@@ -12,10 +12,14 @@
 //! the shared step (`HitArmor`, `hits::absorb`;
 //! docs/DESIGN.md "Hits across games"). Each bullet hit on
 //! something with health is also told as a `BulletHit` (the damage before
-//! armour and truncation, whether armour covered it, a helmet). A hit on
-//! a spawn-protected character (`core::SpawnProtected`) shows and deals
-//! nothing: its trace is told with no `hit`, no push, no damage, a swing
-//! as a miss; in the bullets window the round ends there.
+//! armour and truncation, whether armour covered it, a helmet). A
+//! spawn-protected character (`core::SpawnProtected`) in its bullets
+//! window isn't there for a shot or a swing: the trace passes through it
+//! and hits what is behind (the wall, another character), on the server
+//! and in a client's predicted and others' redrawn shots alike. In the
+//! damage window alone a hit on it shows and deals nothing: its trace is
+//! told with no `hit`, no push, no damage, a swing as a miss, and the
+//! round ends there.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -77,9 +81,9 @@ pub(super) struct World<'w, 's> {
     role: Option<Res<'w, NetRole>>,
     playback: Option<Res<'w, crate::core::Playback>>,
     impulses: MessageWriter<'w, super::impact::BulletImpulse>,
-    /// Spawn-protected characters (`core::SpawnProtected`): a hit on them
-    /// shows nothing.
-    protected: Query<'w, 's, &'static crate::core::SpawnProtected>,
+    /// Spawn-protected characters (`core::SpawnProtected`): passed
+    /// through in the bullets window, a hit on them showing nothing.
+    protected: Query<'w, 's, (Entity, &'static crate::core::SpawnProtected)>,
 }
 
 impl World<'_, '_> {
@@ -188,7 +192,18 @@ struct Hit {
 
 impl Shot<'_, '_, '_> {
     fn filter(&self) -> SpatialQueryFilter {
-        SpatialQueryFilter::from_excluded_entities([self.owner]).with_mask(SOLID_LAYERS)
+        SpatialQueryFilter::from_excluded_entities(std::iter::once(self.owner).chain(self.passing())).with_mask(SOLID_LAYERS)
+    }
+
+    /// Spawn-protected characters attacks pass through now
+    /// (`core::SpawnProtected::passes_attacks`).
+    fn passing(&self) -> Vec<Entity> {
+        self.w.protected.iter().filter(|(_, p)| p.passes_attacks(self.now)).map(|(e, _)| e).collect()
+    }
+
+    /// Whether a hit on `e` shows and deals nothing now (spawn protection).
+    fn hides(&self, e: Entity) -> bool {
+        self.w.protected.get(e).is_ok_and(|(_, p)| p.hides_hits(self.now))
     }
 
     /// The body a collider belongs to (props may have child colliders).
@@ -212,14 +227,15 @@ impl Shot<'_, '_, '_> {
             .map(|t| t.entity)
             .collect();
         // The dead are left out entirely (their body is a ragdoll, which
-        // bullets pass through, or hidden).
+        // bullets pass through, or hidden), and so are the spawn-protected
+        // in their bullets window (`passing`).
         let dead = self
             .w
             .targets
             .iter()
             .filter(|t| t.intent.is_some() && t.health.is_some_and(|h| h.current <= 0.0))
             .map(|t| t.entity);
-        let dead: Vec<Entity> = dead.collect();
+        let dead: Vec<Entity> = dead.chain(self.passing()).collect();
         let filter = SpatialQueryFilter::from_excluded_entities(
             std::iter::once(self.owner)
                 .chain(boxed.iter().copied())
@@ -231,6 +247,7 @@ impl Shot<'_, '_, '_> {
         let boxed: Vec<Entity> = boxed
             .into_iter()
             .filter(|e| self.w.targets.get(*e).ok().and_then(|t| t.health).is_none_or(|h| h.current > 0.0))
+            .filter(|e| !dead.contains(e))
             .collect();
         let mut best = self
             .w
@@ -414,18 +431,15 @@ impl Shot<'_, '_, '_> {
                     self.eye + *dir * start,
                     hit.as_ref().map_or(self.eye + *dir * end, |h| h.point),
                 );
-                // A spawn-protected character (`core::SpawnProtected`):
-                // the trace is told with no hit (nothing to draw), it
-                // takes nothing, and in its bullets window the round ends
+                // A spawn-protected character past its bullets window but
+                // in its damage one (`core::SpawnProtected`; in the bullets
+                // window `trace` passes it): the trace is told with no hit
+                // (nothing to draw), it takes nothing, and the round ends
                 // there.
-                let protected = hit
-                    .as_ref()
-                    .and_then(|h| self.w.protected.get(h.entity).ok())
-                    .copied()
-                    .filter(|p| p.hides_hits(self.now));
+                let protected = hit.as_ref().is_some_and(|h| self.hides(h.entity));
                 let (entity, normal) = match protected {
-                    Some(_) => (None, None),
-                    None => (hit.as_ref().map(|h| h.entity), hit.as_ref().map(|h| h.normal)),
+                    true => (None, None),
+                    false => (hit.as_ref().map(|h| h.entity), hit.as_ref().map(|h| h.normal)),
                 };
                 let kind = if passed == 0 {
                     WeaponEventKind::Shot {
@@ -444,16 +458,13 @@ impl Shot<'_, '_, '_> {
                 };
                 self.w.event(self.owner, self.weapon, kind);
                 let Some(hit) = hit else { break };
-                if protected.is_some_and(|p| p.stops_bullets(self.now)) {
+                if protected {
                     break;
                 }
-                if protected.is_none() {
-                    self.push(hit.entity, hit.point, hit.dir * effect.impulse);
-                }
+                self.push(hit.entity, hit.point, hit.dir * effect.impulse);
                 // Falloff again at every hit, by the distance from the eye.
                 carried *= falloff(effect.falloff, effect.falloff_step, hit.distance);
-                if protected.is_none()
-                    && let Ok(t) = self.w.targets.get(hit.entity)
+                if let Ok(t) = self.w.targets.get(hit.entity)
                     && (t.health.is_some() || t.damageable.is_some())
                 {
                     // Plain objects (breakables) have no hitgroups.
@@ -664,9 +675,11 @@ impl Shot<'_, '_, '_> {
                 }
             }
         }
-        // A spawn-protected character takes the swing as a miss: nothing
-        // shows, nothing lands (`core::SpawnProtected`).
-        let hit = hit.filter(|h| !self.w.protected.get(h.entity).is_ok_and(|p| p.hides_hits(self.now)));
+        // A spawn-protected character in its bullets window isn't there
+        // (`trace` and `filter` leave it out: the swing goes on to what is
+        // behind); in its damage window alone it takes the swing as a miss:
+        // nothing shows, nothing lands (`core::SpawnProtected`).
+        let hit = hit.filter(|h| !self.hides(h.entity));
         self.w.event(self.owner, self.weapon, WeaponEventKind::Swing {
                 hit: hit.is_some(),
                 secondary,
