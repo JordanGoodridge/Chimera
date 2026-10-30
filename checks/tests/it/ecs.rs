@@ -167,7 +167,7 @@ const ALLOWED_REGISTRIES: &[(&str, &str, &str)] = &[
     (
         "chimera/sim/src/minigame.rs",
         "RulesModule",
-        "a rules module's start and kit; `joined`/`arming` to events (step 8), `status` to a component (step 7)",
+        "a rules module's start and kit; `joined`/`arming` to events (step 8)",
     ),
     (
         "chimera/sim/src/minigame/ladder.rs",
