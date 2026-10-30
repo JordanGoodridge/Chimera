@@ -477,10 +477,12 @@ Computed once per weapon effect from the camera at that moment:
   the ammo's. A shot whose ammo has no tracer never draws one, whatever the
   attachments say. Stock: pistols, shotguns, knives and grenades have no
   tracer.
-- **Shape and motion**: a flat strip of constant width `Width` from the
-  fire position toward the impact, textured with `Texture`, colour `Color`,
-  alpha `InitialAlpha` → `FinalAlpha` over its life, not additive, drawn
-  **with depth test off**. With t the time since its first update, v
+- **Shape and motion**: a flat strip from the fire position toward the
+  impact, **`Width`/2 u wide**, turned toward the eye and showing only its
+  `Texture` (colour and alpha fields have no visible effect), not
+  additive, depth-**tested** but not written (Corrections (2026-10-30) 3
+  replaces the earlier "constant width `Width`", "colour `Color`, alpha
+  `InitialAlpha` → `FinalAlpha`" and "depth test off"). With t the time since its first update, v
   `Velocity`, L `Length`, D the fire-to-impact distance:
 
 ```math
@@ -1111,8 +1113,9 @@ One weapon effect (client), in order:
 
 ## Quirks
 
-1. **Tracers ignore depth**: drawn over everything, so a tracer stream
-   shows through walls from the muzzle to the impact. Keep.
+1. **Tracers ignore depth**: withdrawn (Corrections (2026-10-30) 3):
+   tracers are hidden by walls like other world geometry; they only do
+   not write depth, so they never hide each other or later effects.
 2. **Silent walkers**: others' walking and crouching animations have no
    footstep keys, and your own steps stop while the run flag is off. Walk
    or crouch to move silently. Keep.
@@ -1402,9 +1405,10 @@ Cases 58–66 below test entries 1–9.
 From the client effect manager's group update (looping, hiding and
 suspension), its two sound keys (`PlaySound`, `PlayRandomSound`), the
 client weapon's fire step and attached-effect handling, the shared
-weapon-sound player and the server weapon's fire handling. They answer
+weapon-sound player, the server weapon's fire handling, the tracer and
+poly-line effects and the engine's primitive renderer. They answer
 `view_models.md` attached-effect questions 2 and 3 and the melee-sound
-question of the Combat Arms plan. Where the body above disagrees, the
+question of the Combat Arms plan and the backlog's tracer questions. Where the body above disagrees, the
 entry here wins; "The effect file", sections 10 and 11 are amended in
 place.
 
@@ -1462,6 +1466,50 @@ place.
      matches; the secondary uses `FireSnd` instead of `Alt_FireSnd` on the
      attacker's own client.
    - Expect: test cases 71 and 72; `special_weapons.md` cases 40–47.
+
+3. **How a tracer strip is drawn** (section 4, Quirk 1; the backlog's
+   tracer questions).
+   - Original, orientation: each frame both ends of the strip are taken
+     into camera space (camera at the origin, x right, y up, z forward).
+     With Δ = (x₂ − x₁, y₂ − y₁) the difference of the two ends' camera
+     x and y (no perspective divide; depth ignored), the width direction
+     is n = (Δy, −Δx, 0)/|Δ| in camera space: perpendicular to Δ and lying
+     in a plane parallel to the screen. Both ends use the same n (one
+     segment, shared). Each end gets two corners, end ± (w/2)·n, mapped
+     back to the world. So the strip always faces the camera squarely
+     (never seen edge-on, never twisted between its ends); a strip that
+     points straight at the eye (Δ = 0) has no defined width direction
+     and is not seen.
+   - Width: the half-width at each end is **Width/4**, so the strip is
+     **w = Width/2 world units** across (AR02: 7.5 u, AR01: 12.5 u, SMG02:
+     15 u). It is a world-space width: it shrinks with distance by
+     perspective and grows by the same factor as everything else when the
+     field of view narrows (zoom); there is no floor, cap or zoom
+     compensation.
+   - Texture and colour: texture u runs 0 → 1 from the tail to the head
+     (the whole texture stretched over the strip's current length, not
+     tiled), v 0 → 1 across. The draw takes colour **and** alpha from the
+     texture alone, so the record's `Color`, `InitialAlpha` and
+     `FinalAlpha` and the vertices' edge fade have no visible effect; the
+     tracer does not fade out over its life. It is not additive; it does
+     not set a blend mode of its own and draws with whatever the client's
+     primitive drawing last set, in practice ordinary alpha blending with
+     the texture's alpha (Open question 30).
+   - Depth: tested against the scene, not written. A wall between you and
+     a tracer hides it; tracers do not hide one another.
+   - Start point of your own tracer: the world flash point F of
+     `view_models.md` 4 (camera + `Pos` + `MuzzlePos` + bob + the shot's
+     recoil offset, in camera axes), from data, not from the model's
+     socket. It is computed the same way while zoomed, and nothing hides
+     the tracer while scoped: a scoped shooter's own tracer is drawn,
+     starting at that same camera-relative offset (beside and below the
+     eye, outside the scope picture's centre) and running to the impact.
+     Others' tracers start at the fire position of the server's event.
+   - Ours: each end turned about the strip's axis toward the eye from its
+     own place, full `Width`, colour and alpha applied, no depth test
+     (`ui::effects::strip_corners`); start at the view model's flash
+     point.
+   - Expect: test cases 73–76.
 
 ## Test cases
 
@@ -1703,6 +1751,21 @@ map objects and model files of an older extracted client release;
     started at 0, an alt-fire sound at 0.2 s → the first stops at 0.2 s.
     Silenced shots 0.1 s apart → all copies overlap; an unsilenced shot
     after a silenced one → the silenced copy keeps playing.
+73. **Tracer width (logic).** M4A1 (AR02, `Width` 15) tracer seen from the
+    side, its middle 1000 u ahead → 7.5 u across in the world; at a
+    vertical FOV of 1/4 the unzoomed one (zoomed) it covers 4 times as
+    many pixels; no minimum.
+74. **Tracer facing (logic).** Camera at the origin looking along +Z;
+    tracer ends at camera-space (10, −10, 50) and (0, 0, 1050) → Δ =
+    (−10, 10), n = (0.7071, 0.7071, 0); corners at each end ± 3.75·n
+    (AR02), both ends with the same n.
+75. **Tracer behind a wall (logic).** Another player's tracer passing
+    behind a wall between you and it → hidden where the wall covers it;
+    two tracers crossing → both visible (no depth write).
+76. **Scoped own tracer (logic).** M24 (SR01, every shot) zoomed: the
+    tracer is drawn, its tail starting at F (camera + `Pos` + `MuzzlePos`
+    in camera axes, as unzoomed); `Color` and alpha changes in the record
+    → no visible change.
 
 ## Open questions
 
@@ -1839,3 +1902,8 @@ map objects and model files of an older extracted client release;
     never set the shooter's own cadence.
 29. **Idle-sound flags** (Corrections 2026-10-22, 8): whether holding fire
     sets a movement control flag (which would also stop the idle sound).
+30. **Tracer blending** (Corrections (2026-10-30) 3): the tracer sets no
+    blend mode and inherits the last one the client's primitive drawing
+    set. Ordinary alpha blending with the texture's alpha is assumed;
+    check a tracer's edges in game (soft edges: alpha blend; a hard
+    rectangle: no blend).
