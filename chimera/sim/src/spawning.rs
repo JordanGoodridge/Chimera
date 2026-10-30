@@ -34,7 +34,8 @@ pub fn hold_the_dead(mut dead: Query<&mut Intent, With<Dead>>) {
 /// non-solid (`ColliderDisabled`), at full health, with no velocity, and,
 /// with `at`, placed there (the transform and the physics' position: spawn
 /// points are already lifted to a character's centre) looking along its
-/// yaw with a level pitch. False when `e` doesn't exist.
+/// yaw and pitch (`core::set_view`: a network client takes the turn).
+/// False when `e` doesn't exist.
 pub fn revive(world: &mut World, e: Entity, at: Option<Transform>) -> bool {
     crate::movement::noclip::end_toggled(world, e);
     let Ok(mut ent) = world.get_entity_mut(e) else { return false };
