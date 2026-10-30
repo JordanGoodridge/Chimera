@@ -62,7 +62,7 @@ Targets (to be confirmed by the baseline step):
 | playtest profile, incremental after a leaf edit | not measured | < 60 s |
 | full fast tier (4,095 tests) | 2 min 9 s warm | < 2 min |
 
-## Expected impact (predicted; Phase 0 confirms)
+## Expected impact (predicted, then measured 2026-10-30)
 
 Baseline used for the percentages: the 2026-10-29 log, roughly 8 min
 50 s of compile/link plus 2 min 9 s to run 4,095 tests, 581 units and 44
@@ -81,7 +81,7 @@ Windows.
 | Build jobs 12 vs 16 (Phase 2) | scheduler/memory thrash on 8 cores | 0-15% | low |
 | Structural T6 (Phase 7) | how *often* a bottom edit happens (38% of commits) | 20-30% off the long-term average; no per-build change | medium |
 
-Combined, once a slot is warm:
+Combined, once a slot is warm (predicted before measuring):
 
 | scenario | now | predicted | speedup |
 |---|---|---|---|
@@ -91,58 +91,79 @@ Combined, once a slot is warm:
 | Full fast tier run | 2 min 9 s | 50-80 s | ~2x |
 | Playtest profile, incremental | not measured | 20-40% faster (links + Defender; already `lto = false`) | - |
 
-The honest summary: the median edit-to-green loop goes from minutes to
-tens of seconds (**~5x**, roughly 3-8x depending on the layer), and a
-new session's build drops by **~2-3x** measured, more against the
-30-60 min cold-slot number. The two biggest levers are different:
+### Measured (2026-10-30)
 
-- **Iteration**: affected selection. It is worth almost nothing on
-  bottom-crate edits (38% of commits) and almost everything on leaf and
-  test edits.
-- **Bottom-crate edits**: line tables (and, long term, T6). Affected
-  selection cannot help there because nearly every test binary really
-  does link the changed crate.
+The first [before](build-infra-before.md) / [after](build-infra-after.md)
+run revised two of these estimates:
 
-Recommended order of work (impact per effort, not phase number):
-Phase 0 (measure) -> Phase 1 (slot fix + seeding) -> Phase 3 (affected +
-nextest) -> Phase 5 (Defender) -> Phase 2 (sccache) -> Phase 4 (line
-tables, one full rebuild) -> Phase 6/7. Phase 1 and 3 need no rebuild and
-are most of the day-to-day win; Phase 4 is the one that moves bottom
-edits.
+| scenario | before | after | measured change |
+|---|---|---|---|
+| New slot, first test build | 1,225.4 s, 584 units | 559.9 s + 45.1 s seed, 25 units | **-50.6% wall, -95.7% units** |
+| Warm `source_formats` edit | 41.6 s, 20 units | 50.0-58.7 s affected, 21 units | affected ~13%, not 50-60% |
+| Test-file edit, fast tier | 120-168.9 s, all 4,095 tests | 13.5-15.4 s warm affected | **8-11x** |
+| Bottom `chimera_core` edit | 43.4 s, 21 units | 60.8 s affected, 19 units | no gain |
+| No-op | 0.8 s | 5.9 s under load, 0 units | no relink regression |
+
+What this changes:
+
+- **Seeding and staying in one warm slot are the first-build win**
+  (584 -> 25 units; about 2x wall on the shared box). The 20-minute
+  empty-slot build is the actual pain, not the steady-state edit.
+- **`affected` is a test-run win, not a build-time win.** It is 11x on
+  a test-file edit because it runs one crate's tests instead of 4,095;
+  it saves only ~13% on a foundational crate's build and nothing on a
+  bottom-crate edit, where the dependents genuinely relink.
+- **Warm source/bottom edits are already 40-60 s.** The predicted
+  5-10x for leaf builds was too optimistic: cargo already rebuilds only
+  the changed units, and `source_formats` has many dependents.
+- **Unmeasured this round**: sccache (not installed), Defender
+  exclusions (no administrator), nextest (not installed), and a
+  line-tables dev profile (the test profile already uses line tables).
+  They stay candidates, not claimed gains.
+
+Recommended order of work, revised by the measurement:
+Phase 0 (measure) -> Phase 1 (slot fix + seeding + always work in a
+warm slot) -> Phase 3 (affected for test runs; nextest for the full
+suite) -> Phase 4 (line tables, if bottom-edit build time still
+matters) -> Phase 5 (Defender, needs admin) -> Phase 2 (sccache, for
+targets that are trimmed or lost) -> Phase 6/7. Phase 1 and 3 delivered
+the measured wins; do not spend a day on sccache before the warm-slot
+habit is in place.
 
 ## Steps
 
 ### Phase 0 - Measure, so every later step has a before and after
 
-- [ ] Add `scripts/build-times.ps1`: runs a named scenario with
-  `Measure-Command`, records `rustc`/`cargo` versions, CPU, load,
-  `CARGO_BUILD_JOBS`, Defender state, target size, and appends a row to a
-  local `.build-times.csv` (git-ignored). Scenarios: `noop`, `leaf`
-  (touch a file in `source_formats`), `bottom` (touch
-  `chimera/core/src/lib.rs`), `run` (`cargo run --features dev -- --help`),
-  `playtest`, `fast-tier`, `cold-slot`.
-- [ ] Take the baseline on an otherwise idle box, three rounds each;
-  report medians. Use `cargo build --timings` once per scenario and keep
-  the `target/cargo-timings/*.html` for the first investigation.
+- [x] `scripts/build-bench.ps1`: times one scenario, records the
+  compiled-unit count, jobs and exit code, and appends a markdown row.
+  Scenarios: `cold`, `seeded`, `noop`, `leaf-full`, `leaf-direct`,
+  `leaf-affected`, `bottom-full`, `bottom-affected`,
+  `test-file-affected`, `fast-tier`, `fast-tier-nextest`, `run-leaf`.
+- [x] Baseline captured in [build-infra-before.md](build-infra-before.md)
+  (six rows); the after run is in
+  [build-infra-after.md](build-infra-after.md). The box was shared, so
+  the compiled-unit counts and the same-slot pairs are the reliable
+  numbers.
 - [ ] Add the resulting Windows table to `docs/performance.md` "Test
   cycle" (the architecture review's T6 explicitly notes no Windows
   leaf-edit number exists).
-- [ ] Do **not** use `Chimera\` for measurement builds; seed a slot first
-  (Phase 1) or measure in a disposable slot.
+- [x] Do **not** use `Chimera\` for measurement builds: the before run
+  used slot 5 with an empty target, the seeded run slot 6.
 
 ### Phase 1 - Make warm slots the default, and make them actually warm
 
-- [ ] Fix `slots.ps1`: discover `slot*` directories instead of trusting
+- [x] Fix `slots.ps1`: discover `slot*` directories instead of trusting
   `-Count`, show all of them in `status`, and let `release slotN` address
-  any existing slot. Keep the hold-file race handling.
-- [ ] Add `seed <slot>` to `slots.ps1`: `robocopy` a reference `target\`
+  any existing slot. Keep the hold-file race handling. (Done in
+  the local `slots.ps1`, outside the repo; the benchmark found slots 4 and 5
+  invisible to the old default.)
+- [x] Add `seed <slot>` to `slots.ps1`: `robocopy` a reference `target\`
   (`Chimera\target` by default) into a fresh slot before its first build.
   Copy, do **not** hardlink: lld truncates stable output paths, which
   would corrupt the reference copy through a hardlink.
-- [ ] Verify what a seed actually reuses: `cargo test --features dev
-  --no-run -v` must show no `bevy_*`/`wgpu` compiles and only the
-  workspace crates whose absolute path changed. If it rebuilds registry
-  crates too, keep the copy only as a fallback and rely on Phase 2.
+- [x] Verify what a seed actually reuses: the seeded slot compiled 25
+  units against the cold slot's 584, so the registry crates were reused
+  and only the path-dependent workspace crates rebuilt.
 - [ ] Make `acquire` prefer the slot that last held the branch (as
   `tools/agent-slot.sh` does) and record `target\` size in `status`.
   Trim past a configurable limit (60 GB, `cargo sweep` if present).
@@ -280,6 +301,18 @@ none in slot1/slot3). The before/after benchmark harness is
 `scripts\build-bench.ps1`; the before run is in
 `build-infra-before.md`.
 
+2026-10-30: first before/after run, slot 5 (empty target) and slot 6
+(seeded from slot 5). Cold 1,225.4 s / 584 units; seeded 559.9 s + 45.1 s
+copy / **25 units**. Warm `source_formats` edit 41.6 s full vs 50-58.7 s
+affected; `chimera_core` edit 43.4 s full vs 60.8 s affected. Test-file
+edit: full fast tier 120-168.9 s vs 13.5-15.4 s affected once the test
+binary is built (153.1 s the first time). No-op 0.8 s, 0 units.
+`slots.ps1` now discovers all `slotN` and has `seed`; the harness and
+`scripts/affected-tests.ps1` are committed. The measurement revised the
+priority: the empty-slot build is the pain, and `affected` is a
+test-run win rather than a build-time win.
+
+
 ## Decision log
 
 2026-10-29: warm slots are the primary mechanism, not a shared
@@ -311,6 +344,27 @@ dependency graphs.
 measured. The linker is already the fast one; most of the remaining
 time is dependency codegen, linking 44 binaries, and doing work the
 change did not require.
+
+2026-10-30: measured; seeding is the first-build lever (584 -> 25
+units; 1,225 -> 605 s including the copy). It is a copy, not hardlinks,
+for the lld-truncation reason above. A seeded slot is the right first
+move for a session that cannot reuse an existing warm slot.
+
+2026-10-30: `affected` is for test runs, not build time. A test-file
+edit drops from 120-168.9 s to 13.5-15.4 s once the test binary is
+built; a `source_formats` build drops only ~13% and a `chimera_core`
+build not at all, because the dependents genuinely relink. Do not
+promise it as a build-time win.
+
+2026-10-30: do not chase sccache or line tables before the warm-slot
+habit. The seeded build already reuses the registry crates; its 560 s is
+workspace codegen and 44 links on a loaded box, and sccache cannot
+cross the absolute path for those workspace crates. Revisit line tables
+only if bottom-edit build time still hurts after the warm-slot habit.
+
+2026-10-30: never benchmark by building in `Chimera\`. It was the only
+warm target, which is why the slots stayed cold; slot 5 (empty) and
+slot 6 (seeded) are the measurement paths.
 
 ## Not doing (for now)
 
