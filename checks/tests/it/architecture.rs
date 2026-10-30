@@ -769,6 +769,115 @@ fn docs_map_links_resolve() {
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
+/// AGENTS.md (the contributor contract) and the workflow skills
+/// (`.claude/skills/*/SKILL.md`) are what contributors' agents act on, so
+/// what they name must exist: their links, the repository scripts they run
+/// (`tools/...`, `scripts/...`), and the packages and binaries of their
+/// cargo commands (`-p <package>`, `--bin <name>`). Placeholders in angle
+/// brackets are skipped.
+#[test]
+fn agent_docs_commands_exist() {
+    let mut packages = BTreeSet::new();
+    let mut bins = BTreeSet::new();
+    for member in workspace_members() {
+        let dir = root().join(&member);
+        let Ok(text) = fs::read_to_string(dir.join("Cargo.toml")) else {
+            continue;
+        };
+        let manifest: toml::Table = text.parse().unwrap();
+        if let Some(name) = manifest
+            .get("package")
+            .and_then(|p| p.get("name"))
+            .and_then(|n| n.as_str())
+        {
+            packages.insert(name.to_string());
+            bins.insert(name.to_string());
+        }
+        for bin in manifest.get("bin").and_then(|b| b.as_array()).into_iter().flatten() {
+            if let Some(name) = bin.get("name").and_then(|n| n.as_str()) {
+                bins.insert(name.to_string());
+            }
+        }
+        if let Ok(entries) = fs::read_dir(dir.join("src/bin")) {
+            for e in entries.flatten() {
+                let p = e.path();
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                if p.extension().is_some_and(|x| x == "rs") || p.join("main.rs").exists() {
+                    bins.insert(stem);
+                }
+            }
+        }
+    }
+    let mut docs = vec![PathBuf::from("AGENTS.md")];
+    if let Ok(entries) = fs::read_dir(root().join(".claude/skills")) {
+        let mut skills: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| PathBuf::from(".claude/skills").join(e.file_name()).join("SKILL.md"))
+            .collect();
+        skills.sort();
+        docs.extend(skills);
+    }
+    let mut errors = Vec::new();
+    for doc in &docs {
+        let shown = doc.display().to_string();
+        let Ok(text) = fs::read_to_string(root().join(doc)) else {
+            errors.push(format!(
+                "{shown} is missing: AGENTS.md is the contributor contract and every skill folder holds a SKILL.md."
+            ));
+            continue;
+        };
+        let base = root().join(doc).parent().unwrap().to_path_buf();
+        for part in text.split("](").skip(1) {
+            let target = part.split(')').next().unwrap_or("");
+            if target.starts_with("http") || target.is_empty() || target.starts_with('#') {
+                continue;
+            }
+            let path = target.split('#').next().unwrap();
+            if !base.join(path).exists() && !root().join(path).exists() {
+                errors.push(format!(
+                    "{shown} links to {target}, which does not exist. Fix the link or restore the file."
+                ));
+            }
+        }
+        for line in text.lines() {
+            let cargo = line.contains("cargo ");
+            let words: Vec<&str> = line
+                .split(|c: char| c.is_whitespace() || "`'\"(),;|".contains(c))
+                .filter(|w| !w.is_empty())
+                .collect();
+            for (i, w) in words.iter().enumerate() {
+                let script = w.trim_start_matches(".\\").replace('\\', "/");
+                let script = script.trim_end_matches(['.', ':']);
+                if (script.starts_with("tools/") || script.starts_with("scripts/"))
+                    && !script.contains('<')
+                    && !script.contains('*')
+                    && !root().join(script).exists()
+                {
+                    errors.push(format!(
+                        "{shown} names {script}, which does not exist. Fix the command or restore the script."
+                    ));
+                }
+                let Some(next) = words.get(i + 1) else { continue };
+                if !cargo || next.contains(['<', '>']) || next.starts_with('-') || next.starts_with('$') {
+                    continue;
+                }
+                if *w == "-p" && !packages.contains(*next) {
+                    errors.push(format!(
+                        "{shown} runs cargo with `-p {next}`, which is not a workspace package. Fix the command \
+                     (package names are in each member's Cargo.toml)."
+                    ));
+                }
+                if *w == "--bin" && !bins.contains(*next) {
+                    errors.push(format!(
+                        "{shown} runs cargo with `--bin {next}`, which no workspace package builds. Fix the command."
+                    ));
+                }
+            }
+        }
+    }
+    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
+}
+
 /// The doc lists built from the sources' `//!` docs (docs/modules.md and the
 /// generated entries of docs/tech-debt.md, architecture review T5) match the
 /// sources, so features edit only their own file's doc and parallel branches
