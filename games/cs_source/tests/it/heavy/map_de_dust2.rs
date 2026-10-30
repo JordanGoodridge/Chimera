@@ -2,6 +2,7 @@
 //! `mount::served`), headless. Skipped without either.
 
 use bevy::prelude::*;
+use std::sync::{Arc, OnceLock};
 use crate::stack::{
     core::Team,
     games::{self, cs_source},
@@ -143,16 +144,25 @@ fn the_games_buy_and_team_menus_load() {
     assert_eq!(hud.text_fonts["CenterPrintText"][0].family, "Trebuchet MS");
 }
 
-fn dust2() -> Option<MapData> {
-    let installed = LocalConfig::load()
-        .ok()?
-        .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
-        .is_some_and(|p| cs_source::mount::open(&p).is_ok());
-    if !installed {
-        eprintln!("skipping: no CS:S install configured (or asset store serving it)");
-        return None;
-    }
-    Some(games::load_map("cs_source:de_dust2").expect("load de_dust2"))
+/// de_dust2, converted once per process: `cargo test` runs this binary's
+/// tests in one process, so the 67 tests below share one conversion instead
+/// of loading the map each time. Nextest runs one test per process, where
+/// this is an ordinary load. The map is read-only to the tests; a test that
+/// asserts loading itself calls `games::load_map` directly.
+fn dust2() -> Option<Arc<MapData>> {
+    static MAP: OnceLock<Option<Arc<MapData>>> = OnceLock::new();
+    MAP.get_or_init(|| {
+        let installed = LocalConfig::load()
+            .ok()?
+            .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
+            .is_some_and(|p| cs_source::mount::open(&p).is_ok());
+        if !installed {
+            eprintln!("skipping: no CS:S install configured (or asset store serving it)");
+            return None;
+        }
+        Some(Arc::new(games::load_map("cs_source:de_dust2").expect("load de_dust2")))
+    })
+    .clone()
 }
 
 #[test]
@@ -222,7 +232,7 @@ fn collision_comes_from_world_brushes() {
 fn every_spawn_lands_on_the_floor() {
     let Some(map) = dust2() else { return };
     let spawns = map.spawns.clone();
-    let mut sim = Sim::new(CsSim, MapPlugin::new(map));
+    let mut sim = Sim::new(CsSim, MapPlugin::from_arc(map.clone()));
     let players: Vec<_> = spawns
         .iter()
         .map(|(feet, _)| sim.spawn_character(*feet + Vec3::Y * 1.0, placeholder::ID))
@@ -243,7 +253,7 @@ fn every_spawn_lands_on_the_floor() {
 fn player_lands_at_spawn_and_can_walk() {
     let Some(map) = dust2() else { return };
     let (feet, _) = map.spawns[0];
-    let mut sim = Sim::new(CsSim, MapPlugin::new(map));
+    let mut sim = Sim::new(CsSim, MapPlugin::from_arc(map.clone()));
     let p = sim.spawn_character(feet + Vec3::Y * 1.0, placeholder::ID);
     sim.seconds(1.0);
     assert!(sim.state(p).on_ground, "not grounded at spawn: {}", sim.position(p));
@@ -393,10 +403,10 @@ fn lightmaps_agree_at_shared_edges() {
 /// Which window props let a ray through (along the model's facing axis,
 /// from 1.5 m out on either side to its centre), with prop collision on or
 /// off.
-fn open_windows(map: &MapData, props_solid: bool) -> Vec<usize> {
+fn open_windows(map: &Arc<MapData>, props_solid: bool) -> Vec<usize> {
     use avian3d::prelude::*;
 
-    let mut map = map.clone();
+    let mut map = MapData::clone(map);
     if !props_solid {
         map.props
             .iter_mut()
@@ -409,7 +419,7 @@ fn open_windows(map: &MapData, props_solid: bool) -> Vec<usize> {
         .filter(|(_, p)| map.models[p.model].meshes.iter().any(|m| m.material.contains("window")))
         .map(|(i, p)| (i, p.translation, p.rotation))
         .collect();
-    let mut sim = Sim::new(CsSim, MapPlugin::new(map));
+    let mut sim = Sim::new(CsSim, MapPlugin::from_arc(Arc::new(map)));
     let world = sim.app.world_mut();
     let mut state: bevy::ecs::system::SystemState<SpatialQuery> = bevy::ecs::system::SystemState::new(world);
     let query = state.get(world).unwrap();
@@ -709,7 +719,7 @@ fn source_movement_walks_dust2() {
     use crate::stack::games::cs_source::movement::{self, SourceMovementPlugin};
     let Some(map) = dust2() else { return };
     let spawns = map.spawns.clone();
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     // The transform is the standing box's centre, 36 units above the feet.
     let lift = Vec3::Y * (36.0 * 0.0254 + 0.5);
     let players: Vec<_> = spawns
@@ -780,7 +790,7 @@ fn convex_props_collide_as_brushes() {
     let Some(map) = dust2() else { return };
     let world = map.collision_brushes.len();
     let props = map.props.iter().filter(|p| !p.skybox).count();
-    let sim = Sim::new(CsSim, MapPlugin::new(map));
+    let sim = Sim::new(CsSim, MapPlugin::from_arc(map.clone()));
     let all = sim.app.world().resource::<crate::stack::map::MapBrushes>().0.len();
     println!("{} of {props} props as brushes", all - world);
     assert!(
@@ -820,7 +830,7 @@ fn props_cannot_be_climbed_by_walking() {
         })
         .filter(|(lo, hi)| hi.y - lo.y > 30.0 * m && (hi.x - lo.x) > 16.0 * m)
         .collect();
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     let mut tested = 0;
     let mut worst = (0.0f32, Vec3::ZERO);
     for (lo, hi) in boxes.iter().take(30) {
@@ -946,7 +956,7 @@ fn detail_textures() {
 #[test]
 fn world_fog() {
     let Some(map) = dust2() else { return };
-    let fog = map.fog.expect("dust2 has world fog");
+    let fog = map.fog.as_ref().expect("dust2 has world fog");
     assert!((fog.start - 500.0 * 0.0254).abs() < 1e-4 && (fog.end - 4000.0 * 0.0254).abs() < 1e-4);
     assert_eq!(fog.color, [197.0 / 255.0, 196.0 / 255.0, 165.0 / 255.0]);
     assert_eq!(fog.max_density, 1.0);
@@ -1147,7 +1157,7 @@ fn physics_props_settle_and_get_pushed() {
         .count();
     assert!(solid > 0, "some solid-mode props");
 
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     // Settled within 12 s. Most are still at 4 s; an oil drum stood a
     // degree off upright (828 797 1) rocks on its rim for a while, and
     // how long depends on the solver's order across the whole world (a
@@ -1205,7 +1215,7 @@ fn physics_props_settle_and_get_pushed() {
     let tries = solids.iter().take(6).flat_map(|(i, t, ..)| sides.map(|d| (*i, *t, d)));
     for (index, target, (dir, yaw)) in tries {
         let name = format!("Prop {index}");
-        let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+        let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
         sim.seconds(4.0);
         let start_feet = to_source(target) - dir * 100.0;
         let p = sim.spawn_character(to_engine(start_feet + Vec3::Z * 60.0), movement::ID);
@@ -1295,7 +1305,7 @@ fn footsteps() {
     let Some(map) = dust2() else { return };
     // The T spawn runway (open and flat westward), feet at Source z 140.
     let spawn = crate::stack::games::cs_source::movement::to_engine(Vec3::new(-1024.0, -784.0, 140.0));
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     sim.app
         .init_resource::<Heard>()
         .add_systems(FixedUpdate, listen.after(crate::stack::core::SimSet::Movement));
@@ -1411,7 +1421,7 @@ fn impact_sounds() {
         map::PhysicsProp,
     };
     let Some(map) = dust2() else { return };
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin, CsWeaponsPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin, CsWeaponsPlugin));
     sim.app.init_resource::<Heard>().add_systems(Last, record_sounds);
     sim.seconds(3.0);
     sim.app.world_mut().resource_mut::<Heard>().0.clear();
@@ -1490,7 +1500,7 @@ fn bot_walks_the_nav_mesh_to_an_enemy() {
     };
     let Some(map) = dust2() else { return };
     let nav = map.kit.nav.clone().expect("dust2 has a nav mesh");
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin, CsWeaponsPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin, CsWeaponsPlugin));
     sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
     sim.app
         .insert_resource(crate::stack::slots::Loadout { movement: movement::ID });
@@ -1637,7 +1647,7 @@ fn maps_change_in_place() {
         (spawns, parts)
     };
     for _ in 0..2 {
-        crate::stack::map::change_map(sim.app.world_mut(), map.clone(), crate::stack::map::MapDebugView::Normal);
+        crate::stack::map::change_map(sim.app.world_mut(), MapData::clone(&map), crate::stack::map::MapDebugView::Normal);
         crate::stack::rules::respawn_everyone(sim.app.world_mut());
         sim.ticks(2);
     }
@@ -1729,7 +1739,7 @@ fn shots_use_model_hitboxes() {
         }
     }
     let Some(map) = dust2() else { return };
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), CsWeaponsPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), CsWeaponsPlugin));
     sim.set_tick_interval(TICK_INTERVAL);
     sim.app.init_resource::<Hits>().add_systems(Last, record);
     // CT spawns 0 and 2: same height, 4.9 m apart in the open.
@@ -1813,7 +1823,7 @@ fn every_gun_has_its_body_animations() {
         assert!(set.sequence(&format!("Idle_Shoot_ELITES{side}")).is_some(), "ELITES{side}");
     }
     let mut sim = Sim::new(CsSim, (
-        MapPlugin::new(map.clone()),
+        MapPlugin::from_arc(map.clone()),
         SourceMovementPlugin,
         CsWeaponsPlugin,
         PlayerAnimPlugin,
@@ -1891,7 +1901,7 @@ fn bodies_animate_with_movement() {
     let Some(map) = dust2() else { return };
     assert!(map.kit.characters[0].animations.is_some(), "player animations");
     let mut sim = Sim::new(CsSim, (
-        MapPlugin::new(map.clone()),
+        MapPlugin::from_arc(map.clone()),
         SourceMovementPlugin,
         CsWeaponsPlugin,
         PlayerAnimPlugin,
@@ -2026,7 +2036,7 @@ fn bodies_animate_with_movement() {
 fn walls_on_displacements_are_solid() {
     use crate::stack::games::cs_source::movement::{self, SourceMovementPlugin};
     let Some(map) = dust2() else { return };
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
     sim.app
         .insert_resource(crate::stack::slots::Loadout { movement: movement::ID });
@@ -2055,7 +2065,7 @@ fn falling_out_of_the_map() {
         map::KillHeight,
     };
     let Some(map) = dust2() else { return };
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
     let kill = sim.app.world().resource::<KillHeight>().0;
     let (lo, _) = map.playable.expect("dust2 has a playable area");
@@ -2081,7 +2091,7 @@ fn falling_out_of_the_map() {
 fn standing_on_another_player() {
     use crate::stack::games::cs_source::movement::{self, SourceMovementPlugin};
     let Some(map) = dust2() else { return };
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
     sim.app
         .insert_resource(crate::stack::slots::Loadout { movement: movement::ID });
@@ -2151,7 +2161,7 @@ fn riding_players_never_sticks() {
     };
     let mut stuck = Vec::new();
     for trial in 0..12 {
-        let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+        let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
         sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
         sim.app
             .insert_resource(crate::stack::slots::Loadout { movement: movement::ID });
@@ -2227,7 +2237,7 @@ fn walking_on_terrain_never_stubs() {
         })
         .collect();
     assert!(tris.len() > 1000, "{} terrain triangles", tris.len());
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
     sim.set_tick_interval(crate::stack::games::cs_source::TICK_INTERVAL);
     sim.app
         .insert_resource(crate::stack::slots::Loadout { movement: movement::ID });
@@ -2575,7 +2585,7 @@ fn running_over_terrain_keeps_speed() {
         (Vec3::new(-2047.10, 3622.04, 183.98), 3.5225, Vec2::Y),
     ];
     for (k, (feet, yaw, keys)) in cases.into_iter().enumerate() {
-        let mut sim = Sim::new(CsSim, (MapPlugin::new(map.clone()), SourceMovementPlugin));
+        let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), SourceMovementPlugin));
         sim.set_tick_interval(cs_source::TICK_INTERVAL);
         // Dropped from above: some of these feet were inside the terrain.
         let p = sim.spawn_character(movement::to_engine(feet + Vec3::Z * 80.0), movement::ID);
@@ -2845,7 +2855,7 @@ fn walking_into_a_tunnel_switches_soundscape_and_room() {
         s.soundscapes[out].dsp, s.soundscapes[indoors].dsp
     );
 
-    let mut sim = Sim::new(CsSim, (MapPlugin::new(map), cs_source::movement::SourceMovementPlugin));
+    let mut sim = Sim::new(CsSim, (MapPlugin::from_arc(map.clone()), cs_source::movement::SourceMovementPlugin));
     sim.set_tick_interval(cs_source::TICK_INTERVAL);
     let p = sim.spawn_character(from, crate::stack::movement::noclip::ID);
     sim.app.world_mut().entity_mut(p).insert(crate::stack::core::LocalPlayer);

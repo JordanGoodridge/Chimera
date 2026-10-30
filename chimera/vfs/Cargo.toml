@@ -16,3 +16,8 @@ doctest = false
 # all, so an archive reader needs nothing of the engine or of the other
 # loader (checks/tests/it/architecture.rs, `workspace_crates`).
 [dependencies]
+
+[features]
+# Nothing: lets `--features dev` name this package alongside the others
+# (cargo test -p ... -p <crate> --features dev; .githooks/pre-commit).
+dev = []

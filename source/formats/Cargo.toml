@@ -18,3 +18,8 @@ chimera_vfs.workspace = true
 glam.workspace = true
 lzma-rs.workspace = true
 symphonia.workspace = true
+
+[features]
+# Nothing: lets `--features dev` name this package alongside the others
+# (cargo test -p ... -p <crate> --features dev; .githooks/pre-commit).
+dev = []
