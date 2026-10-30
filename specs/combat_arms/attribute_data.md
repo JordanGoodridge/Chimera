@@ -80,7 +80,9 @@ movement; Reference values (one rifle); Edge cases; Quirks; Corrections
 | Shop items | `ITEMS.TXT` | Shop and inventory display data, including the stat bars `Damage`, `FireSpeed`, `FirstAccuracy`, `Recoil`, `FireRange`. Display only: gameplay never reads these. |
 
 - Sizes for orientation: in the Steam install the weapons file is
-  9,007,972 bytes and the server attributes file 2,176 bytes. In the US
+  9,007,972 bytes (build 25595979; 9,275,149 bytes with 2,386 weapon,
+  2,115 ammo and 347 armour records in build 26236938) and the server
+  attributes file 2,176 bytes. In the US
   reference build the weapons file is 6,216,427 bytes and holds 1,606
   weapon, 1,474 ammo and 258 armour records; its server attributes file is
   also 2,176 bytes.

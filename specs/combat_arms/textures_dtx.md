@@ -403,6 +403,7 @@ All on Steam build 25595979. Read each file with the `.rez` reader from the name
     - 9,658 `.dtx` entries.
     - 9,657 parse with version −5 and size exactly 164 + Σ S. 1 is empty.
     - Format counts: 3,237 / 4,068 / 457 / 1,895 for codes 3 / 4 / 5 / 6.
+    - Steam build 26236938 (six formerly V2-keyed archives now unkeyed): 12,325 entries, 2 empty, formats 5,066 / 4,446 / 470 / 2,341.
     - Every flags value includes 0x8, and every section count is 0.
 15. **Mip skip by group, shipped settings.** DetailLevel 2, MipMapOffset 0, textures with N = 4 → k = 0 for group 0, 1 for groups 1 and 2, 2 for group 3, 0 for group 49 or above. Group 3 with N = 2 → k = 1 (clamped to N − 1). The same group-3 texture with DetailLevel 0 → k = 0.
 16. **Options do not change it.** Switching the quality preset between low, medium, high and user in the graphics options → GroupOffset1, 2, 3 stay 1, 1, 2.

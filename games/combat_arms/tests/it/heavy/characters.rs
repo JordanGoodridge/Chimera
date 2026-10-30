@@ -543,8 +543,10 @@ fn held_weapons_point_forward() {
     let at_socket = models::socket_local(hand_socket.rotation, hand_socket.offset);
     // Each held model's muzzle in the right hand's frame (right-handed).
     let mut muzzles = Vec::new();
-    // (Grenades in flight, `grenades::thrown_key`, are in no hand.)
-    for held in map.kit.held.iter().filter(|h| !h.key.ends_with("#thrown")) {
+    // (Grenades and launched projectiles in flight, `grenades::thrown_key`
+    // and `special::data::PROJECTILE_KEY`, are in no hand.)
+    let in_flight = |key: &str| key.ends_with("#thrown") || key.starts_with(combat_arms::game::special::data::PROJECTILE_KEY);
+    for held in map.kit.held.iter().filter(|h| !in_flight(&h.key)) {
         assert!(held.bone.eq_ignore_ascii_case("Right_hand"), "{}: on {}", held.key, held.bone);
         let w = ca.weapon_set().weapons.iter().find(|w| w.id == held.key).unwrap();
         let path = w.models.world.as_deref().unwrap().to_lowercase();

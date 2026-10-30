@@ -84,21 +84,40 @@ fn weapons() -> Vec<CaWeaponFx> {
     CaData::install().weapon_set().weapons.iter().filter_map(|w| w.hook(EFFECTS)).collect()
 }
 
-/// Every sound the tables and the weapons name reads and decodes.
+/// Every sound the tables name reads and decodes; every sound a weapon
+/// names decodes when the install has it. The install's own weapon
+/// records name files it doesn't ship (184 in build 26236938: deselect,
+/// dry-fire and third reload sounds of many guns, the RMS12's
+/// `GUNS_SND_LAUNCHER\AK47\*`, the emotes'): those play nothing, as in
+/// the game (effects_sounds.md: a sound that doesn't load is silent), so
+/// they are counted, not failed.
 #[test]
 fn every_named_sound_decodes() {
     let Some(mount) = mount() else { return };
     let t = CaFxTables::built_in();
-    let mut files: Vec<String> = t.sound_files().into_iter().map(str::to_string).collect();
+    let tables: Vec<String> = t.sound_files().into_iter().map(str::to_string).collect();
+    let mut files = tables.clone();
     for w in weapons() {
         files.extend(w.sound_files().map(str::to_string));
     }
     files.sort();
     files.dedup();
-    let bad: Vec<&String> = files.iter().filter(|f| library::sound_clip(f, &mount).is_none()).collect();
-    eprintln!("{} sound files", files.len());
+    let (mut absent, mut bad) = (Vec::new(), Vec::new());
+    for f in &files {
+        if library::sound_clip(f, &mount).is_some() {
+            continue;
+        }
+        // Not in the install at all, and named only by its data: silent.
+        if mount.read(f).is_err() && !tables.contains(f) {
+            absent.push(f);
+        } else {
+            bad.push(f);
+        }
+    }
+    eprintln!("{} sound files; {} named by the install's records but not in it", files.len(), absent.len());
     assert!(bad.is_empty(), "unreadable: {bad:?}");
     assert!(files.len() > 150);
+    assert!(absent.len() < files.len() / 4, "most named sounds are there: {absent:?}");
 }
 
 fn fx_file(mount: &chimera_core::mount::Mount) -> FxFile {

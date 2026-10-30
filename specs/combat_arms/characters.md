@@ -619,6 +619,10 @@ From the shared model-attribute reader's skin assembly and the client's equipmen
    - Ours: blended by the texture's alpha, sorted per piece.
    - Expect: test case 60.
 
+3. **A body record whose file is missing** (plan "Body skins" 5; Steam build 26236938, from the engine's model-file loading on client and server). `Model279` `Medium_NM` and `Model280` `medium_NM_female` name `CHARS_M_BODY\CM_Body_Medium_vest_KE.ltb` and `CHARS_M_BODY\CW_Body_Medium_Female_KE.ltb`; build 26236938 still ships neither (the body archive's other `_KE` bodies are there). When a model object's file does not load, the engine loads `models\default.ltb` in its place (both the server's and the client's model set-up do this), so such a character is drawn as that placeholder: one untextured piece of 52 triangles about 6 u across with one animation `x` (6566 ms, dimensions (3, 3, 3)), not as a body (whether anything earlier in the character set-up avoids such a record was not traced).
+   - Ours: a rung that draws one of these two records keeps the body its player already wore.
+   - Expect: test case 61.
+
 ## Test cases
 
 "Install" marks values that depend on the character archives: they were measured on the US reference client 1501.04 and must be re-checked on the Steam install, build 25595979, after decryption of `CHARS_M_BODY.rez` (the Steam body files have the same sizes as the US ones, 429,442 and 237,832 bytes, but the Steam libraries differ: `ST_M_CHILD.LTB` 66,900,324 vs 63,225,013 bytes, `ST_W_CHILD.LTB` 95,232,495 vs 91,210,809). "Data" marks values from the US attribute data set. Positions in u, model space, left-handed; tolerance 0.01. The "stand" pose is the layered pose of 4 at t = 0 for every tracker: main entry 0, upper `URFRAmS`, lower `LST`, crouch `LC` with multiplier 0; "crouch" is the same with multiplier 1.
@@ -703,6 +707,7 @@ From the shared model-attribute reader's skin assembly and the client's equipmen
 58. **Additional skins (data).** A body record with `AdditionalSkins0` a and `AdditionalSkins1` b, camouflage index 3 → slot 5 a, slot 6 b (not affected by c).
 59. **Model colour (logic).** m = 1 with `ColorSkin1_UpperSkin0..` present and `ColorSkin1_LowerSkin#` absent → slot 0 from the colour list (index c), slot 1 from `LowerSkin{c}`; m = −1 → base lists.
 60. **Leaves cut-out (logic).** A ghillie leaves texel with alpha 0.62 (158/255) → not drawn; 0.63 (161/255) → drawn opaque, unlit texture colour.
+61. **Missing body file (data, Steam build 26236938).** Records 279 and 280 → their body files are not in the install; loading either → the model is `models\default.ltb` (1,720 bytes, 1 piece, 52 triangles, animation `x` 6566 ms), drawn untextured.
 
 ## Open questions
 

@@ -317,10 +317,10 @@ All values below come from the observed header bytes. Values marked "(verified l
     | `.bmp` | `42 4D` |
     | `.png` | the PNG signature `89 50 4E 47 0D 0A 1A 0A` |
 
-    - (a) V2 (AES-256): every V2 archive that holds textures (24 of the 36 V2 archives on the dev box) has its first texture by path start with the DTX header and parse whole. The first file of each type above in each V2 archive starts with that type's header (dev box: 24 textures, 12 models, 3 worlds, 1 each of PCX, BMP, PNG).
+    - (a) V2 (AES-256): every V2 archive that holds textures (24 of the 36 V2 archives on the dev box) has its first texture by path start with the DTX header and parse whole. The first file of each type above in each V2 archive starts with that type's header (dev box: 24 textures, 12 models, 3 worlds, 1 each of PCX, BMP, PNG). Build 26236938 ships six of those 36 V2 archives unkeyed (GUNS_M_HH and GUNS_M_PV_SR among them): 30 V2 archives, 19 with textures, 10 models, 3 worlds, no PCX, BMP or PNG; 34 keyed archives in all (4 V1), 32,202 files in the 108 archives.
     - (b) V2: the first map of WORLDS.rez and of WORLDS4.rez parse as version-85 worlds; all 72 maps of WORLDS, WORLDS4 and WORLDS5 do.
     - (c) V2: `chars_m_body/cm_body_alphateam_ki.ltb` (8 pieces, 53 nodes) and the M4A1's first-person `guns_m_pv_ar/pv_ar_m4a1_sh.ltb` (1 piece, 50 nodes) parse as models.
-    - (d) V1 (Twofish): ATTRIBUTES.rez's `attributes/weapons.txt` (9,007,972 bytes) parses as an attribute file (4,737 sections, 2,321 `Weapon` records). XML.rez's files start with a byte-order mark and `<?xml version`, which also shows the V1 IV is right (a wrong IV corrupts the first block).
+    - (d) V1 (Twofish): ATTRIBUTES.rez's `attributes/weapons.txt` (9,007,972 bytes) parses as an attribute file (4,737 sections, 2,321 `Weapon` records); in build 26236938 9,275,149 bytes, 4,867 sections, 2,386 `Weapon` records. XML.rez's files start with a byte-order mark and `<?xml version`, which also shows the V1 IV is right (a wrong IV corrupts the first block).
     - (e) Decrypting with the other family's cipher, or with a wrong key, gives none of these headers; the `size & 15` tail is identical either way.
 
 ## Open questions

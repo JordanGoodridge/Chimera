@@ -347,6 +347,22 @@ the user's go-ahead: no Actions runs unless asked.
   replicates, so a client derives the same and isn't corrected at a
   swap). The install's two body types are identical, so in practice
   every rung body plays as the stock one.
+- **Rung bodies with a missing file (2026-10-30).** Records 279
+  `Medium_NM` and 280 `medium_NM_female` are in the rungs' body pool but
+  their body files aren't in the install (build 26236938 either); the
+  game draws the engine's placeholder (`models\default.ltb`, a small
+  untextured shape) for them (characters.md Corrections (2026-10-30) 3,
+  case 61), ours keeps the previous body. For the gun game, leave them
+  out of the pool (no one wants the placeholder); parity only matters if
+  a mode ever forces those records.
+- **Scorpion_Venom draws the placeholder projectile (2026-10-30).**
+  special_weapons.md Corrections (2026-10-30) 3, case 57: a projectile
+  record with an empty `Model` keeps the engine's placeholder model
+  (`MODELS\DEFAULT_PROJECTILE.LTB`) at the record's `ModelScale`; the
+  flame's scale is 0 (nothing, as ours), `Scorpion_Venom`'s 0.35 (a
+  small untextured shape in flight). Ours draws nothing for an empty
+  `Model` (`special::data::NO_MODEL_KEY`). Small; after the
+  ca-corrections projectile work lands.
 - **Zombies: a character tied to its weapon (user idea, 2026-10-29):
   done, confirm in a playtest.** Chimera's `ladder::RungCharacter`
   (arriving and leaving: `ladder::OnRung`'s observers); Combat Arms'
@@ -358,7 +374,10 @@ the user's go-ahead: no Actions runs unless asked.
   `Quarantine_Exp_01` at the player; baseline health and movement, no
   knock-back. Not drawn yet (unspecified, open questions in
   docs/plans/active/combat-arms.md): the screen overlay, the eye
-  trails, the override's virus render styles and hands. The idea as
+  trails, the override's virus render styles and hands. (All specified
+  since: game_modes.md Corrections (2026-10-30) 1-7; the eyes are the
+  face's `ClientFX#` groups, `Eye_Red_Tail_L` for the stock infected
+  faces, on the `EYE_L`/`EYE_R` sockets: item 7, case 114.) The idea as
   given:
   Some Combat Arms characters can only use certain weapons: the infected
   (zombies) fight with their hands. Make them a special class. A rung
@@ -465,7 +484,10 @@ the user's go-ahead: no Actions runs unless asked.
   - the install points at nothing: 279 `Medium_NM` and 280
     `medium_NM_female` name body files it doesn't have
     (`CM_Body_Medium_vest_KE.ltb`, `CW_Body_Medium_Female_KE.ltb`): a
-    rung drawing them keeps what its players wore;
+    rung drawing them keeps what its players wore (build 26236938 still
+    lacks both; the game would draw the engine's small placeholder
+    `models\default.ltb` there, characters.md Corrections (2026-10-30)
+    3: see "Rung bodies with a missing file" below);
   - drawn but maybe not as the game: 163 pieces with a second texture
     slot (mostly slot 5 or 6, `textures\128xPV_SpecialSpecR.dtx`: not
     drawn), render styles our table doesn't know, drawn opaque
@@ -538,8 +560,8 @@ the user's go-ahead: no Actions runs unless asked.
   - Grey Combat Arms skins and the R870 in characters' hands: fixed
     (below, "Grey Combat Arms gun skins", "Combat Arms install guns had
     no gun in third person"); the Neon Outlaw ASW338LM's scattered
-    texture and the AUG A3 Champions Lightning: not found on the dev
-    box's install (below).
+    texture and the AUG A3 Champions Lightning: the data, not our
+    reading (below, answered on build 26236938).
   - On the end screen, guns still play their firing animation and WASD
     still plays footsteps.
   - de_piranesi's sky draws blank, showing only through some
@@ -1069,10 +1091,15 @@ the user's go-ahead: no Actions runs unless asked.
     (12: power suits, swords), `RS\ItemEdge.ltb` (6), `RS\envmap.ltb`
     (2) (open questions 2, 3).
   "Neon Outlaw ASW338LM" (texture scattered over the gun) and "AUG A3
-  Champions Lightning" aren't in this install's weapons file or string
-  table (newer items: the Windows PC's install is later?); every
-  ASW338LM and AUG A3 here resolves a plain `.dtx` on slot 1 or 0. Run
-  the sweep there with `CHIMERA_SKINS_SHOW=outlaw,champions` (below).
+  Champions Lightning": answered on build 26236938 (models_ltb.md
+  W1-W3). Neon Outlaw is `ASW338LMspunk`; its view skin (and the Royal
+  Gold, graf, sakura, sea and weastland ASW338LM skins) is painted for a
+  UV layout no ASW338LM model of the install has, so it scatters as the
+  files say (same header, model and UVs as the skins that fit: no
+  reading bug); its held skin and the AUG A3 Champions Lightning's
+  (`AUGA3ChampionsLighting`) view skin aren't in the install (grey, as
+  the game leaves them). `CHIMERA_SKINS_SHOW=outlaw,champions` prints
+  them.
   Tests: `attribute_data::sprite_skins_and_an_added_weapons_held_look`,
   `model::a_sprite_skin_draws_its_first_frame`; the sweep:
   `cargo test -p combat_arms --features dev,ui --test it
