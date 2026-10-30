@@ -58,6 +58,8 @@ use bevy::{app::RunFixedMainLoopSystems, prelude::*};
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RenetClient;
 
+use chimera_core::gameplay::{GameHooks, Gameplay};
+
 use super::{CMD_BACKUP, NetCmd, OwnState, OwnStateDelta, UserCmds};
 use crate::{
     console::resource_cvar,
@@ -995,13 +997,14 @@ fn capture_command(
 }
 
 /// The rules hold our player as the server's do (the dead: nothing but
-/// the look; the freeze: what the game's `Holds::frozen` keeps, CS:S's
+/// the look; the freeze: what the gameplay's game's `Holds::frozen` keeps, CS:S's
 /// `rules::rounds::frozen_intent`). A game's own predicted holds run in
 /// their sets before `RecordCommand` (CS:S's arming and defusing:
 /// `objectives::bomb`'s `BombHold`).
 fn hold_local(
     held: Res<Held>,
-    holds: Option<Res<super::Holds>>,
+    holds: Option<Res<GameHooks<super::Holds>>>,
+    gameplay: Option<Res<Gameplay>>,
     clock: Res<CommandClock>,
     mut player: Option<Single<&mut Intent, (With<LocalPlayer>, With<MovementSlot>)>>,
 ) {
@@ -1018,7 +1021,7 @@ fn hold_local(
             ..default()
         };
     } else if frozen {
-        let frozen = holds.map_or_else(|| super::Holds::default().frozen, |h| h.frozen);
+        let frozen = gameplay_holds(holds.as_deref(), gameplay.as_deref()).frozen;
         **intent = frozen(intent);
     }
 }
@@ -1034,7 +1037,8 @@ fn hold_local(
 pub fn hold_view(
     freeze: Option<Res<FreezeTime>>,
     held: Option<Res<Held>>,
-    holds: Option<Res<super::Holds>>,
+    holds: Option<Res<GameHooks<super::Holds>>>,
+    gameplay: Option<Res<Gameplay>>,
     clock: Option<Res<CommandClock>>,
     mut player: Option<Single<&mut Intent, With<LocalPlayer>>>,
 ) {
@@ -1044,9 +1048,15 @@ pub fn hold_view(
             .is_some_and(|until| clock.is_none_or(|c| c.tick.is_none_or(|t| t < until)))
     });
     if predicted || freeze.is_some_and(|f| f.0) {
-        let frozen = holds.map_or_else(|| super::Holds::default().frozen, |h| h.frozen);
+        let frozen = gameplay_holds(holds.as_deref(), gameplay.as_deref()).frozen;
         **intent = frozen(intent);
     }
+}
+
+/// The gameplay's rules' `Holds` (`Holds::active` for a system), else
+/// the default.
+fn gameplay_holds(holds: Option<&GameHooks<super::Holds>>, gameplay: Option<&Gameplay>) -> super::Holds {
+    holds.and_then(|h| h.pick(gameplay, |g| g.rules)).unwrap_or_default()
 }
 
 /// Where a client records the command it simulates this tick

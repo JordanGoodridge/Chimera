@@ -370,7 +370,7 @@ fn send_join(world: &mut World) {
             let mut info: Vec<(String, String)> = crate::console::userinfo(world).into_iter().collect();
             // How we come in: the join menus or straight onto a team (the
             // game's `JoinRules`).
-            let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
+            let rules = super::JoinRules::active(world);
             info.push((super::server::JOIN_KEY.to_string(), (rules.choice)(world)));
             // What this machine has (the mount doctor's report), if the
             // app made one.

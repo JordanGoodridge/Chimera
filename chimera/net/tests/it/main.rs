@@ -6,6 +6,7 @@
 //! --features dev --test it`; where tests go: docs/OBSERVABILITY.md,
 //! section 1.
 
+mod game_hooks;
 mod minigame_callouts;
 mod prediction;
 mod spawn_protection;

@@ -3,7 +3,9 @@
 //! and `CombatArmsParts` build and tick together, and each game's guns
 //! alone (`CsSourceGuns`, `CombatArmsGuns`) register both weapon sets;
 //! each game's match-wide systems run only while it is the gameplay
-//! (`chimera_core::gameplay`, A1 step 3), and a switch changes the tick.
+//! (`chimera_core::gameplay`, A1 step 3), and a switch changes the tick;
+//! the hooks each game keys by its id (`gameplay::GameHooks`: join, hold,
+//! bot and new-game hooks) are the gameplay's in either plugin order.
 
 use bevy::prelude::*;
 use chimera_core::game_registry::{GameAppExt, Games};
@@ -100,5 +102,77 @@ fn each_games_guns_register_without_its_rules() {
     }
     for id in combat_arms::game::inventory::STARTING_WEAPONS {
         assert!(sim.app.world().resource::<WeaponCatalog>().get(id).is_some(), "{id}");
+    }
+}
+
+/// Which game's hook each of the keyed kinds ran (`gameplay::GameHooks`,
+/// docs/plans/active/ecs-cleanup.md step 2): the join choice
+/// (`JoinRules`), the freeze's end (`Holds`), the bot quota a kick lowers
+/// (`BotHooks`) and the fresh game (`gameplay::NewGame`), each told apart by
+/// what only that game's hook reads or writes.
+fn hooks_ran(sim: &mut Sim) -> [&'static str; 4] {
+    use chimera_net::net::{BotHooks, Holds, JoinRules};
+    use combat_arms::game::{bots::BotSettings, rules::{CaMatch, Phase as CaPhase}};
+    use cs_source::{bot::BotQuota, rules::rounds::{Phase as CsPhase, RoundState}};
+    let (cs, ca) = (cs_source::game::GAME, combat_arms::game::GAME);
+    let w = sim.app.world_mut();
+    w.insert_resource(chimera_core::core::JoinChoice::Menus);
+    let join = if (JoinRules::active(w).choice)(w) == "menus" { cs } else { ca };
+
+    w.resource_mut::<RoundState>().phase = CsPhase::Freeze { until: 11.0 };
+    w.resource_mut::<CaMatch>().phase = CaPhase::Setup { until: 22.0 };
+    let holds = match (Holds::active(w).freeze_ends)(w) {
+        Some(11.0) => cs,
+        Some(22.0) => ca,
+        other => panic!("freeze ends {other:?}"),
+    };
+
+    w.resource_mut::<BotQuota>().quota = 5;
+    w.resource_mut::<BotSettings>().quota = 5;
+    let bot = w.spawn((chimera_core::core::Bot, Name::new("Zed"))).id();
+    (BotHooks::active(w).kick)(w, bot);
+    let bots = match (w.resource::<BotQuota>().quota, w.resource::<BotSettings>().quota) {
+        (4, 5) => cs,
+        (5, 4) => ca,
+        other => panic!("quotas {other:?}"),
+    };
+
+    // CS:S's fresh game starts its rounds over (out of the freeze).
+    w.resource_mut::<RoundState>().phase = CsPhase::Freeze { until: 11.0 };
+    chimera_core::gameplay::new_game(w);
+    let new_game = if w.resource::<RoundState>().phase == (CsPhase::Freeze { until: 11.0 }) { ca } else { cs };
+    [join, holds, bots, new_game]
+}
+
+/// Both games' parts with the network, in either plugin order: each keyed
+/// hook is the gameplay's game's (Combat Arms', the first game's), not
+/// the last plugin's (CS:S's, before step 2, whose network part comes
+/// last by name), and a switch to CS:S switches every one.
+#[test]
+fn each_hook_is_the_gameplays_in_either_plugin_order() {
+    use chimera_core::gameplay::{Gameplay, switch_gameplay};
+    let (cs, ca) = (cs_source::game::GAME, combat_arms::game::GAME);
+    for ca_first in [true, false] {
+        let mut sim = Sim::with(
+            (chimera_sim::SimBasePlugins, chimera_core::metrics::TickMetricsPlugin),
+            |app| {
+                app.insert_resource(combat_arms::game::data::CaData::builtin());
+                if ca_first {
+                    app.add_plugins(combat_arms::CombatArmsParts);
+                    app.register_game(&cs_source::game::INFO);
+                    app.add_plugins(cs_source::CsSourceParts);
+                } else {
+                    app.add_plugins(cs_source::CsSourceParts);
+                    app.register_game(&combat_arms::game::INFO);
+                    app.add_plugins(combat_arms::CombatArmsParts);
+                }
+                app.add_plugins(chimera_net::net::NetPlugin);
+            },
+        );
+        sim.ticks(2);
+        switch_gameplay(sim.app.world_mut(), Gameplay::of(&combat_arms::game::INFO));
+        assert_eq!(hooks_ran(&mut sim), [ca; 4], "Combat Arms' (CA first: {ca_first})");
+        switch_gameplay(sim.app.world_mut(), Gameplay::of(&cs_source::game::INFO));
+        assert_eq!(hooks_ran(&mut sim), [cs; 4], "CS:S's (CA first: {ca_first})");
     }
 }

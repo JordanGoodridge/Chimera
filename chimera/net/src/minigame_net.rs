@@ -162,6 +162,18 @@ impl Plugin for MinigameNetPlugin {
 fn register(app: &mut App) {
     // The events exist in an app without a minigame runtime too.
     app.add_message::<MinigameEvent>();
+    // While a minigame is the rules, a predicting client is held as the
+    // match's end holds everyone (`runtime::end_frozen`: the look only),
+    // and a joiner comes in at a free spawn point (`JoinRules`'
+    // default).
+    chimera_core::gameplay::GameplayAppExt::game_hook(
+        app,
+        minigame::MINIGAME,
+        crate::net::Holds {
+            freeze_ends: |_| None,
+            frozen: minigame::runtime::end_frozen,
+        },
+    );
     app.replicate::<NetMinigame>()
         .ordered::<NetMinigame>()
         .replicate::<InMinigame>()

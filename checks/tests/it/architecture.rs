@@ -22,8 +22,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("query_cache", &[]),
     ("console", &["core", "env", "query_cache"]),
     // Game events and the server log: what the rules and the network tell
-    // plugins and admins happened.
-    ("game_log", &["core", "console"]),
+    // plugins and admins happened (players named by the gameplay's game's
+    // `LogSubjects`).
+    ("game_log", &["core", "console", "gameplay"]),
     ("mount", &["env"]),
     // A player profile file (sections, `Key = value`): std only.
     ("profile", &[]),
@@ -102,7 +103,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
         "objectives",
         &["core", "console", "slots", "character", "map", "weapon", "gameplay"],
     ),
-    ("rules", &["core", "console", "game_log", "weapon", "objectives"]),
+    ("rules", &["core", "console", "game_log", "gameplay", "weapon", "objectives"]),
     // Map logic (entity I/O, triggers, movers): game-independent; games
     // feed it through `map::MapData::entities`. `net`: it registers its
     // movers and HUD messages as its part of the network (`logic::net`).

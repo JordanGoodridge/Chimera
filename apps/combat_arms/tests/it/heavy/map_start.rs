@@ -1,5 +1,5 @@
 //! A map the app starts on (`--map combat_arms:<name>`: the map plugin
-//! with the loaded map, no `map` command, so no `core::NewGame`) plays its
+//! with the loaded map, no `map` command, so no `gameplay::NewGame`) plays its
 //! mission as a map loaded by the `map` command does: the install's
 //! mission data is found when the match starts and its start triggers
 //! reach the map's objects. SHORTFUSE in Elimination (TDM):

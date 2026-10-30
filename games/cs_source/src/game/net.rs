@@ -41,6 +41,7 @@
 //! Scores, buying and the rules' sounds are every game's (`net::game`).
 
 use bevy::prelude::*;
+use crate::gameplay::GameplayAppExt as _;
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -198,27 +199,38 @@ fn register(app: &mut App) {
         .add_message::<RoundEnded>()
         .add_message::<ObjectiveEvent>()
         .add_message::<HostagePenalty>()
-        .insert_resource(JoinRules {
-            joined,
-            enter: crate::rules::enter_game,
-            choice: |w| w.get_resource::<JoinChoice>().copied().unwrap_or_default().key(),
-        })
-        .insert_resource(BotHooks {
-            kick: |w, bot| {
-                crate::bot::kick_bot(w, bot);
-                if let Some(mut q) = w.get_resource_mut::<crate::bot::BotQuota>() {
-                    q.quota = q.quota.saturating_sub(1);
-                }
+        // CS:S's hooks, used while it is the gameplay's (its bots' for
+        // `BotHooks`).
+        .game_hook(
+            super::GAME,
+            JoinRules {
+                joined,
+                enter: crate::rules::enter_game,
+                choice: |w| w.get_resource::<JoinChoice>().copied().unwrap_or_default().key(),
             },
-            sync_quota: crate::bot::sync_quota,
-        })
-        .insert_resource(Holds {
-            freeze_ends: |w| match w.get_resource::<RoundState>().map(|r| r.phase) {
-                Some(Phase::Freeze { until }) => Some(until),
-                _ => None,
+        )
+        .game_hook(
+            super::GAME,
+            BotHooks {
+                kick: |w, bot| {
+                    crate::bot::kick_bot(w, bot);
+                    if let Some(mut q) = w.get_resource_mut::<crate::bot::BotQuota>() {
+                        q.quota = q.quota.saturating_sub(1);
+                    }
+                },
+                sync_quota: crate::bot::sync_quota,
             },
-            frozen: crate::rules::rounds::frozen_intent,
-        })
+        )
+        .game_hook(
+            super::GAME,
+            Holds {
+                freeze_ends: |w| match w.get_resource::<RoundState>().map(|r| r.phase) {
+                    Some(Phase::Freeze { until }) => Some(until),
+                    _ => None,
+                },
+                frozen: crate::rules::rounds::frozen_intent,
+            },
+        )
         // Arming and defusing hold the player as predicted, before its
         // command is recorded.
         .configure_sets(FixedUpdate, BombHold.before(RecordCommand));

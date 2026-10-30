@@ -43,7 +43,7 @@ use bevy::prelude::*;
 use chimera_core::{
     console::{self, Console, ConsoleAppExt},
     core::{self, BuildVersion},
-    gameplay::{Gameplay, GameplayAppExt},
+    gameplay::{self, Gameplay, GameplayAppExt},
 };
 use chimera_net::net::{self, NetPlugin, NetSettings};
 use chimera_world::{
@@ -297,7 +297,7 @@ pub fn swap_map(world: &mut World, id: &str, data: Option<MapData>) {
         .get_resource::<Gameplay>()
         .map_or(Duration::from_secs_f64(TICK_INTERVAL), |g| g.tick);
     core::set_tick_length(world, tick);
-    core::new_game(world);
+    gameplay::new_game(world);
     if world.contains_resource::<chimera_sim::minigame::ActiveMinigame>() {
         chimera_sim::minigame::restart(world);
     }

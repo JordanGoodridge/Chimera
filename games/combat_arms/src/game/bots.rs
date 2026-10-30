@@ -465,7 +465,7 @@ impl Plugin for CaBotsPlugin {
                     .run_if(crate::gameplay::bots_are(super::GAME)),
             );
         // The network's `kick <name>` and its quota at serving's start.
-        app.insert_resource(crate::net::BotHooks {
+        crate::gameplay::GameplayAppExt::game_hook(app, super::GAME, crate::net::BotHooks {
             kick: |w, e| {
                 kick(w, e);
                 let mut s = w.resource_mut::<BotSettings>();

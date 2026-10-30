@@ -76,8 +76,9 @@ pub struct DeathmatchPlugin;
 
 impl Plugin for DeathmatchPlugin {
     fn build(&self, app: &mut App) {
-        // A map loaded (the client's `map`, the greybox) starts a new game.
-        app.insert_resource(crate::core::NewGame(new_game));
+        // A map loaded (the client's `map`, the greybox) starts a new game
+        // (while CS:S is the gameplay's rules).
+        crate::gameplay::GameplayAppExt::game_hook(app, crate::game::GAME, crate::gameplay::NewGame(new_game));
         app.init_resource::<Deathmatch>().add_message::<Died>().add_systems(
             FixedUpdate,
             (

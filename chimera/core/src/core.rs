@@ -72,7 +72,8 @@
 //! `DEFAULT_TICK_HZ`; what the client shell reads of a game's rules without
 //! naming them: `JoinChoice` (how a player comes into a game), `MapCycle`,
 //! `FadeToBlack`, `RespawnDue` (when the dead local player comes back, for
-//! rules that respawn on a timer) and the `NewGame` hook (`new_game`).
+//! rules that respawn on a timer); the rules' `NewGame` hook is the
+//! gameplay's (`gameplay::new_game`).
 //!
 //! `BrushGrid`: a grid over brushes' bounds, the Source movement's broad
 //! phase over `MapBrushes` (identical results to testing every brush).
@@ -1449,19 +1450,6 @@ pub struct RespawnAt {
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FadeToBlack(pub u8);
 
-/// The rules' fresh game on a newly loaded map (CS:S's `rules::new_game`:
-/// everyone respawned, rounds from the start), which the rules register so
-/// what loads maps (the client's `map` command, the greybox) names none.
-#[derive(Resource, Clone, Copy)]
-pub struct NewGame(pub fn(&mut World));
-
-/// Start a fresh game on the map just loaded (`NewGame`); nothing without
-/// rules.
-pub fn new_game(world: &mut World) {
-    if let Some(hook) = world.get_resource::<NewGame>().copied() {
-        (hook.0)(world);
-    }
-}
 
 /// A remote player whose client is still loading the map (joining, or
 /// after a map change): not in the game yet. It is dead, not solid and

@@ -41,7 +41,7 @@
 //!   mission update once per server frame, S3; the mission's lengths, the
 //!   warm-up's revives, S9; round ends' cleanup and map messages, S11,
 //!   S15), joining, team assignment and leaving (S1, S10), a fresh match
-//!   (`ca_restart`, a map load: `core::NewGame`);
+//!   (`ca_restart`, a map load: `gameplay::NewGame`);
 //! - `spawns`: start points by the mode's family and their cursors (S4),
 //!   the respawn and its request (S5), telefrags, spawn protection (S6);
 //! - `scoring`: deaths, kills and assists (S7), friendly fire (S8);
@@ -119,6 +119,7 @@ pub mod tdm;
 pub mod vip;
 
 use bevy::prelude::*;
+use crate::gameplay::GameplayAppExt as _;
 
 pub use crate::mode::{Hooks, Mode, NO_HOOKS, Teams};
 pub use settings::CaRuleSettings;
@@ -626,7 +627,7 @@ impl Plugin for CaRulesPlugin {
             .init_resource::<hired_guns::CaHiredGuns>()
             .init_resource::<escort::CaEscort>()
             .init_resource::<clan::CaClan>()
-            .insert_resource(crate::core::NewGame(flow::new_game))
+            .game_hook(super::GAME, crate::gameplay::NewGame(flow::new_game))
             .add_observer(on_leave)
             .add_observer(flow::number_players)
             // Everything below: while Combat Arms is the gameplay's rules

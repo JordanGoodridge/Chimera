@@ -1,5 +1,8 @@
 # Key the single-slot net and core hooks by game
 
+**Done 2026-10-30** (docs/plans/active/ecs-cleanup.md, step 2: what
+landed and the behaviour differences).
+
 ## Context
 
 `JoinRules`, `Holds`, `BotHooks` (chimera_net), `NewGame` and
@@ -22,13 +25,13 @@ rule is DESIGN.md "ECS style" ("never a single-slot hook resource").
 
 ## Definition of done
 
-- [ ] A `GameHooks<T>` resource (game id to `T`) and
+- [x] A `GameHooks<T>` resource (game id to `T`) and
       `app.game_hook::<T>(game, hooks)`; readers take the entry of
       `Gameplay::rules` (`BotHooks`: `Gameplay::bots`), the default when none.
-- [ ] The five hooks use it; no plugin inserts them directly.
-- [ ] A scenario test in `chimera/net/tests/it/`: two games register
+- [x] The five hooks use it; no plugin inserts them directly.
+- [x] A scenario test in `chimera/net/tests/it/`: two games register
       different `JoinRules`; switching the gameplay switches which runs.
-- [ ] The guards above and `cargo test -p repo_checks` pass; the plan's
+- [x] The guards above and `cargo test -p repo_checks` pass; the plan's
       step 2 is marked done; the single-slot hooks leave
       the "Known shortcuts" of `chimera_core::gameplay`'s `//!` doc (then `docs_index`).
 
