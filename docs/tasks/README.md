@@ -8,7 +8,7 @@ Drafts: not yet posted as issues. Rules for every task: [AGENTS.md](../../AGENTS
 | Brief | Size | Needs install |
 |---|---|---|
 | [01 Key the single-slot net and core hooks by game](01-game-hooks-keyed-by-game.md) (done) | M | no |
-| [02 Run the ladder's per-tick update as systems](02-ladder-update-as-systems.md) | S | no |
+| [02 Run the ladder's per-tick update as systems](02-ladder-update-as-systems.md) (done) | S | no |
 | [03 Remove map-killed weapons without polling the world](03-removed-map-weapons.md) | S | no |
 | [04 Minigame runtime's per-tick work as normal systems](04-minigame-runtime-systems.md) | S-M | no |
 | [05 Rules modules' join and arming as entity events](05-joined-arming-events.md) | S | no |

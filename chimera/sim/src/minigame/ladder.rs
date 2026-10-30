@@ -125,8 +125,10 @@
 
 use std::collections::BTreeMap;
 
-use bevy::prelude::*;
-use chimera_core::query_cache::cached_query;
+use bevy::{
+    ecs::{schedule::ScheduleConfigs, system::ScheduleSystem},
+    prelude::*,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -137,7 +139,7 @@ use super::{
 };
 use crate::{
     core::{DamageKind, Died, Score, Team},
-    mode::{Death, DeathKind, Hooks, Match, Mode, NO_HOOKS, Teams},
+    mode::{Death, DeathKind, Hooks, Match, Mode, NO_HOOKS, Teams, mode_is},
     weapon::{
         Inventory, Magazine, Weapon,
         data::WeaponCatalog,
@@ -180,7 +182,6 @@ pub static MODE: Mode = Mode {
     hooks: Hooks {
         died,
         before_spawns,
-        update,
         ..NO_HOOKS
     },
 };
@@ -1059,10 +1060,13 @@ fn loadout(world: &World, e: Entity) -> Vec<&'static str> {
     ladder.weapon_at(rung, world.get_resource::<WeaponCatalog>()).into_iter().collect()
 }
 
-/// The ladder's tick: the guns refilled, the lead followed.
-fn update(world: &mut World) {
-    refill(world);
-    follow_lead(world);
+/// The ladder's tick (the server's, while it is the mode playing,
+/// `mode::mode_is`): the guns refilled, then the lead followed, chained
+/// where the minigame runtime runs its mode's per-tick work (after `join`,
+/// before the phases step). Normal systems: what they insert goes through
+/// `Commands`, applied at the sync point before the step (O1).
+pub(super) fn per_tick() -> ScheduleConfigs<ScheduleSystem> {
+    (refill, follow_lead).chain().distributive_run_if(mode_is(LADDER))
 }
 
 /// Who leads (the players at the highest rung, then most kills), as last
@@ -1070,11 +1074,29 @@ fn update(world: &mut World) {
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct Leaders(pub Vec<Entity>);
 
-/// The players in the lead now (none before anyone has a rung or a kill).
-pub fn leaders(world: &mut World) -> Vec<Entity> {
-    let keyed: Vec<((usize, i32), Entity)> = runtime::players(world)
-        .into_iter()
-        .map(|(e, _)| ((world.get::<Rung>(e).map_or(0, |r| r.0), world.get::<Score>(e).map_or(0, |s| s.kills)), e))
+/// The players in the minigame (`runtime::players`' filter), with their
+/// rung and kills.
+type Climbers<'w, 's> = Query<
+    'w,
+    's,
+    (Entity, &'static Team, Option<&'static Rung>, Option<&'static Score>),
+    (
+        With<crate::core::Intent>,
+        With<crate::core::Health>,
+        With<runtime::InMinigame>,
+        Without<crate::core::Connecting>,
+        Without<crate::core::Spectating>,
+        Without<crate::core::Npc>,
+    ),
+>;
+
+/// The players in the lead now (none before anyone has a rung or a kill),
+/// sorted.
+fn leaders_of(climbers: &Climbers) -> Vec<Entity> {
+    let keyed: Vec<((usize, i32), Entity)> = climbers
+        .iter()
+        .filter(|(_, t, ..)| crate::mode::plays(t.0))
+        .map(|(e, _, r, s)| ((r.map_or(0, |r| r.0), s.map_or(0, |s| s.kills)), e))
         .collect();
     let Some(best) = keyed.iter().map(|(k, _)| *k).max() else { return Vec::new() };
     if best <= (0, 0) {
@@ -1086,76 +1108,85 @@ pub fn leaders(world: &mut World) -> Vec<Entity> {
 }
 
 /// The lead's events from what changed since `Leaders`.
-fn follow_lead(world: &mut World) {
-    if !world.resource::<Match>().counting() {
+fn follow_lead(
+    m: Res<Match>,
+    climbers: Climbers,
+    rungs: Query<&Rung>,
+    leaders: Option<ResMut<Leaders>>,
+    mut events: MessageWriter<MinigameEvent>,
+    mut commands: Commands,
+) {
+    if !m.counting() {
         return;
     }
-    let now = leaders(world);
-    let before = world.get_resource::<Leaders>().map(|l| l.0.clone()).unwrap_or_default();
+    let now = leaders_of(&climbers);
+    let before = leaders.as_ref().map(|l| l.0.clone()).unwrap_or_default();
     if now == before {
         return;
     }
-    let rung = |w: &World, e: Entity| w.get::<Rung>(e).map_or(0, |r| r.0) as i32;
-    let mut events = Vec::new();
+    let mut out = Vec::new();
     for e in before.iter().filter(|e| !now.contains(e)) {
-        events.push(("lead_lost", *e));
+        out.push(("lead_lost", *e));
     }
     match now.as_slice() {
         [] => {}
-        [one] => events.push(("lead_taken", *one)),
+        [one] => out.push(("lead_taken", *one)),
         many => {
             // The newcomers, and a sole leader now sharing.
             let alone = before.len() == 1;
             for e in many.iter().filter(|e| !before.contains(e) || alone) {
-                events.push(("lead_tied", *e));
+                out.push(("lead_tied", *e));
             }
         }
     }
-    for (name, e) in events {
-        let value = rung(world, e);
-        world.write_message(MinigameEvent {
+    for (name, e) in out {
+        let value = rungs.get(e).map_or(0, |r| r.0) as i32;
+        events.write(MinigameEvent {
             name,
             player: Some(e),
             value,
         });
     }
-    world.insert_resource(Leaders(now));
+    match leaders {
+        Some(mut l) => l.0 = now,
+        None => commands.insert_resource(Leaders(now)),
+    }
 }
 
 /// With `refill_ammo`, a held rung gun's reserve is topped up every tick:
 /// the ladder gives each gun once, and a 200-round machine gun used up
 /// (misses count) would otherwise end the climb; a rung's grenade is
 /// given back once thrown.
-fn refill(world: &mut World) {
-    let Some(ladder) = world.get_resource::<Ladder>() else { return };
+fn refill(
+    ladder: Option<Res<Ladder>>,
+    mut guns: Query<(&Weapon, &mut Magazine)>,
+    mut grenades: Query<(Entity, &Weapon, &mut Throwable, Has<KeepSpent>)>,
+    mut commands: Commands,
+) {
+    let Some(ladder) = ladder else { return };
     if !ladder.refill_ammo {
         return;
     }
-    let rungs = ladder.rungs.clone();
-    // Kept query states (`query_cache`): this runs every tick.
-    cached_query::<(&Weapon, &mut Magazine), (), _>(world, |guns, world| {
-        for (w, mut m) in guns.iter_mut(world) {
-            if w.owner.is_some() && m.reserve < m.reserve_max && rungs.contains(&w.id) {
-                m.reserve = m.reserve_max;
-            }
+    let rungs = &ladder.rungs;
+    for (w, mut m) in &mut guns {
+        if w.owner.is_some() && m.reserve < m.reserve_max && rungs.contains(&w.id) {
+            m.reserve = m.reserve_max;
         }
-    });
+    }
     // A grenade rung's grenade comes back once thrown (kept in the hand
     // meanwhile: `KeepSpent`), so a player throws until a kill.
-    let keep: Vec<Entity> = cached_query::<(Entity, &Weapon, &Throwable), Without<KeepSpent>, _>(world, |thrown, world| {
-        thrown.iter(world).filter(|(_, w, _)| w.owner.is_some() && rungs.contains(&w.id)).map(|(e, ..)| e).collect()
-    });
-    for e in keep {
-        world.entity_mut(e).insert(KeepSpent);
-    }
-    cached_query::<(&Weapon, &mut Throwable), (), _>(world, |grenades, world| {
-        for (w, mut t) in grenades.iter_mut(world) {
-            let full = t.max.max(1);
-            if w.owner.is_some() && t.count < full && rungs.contains(&w.id) {
-                t.count = full;
-            }
+    for (e, w, mut t, kept) in &mut grenades {
+        if w.owner.is_none() || !rungs.contains(&w.id) {
+            continue;
         }
-    });
+        if !kept {
+            commands.entity(e).insert(KeepSpent);
+        }
+        let full = t.max.max(1);
+        if t.count < full {
+            t.count = full;
+        }
+    }
 }
 
 /// Everyone back to the first rung as the match starts.

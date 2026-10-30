@@ -323,6 +323,21 @@ pub fn current_mode(world: &World) -> Option<&'static Mode> {
     current(world).map(|(m, _)| m)
 }
 
+/// Run condition: `id` is the mode playing (`current_mode`). A mode's own
+/// per-tick systems (its objects, timers and touches) are gated by it and
+/// chained where their game runs the runtime: the update's before the
+/// phases step (`flow::mission_update`, `step_phases`), the touches' after
+/// the tick's deaths. Never a new set (DESIGN.md "ECS style").
+pub fn mode_is(id: &'static str) -> impl FnMut(&World) -> bool + Clone {
+    move |world: &World| current_mode(world).is_some_and(|m| m.id == id)
+}
+
+/// Run condition: the mode playing is one of `ids` (modes sharing a
+/// per-tick system: a mode and its variants).
+pub fn mode_in(ids: &'static [&'static str]) -> impl FnMut(&World) -> bool + Clone {
+    move |world: &World| current_mode(world).is_some_and(|m| ids.contains(&m.id))
+}
+
 /// Registering a game's modes.
 pub trait ModeAppExt {
     /// `game`'s modes (one of the same id replaces the old in place; the

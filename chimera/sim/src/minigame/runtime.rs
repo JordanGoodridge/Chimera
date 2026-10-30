@@ -645,7 +645,7 @@ pub(super) fn plugin(app: &mut App) {
             (
                 (
                     join,
-                    mode::flow::update,
+                    super::ladder::per_tick(),
                     step_phases,
                     respawn_dead,
                     crate::spawning::hold_the_dead,

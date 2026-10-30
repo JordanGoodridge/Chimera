@@ -826,3 +826,41 @@ fn the_moments_follow_the_match_for_the_local_player() {
     sim.seconds(5.5);
     assert_eq!(m(&sim).result, Some(Some(true)), "the local player won");
 }
+
+/// The ladder's tick (`refill`, `follow_lead`) is two systems gated by
+/// its mode (`mode::mode_is`), chained where the runtime ran the mode's
+/// update: after `join`, before `step_phases`. With `refill_ammo` a rung
+/// gun's spent reserve is back by the next tick; without, it stays.
+#[test]
+fn the_ladders_tick_refills_each_tick_after_the_join_and_before_the_step() {
+    let mut sim = sim_with(DEF);
+    let order = chimera_world::harness::schedule_systems(sim.app.world_mut(), FixedUpdate);
+    let at = |name: &str| {
+        order
+            .iter()
+            .position(|s| s.ends_with(name))
+            .unwrap_or_else(|| panic!("{name} not in {order:?}"))
+    };
+    assert!(at("runtime::join") < at("ladder::refill"));
+    assert!(at("ladder::refill") < at("ladder::follow_lead"));
+    assert!(at("ladder::follow_lead") < at("runtime::step_phases"));
+
+    let reserve = |sim: &Sim, p: Entity| {
+        let w = sim.app.world().get::<chimera_sim::weapon::Inventory>(p)?.active?;
+        Some(sim.app.world().get::<chimera_sim::weapon::Magazine>(w)?.reserve)
+    };
+    let spend = |sim: &mut Sim, p: Entity| {
+        let w = sim.app.world().get::<chimera_sim::weapon::Inventory>(p).and_then(|i| i.active).expect("a gun");
+        sim.app.world_mut().get_mut::<chimera_sim::weapon::Magazine>(w).expect("a magazine").reserve = 0;
+    };
+    for (refills, def) in [(false, DEF.to_string()), (true, DEF.replace("demote_on", "refill_ammo = true\ndemote_on"))] {
+        let mut sim = started(&def);
+        let a = player(&mut sim);
+        let _b = player(&mut sim);
+        settle(&mut sim);
+        spend(&mut sim, a);
+        sim.ticks(1);
+        let left = reserve(&sim, a).expect("a reserve");
+        assert_eq!(left > 0, refills, "refill_ammo {refills}: {left} left");
+    }
+}

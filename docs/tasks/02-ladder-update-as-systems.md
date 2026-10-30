@@ -1,5 +1,8 @@
 # Run the ladder's per-tick update as systems
 
+**Done 2026-10-30** (docs/plans/active/ecs-cleanup.md, step 4's first
+commit: `mode::mode_is`, `ladder::refill` and `follow_lead` as systems).
+
 ## Context
 
 A mode's per-tick work is a `fn(&mut World)` hook (`mode::Hooks::update`
