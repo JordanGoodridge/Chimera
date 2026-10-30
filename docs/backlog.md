@@ -25,6 +25,21 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## Roadmap after the gun game settles (user, 2026-10-29)
 
+- **Console namespaces (user idea, 2026-10-30).** With several games in
+  one app, flat command and setting names (`sv_cheats`, `cl_hitmarker`)
+  collide. Proposed:
+  - Every command and setting gets a namespace like our ids:
+    `cs_source:sv_cheats`, `combat_arms:musicvolume`,
+    `chimera:asset_url`. The full name always works.
+  - Original names stay inside each game's namespace for parity.
+  - `scope <game>` makes short names resolve in that game first, then
+    `chimera`. The default scope is the current game; in the party apps,
+    the game of the gun in hand.
+  - Configs and binds with short names keep working, and are saved with
+    full names from now on. An ambiguous short name prints a hint.
+  - Our general settings move to `chimera:` with no sv_/cl_ prefix.
+  Do it with the ECS cleanup, before the next game; the user to confirm
+  the design.
 - **First: ECS cleanup where new games plug in (2026-10-29).** Order (user, 2026-10-30): after the current gameplay work, before any new game; performance is fine today. Plan: [plans/active/ecs-cleanup.md](plans/active/ecs-cleanup.md) (step 1 done). For
   extensibility more than speed. Counts today: ~350 functions taking the
   whole world (`&mut World`), ~720 queries built inside them, 78

@@ -585,3 +585,9 @@ the same commit.
   `login`, `fetch <game> <set>` (prefetch, e.g. `heavy-tests`), `status`,
   `verify`, `gc`, `lock` (the repo's `assets.lock`). Tests that need an
   install accept "install or asset service".
+- **More decisions (user, 2026-10-30).** The packer, sign-in and server
+  code live in this public repo, outside releases. The asset URL
+  setting will be `chimera:asset_url` (see the backlog's console
+  namespaces item), not an `sv_` name. Budget: only needed when moving to
+  a VPS (open). Encrypted game connections (netcode's secure mode) before
+  host-served downloads are used outside Tailscale.
