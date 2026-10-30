@@ -485,8 +485,13 @@ texture swapped, no blending. (2) the render-style file format, the
 fixed-function rules and the stock `default`, `env_alpha_mask`,
 `itemedge`, `envmap` styles. (3) slot 0 is the colour map, slot 1 only an
 environment or rim map on generated coordinates, unused under
-single-texture styles. (4) open: not on this box (models_ltb.md Open
-question 8).
+single-texture styles. (4) answered 2026-10-30 on Steam build 26236938
+(models_ltb.md W1-W3): record `ASW338LMspunk`; its view skin is painted
+for UVs that no ASW338LM model of the install has (so are the Royal Gold,
+graf, sakura, sea and weastland skins): drawn as the files say it
+scatters, no reading bug; its held skin `HH_SR_ASW338Lspunk.dtx` and the
+AUG A3 Champions Lightning's view skin aren't in the install (grey, as
+the game leaves a missing skin).
 
 `cargo test -p combat_arms --features dev,ui --test it
 heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
@@ -538,7 +543,10 @@ replace upper, lower, additional and hands lists one by one. (3)
 alpha-tested at 160/255, unlit (characters.md Corrections 2, models_ltb.md
 render styles). (4) `pv_char`, `pv_char_b`, `env_alpha_mask`,
 `edgeamp01` in models_ltb.md; the second slot is a reflection picture.
-(5) still open (needs the Windows PC's install).
+(5) answered 2026-10-30 (characters.md Corrections (2026-10-30) 3):
+build 26236938 still lacks both files; the engine loads
+`models\default.ltb` in place of a model file that doesn't load, so the
+game draws such a character as that small untextured placeholder.
 
 ## Dot-sight reticles: open questions for a spec session (2026-10-29)
 
@@ -618,7 +626,9 @@ the victim's and the killer's clients; (2) the ImpactFX at the floor
 under the player + 0.1 u, up +Y, not attached; (3) the HUD layout's
 `InfectedTex` drawn every frame while infected, no tint or pulse; (4)
 eyes come from the body/face/head `ClientFX#` lists, looping, third
-person only (which face lists which group: Open question 37);
+person only (which face lists which group: game_modes.md Corrections
+(2026-10-30) 7: faces only; the stock infected faces `Eye_Red_Tail_L`,
+subtypes S and P the assassin and tanker eyes);
 `PolyTrail` is the trail key; (5) virus/host styles draw like default;
 hands from the override's `HandIndex`, none without one; (6) the
 mission's `Model` is never used.
@@ -755,6 +765,57 @@ first-person spectator gets the full view-model groups (view_models.md
 Corrections 2); (5) special_weapons.md 5.1; (6) effect lights are world
 lights, particles follow `MoveParticlesWithSystem` (default Yes: with the
 emitter) (view_models.md Corrections 3, Open question 18).
+
+## Steam build 26236938 (2026-10-30)
+
+The dev box's install went from build 25595979 to 26236938, matching the
+Windows PC. The open data questions answered on it: flame sounds and the
+boss launcher (special_weapons.md Corrections (2026-10-30), questions
+14-16), Neon Outlaw and AUG A3 Champions Lightning (models_ltb.md W1-W3,
+"Weapon skins" 4), the missing bodies ("Body skins" 5, characters.md
+Corrections (2026-10-30) 3), the eye groups (game_modes.md Corrections
+(2026-10-30) 7). What changed in the data, by the heavy sweeps (both
+keys, `-- --nocapture`):
+
+- Weapons file 9,275,149 bytes (was 9,007,972): 2,386 weapon records
+  (2,321), 2,115 ammo, 347 gear; the merge 2,363 weapons (2,302 from the
+  install). `heavy::weapon_skins`: 2,363 install weapons (2,298); sprite
+  skins 315 pieces (310); grey because the file isn't there 11 (9: plus
+  Neon Outlaw's held and AUG A3 Champions Lightning's view skin); the
+  other groups unchanged (13 slots past their list, 6 Lightning star
+  FMG-9 sprite pieces, 14 missing held/view models, 62 second slots, the
+  same unknown render styles).
+- `heavy::body_skins`: 574 rung bodies (572), 571 with an infection
+  override; the same 2 missing body files, 163 second slots and render
+  style counts.
+- `heavy::own_sounds`: 2,290 of 2,290 weapons naming a `FireSnd` play it
+  (was 2,225), 73 name none.
+- `heavy::timings`: pool 2,053 (1,989); 2,225 timed copies (2,160),
+  2,217 on their own model's numbers (2,152); the same 2 unread models and
+  6 without `fire_0`; 531 distinct view models (476); of 2,026 guns 96
+  with a post-fire, 3 on latency 2, 32 with a non-zero pre-fire; spinning
+  10, flame 6, knives 175 (174).
+- `heavy::rung_attachments`: pool 2,006, 1,894 records named as their
+  weapon, 112 named otherwise, 7 empty accepted lists; weapons and
+  modification files 2,386 records each.
+- `heavy::attached_fx`: 24 of 2,386 records (23 of 2,321): the new
+  `ChainsawBLOODONI` (`Chainsaw_PV_idle`); the XK-2's lights still
+  missing from the effect file.
+- `heavy::infected`: 40 infected's weapons, the stock hands' records as
+  before; 571 of 574 rung bodies have an override.
+- Archives: six of the 36 V2-keyed archives ship unkeyed now (among them
+  GUNS_M_HH and GUNS_M_PV_SR): 34 keyed (30 V2, 4 V1), 32,202 files;
+  12,325 unkeyed textures (9,658). The pinned numbers in
+  `lithtech_formats`' heavy `rez_install`, `dtx_install`, `keyed_install`
+  and `combat_arms`' `heavy::attributes` are updated.
+- Fixed tests that failed for other reasons: `heavy::characters::
+  held_weapons_point_forward` counted the launched projectiles' models
+  (`special::data::PROJECTILE_KEY`, added with the launcher copies) as
+  held weapons; `heavy::effects_sounds::every_named_sound_decodes`
+  failed on the 178 sound files the install's own records name but don't
+  ship (silent in the game too; now counted). `heavy::map_load::
+  warehouse_loads_within_budget` passes alone (peak 1.8 GB); with other
+  heavy tests in the same process it measures their memory too.
 
 ## Finished spec briefs
 

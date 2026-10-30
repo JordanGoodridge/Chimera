@@ -482,7 +482,7 @@ T1 = the piece's first texture slot (the colour map), T2 = its second slot, L = 
 
 ## Edge cases
 
-- **Encrypted archives.** Models in V2-keyed archives (ATTACH_M, CHARS_M_BODY, CHARS_M_FACE, CHARS_M_HAND, CHARS_M_HEAD, CHARS_T_BODY, GUNS_M_HH, GUNS_M_PV_AR, GUNS_M_PV_MELEE, GUNS_M_PV_SMG, GUNS_M_PV_SR, GUNS_M_PV_Throwing) must be decrypted by the rez layer first (specs/combat_arms/rez_archive.md). Decryption leaves the size unchanged; the last `size mod 16` bytes of such a file are already plaintext.
+- **Encrypted archives.** Models in V2-keyed archives (ATTACH_M, CHARS_M_BODY, CHARS_M_FACE, CHARS_M_HAND, CHARS_M_HEAD, CHARS_T_BODY, GUNS_M_HH, GUNS_M_PV_AR, GUNS_M_PV_MELEE, GUNS_M_PV_SMG, GUNS_M_PV_SR, GUNS_M_PV_Throwing; from Steam build 26236938 GUNS_M_HH and GUNS_M_PV_SR ship unkeyed) must be decrypted by the rez layer first (specs/combat_arms/rez_archive.md). Decryption leaves the size unchanged; the last `size mod 16` bytes of such a file are already plaintext.
 - **No whole-file compression** exists. A file whose bytes 0..3 are not `01 00 09 00` is either another kind of file or still encrypted.
 - **Counts block mismatches**: never seen except in the three hint fields; a reader should trust the sections themselves.
 - **Strings longer than the engine keeps** (4095, or 255 for binding names) are cut on load; none observed.
@@ -536,6 +536,12 @@ Render styles and sprite skins (added 2026-10-30), read from the install:
 - **R3.** `RS\ITEMEDGE.LTB`: stages 1–3 texture 2, colour op 7 (add), coordinates from the camera-space normal, mirrored; alpha test 3 (>) reference 160.
 - **R4.** `RS\ENVMAP.LTB`: 1178 bytes, 2 passes; pass 2 blend 10 (multiply), depth 1, stage 1 texture 2 with coordinates from the camera-space reflection and the transform scale 0.5, offset 0.5.
 - **R5.** A sprite with n = 5, r = 10 (100 ms a frame) as a model skin: at 0–99 ms frame 0, at 250 ms frame 2, at 520 ms frame 0 (looped), with 16 ms frames advancing by 16 ms each; the frame change swaps the whole texture.
+
+Weapon skins on Steam build 26236938 (added 2026-10-30, Open question 8), read from the install:
+
+- **W1.** "Neon Outlaw ASW338LM" is record `ASW338LMspunk` (`Weapon2338`): `PVModelNormal` `GUNS_M_PV_SR\PV_SR_ASW338LM_KI.ltb`, `PVSkin1` `GUNS_T_PV_SR\PV_SR_ASW338LMspunk.dtx` (1024 × 1024, BGRA, one level; the archive has it), `HHModel` `GUNS_M_HH\HH_SR_ASW338LM_KI.ltb`, `HHSkin0` `GUNS_T_HH\HH_SR_ASW338Lspunk.dtx`, which is **not in the install** (no held texture of that skin exists under any spelling), so its held model is untextured. The view model's three drawn pieces all name texture slot 1 in `RS\default.ltb` style 0; the model has one UV set.
+- **W2.** Every ASW338LM record shares that view model. Drawing the model's UV triangles over each skin: `PV_SR_Asw338lm.dtx` (DXT1), the camo 01 and 02, Four-Leaf, Horus and Obsidian Circuit (`..._ASW338LMbloodbat`) skins fit the UV islands; the six newest, `ASW338LMspunk`, `Royal Gold ASW338LM` (`..._ASW338LMgold`), `ASW338LMgraf`, `ASW338LMsakura`, `ASW338LMsea` and `ASW338LMweastland` (records 2320 and 2335–2339, all 1024 × 1024 BGRA), are painted for a different layout that neither the view nor the held ASW338LM model of the install has. Drawn from the files as named, those skins land scattered over the gun; that is the data, not a reading error (same header, same model, same UVs as the skins that fit).
+- **W3.** "AUG A3 Champions Lightning" is record `AUGA3ChampionsLighting` (sic): view model `GUNS_M_PV_AR\PV_AUG_A3_CHAMPIONS_LEAGUE.ltb`, `PVSkin1` `GUNS_T_PV_AR\PV_AUG_A3_CHAMPIONS_LIGHTING.dtx`, **not in the install** (only its held texture `GUNS_T_HH\HH_AUG_A3_CHAMPIONS_LIGHTING.dtx` is): its first-person gun is untextured. Its siblings (`_BLACK`, `_HOLY`, `_INK`, `_LEAGUE`) have both.
 
 ## Synthetic fixture
 
@@ -616,5 +622,5 @@ Expected from a reader: 1 piece `Body` with 1 rigid LOD of 3 vertices and 1 tria
 5. **Render priority.** Its exact effect on draw order (how it interacts with render-style sorting) belongs to the renderer and is not specified here.
 6. **Metric scale.** The file gives no physical unit. If the project wants metres, a scale has to be chosen (for example from the 100 u standing height); other specs keep u.
 7. **The text-header `.ltb` files** in FX look like a later LithTech model container. The game cannot load them; if they ever matter, they need their own spec.
-8. **Weapon "Neon Outlaw ASW338LM"** (plan "Weapon skins" 4): not in this box's install; which record and pieces it has needs the Windows PC's.
+8. **Answered (2026-10-30, Steam build 26236938)**, test cases W1–W3: record `ASW338LMspunk`; its view skin is laid out for UVs the install's ASW338LM model doesn't have (so are five other new ASW338LM skins), its held skin is missing; the AUG A3 Champions Lightning's view skin is missing. Was: **Weapon "Neon Outlaw ASW338LM"** (plan "Weapon skins" 4): not in this box's install; which record and pieces it has needs the Windows PC's.
 9. **Rim and reflection pictures' look.** The camera-space-normal coordinates of `itemedge` use x, y in −1..1 with mirrored addressing; confirm on screen that the rim picture lines up as described.
