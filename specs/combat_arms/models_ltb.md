@@ -408,11 +408,77 @@ Units can stay as they are (the other Combat Arms specs use u); if metres are wa
 
 ## Other files with model-like names
 
-- **Render-style files** (`RS\*.LTB`, file type 5 at byte 0, container version 3): not models. The model loader refuses them. Their format is not covered here.
+- **Render-style files** (`RS\*.LTB`, file type 5 at byte 0, container version 3): not models. The model loader refuses them. Their format and meaning: "Render styles and sprite skins (added 2026-10-30)" below (this replaces the earlier "not covered here").
 - **Text-header `.ltb` files:** six files in `FX` (`264`, `SKYFRAME`, `TEST\PATH_FUEL`, `TEST\RING`, `TORNADORING1`, `TORNADORING2`) begin with a u16-prefixed `LTBHeader` string instead of the header above. The model loader refuses them (byte 0 is not 1); they are unused leftovers.
 - **Old version:** `FX\WATERFALL2.LTB` is a model of version 18, which the loader refuses.
 - **`.LTA` / `.LTC`** (in `FX`): the packer's text source and a compressed form of it. The engine never loads them.
 - Models are only loaded from files ending in `.ltb`.
+
+## Render styles and sprite skins (added 2026-10-30)
+
+Worked out from the engine's render-style loader and render-state set-up, its sprite loader and model sprite update, and the render-style files of the install's `RS` archive (66 files, read with a throwaway reader that is not in the repo). Answers the "Weapon skins" questions 1 to 3 and "Body skins" questions 3 and 4 of the Combat Arms plan.
+
+### Render-style file (`RS\*.LTB`)
+
+All numbers little-endian; enums are 32-bit; a "bool" is 1 byte followed by 3 bytes of padding unless said.
+
+1. **Header** (20 bytes): byte 0 file type (5), byte 1 unused, u16 at 2 version (3), byte 4 reserved, bytes 5–7 padding, three u32 reserved at 8, 12, 16. Anything else is refused.
+2. u32 total size of the styles that follow (at most 1,000,000), u32 style count S (at most 32).
+3. S times: u32 size of this style's lighting-material and pass data, then
+   - **lighting material** (68 bytes): ambient, diffuse, emissive, specular as four floats each (r, g, b, a, 0..1), then the specular power (float);
+   - u32 pass count P (1..4), then P passes, each a **pass record** (532 bytes, below), then 1 byte "has shader options"; if non-zero: 1 byte use-vertex-shader, i32 vertex shader id, 1 byte use-pixel-shader, i32 pixel shader id (10 bytes, unpadded);
+   - after the size counted above: **effect options** (8 bytes: bool use-effect-shader, i32 effect shader id).
+   The first style whose stages the device supports is used; the rest are fallbacks (every stock file has S = 1).
+4. **Pass record**: four **texture stages** of 120 bytes, then blend mode, depth mode, cull mode (enums), texture factor (u32 ARGB), alpha reference (u32, 0..255), bool dynamic lighting, depth test function, alpha test function, fill mode (enums), bool bump-env-map, u32 bump stage, float bump scale, float bump offset.
+5. **Texture stage** (120 bytes): eleven enums (texture, colour op, colour arg 1, colour arg 2, alpha op, alpha arg 1, alpha arg 2, coordinate source, U address, V address, filter), bool use-UV-transform, sixteen floats (a 4 × 4 matrix, row-major, applied to the generated coordinates as a row vector), bool projected, u32 coordinate count.
+
+Enum values:
+
+| Field | Values |
+|---|---|
+| texture | 0 none, 1–4 the piece's texture slot 0–3 (so 1 is the piece's first slot, 2 its second) |
+| colour op | 0 off, 1 arg1, 2 arg2, 3 arg1 × arg2, 4 2 × arg1 × arg2, 5 lerp by current alpha: arg1 · a_cur + arg2 · (1 − a_cur), 6 lerp by the texture factor's alpha, 7 arg1 + arg2, 8 dot3, 9 bump-env, 10 bump-env with luminance, 11 arg1 + arg2 − 0.5, 12 2 × that, 13 arg1 − arg2, 14 arg1 + arg1.a · arg2, 15 arg1 + (1 − arg1.a) · arg2, 16 lerp by this stage's texture alpha |
+| colour and alpha args | 0 current (the previous stage's result; the lit vertex colour at stage 0), 1 lit vertex colour, 2 this stage's texture, 3 the texture factor |
+| alpha op | 0 off (alpha unchanged), 1 arg1, 2 arg2, 3 arg1 × arg2, 4 lerp by current alpha, 5 lerp by factor alpha, 6 add, 7 add − 0.5, 8 2 × that, 9 subtract, 10 lerp by texture alpha |
+| coordinate source | 0–3 the mesh's UV sets 1–4; 4 camera-space normal, 5 camera-space position, 6 camera-space reflection vector, 7 world-space normal, 8 world-space position, 9 world-space reflection vector (x, y used as u, v unless transformed) |
+| address | 0 wrap, 1 clamp, 2 mirror, 3 mirror once |
+| filter | 0 point, 1 bilinear, 2 trilinear, 3 anisotropic, 4 point with point mips |
+| blend | 0 none (opaque), 1 add (src + dst), 2 saturate, 3 alpha blend (src · a + dst · (1 − a)), 4 by source colour, 5 by destination colour, 6 src·src + dst·dst, 7 src·src + dst, 8 src · a, 9 src · a + dst, 10 multiply (src · dst) |
+| depth | 0 test and write, 1 test only, 2 none |
+| cull | 0 none (two-sided), 1 and 2 one-sided (opposite windings) |
+| test functions | 0 off, 1 <, 2 ≤, 3 >, 4 ≥, 5 =, 6 ≠ (alpha test against the alpha reference / 255) |
+
+- **Dynamic lighting** on: the vertex colour is fixed-function lighting with the style's material: emissive + material ambient × the scene's ambient + Σ over lights of material diffuse × light colour × max(0, N·L), plus specular (material specular, power) when the specular colour is not black. Off: no lighting (the vertex colour is white). A later pass that is not lit itself stays unlit (an engine option to light it like the first pass is off by default).
+- **Shaders are never used**: the stock `default` style asks for pixel shader 0, but the game registers no shaders, so every style draws with the fixed-function stages above.
+- Passes draw in order over the same piece; each pass's blend combines its result with what is already in the frame.
+
+### Stock styles named by weapons and bodies
+
+T1 = the piece's first texture slot (the colour map), T2 = its second slot, L = the lit vertex colour, F = the texture factor (stock 0x80808080 = 0.502 grey, alpha 0.502, unless said). Every one below is opaque (blend none, depth test and write, one-sided) unless said.
+
+| Style | Material (ambient / diffuse / emissive / specular, power) | Result |
+|---|---|---|
+| `default` | 0.294 / 0.761 / 0.275 / 0.392, 10 | colour 2 × T1 × L (clamped), alpha T1.a; no alpha test. The style of the sprite-skinned guns |
+| `marktransparent` | 1 / 0.8 / 0 / 0, 20 | colour **T1 alone (unlit)**, alpha T1.a; **alpha-tested** (kept where alpha ≥ 160/255), not blended. The team mark's and the ghillie leaves' style: hard-edged cut-outs, no sorting |
+| `env_alpha_mask` | 1 / (0, 0, 0.251) / (0.408, 0.4, 0.369) / (0.278, 0.275, 0.255), 20 | stage 0: E = T2 sampled by the camera-space reflection vector (clamped), × L; stage 1: colour T1 + T1.a × E (T1 is **not** lit; its alpha masks the reflection). No alpha test |
+| `itemedge` | 1 / (0.863, 0.859, 0.847) / (0.408, 0.4, 0.369) / (0.278, 0.275, 0.255), 20 | T1 × L, then **three times** + R, where R = T2 sampled by the camera-space normal (x, y as u, v; mirrored addressing): a rim glow added 3 ×; alpha T1.a, alpha-tested > 160/255 |
+| `edgeamp01` | as `itemedge` | the same with R added once |
+| `envmap` | 0.537 / 1 / 0 / 0, 20 | two passes: pass 1 writes 2 × L (no texture); pass 2 (unlit, depth test only) computes lerp(T1, S, T1.a) with S = T2 sampled by the camera-space reflection vector mapped by u = 0.5x + 0.5, v = 0.5y + 0.5 (a sphere map), and **multiplies** it onto the frame: result 2L × lerp(T1, S, T1.a) |
+| `pv_char` | 1 / 0.8 / 0.416 / (0.353, 0.349, 0.271), 20 | (T1 × L + T1.a × W) × (1 + T1.a²), with W = T2 sampled by the world-space reflection vector (clamped): the colour map's alpha is a gloss mask. Alpha unused (no blend, no test) |
+| `pv_char_b` | 0.333 / 0.875 / 0.416 / 0.443, 50 | three passes: (1) lit, opaque: c = lerp(F, T1, F.a) blended toward L by c's alpha (T1.a²), then a dot3 of the result with itself (a grey intensity); (2) unlit, added (blend add, depth test only): (T1 × F)² + its alpha × F, plus T2 per stage 2; (3) unlit, multiplied onto the frame: 2T1 combined with T2 sampled by the world-space normal. Exact stage table in the file; a faithful copy should evaluate the stages as data |
+| `tfactor_blend_host` | 1 / 0.8 / 0 / 0, 10 | 2 × T1 × L, as `default` but with the factor 0x1E3C3C3C (unused by its stage) |
+| `tfactor_blend_virus` | as host | as host, factor 0x1E644646 (unused) |
+
+- **Second texture slots** (the question of pieces with T = 2): slot 0 is always the colour map (sampled with the mesh's UV set 1); slot 1 is only ever an environment or rim map sampled with **generated** coordinates (reflection vector or normal), never with the mesh's UVs. Under a style that names only texture 1 (`default`, `marktransparent`, the `tfactor_blend_*` and `translucent*` styles) the second slot is not drawn at all. `128XPV_SPECIALSPECR.DTX` and `CLOUDS.DTX` are therefore reflection pictures for `pv_char`/`env_alpha_mask`/`envmap` pieces.
+
+### Sprite skins (`.spr`)
+
+- **File**: five u32: frame count n (1..4096), frame rate r (frames per second, > 0), colour-keyed flag, translucent flag, colour key; then n frames, each a u16 length and that many bytes of texture path (no terminator). Nothing follows the frames. The two flags and the key matter only for sprite objects; a model skin ignores them (the frame texture's own alpha counts).
+- **As a model skin**: a skin slot whose file ends in `.spr` loads the sprite and starts the slot's own frame clock at 0 when the model object is created (or the skin set again). Every client frame in which the model is not paused, its clock advances by the frame's time in whole milliseconds; with p = ⌊1000 / r⌋ ms per frame and length p · n,
+
+  t ← (t + Δ_ms) mod (p · n),  frame = ⌊t / p⌋ mod n,
+
+  and the slot's texture is **replaced** by that frame's texture (no blending between frames). It always loops. Each model object has its own clocks (two guns with the same skin need not be in step). The same holds for character and attachment models (`ATTACH_T\GODSET.SPR`).
 
 ## Edge cases
 
@@ -462,6 +528,14 @@ Measured on the Steam build 25595979 (manifest build id). Files in unencrypted a
 19. **Synthetic fixture** (next section): a reader produces exactly the values listed there and consumes all 540 bytes.
 20. **Refusals** (each a modified copy of the fixture): byte 0 = 5 → refused as not a model; version 22 → refused; piece count 65 → refused; LOD mesh kind 8 → refused; child count 0 → refused; a weight set with fewer weights than nodes → refused; a socket on node 1 when there is one node → refused; container version 8 with a rigid LOD → refused; the file cut short anywhere → refused.
 21. **Conversion.** A vertex (1, 2, 3) with normal (0, 0, 1) becomes (1, 2, −3) with normal (0, 0, −1); triangle (0, 1, 2) becomes (0, 2, 1); quaternion (0.1, 0.2, 0.3, 0.927) becomes (−0.1, −0.2, 0.3, 0.927); a bind matrix with translation column (1, 2, 3) becomes one with (1, 2, −3); test 2's `flagpole01` rows become (1, 0, 0, 0), (0, 0, −1, 0), (0, 1, 0, 0).
+
+Render styles and sprite skins (added 2026-10-30), read from the install:
+
+- **R1.** `RS\MARKTRANSPARENT.LTB`: 645 bytes, 1 style of 605 bytes, 1 pass; stage 0 texture 1, colour op 1 (arg texture), alpha op 1 (texture); blend 0, depth 0, cull 1, alpha test 4 with reference 160, dynamic lighting on; material diffuse 0.8. A texel of alpha 159 is discarded, 160 drawn at full texture colour.
+- **R2.** `RS\DEFAULT.LTB`: 655 bytes (shader options present: pixel shader on, id 0); material ambient 0.294, diffuse 0.761, emissive 0.275, specular 0.392, power 10; stage 0 colour op 4 (2×), filter 1. A texel 0.4 under a lit colour 0.6 → 0.48.
+- **R3.** `RS\ITEMEDGE.LTB`: stages 1–3 texture 2, colour op 7 (add), coordinates from the camera-space normal, mirrored; alpha test 3 (>) reference 160.
+- **R4.** `RS\ENVMAP.LTB`: 1178 bytes, 2 passes; pass 2 blend 10 (multiply), depth 1, stage 1 texture 2 with coordinates from the camera-space reflection and the transform scale 0.5, offset 0.5.
+- **R5.** A sprite with n = 5, r = 10 (100 ms a frame) as a model skin: at 0–99 ms frame 0, at 250 ms frame 2, at 520 ms frame 0 (looped), with 16 ms frames advancing by 16 ms each; the frame change swaps the whole texture.
 
 ## Synthetic fixture
 
@@ -542,3 +616,5 @@ Expected from a reader: 1 piece `Body` with 1 rigid LOD of 3 vertices and 1 tria
 5. **Render priority.** Its exact effect on draw order (how it interacts with render-style sorting) belongs to the renderer and is not specified here.
 6. **Metric scale.** The file gives no physical unit. If the project wants metres, a scale has to be chosen (for example from the 100 u standing height); other specs keep u.
 7. **The text-header `.ltb` files** in FX look like a later LithTech model container. The game cannot load them; if they ever matter, they need their own spec.
+8. **Weapon "Neon Outlaw ASW338LM"** (plan "Weapon skins" 4): not in this box's install; which record and pieces it has needs the Windows PC's.
+9. **Rim and reflection pictures' look.** The camera-space-normal coordinates of `itemedge` use x, y in −1..1 with mirrored addressing; confirm on screen that the rim picture lines up as described.

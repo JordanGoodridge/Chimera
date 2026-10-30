@@ -25,7 +25,7 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## Roadmap after the gun game settles (user, 2026-10-29)
 
-- **First: ECS cleanup where new games plug in (2026-10-29).** For
+- **First: ECS cleanup where new games plug in (2026-10-29).** Order (user, 2026-10-30): after the current gameplay work, before any new game; performance is fine today. Plan: [plans/active/ecs-cleanup.md](plans/active/ecs-cleanup.md) (step 1 done). For
   extensibility more than speed. Counts today: ~350 functions taking the
   whole world (`&mut World`), ~720 queries built inside them, 78
   callback registries of `fn(&mut World, ..)`, 26 observers, ~40
@@ -42,7 +42,12 @@ the user's go-ahead: no Actions runs unless asked.
      and the listen-server test guard each step.
   3. A `repo_checks` rule: whole-world access only on an allowed list,
      with how to fix it in the failure message. DESIGN.md states the
-     preferences: components, observers and messages first.
+     preferences: components, observers and messages first. **Done
+     2026-10-29, first (the plan's step 1, guards before the
+     conversions):** `checks/tests/it/ecs.rs` (callback registries on an
+     allowed list, a per-crate ratchet of per-tick exclusive systems),
+     `determinism.rs` over every simulation crate, DESIGN.md "ECS
+     style".
   4. Speed: convert hot spots only when profsum shows them.
 - **Next two games: Half-Life 2: Deathmatch, then Team Fortress 2.** Not
   full remakes: take what Ultimate Gun Game needs from each, meaning the
@@ -67,6 +72,10 @@ the user's go-ahead: no Actions runs unless asked.
     ownership to the host (Steam sign-in, then the owned-apps check per
     game's app id), and the protocol between client, server and service.
     Games not on Steam need another ownership check, or default mode.
+  - *Plan:* [plans/active/asset-service.md](plans/active/asset-service.md)
+    (2026-10-30: native files content-addressed first, IR transforms
+    only where measured; the dev server first, then delivery from the
+    game server, then a host's download server).
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
@@ -91,6 +100,27 @@ the user's go-ahead: no Actions runs unless asked.
   his client flies its own copy from the shot until the server's rests
   or goes (`net::own_items`, net36). Thrown grenades stay the server's
   (Source predicts the throw only).
+- **Spawn facing toward open space (user idea, 2026-10-30).** Today the gun
+  game spawns face one of eight fixed directions (`minigame::spawns`), so
+  a player can face a wall, and views can line up with map edges (the
+  de_dust2 seam).
+  - At each spawn the server casts about 32 horizontal rays from eye
+    height, capped at about 30 m, and smooths each direction's distance
+    with its neighbours.
+  - The player faces the most open direction, plus about ±10° at random,
+    pitch level or slightly down. Optional tiebreak: toward the middle of
+    the walkable area.
+  - Done per spawn, not precomputed: it costs microseconds. The server
+    picks the facing and sends it.
+  - Test: a spawn beside a wall faces away from it, and the facing varies
+    within its open sector.
+- **Melee finale on by default, longer for longer games (user, 2026-10-30).**
+  Both gun games (Lucker Party's `gun_game_dust2` and Ultimate Gun Game's
+  automatic definition) end on melee by default. A longer ladder gets
+  more melee rungs (e.g. one per ~10 rungs, at most 3). Each melee rung
+  draws its own melee weapon from the games' knives and melee weapons,
+  the infected hands among them at their odds. Host settings can still
+  turn it off.
 - **Tracers seen through walls (user, 2026-10-29): done, decided by the
   user 2026-10-30.** Found: CS:S's tracers (and impacts, flashes, every
   effect group's particles) were already depth tested
@@ -237,9 +267,19 @@ the user's go-ahead: no Actions runs unless asked.
   - *Generation:* split the rungs over the bands; draw each band's guns
     at random from its pool, sort them by score, and mix the games. A
     console command prints each rung's band and score.
-  - *Open:* whether the heavy band is a step down or power keeps rising;
-    a grenade rung before melee or a grenade plus knife; band sizes for
-    10 rungs (proposed 2/2/2/1/1/1/1).
+  - *Decided (user, 2026-10-30):* power keeps climbing: warm-up, rising,
+    peak, heavy (snipers and heavy calibre are heavier, not harder), then
+    specials, then a grenade rung, then melee (1-3 rungs, see "Melee
+    finale on by default"). Band sizes for 10 rungs: 2/2/2/1/1/1/1,
+    scaled for other lengths, as data a ladder can tune.
+  - *Bands as shares (user, 2026-10-30):* each band has a share of the
+    ladder, adding up to 100%. Rung i of N sits at (i + 0.5) / N and takes
+    the band covering that point. Each ladder moves the boundaries a few
+    percent at random. At least one warm-up rung and one melee rung.
+    Defaults (data): warm-up pistols 15%; rising SMGs and shotguns 20%;
+    peak rifles and carbines 28%; heavy LMGs, marksman rifles, snipers and
+    heavy pistols 15%; specials 8%; grenade 7%; melee 7% (user: melee
+    rarer, about 1 on 10-20 rungs and 2 on 30; at least 1).
 - **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
   - The party gun games' protection becomes 2 s (from 1.5 s); retime the
     tests that assume 1.5 s.
@@ -579,6 +619,12 @@ the user's go-ahead: no Actions runs unless asked.
   tracer start (the view model's muzzle, the eye, a point ahead of it),
   and is it drawn at all while scoped? Ours starts at the view model's
   flash point, which keeps its camera offset when zoomed.
+  **Answered (2026-10-30)**, effects_sounds.md Corrections (2026-10-30)
+  3: one width direction for the whole strip, parallel to the screen and
+  perpendicular to its camera-space direction; world width `Width`/2, no
+  zoom or distance compensation; texture only (no colour or alpha fade);
+  depth-tested, not written (so not through walls); own tracer from the
+  data flash point, drawn while scoped.
 - **Ultimate Gun Game's Escape menu (user, 2026-10-29): fixed, confirm
   in a playtest** (`party_kit::esc_menu`, `party_kit::host`; DESIGN.md
   "The party apps' Escape menu"). It's
@@ -723,6 +769,8 @@ the user's go-ahead: no Actions runs unless asked.
   6. Special weapons' own scopes (XM25 Scope, L115 scope on specials,
      `LGB_scope`): needs a spec session. How a special weapon zooms isn't
      specified (data.rs "Known shortcuts").
+     **Answered (2026-10-30):** exactly like a gun, through its scope
+     part's zoom levels (weapon_classes.md Corrections (2026-10-30) 2).
 
   Stale in `game/data.rs`'s "Known shortcuts": "sounds and sound radii"
   aren't all unmapped (`MiscSound1..5`, `PlayAutoThrowSound`,

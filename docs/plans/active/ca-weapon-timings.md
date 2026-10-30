@@ -181,17 +181,26 @@ the pre-fire's update, 32 have a pre-fire of non-zero length (question
    gun): a knife's, grenade's or special weapon's draw keeps its own
    length, though inventory.md 6.4 adds the model's select bonus to
    every draw. The view model plays those at the vest's rates as before.
+   **Answered (2026-10-30):** the model's and sets' select bonus applies
+   to every draw, knives, grenades and specials included (inventory.md
+   Corrections (2026-10-30) 2).
 5. A pre-fire of non-zero length on a gun that doesn't spin (32 copies):
    weapon_firing.md says the first round waits for the pre-fire to end;
    we count it as one update (latency 3), as for a 0 ms one. Taking its
    length needs a timed pre-fire in the trigger (the spin's mechanism
    without the reversal): left until a spec case or a playtest shows it.
+   **Answered (2026-10-30):** the first round waits for the whole
+   pre-fire (weapon_classes.md Corrections (2026-10-30) 1, case 44).
 6. Pistols' pre-fire: view_models.md 7 and C2 say pistols and knives
    never play `prefire`; weapon_firing.md and weapon_classes.md case 40
    count it for pistols (M92FS: round on update 3). The data keeps the
    M92FS's latency 3 (a pistol copy whose model has none: 2). A knife
    copy keeps its template's 1 ms pre-fire (inventory.md 8.2 against
    view_models.md C1). Needs a spec decision.
+   **Answered (2026-10-30):** view_models.md is right: secondary and
+   melee classes never play `prefire` (M92FS round on update 2), knives
+   swing with no pre-fire (weapon_classes.md, weapon_firing.md and
+   inventory.md Corrections (2026-10-30)).
 7. Our documents keep their spec numbers and no post-fire: the M92FS's
    150 ms (weapon_classes.md 4) isn't in beretta_m92fs.toml yet, so ours
    doesn't hold a reload after a shot. Adding `trigger.postfire = 0.15`

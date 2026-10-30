@@ -790,6 +790,13 @@ do (file:line), and a testable expectation.
    and G7A (1 real, 2 shown; `grenades.md` Corrections (2026-10-22, b) 1)
    and for set items with extra magazines.
 
+## Corrections (2026-10-30)
+
+From the client weapon's fire-animation choice and its pre-fire lookup, the shared animation-rate calculation and the client's zoom command. Settles `view_models.md` contradictions C1 and C2 in favour of `view_models.md`.
+
+1. **The knife plays no pre-fire** (8.2, steps 2 and 3): the update after the one that sets "firing" starts the main swing directly; there is no 1 ms pre-fire. From idle at 60 fps the first primary hit is consumed at 183.3 ms, not 200.0 ms (`view_models.md` C1 and its case 24).
+2. **The select bonus reaches every draw** (6, step 4): ρ_draw's model and set terms apply to every weapon drawn, knives, grenades, specials and devices included (only the attachment terms need fitted parts). The cap (above 2.0 → 1) is unchanged.
+
 ## Test cases
 
 Common setup unless stated: a stock loadout (M16A3 primary 30/120, M92FS
@@ -966,6 +973,8 @@ means within the given number of frames.
     body yaw 45° to the right of its view. A knife stab travelling 150° from
     the view's right (−0.8660, 0, 0.5 in the view's frame) → not behind
     (body sector 0): 75 at roll 1.0, not 97.5.
+50. **Knife without pre-fire (Corrections 2026-10-30, 1).** M9 in hand, idle, primary pressed just before the update at 0 ms, 60 fps → swing starts on the update at 16.7 ms; first hit consumed at 183.3 ms; no 1 ms animation in between.
+51. **Select bonus on a knife (Corrections 2026-10-30, 2).** A character model with select bonus 0.25 draws the M9 (450 ms select) → drawn in 360 ms; the same for an M67.
 
 ## Open questions
 

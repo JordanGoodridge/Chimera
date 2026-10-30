@@ -593,6 +593,20 @@ and a testable expectation.
      DotSight_B_AR instead → swap: the item's M4A1 (with the B sight) is
      drawn with clip 20 and the carried one dropped.
 
+## Corrections (2026-10-30): placing part models
+
+From the client weapon's part-model creation and per-frame update, the server's held-weapon part attachments, the engine's rotation and Euler-angle helpers and the install's `RS\TRANSPARENT.LTB`. Answers the plan's "Attachment models" questions; refines "View model and world model".
+
+1. **First-person frame (no turn).** Every client frame, for each fitted part with a model: take the gun model's socket transform (the socket's node in its animated pose times the socket's own stored position, rotation and scale, as a world transform), then
+   - position = socket position + o_x · x̂ + o_y · ŷ + o_z · ẑ, where x̂, ŷ, ẑ are the socket's **own local x, y, z axes** (the engine calls them right, up, forward) and o the weapon's `MuzzlePVPosOff` or `ScopePVPosOff` in u;
+   - orientation: the socket rotation split into yaw (about y, applied first), pitch (about x) and roll (about z) in radians; the weapon's `…PVRotOff` (x yaw, y pitch, z roll, radians) is **added to those angles** and the rotation rebuilt from them in the same order. With zero rotation offsets (every stock first-person value) the part's axes are exactly the socket's axes: **no half turn or any other fixed turn is applied**;
+   - scale: the part's `AttachScale` when created; but on any frame where the socket transform's scale is not exactly 1, that scale replaces it.
+   So a part model that points along its own −x sits in the gun if the socket's +x points out of the barrel: the game would draw it that way. If the stock rifle silencers appear inside the gun in ours, the difference is in our reading of the socket (its stored rotation, the quaternion's component order or the left-to-right-handed conversion of `models_ltb.md`), not a rule of the game; our "turn ahead" search has no counterpart (Open question 8).
+2. **Third-person frame.** The server attaches the part model (`AttachHHModel`c, `AttachHHSkin`, the part's third-person render styles, scale `AttachHHModelScale`) to the held weapon object at `HHModelSocket` as an engine attachment with offset position o (socket-local x, y, z, u) and offset rotation built from `…HHRotOff` as (pitch = its y, yaw = its x, roll = its z, radians), **composed after** the socket's rotation (unlike first person, which adds the angles). Shown in third person only (hidden in first person). The Luger P08's `ScopeHHRotOff` (0, −3.14, −1.65) is therefore pitch −3.14 and roll −1.65 rad, yaw 0, in the socket's frame.
+3. **Muzzle flash with a silencer.** It does not move to the part: the first-person flash group and its light stay at the weapon's flash point F (`view_models.md` 4, from `Pos` + `MuzzlePos`, not even from the gun's `Flash` socket), whatever part is fitted; a part only changes which group plays (above). Part models carry no socket the game uses.
+4. **A sight's lens** (`RS\TRANSPARENT.LTB`, style index 1 of the red-dot models): texture × lit colour, **alpha-tested** (drawn where the texture's alpha > 160/255, discarded elsewhere), not blended, **two-sided** (no culling), depth written. So the `clouds.dtx` lens shows as hard-edged lit texels, not a see-through tint (`models_ltb.md` "Render styles and sprite skins").
+5. **Part models' own animations and sockets.** None: a part model is created with its file, skins and styles and left on its default (first) animation; nothing plays, reads or attaches to its sockets.
+
 ## Test cases
 
 M4A1 data as in `weapon_firing.md` unless stated. "Roll 1.0" means the damage random roll returns 1. Victim: male skeleton, 100 HP, no armour, torso hit, unless stated. Distances are fire position to impact.
@@ -643,6 +657,9 @@ M4A1 data as in `weapon_firing.md` unless stated. "Roll 1.0" means the damage ra
 38. **Pellet-count mismatch (Corrections 1).** A shotgun with 8 rays and (for the test) a magazine part with `VectorsPerRoundPer` 0.25 and no muzzle part → the client sends 10 rays, the server expects 8 → the shot does nothing on the server. The same 0.25 on the muzzle part and none on the magazine → the client sends 8 and the server expects 10 → nothing either. The same value on both parts → 10 rays land.
 39. **Burst return with a muzzle part (Corrections 2).** Burst mode, `TripleShotMaxCamRecoilPitch` 8, muzzle part `MaxCamRecoilPitchPer` 0.25 (for the test) → the return's cap is rad 10°.
 40. **Switch after a kick (Corrections 3).** M4A1 with a silencer kicks; switch to a weapon without parts at once → the next return step uses that weapon's cap and its ammo's rates, with no muzzle term.
+41. **Part frame (Corrections 2026-10-30, 1).** Socket at (10, 2, 30) with local axes x̂ = (0, 0, 1), ŷ = (0, 1, 0), ẑ = (−1, 0, 0) (yaw +90°), `MuzzlePVPosOff` (−2.2, 0, 0) and zero rotation offset → part origin at (10, 2, 27.8), its axes equal to the socket's.
+42. **Rotation offset adds angles (Corrections 2026-10-30, 1).** Socket rotation yaw 0.3, pitch 0.2, roll 0; `ScopePVRotOff` (0.1, 0, 0) → part rotation yaw 0.4, pitch 0.2, roll 0 (rebuilt yaw-pitch-roll); third person with the same numbers as `ScopeHHRotOff` → socket rotation × rotation(pitch 0, yaw 0.1, roll 0).
+43. **Lens cut-out (Corrections 2026-10-30, 4).** A lens texel with alpha 150/255 → not drawn; 170/255 → drawn opaque, from both sides.
 
 ## Open questions
 
@@ -653,3 +670,4 @@ M4A1 data as in `weapon_firing.md` unless stated. "Roll 1.0" means the damage ra
 5. **Remote silenced sound path.** One third-person sound path picks the silenced sound from the **local** player's muzzle part instead of the shooter's. It may be unused in multiplayer. Check: does a silenced enemy sound different when you yourself carry no silencer?
 6. **Fitting rules in the lobby.** The per-slot option fields (0/1/2) and which parts a player owns come from the account and shop, outside this spec. For the slice, a loadout file can name the parts per weapon directly.
 7. **Character gear.** The full effect of gear mods and character attachments (protection tables, stamina) belongs to the characters and inventory specs.
+8. **Socket frames in ours vs the game** (Corrections 2026-10-30, 1): the game applies no turn, so check our socket rotations against the game's on screen with a rifle silencer; if it sits inside the barrel there too, the stock data really does that.

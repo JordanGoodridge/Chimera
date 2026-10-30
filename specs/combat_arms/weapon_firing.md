@@ -556,6 +556,12 @@ A second pass over the reference's client weapon, player view, server shot handl
     - Ours: `CaSpread::states` uses the zoomed jump whenever zoomed (`weapons.rs:610`), the clamp is that same value (`weapons.rs:1978`), the hold tests the mode's cone (`weapons.rs:1934`), and the burst values replace all four at once (`weapons.rs:581`).
     - Why it matters: no stock ammo has `ZoomedJumpPerturb` and the install reader fills every burst field. These only bite on custom or partial data.
 
+## Corrections (2026-10-30)
+
+From the client weapon's fire-animation choice and its pre-fire lookup, the shared animation-rate calculation and the client's zoom command. Settles `view_models.md` contradictions C1 and C2 in favour of `view_models.md`.
+
+1. **Zero-length prefire** (Constants/rules above): the extra update applies only to weapons that play a pre-fire at all: not pistols (secondary class), not knives (melee class), not primary shotguns. A pre-fire longer than 0 delays the first round by its whole length, on every weapon that plays one (`weapon_classes.md` Corrections (2026-10-30) 1, its cases 43 and 44).
+
 ## Test cases
 
 M4A1 data as above unless stated. "Roll 1.0" means the damage random roll returns exactly 1. Victim: male skeleton, 100 HP, no armour unless stated. Distances are fire position to impact point.

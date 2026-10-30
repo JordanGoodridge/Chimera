@@ -165,7 +165,7 @@ Sections outside `[Object<n>]`, one per file unless numbered.
 
 | Section, field | Type | Unit | Default when the section exists | Stock | Read by |
 |---|---|---|---|---|---|
-| `[InfectedModelSetting]` `Model`, `Goggle`, `BackPack` | integer | model id, item ids | 0, −1, −1 | 10, −1, −1 | model of an infected player (character `Model#` index, `characters.md`) |
+| `[InfectedModelSetting]` `Model`, `Goggle`, `BackPack` | integer | model id, item ids | 0, −1, −1 | 10, −1, −1 | `Model`: read but never used (the model record's infection override decides the look, `game_modes.md` Corrections (2026-10-30) 6); `Goggle`, `BackPack`: the infected's goggle and backpack |
 | `[InfectedModelSetting]` `PrimaryWeapon<i>`, `SecondaryWeapon<i>`, `MeleeWeapon<i>`, `ThrowWeapon<i>` | integer lists | weapon ids | empty (−1) | melee 191 only | infected loadout, below |
 | `[InfectedHostModelSetting]` same model and weapon fields | as above | | as above | model 10, melee 190 | host loadout |
 | `[InfectedHostModelSetting]` `MinHostNum` | integer | players | 2 | 2 | H_min, GM M8 |

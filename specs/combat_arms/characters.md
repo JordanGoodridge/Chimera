@@ -3,7 +3,7 @@
 Source basis: reference material the user pointed the spec session to on the game's player characters: the shared character-model attribute manager and the per-player model selection record, the player object's model building, attachments, death and body code on the server, the client's character effect (aim twisting, hit-sphere display), the shared third-person animation driver and its animation-set tables, the client and server animation updaters, the body object and its states, and the client hit-sphere test. Data was read from a US-region attribute data set (the model, attachment, mark and weapon attribute files) and, where it differs, compared with a BR-region set. Model numbers were measured with a throwaway reader written from `models_ltb.md` and `animation.md` on the character archives of the US reference client (build 1501.04), whose character archives are not keyed. The Steam install on the Windows PC (manifest build id 25595979) keys its character archives (`V2_RESOURCES_KEY`), so those numbers are marked "install" in Test cases and must be re-measured there. A follow-up session (Open questions 13–22) added the server's reload, weapon-fire and hit-box code, the client's shot filter, emote and body effects, and measured the female numbers and third-person weapon sockets on an older extracted client release (its male files reproduce the US 1501.04 numbers).
 Status: draft
 
-Sections: Summary; Units and conventions; Constants; Behaviour (1 character records and model choice, 2 assembling the model: pieces, skins, head and face, attachments, 3 skeleton and sockets, 4 trackers and layering, 5 deciding the animation state, 6 building the animation names, 7 starting, restarting, syncing, rates and blend times, 8 aim pitch and twist, 9 hit reactions, emotes, 10 death and bodies, 11 hit-sphere placement); Per-tick order; Edge cases; Quirks; Corrections (2026-10-22); Test cases; Open questions.
+Sections: Summary; Units and conventions; Constants; Behaviour (1 character records and model choice, 2 assembling the model: pieces, skins, head and face, attachments, 3 skeleton and sockets, 4 trackers and layering, 5 deciding the animation state, 6 building the animation names, 7 starting, restarting, syncing, rates and blend times, 8 aim pitch and twist, 9 hit reactions, emotes, 10 death and bodies, 11 hit-sphere placement); Per-tick order; Edge cases; Quirks; Corrections (2026-10-22); Corrections (2026-10-30); Test cases; Open questions.
 
 ---
 
@@ -121,9 +121,9 @@ The US data has 431 `Model#` records in all (named mercenaries, cosmetics, NPCs)
 | 2 | Team mark (the `Friendly_Sign` piece) |
 | 3 | Clan background (the client's clan background texture, else team mark 0) |
 | 4 | Clan emblem (likewise) |
-| 5 … | The record's additional skins, if any |
+| 5 … | The record's additional skins, if any: slot 5 + k = `AdditionalSkins{k}` (Corrections (2026-10-30) 1) |
 
-- c is the camouflage index; if c ≥ the number of `UpperSkin` entries, c = 0. If the model colour index selects a colour skin list that exists, it replaces the upper and lower lists. The stock suffixes for c = 0..6 are none, `_DE`, `_SN`, `_UR`, `_WL`, `_FK` and a `TG` variant (Open question 3).
+- c is the camouflage index; if c ≥ the number of `UpperSkin` entries, c = 0. If the model colour index selects a colour skin list that exists, it replaces the upper and lower lists, each on its own, and also the additional skins and the hands' skins (Corrections (2026-10-30) 1). The stock suffixes for c = 0..6 are none, `_DE`, `_SN`, `_UR`, `_WL`, `_FK` and a `TG` variant (Open question 3).
 - **Team mark** (client side): if the character is on the local player's team, slot 2 gets mark 1 (`CHARS_T_BODY\RED_Tie.dtx`), otherwise mark 0 (`CHARS_T_BODY\Alpha.dtx`, drawn with the transparent mark render style, so enemies show nothing). In the infection mode every character gets mark 0. Dead bodies created by the server use mark 0.
 - Render styles 0, 1, 2 of the stock bodies are `RS\default.ltb`, `RS\GLOW.LTB`, `RS\MARKTRANSPARENT.LTB`; the sign and clan pieces use style 2. An infection override record (`Overidable_Model#`) replaces the render styles, armour, hit points and hand model.
 
@@ -606,6 +606,19 @@ From a comparison pass over the reference's shared third-person driver and its c
     - Ours: `characters/driver.rs:726-729` starts nothing.
     - Expect: a library without `LCFR`: crouch tracker plays the lower name (`LRFR` or `LWFR`) with weight r.
 
+## Corrections (2026-10-30)
+
+From the shared model-attribute reader's skin assembly and the client's equipment and cosmetic screens. Answers "Body skins" 1 to 4 of the Combat Arms plan (render styles: `models_ltb.md` "Render styles and sprite skins (added 2026-10-30)").
+
+1. **Additional skins and model colour** (2, texture slots).
+   - Reference: when the record has any `AdditionalSkins#`, slots 5, 6, … get `AdditionalSkins0`, `AdditionalSkins1`, … in order, the same for every camouflage index and figure type (nothing indexes them); the record's `AdditionalRenderStyles#` likewise fill render-style slots 5, 6, …. The **model colour** index m (−1 = none, at most 5 lists, 0..4) is a per-player value: the colour the player chose for the equipped cosmetic **character** item, overridden by the equipped cosmetic **vest** item's colour if one is equipped (items processed in that order), stored per owned item on the account and sent to the other clients with the player's model information. Default −1. When m ≥ 0, each of `ColorSkin{m}_UpperSkin#`, `ColorSkin{m}_LowerSkin#`, `ColorSkin{m}_AdditionalSkins#` and `ColorSkin{m}_HandsSkin#` that has at least one entry replaces its base list (upper and lower still indexed by the camouflage index c; additional skins by k); an empty colour list leaves the base list. The `Ghillie_Suit_Color_A/B/C` records are separate model records; their colour comes from their own lists, not from m.
+   - Ours: slot 5 + k from `AdditionalSkins{k}` (matches); no model colour (matches the default −1).
+   - Expect: test cases 58 and 59.
+
+2. **The ghillie leaves and other `RS\MARKTRANSPARENT.LTB` pieces** are **alpha-tested**, not blended: a texel is drawn (at its full texture colour, unlit) when its alpha is at least 160/255 and discarded otherwise; no sorting is needed.
+   - Ours: blended by the texture's alpha, sorted per piece.
+   - Expect: test case 60.
+
 ## Test cases
 
 "Install" marks values that depend on the character archives: they were measured on the US reference client 1501.04 and must be re-checked on the Steam install, build 25595979, after decryption of `CHARS_M_BODY.rez` (the Steam body files have the same sizes as the US ones, 429,442 and 237,832 bytes, but the Steam libraries differ: `ST_M_CHILD.LTB` 66,900,324 vs 63,225,013 bytes, `ST_W_CHILD.LTB` 95,232,495 vs 91,210,809). "Data" marks values from the US attribute data set. Positions in u, model space, left-handed; tolerance 0.01. The "stand" pose is the layered pose of 4 at t = 0 for every tracker: main entry 0, upper `URFRAmS`, lower `LST`, crouch `LC` with multiplier 0; "crouch" is the same with multiplier 1.
@@ -687,6 +700,9 @@ From a comparison pass over the reference's shared third-person driver and its c
 55. **Corpses (logic).** A client shot along a line through a fresh body's spheres and then a living enemy's head 50 u behind → hits the enemy's head; the body is not hit and receives no decal.
 56. **Death types (logic).** Killed by an `EndlessFall` volume → `D_W`; killed by a gas grenade's lasting `Poison` damage → `D_P`; killed by an infected's attack in Quarantine (infection kind) → the bullet-style choice (for example `DT` from the front), not `D_P`.
 57. **Third-person weapon (data, old release).** M4A1 in hand: model `GUNS_M_HH\HH_AR_M4A1_SH.ltb` on `RightHand` with zero offset; its `Flash` socket sits on node `Bone01` at offset (5.17188, 0, 27.25005) (weapon-model space at bind (0, 2.685, 24.440)); no other weapon of the loadout is drawn.
+58. **Additional skins (data).** A body record with `AdditionalSkins0` a and `AdditionalSkins1` b, camouflage index 3 → slot 5 a, slot 6 b (not affected by c).
+59. **Model colour (logic).** m = 1 with `ColorSkin1_UpperSkin0..` present and `ColorSkin1_LowerSkin#` absent → slot 0 from the colour list (index c), slot 1 from `LowerSkin{c}`; m = −1 → base lists.
+60. **Leaves cut-out (logic).** A ghillie leaves texel with alpha 0.62 (158/255) → not drawn; 0.63 (161/255) → drawn opaque, unlit texture colour.
 
 ## Open questions
 

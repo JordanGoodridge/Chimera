@@ -477,6 +477,17 @@ reference on the Windows PC:
    ARX160 Lv.1-4 and their "(limit)" copies all name
    `PV_AR_ARX_160_LINE.SPR`): no question there.
 
+**Answered (2026-10-30)**, models_ltb.md "Render styles and sprite
+skins (added 2026-10-30)": (1) a sprite is five u32 (frame count, frames
+per second, keyed, translucent, colour key) then the frames; as a skin it
+loops on the model object's own clock, ⌊1000/r⌋ ms a frame, the whole
+texture swapped, no blending. (2) the render-style file format, the
+fixed-function rules and the stock `default`, `env_alpha_mask`,
+`itemedge`, `envmap` styles. (3) slot 0 is the colour map, slot 1 only an
+environment or rim map on generated coordinates, unused under
+single-texture styles. (4) open: not on this box (models_ltb.md Open
+question 8).
+
 `cargo test -p combat_arms --features dev,ui --test it
 heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
 and skins, grouped by cause (needs the keys).
@@ -519,6 +530,16 @@ reference:
    have: does the Windows PC's? What does the game draw for a record
    whose body file is missing?
 
+**Answered (2026-10-30)** but 5: (1)-(2) characters.md Corrections
+(2026-10-30) 1: slot 5 + k = `AdditionalSkins{k}` for every camouflage
+index; the model colour is the player's chosen colour of the equipped
+cosmetic character item (the vest's wins), default none, and its lists
+replace upper, lower, additional and hands lists one by one. (3)
+alpha-tested at 160/255, unlit (characters.md Corrections 2, models_ltb.md
+render styles). (4) `pv_char`, `pv_char_b`, `env_alpha_mask`,
+`edgeamp01` in models_ltb.md; the second slot is a reflection picture.
+(5) still open (needs the Windows PC's install).
+
 ## Dot-sight reticles: open questions for a spec session (2026-10-29)
 
 `DotSightName` (hud_crosshair.md A8) is a weapon-record key, not a
@@ -538,6 +559,14 @@ once with `DisableCrosshair`, not while a scope overlay is up). Open:
    `DSightColor` mode (Q7) really dormant in the shipped data?
 4. Size at non-4:3 screens: x and y are scaled independently (A8), so
    the image is stretched; confirm that is what the original shows.
+
+**Answered (2026-10-30)**, hud_crosshair.md Corrections (2026-10-30) 1-4
+(test cases 101-103): (1) white, no tint, plain alpha blend (ours
+matches); (2) drawn in first-person spectating and killer views with the
+watched weapon's image, during draw animations, not in the free-look or
+chase death cameras nor under a scope overlay; (3) the red dot is only
+the zoom overlay and the attachment model; the HUD's dot-sight-mode image
+is switched off in code; (4) stretched, as ours.
 
 ## The infected's look and moment: open questions for a spec session (2026-10-29)
 
@@ -581,6 +610,19 @@ answers (the install has the data named in each):
    data) beside M8's "the body becomes the model record's infection
    override": which wins, and what model 10 is for.
 
+**Answered (2026-10-30)** in game_modes.md "Corrections (2026-10-30):
+the infected's look and moment" 1-6 (test cases 109-113): (1) a server
+auto-cast 3D sound (`AutoCast3DSound12`, host 11) for the pre-change
+template, once at a time server-wide, plus a local auto-cast sound on
+the victim's and the killer's clients; (2) the ImpactFX at the floor
+under the player + 0.1 u, up +Y, not attached; (3) the HUD layout's
+`InfectedTex` drawn every frame while infected, no tint or pulse; (4)
+eyes come from the body/face/head `ClientFX#` lists, looping, third
+person only (which face lists which group: Open question 37);
+`PolyTrail` is the trail key; (5) virus/host styles draw like default;
+hands from the override's `HandIndex`, none without one; (6) the
+mission's `Model` is never used.
+
 ## Attachment models: open questions for a spec session (2026-10-29)
 
 Fitted parts are now drawn on the view model (`view_model::parts`, a
@@ -614,6 +656,17 @@ sit right on the rail; muzzle parts did not, so ours turns them. Open:
    render-style table's reading, drawn opaque red)?
 5. **A part model's own animations and sockets** (none played or used).
 
+**Answered (2026-10-30)**, attachments.md "Corrections (2026-10-30):
+placing part models" 1-5 (test cases 41-43): (1) the part takes the
+socket's own axes exactly, offset along the socket's local x, y, z; no
+turn of any kind, so ours' turn-ahead has no counterpart and a part
+inside the barrel points at our socket reading (Open question 8); (2)
+first person adds yaw/pitch/roll (radians, x yaw, y pitch, z roll) to the
+socket's angles, third person composes them after the socket's rotation;
+(3) the flash stays at the data flash point; (4) the lens style is
+alpha-tested at 160, two-sided, opaque; (5) default animation, no
+sockets used.
+
 ## View-model attached effects and melee sounds: open questions for a spec session (2026-10-29)
 
 The view model's attached effects (view_models.md 3, `game::view_model::
@@ -642,11 +695,22 @@ Shining's), 2.9 s long. Open:
    a `HIDE_PVATTACHFX` key), does its looping `PlaySound` key keep
    sounding, pause, or stop and start from the beginning when shown?
    Ours: stopped while hidden, started from the start when shown.
+   **Answered (2026-10-30):** stopped at once while hidden and started
+   from the beginning when shown (ours matches); the hidden group's clock
+   is also frozen, so its keys resume their place in the pass.
+   effects_sounds.md Corrections (2026-10-30) 1, view_models.md 3, test
+   cases 69-70 of effects_sounds.md.
 3. **The loop of a sound key.** The idle's key lasts its group's 3 s
    and has `Loop` Yes: does the file loop on its own for as long as the
    group lives (ours), or is it restarted at each pass of the group?
    Is a looping key's sound cut at the key's end in a non-looping group
    (effects_sounds.md says this was not traced)?
+   **Answered (2026-10-30):** a key spanning its whole looping group is
+   never restarted: the file loops on its own (ours matches); with `Loop`
+   No it would play once and stay silent. Every sound key's sound,
+   looping or not, is cut at its key's end (and restarted at the key's
+   next start in a looping group). effects_sounds.md "The effect file"
+   and Corrections (2026-10-30) 1, test cases 67-68.
 4. **Others and spectators.** Do other players hear a chainsaw's idle
    (and see a PSY bomb's wick) in third person: does the held
    (`HH*`) model have attached effects of its own, from which keys? Does
@@ -663,12 +727,34 @@ Shining's), 2.9 s long. Open:
    Ours: `FireSnd` at each hit on the player's fire channel, so each hit
    replaces the last (the 2.9 s file at seven hits a swing piled up
    before: the playtest's "right click spams sound").
+   **Answered (2026-10-30):** every hit key plays the fire sound (seven
+   per chainsaw secondary swing), on hit and miss alike; there is no
+   separate whoosh. The attacker's own client plays `Alt_FireSnd` for a
+   secondary swing, others always `FireSnd`. Each start stops the same
+   attacker's previous fire or alt-fire sound of the same weapon (one
+   voice; ours matches). Impact: the surface's melee list at R 153
+   (flesh on characters), nothing on a miss. Keys merging in one frame
+   give one hit and one sound. special_weapons.md 5.1 and Quirk 10, test
+   cases 40-47; effects_sounds.md Corrections (2026-10-30) 2. To do in
+   ours: `Alt_FireSnd` for the own secondary.
 6. **The attached keys' looks.** An attached `DynaLight` (the PSY
    bomb's): does it light the world, the view model, or both? Do the
    particles of an attached system move with the view model (as ours) or
    stay in the world where they were emitted? A `PlayerView`
    (`UpdatePos` 2) attached key: what point does the weapon code give it
    (no stock attached key uses it)?
+
+**Answered (2026-10-30)** but 6's light-on-view-model and player-view
+parts: (1) only one effect file is loaded and it has no `Timebomb*`
+groups, so the stock XK-2 shows no lights (view_models.md Corrections
+(2026-10-30) 1); (2)-(3) effects_sounds.md Corrections (2026-10-30) 1:
+a hidden group's sound stops and restarts from the start, the clock
+freezes; a whole-group loop key is never restarted; (4) the held model
+plays only the weapon's `HHAttachFXName`, for other players; a
+first-person spectator gets the full view-model groups (view_models.md
+Corrections 2); (5) special_weapons.md 5.1; (6) effect lights are world
+lights, particles follow `MoveParticlesWithSystem` (default Yes: with the
+emitter) (view_models.md Corrections 3, Open question 18).
 
 ## Finished spec briefs
 
@@ -849,6 +935,18 @@ addition to specs/combat_arms/special_weapons.md (a "Corrections" or
 
 Same rules as brief 24 (identity, UTC, no code, no machine paths, test
 cases with numbers, "Open questions").
+
+**Answered (2026-10-30)** in special_weapons.md "Follow-up (2026-10-30):
+projectile looks and sounds in flight" (items 1-9, test cases 48-53):
+the `FXName` group is made once and parented to the projectile (loops
+only with `FXLoop`, smooth shut-down only with `FXSmoothShutdown`);
+`FlySound` loops and follows, `Sound` is not read; the flare is an unlit
+sprite, the light is never made, the smoke trail is drawn; the model
+faces the launch direction and never turns in flight; launchers get the
+FireFX group from a fire-only event; launched ammo uses the surface's
+impact group. Left open there: which flame sound fields the stock
+records fill and the boss flame launcher's keys (Open questions 14-15),
+both need the install's data.
 
 ### 25. Radar and minimap
 
