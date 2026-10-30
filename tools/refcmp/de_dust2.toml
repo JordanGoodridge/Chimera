@@ -183,3 +183,20 @@ angles = [8, 20]
 name = "sharp_floor_close"
 position = [-200.0, 1500.0, 40.0]
 angles = [80, 20]
+
+# The 2026-10-28 playtest's "vertical seam" (backlog): a party spawn whose
+# eye lies right above the edge between two displacements (y 2304:
+# de_dust/rockwall_blend north of it, de_dust/groundsand_blend with the
+# overlays/brickroad01 overlay south), looking along that edge, so the edge
+# projects onto the frame's middle column. The second view, 33 units south,
+# shows the same edge off-centre. A CS:S capture of both says whether the
+# two surfaces meet as sharply in the game.
+[[view]]
+name = "seam_b_mound"
+position = [-1031.5, 2303.2, 32.7]
+angles = [0, 0]
+
+[[view]]
+name = "seam_b_mound_south"
+position = [-1031.5, 2270.0, 32.7]
+angles = [0, 0]

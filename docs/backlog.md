@@ -57,10 +57,26 @@ the user's go-ahead: no Actions runs unless asked.
   (Lucker Party, outside the arch toward B tunnels) shows a hard vertical
   line down the middle of the frame. Left of it the ground is a
   different surface from the right, and a wall is cut off along the same
-  line. Suspects: areaportal or PVS clipping (views clipped through
-  openings), or the camera batching change (19418530). Reproduce with
-  `setpos` and `setang` at that spot and compare `CHIMERA_GPU_PREPROCESS=1`,
-  `CHIMERA_SKIP_OUTPUTS=0` and the vis debug views.
+  line. *Diagnosed 2026-10-29: not a rendering fault; confirm against a
+  CS:S capture.* The spot is a party spawn, `setpos -1031.46 2303.15
+  32.67; setang 0 0 0` (eye; between CT spawn and B doors, facing east).
+  The line is the edge at y 2304 between two displacements:
+  `de_dust/rockwall_blend` to the north (left; its sand mound also hides
+  the tower's foot) and `de_dust/groundsand_blend` to the south, with the
+  `overlays/brickroad01` paving overlay stopping at y 2296. Both sides show
+  `groundsand03a` (blend weights 1.0 and 0.97 at the edge), but with the
+  texture turned about 90° and offset between the two faces' mappings, and
+  only `groundsand_blend` has a bump map for it. The spawn grid
+  (`minigame::spawns`, spots on the nav mesh facing one of eight
+  directions) put the eye exactly in the vertical plane of that edge and
+  looking along it, so the edge projects onto the frame's middle column:
+  27-33 units sideways the line moves off-centre (+32 / -15 px), and it
+  stays put on the ground from above. Unchanged with `r_novis 1`,
+  `r_shadows 0`, `mat_antialias 0`, `mat_colorcorrection 0`, the sky
+  camera off, and `CHIMERA_GPU_PREPROCESS=1 CHIMERA_SKIP_OUTPUTS=0`. To
+  settle whether CS:S draws the edge as sharply: `refcmp capture-ref
+  --only seam_b_mound` on the Windows PC (views `seam_b_mound`,
+  `seam_b_mound_south` in tools/refcmp/de_dust2.toml), then `report`.
 - **Rung attachments may not fit their gun, or not show (user, 2026-10-29).**
   In the Escape-menu screenshots, the FMG-9's rung listed a holosight and
   the Luger P08's a silencer, but neither shows on the gun, and the user
