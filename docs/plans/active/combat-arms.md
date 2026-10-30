@@ -642,11 +642,22 @@ Shining's), 2.9 s long. Open:
    a `HIDE_PVATTACHFX` key), does its looping `PlaySound` key keep
    sounding, pause, or stop and start from the beginning when shown?
    Ours: stopped while hidden, started from the start when shown.
+   **Answered (2026-10-30):** stopped at once while hidden and started
+   from the beginning when shown (ours matches); the hidden group's clock
+   is also frozen, so its keys resume their place in the pass.
+   effects_sounds.md Corrections (2026-10-30) 1, view_models.md 3, test
+   cases 69-70 of effects_sounds.md.
 3. **The loop of a sound key.** The idle's key lasts its group's 3 s
    and has `Loop` Yes: does the file loop on its own for as long as the
    group lives (ours), or is it restarted at each pass of the group?
    Is a looping key's sound cut at the key's end in a non-looping group
    (effects_sounds.md says this was not traced)?
+   **Answered (2026-10-30):** a key spanning its whole looping group is
+   never restarted: the file loops on its own (ours matches); with `Loop`
+   No it would play once and stay silent. Every sound key's sound,
+   looping or not, is cut at its key's end (and restarted at the key's
+   next start in a looping group). effects_sounds.md "The effect file"
+   and Corrections (2026-10-30) 1, test cases 67-68.
 4. **Others and spectators.** Do other players hear a chainsaw's idle
    (and see a PSY bomb's wick) in third person: does the held
    (`HH*`) model have attached effects of its own, from which keys? Does
@@ -663,6 +674,16 @@ Shining's), 2.9 s long. Open:
    Ours: `FireSnd` at each hit on the player's fire channel, so each hit
    replaces the last (the 2.9 s file at seven hits a swing piled up
    before: the playtest's "right click spams sound").
+   **Answered (2026-10-30):** every hit key plays the fire sound (seven
+   per chainsaw secondary swing), on hit and miss alike; there is no
+   separate whoosh. The attacker's own client plays `Alt_FireSnd` for a
+   secondary swing, others always `FireSnd`. Each start stops the same
+   attacker's previous fire or alt-fire sound of the same weapon (one
+   voice; ours matches). Impact: the surface's melee list at R 153
+   (flesh on characters), nothing on a miss. Keys merging in one frame
+   give one hit and one sound. special_weapons.md 5.1 and Quirk 10, test
+   cases 40-47; effects_sounds.md Corrections (2026-10-30) 2. To do in
+   ours: `Alt_FireSnd` for the own secondary.
 6. **The attached keys' looks.** An attached `DynaLight` (the PSY
    bomb's): does it light the world, the view model, or both? Do the
    particles of an attached system move with the view model (as ours) or

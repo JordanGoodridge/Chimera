@@ -28,7 +28,8 @@ surface table); Behavior (1 who makes what, 2 visibility gates, 3 muzzle
 flash, 4 tracers, 5 surface type of a hit, 6 impacts and decals, 7 blood,
 8 shell casings, 9 grenade explosion, flash and smoke looks, 10 how a sound
 is played, 11 sounds by event, 12 who hears what); Per-frame order; Edge
-cases; Quirks; Corrections (2026-10-22); Test cases; Open questions.
+cases; Quirks; Corrections (2026-10-22); Corrections (2026-10-30); Test
+cases; Open questions.
 
 ---
 
@@ -262,8 +263,10 @@ player; the value is the default).
   texture scrolled by `UAdd`. `PlaySound` and `PlayRandomSound` play a wave
   (or one of `NumRand` numbered ones) 3D at the key's position, or local,
   with their own inner (100) and outer (500) radius, volume, priority,
-  looping and pitch, started when the key starts (whether a looping one is
-  cut at the key's end was not traced).
+  looping and pitch, started when the key starts. The sound lives only
+  while its key is running: it is stopped when the key ends, looping or
+  not, and while its group is hidden; a key that lasts its whole looping
+  group is never restarted between passes (Corrections (2026-10-30) 1).
 - The effect's frame: an effect created with a target normal (impacts,
   explosions) gets its local +Z along that normal; its local +Y and +X are
   built from the world up axis (from world +X when the normal is exactly
@@ -872,8 +875,10 @@ but never used to pick: when every voice is taken a new sound plays
 silently and when 255 sounds are live a new one is refused. Gameplay never
 gets close; the per-source limits below are what drop sounds in practice:
 
-- a new unsilenced fire sound from a shooter stops that shooter's previous
-  fire sound of the same weapon;
+- a new fire or alt-fire sound from a shooter stops that shooter's
+  previous fire or alt-fire sound of the same weapon (one voice for both
+  buttons); silenced fire sounds neither stop nor are stopped
+  (Corrections (2026-10-30) 2);
 - each grenade has one bounce sound; a new bounce stops the old one;
 - server hurt and death sounds: one at a time **per kind, for the whole
   server** (section 11);
@@ -887,8 +892,8 @@ never used) (Open question 21).
 
 | Event | Sound | Played as | Radius R (heard to ≈ 0.93 R) |
 |---|---|---|---|
-| Own shot | `FireSnd` (silenced: `SilencedFireSnd`ℓ) | local, volume 100 | — |
-| Other's shot | same file | 3D at their flash socket, volume 100 | `FireSndRadius` (silenced: `SilencedFireRadius`ℓ) |
+| Own shot | `FireSnd` (silenced: `SilencedFireSnd`ℓ; a secondary-button swing or shot: `Alt_FireSnd`) | local, volume 100 | — |
+| Other's shot | `FireSnd` or the silenced file, never `Alt_FireSnd` | 3D at their flash socket, volume 100 | `FireSndRadius` (silenced: `SilencedFireRadius`ℓ) |
 | Dry fire | `DryFireSnd` | never plays (corrected, `view_models.md` Open question 10): the dry-fire state is unreachable and its direct sound is disabled | — |
 | Reload / draw keys | view-model `sound_key n`: 1–3 → `ReloadSnd1..3`, 4 → `SelectSnd`, 5 → `DeselectSnd`, 10–14 → `MiscSound1..5` (the grenade pin is `MiscSound1`, `grenades.md` Corrections (2026-10-27)) | local; others 3D at your flash point | `ReloadSndRadius` / `SelectSndRadius` (300); misc: a fixed 2000 |
 | Bullet impact | surface list by ammo kind (below) | 3D at the impact, volume 100 (50 under water) | ImpactFX `SoundRadius` (900; melee 153) |
@@ -908,7 +913,10 @@ Details:
 
 - **Fire sound choice**: a muzzle attachment of type silencer or "muzzle
   attachment" with `SilencerLevel` ℓ in 1..9 selects the ℓ-th silenced file
-  and radius; level 0 plays nothing. Otherwise `FireSnd`. There is no
+  and radius; level 0 plays nothing. Otherwise `FireSnd`, except that
+  your own client plays `Alt_FireSnd` for a shot or swing started with the
+  secondary button (others still play `FireSnd` for it; melee:
+  `special_weapons.md` 5.1). There is no
   separate near/far or first/third-person file (the code for those is
   disabled); far shots differ only by gain and low-pass. Stock radii: M4A1
   2000 (silenced 1400), AK-47 2000 (1600), MP5A4 1800 (1200), MK.48 2200,
@@ -1389,6 +1397,72 @@ section 9, the Edge cases and test case 32 are amended in place.
 
 Cases 58–66 below test entries 1–9.
 
+## Corrections (2026-10-30)
+
+From the client effect manager's group update (looping, hiding and
+suspension), its two sound keys (`PlaySound`, `PlayRandomSound`), the
+client weapon's fire step and attached-effect handling, the shared
+weapon-sound player and the server weapon's fire handling. They answer
+`view_models.md` attached-effect questions 2 and 3 and the melee-sound
+question of the Combat Arms plan. Where the body above disagrees, the
+entry here wins; "The effect file", sections 10 and 11 are amended in
+place.
+
+1. **How long a sound key's sound lives** ("The effect file"; replaces
+   "whether a looping one is cut at the key's end was not traced").
+   - Original: a `PlaySound` or `PlayRandomSound` key starts its sound on
+     its first update after becoming active, once per activation. Its
+     sound is stopped:
+     - **at the key's end** (the update in which the group's clock passes
+       the key's end time), whatever its `Loop` setting and however long
+       the file is. So a non-looping file longer than its key is cut too,
+       and a looping file sounds exactly as long as its key. In a looping
+       group the key starts again from the beginning of the file at its
+       next start time, once per pass;
+     - **while its group is hidden** (an attached group hidden by
+       `HIDE_PVATTACHFX` or with its weapon model, `view_models.md` 3):
+       the sound is stopped at once and
+       the group's clock is frozen (no time passes for it, its keys keep
+       their place in the pass); when the group is shown again its active
+       sound keys start their files **from the beginning**. A file never
+       pauses and resumes;
+     - when the group is destroyed or shut down.
+   - A key that lasts its whole group (length ≥ group length − 0.01 s) in
+     a **looping** group never ends: at the end of each pass its time is
+     reset but it is not restarted, so its sound started once keeps
+     playing. With `Loop` Yes the file loops by itself for as long as the
+     group lives and is shown (the chainsaw idle: `IDLE.WAV` loops
+     seamlessly, not restarted every 3 s). With `Loop` No it plays once
+     and the key then stays silent until the group is hidden and shown
+     again or created anew. In a non-looping group the same key ends at
+     the group's end and its sound is cut there.
+   - A sound key that starts while the game window does not have focus
+     plays nothing for that activation (no retry until the key starts
+     again or the group is hidden and shown).
+   - Ours: attached groups' looping sound keys play while shown, stop
+     while hidden and start from the beginning when shown
+     (`game/view_model/attached.rs`), which matches; the freezing of the
+     group's clock while hidden and the key-end cut of other groups' sound
+     keys are to be checked against this entry.
+   - Expect: test cases 67–70.
+
+2. **Alt-fire sound and the fire voice** (sections 10 and 11).
+   - Original: the attacker's own client plays `Alt_FireSnd` instead of
+     `FireSnd` for every shot or melee hit of a swing started with the
+     secondary button (a silencer-type part with a silenced file wins over
+     both). The event the server relays is marked alt-fire, but other
+     clients end up playing `FireSnd` for it (Quirk:
+     `special_weapons.md` Quirk 10). A fire or alt-fire start first stops
+     the same shooter's still-playing fire or alt-fire sound of the same
+     weapon (one shared voice for both buttons); silenced fire sounds
+     are never stopped and never stop one. Each melee hit key is one such
+     start (`special_weapons.md` 5.1).
+   - Ours: each knife hit plays `FireSnd` on the player's fire channel,
+     replacing the last (`game/effects/mod.rs`), so the voice rule
+     matches; the secondary uses `FireSnd` instead of `Alt_FireSnd` on the
+     attacker's own client.
+   - Expect: test cases 71 and 72; `special_weapons.md` cases 40–47.
+
 ## Test cases
 
 Distances are listener (camera) to source unless stated. "Gain" is g(d) of
@@ -1598,6 +1672,37 @@ map objects and model files of an older extracted client release;
 66. **Hurt sound place (logic).** Head hit, victim centre 400 u away, head
     370 u → both hurt sounds at d = 400; burn damage to the head → only the
     burn kind.
+
+**Corrections (2026-10-30) cases.**
+
+67. **Key-end cut (logic).** Non-looping group of 1 s with one
+    `PlaySound` key 0–0.5 s, `Loop` No, a 2 s file → the file is heard
+    0–0.5 s and stopped there; the same with `Loop` Yes → also 0–0.5 s.
+    The group created looping → the file starts again at 1 s, 2 s, …, each
+    copy heard 0.5 s.
+68. **Whole-group loop key (logic).** Looping group, `Phase` 3000, one
+    local `PlaySound` key 0–3 s with `Loop` Yes and a 1.3 s file → one
+    start at creation; the file loops by itself; no new start at 3 s, 6 s,
+    …. With `Loop` No → heard 0–1.3 s, then silent while the group runs.
+69. **Hidden group (logic).** An attached group built like
+    `Chainsaw_PV_idle` (looping, `Phase` 3000, one local looping
+    `PlaySound` key over the whole group) on a weapon with
+    `PVAttachFXAlwaysShow` 0: shown at t = 0, `HIDE_PVATTACHFX 0` at
+    1.0 s, `SHOW_PVATTACHFX 0` at 4.0 s → the file plays 0–1.0 s, nothing
+    1.0–4.0 s, and starts again from its first sample at 4.0 s; the
+    group's clock reads 1.0 s at 4.0 s (frozen while hidden). The stock
+    chainsaws (`PVAttachFXAlwaysShow` 1) ignore the hide key; hiding the
+    whole weapon does the same as the key here.
+70. **Not-yet-started key while hidden (logic).** Looping 2 s group with a
+    sound key 1.5–1.8 s, hidden at 1.0 s and shown at 3.0 s → the key
+    starts at 3.5 s (group time 1.5 s), not at 1.5 s or 3.0 s.
+71. **Own alt-fire sound (data).** A weapon with `FireSnd` a and
+    `Alt_FireSnd` b → primary hits play a, secondary hits b, on the
+    attacker's client; others hear a for both.
+72. **Shared fire voice (logic).** One shooter, same weapon: a fire sound
+    started at 0, an alt-fire sound at 0.2 s → the first stops at 0.2 s.
+    Silenced shots 0.1 s apart → all copies overlap; an unsilenced shot
+    after a silenced one → the silenced copy keeps playing.
 
 ## Open questions
 

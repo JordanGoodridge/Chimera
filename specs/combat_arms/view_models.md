@@ -290,6 +290,13 @@ styles; piece texture index k uses skin k.
     `PVAttachFXAlwaysShow` is 1;
   - when the weapon is hidden, each effect remembers whether it was
     showing, and all are hidden; they are destroyed with the model.
+  - **While hidden** an attached group is frozen: its clock stops, its
+    sound keys' sounds are stopped at once, and when it is shown again
+    those sounds start from the beginning of their files. A looping sound
+    key that spans the whole group (the chainsaw idle) is started once
+    when the group is shown and then loops by itself; it is not restarted
+    at each pass (`effects_sounds.md` Corrections (2026-10-30) 1, its test
+    cases 67–70).
 - **Hidden pieces**: the weapon's `HiddenPiece0..` names are pieces of the
   weapon model hidden while the weapon's **total** ammunition is below 1
   (checked when the model is created and at the end of each fire sequence;
