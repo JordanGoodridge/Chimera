@@ -235,6 +235,13 @@ the user's go-ahead: no Actions runs unless asked.
     specials, then a grenade rung, then melee (1-3 rungs, see "Melee
     finale on by default"). Band sizes for 10 rungs: 2/2/2/1/1/1/1,
     scaled for other lengths, as data a ladder can tune.
+  - *Bands as shares (user, 2026-10-30):* each band has a share of the
+    ladder, adding up to 100%. Rung i of N sits at (i + 0.5) / N and takes
+    the band covering that point. Each ladder moves the boundaries a few
+    percent at random. At least one warm-up rung and one melee rung.
+    Defaults (data): warm-up pistols 15%; rising SMGs and shotguns 20%;
+    peak rifles and carbines 25%; heavy LMGs, marksman rifles, snipers and
+    heavy pistols 15%; specials 8%; grenade 7%; melee 10%.
 - **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
   - The party gun games' protection becomes 2 s (from 1.5 s); retime the
     tests that assume 1.5 s.
