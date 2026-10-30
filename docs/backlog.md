@@ -127,6 +127,19 @@ the user's go-ahead: no Actions runs unless asked.
   `listen_server` (a listen server with its own player, two bots, two
   clients and rung swaps), chimera_present
   `idle_lights::post_update_initializes_after_every_plugins_finish`.
+- **Party panels draw washed out with no darkened backdrop (user,
+  2026-10-29): fixed, confirm in a playtest.** The Escape menu and the
+  Controls page asked for a 0.55 (0.5) black shade and a 0.96 panel, but
+  Bevy's UI blends in linear light: the shade left the world at ~70% of
+  its brightness and bright text behind the panel showed through as a
+  ~25% grey. With `mat_monitorgamma` below 2.2 (1.8 on the dev box) the
+  brightness pass lifts the whole frame, menus too, which washes them
+  out further. Not the cameras: with every camera's copy back
+  (`CHIMERA_SKIP_OUTPUTS=0`) the panel's pixels were the same. Their
+  alphas now go through `widgets::display_alpha` (`1 - (1 - a)^2.2`:
+  covering as that alpha does blended in display space, VGUI's way).
+  Test: chimera_client
+  `widgets::display_alpha_darkens_as_a_display_space_blend_would`.
 - **A client without the Combat Arms key, or with another install
   version, builds other weapons than the server: fixed, confirm in a
   playtest.** The ~2,300 install copies come from the attribute file
