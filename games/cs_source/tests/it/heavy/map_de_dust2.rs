@@ -405,7 +405,7 @@ fn lightmaps_agree_at_shared_edges() {
 fn open_windows(map: &Arc<MapData>, props_solid: bool) -> Vec<usize> {
     use avian3d::prelude::*;
 
-    let mut map = map.clone();
+    let mut map = MapData::clone(map);
     if !props_solid {
         map.props
             .iter_mut()
@@ -418,7 +418,7 @@ fn open_windows(map: &Arc<MapData>, props_solid: bool) -> Vec<usize> {
         .filter(|(_, p)| map.models[p.model].meshes.iter().any(|m| m.material.contains("window")))
         .map(|(i, p)| (i, p.translation, p.rotation))
         .collect();
-    let mut sim = Sim::new(CsSim, MapPlugin::from_arc(map.clone()));
+    let mut sim = Sim::new(CsSim, MapPlugin::from_arc(Arc::new(map)));
     let world = sim.app.world_mut();
     let mut state: bevy::ecs::system::SystemState<SpatialQuery> = bevy::ecs::system::SystemState::new(world);
     let query = state.get(world).unwrap();
@@ -955,7 +955,7 @@ fn detail_textures() {
 #[test]
 fn world_fog() {
     let Some(map) = dust2() else { return };
-    let fog = map.fog.expect("dust2 has world fog");
+    let fog = map.fog.as_ref().expect("dust2 has world fog");
     assert!((fog.start - 500.0 * 0.0254).abs() < 1e-4 && (fog.end - 4000.0 * 0.0254).abs() < 1e-4);
     assert_eq!(fog.color, [197.0 / 255.0, 196.0 / 255.0, 165.0 / 255.0]);
     assert_eq!(fog.max_density, 1.0);

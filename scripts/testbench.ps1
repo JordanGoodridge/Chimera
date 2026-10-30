@@ -448,7 +448,7 @@ public static class TestBenchJob
             & cargo nextest --version 2>$null | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 if ($Scenario -eq "all") {
-                    Write-Host "skipping $name: cargo-nextest is not installed" -ForegroundColor Yellow
+                    Write-Host "skipping ${name}: cargo-nextest is not installed" -ForegroundColor Yellow
                     continue
                 }
                 throw "cargo-nextest is not installed (install it, or use the -cargo scenario)"

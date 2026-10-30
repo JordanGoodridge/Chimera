@@ -105,11 +105,12 @@ optimizations.
 
 | Scenario | Now | Target | Notes |
 |---|---|---|---|
-| fast-cargo (Windows, warm) | 129 s wall / 119.6 s tests | ≤ 75 s | 46 binaries, CA 61.9 s |
-| commit | 226 s (docs) | ≤ 60 s | builds 20 crates' tests |
+| fast-cargo (Windows, warm) | 115.0 s wall / 952.3 s CPU / 1,563 MB | ≤ 75 s | 3,928 passed, 9 failed (known Windows LF/metrics failures) |
+| fast-nextest (Windows, warm, `fast`) | 89.3 s wall / 1,047.5 s CPU / 1,197 MB | ≤ 75 s | 3,929 passed, 8 failed; **22% faster wall** than cargo |
+| commit | 226 s (docs) | ≤ 60 s | check measured 2.7x on `source_tools`; multi-crate pending |
 | full-nextest | 1,757 s (docs) | ≤ 1,200 s | heavy ~80% |
-| heavy at 5 slots | ~1,100 s floor | measure 6/8 | 32 GB, 16 threads |
-| map-load de_dust2 | 161 s / 67 loads (docs) | 1 load or cache | per-file / disk cache |
+| heavy at 5 slots | ~1,100 s floor | measure 6/8 | 32 GB, 16 threads; slots out of scope for now |
+| map-load de_dust2 | 161 s / 67 loads (docs) | 1 load or cache | one-load cache compiles; runtime test skipped (no install here) |
 
 ## Steps, in order of time saved per effort
 
@@ -321,6 +322,16 @@ the testbench's `fast-nextest` scenario uses it. The fast-tier comparison
 runs as soon as the warm build finishes; heavy slots stay out of scope per
 the user's call.
 
+2026-10-30: fast-tier comparison on the Windows box (warm, load 0-4):
+`fast-cargo` 115.0 s wall / 952.3 s CPU / 1,563 MB peak, 3,928 passed and
+9 failed; `fast-nextest --profile fast` 89.3 s wall / 1,047.5 s CPU /
+1,197 MB, 3,929 passed and 8 failed. Nextest is **22% faster wall** and
+uses less peak memory, at more CPU (parallelism). The failures are the
+known LF/metrics Windows failures, not this branch's code. The dust2
+cache compiles and the affected tests pass; the heavy dust2 file skipped
+all 67 tests because this clone has no CS:S install configured, so its
+runtime gain is still unmeasured.
+
 ## Decision log
 
 2026-10-30: the first target is the commit gate, not the fast tier. It is
@@ -337,6 +348,12 @@ memory limit is raised without a measurement.
 2026-10-30: measure nextest on the fast tier before adopting it. It is 2x
 faster for the full suite (heavy tests contend in one process), but 3,900
 fast tests in separate processes may not beat `cargo test`.
+
+2026-10-30: nextest did win the Windows fast tier: 89.3 s vs 115.0 s
+(22%), with lower peak memory. Keep it opt-in as the `fast` profile for now;
+the default stays 8 threads and `cargo test` remains the fallback. Do not
+switch the pre-commit hook to nextest without measuring a real commit on
+the Linux box, where its process overhead may differ.
 
 2026-10-30: the map cache is the heavy-tier lever; slot tuning comes first
 because it is a config change and a measurement, not a new cache.
