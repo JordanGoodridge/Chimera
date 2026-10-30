@@ -560,6 +560,14 @@ once with `DisableCrosshair`, not while a scope overlay is up). Open:
 4. Size at non-4:3 screens: x and y are scaled independently (A8), so
    the image is stretched; confirm that is what the original shows.
 
+**Answered (2026-10-30)**, hud_crosshair.md Corrections (2026-10-30) 1-4
+(test cases 101-103): (1) white, no tint, plain alpha blend (ours
+matches); (2) drawn in first-person spectating and killer views with the
+watched weapon's image, during draw animations, not in the free-look or
+chase death cameras nor under a scope overlay; (3) the red dot is only
+the zoom overlay and the attachment model; the HUD's dot-sight-mode image
+is switched off in code; (4) stretched, as ours.
+
 ## The infected's look and moment: open questions for a spec session (2026-10-29)
 
 The gun game's infected rung (`combat_arms::game::rungs`, docs/DESIGN.md
