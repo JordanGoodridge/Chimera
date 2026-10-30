@@ -70,8 +70,24 @@ impl Mount {
         self.layers.push(Box::new(layer));
     }
 
+    /// Add a layer already boxed (one taken out by `into_layers`).
+    pub fn push_boxed(&mut self, layer: Box<dyn FileSource>) {
+        self.layers.push(layer);
+    }
+
     pub fn layers(&self) -> impl Iterator<Item = &dyn FileSource> {
         self.layers.iter().map(|l| l.as_ref())
+    }
+
+    /// The layers, in search order, to wrap or rearrange.
+    pub fn into_layers(self) -> Vec<Box<dyn FileSource>> {
+        self.layers
+    }
+
+    /// Each layer replaced by `f(layer)`, in the same order (e.g. wrapped
+    /// in a recorder of what is read).
+    pub fn map_layers(self, f: impl FnMut(Box<dyn FileSource>) -> Box<dyn FileSource>) -> Mount {
+        Mount { layers: self.layers.into_iter().map(f).collect() }
     }
 
     pub fn read(&self, path: &str) -> io::Result<Vec<u8>> {

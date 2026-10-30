@@ -137,7 +137,11 @@ impl CaData {
                     let install = crate::mount::config::LocalConfig::load().ok()?.game_path(super::super::GAME)?;
                     let path = install.join("Game").join("ATTRIBUTES.rez");
                     if !path.is_file() {
-                        return None;
+                        // Served from the asset store (`mount::served`):
+                        // the archive's files, recorded at their paths.
+                        return super::attributes_from_mount(&super::super::INFO.mount()?)
+                            .map_err(|e| info!("Combat Arms: built-in data only: {e}"))
+                            .ok();
                     }
                     open_attributes(&path)
                         .map_err(|e| info!("Combat Arms: built-in data only: {e}"))

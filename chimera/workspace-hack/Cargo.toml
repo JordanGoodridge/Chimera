@@ -37,6 +37,7 @@ bytemuck = { version = "1", default-features = false, features = ["aarch64_simd"
 bytes = { version = "1" }
 constant_time_eq = { version = "0.4", default-features = false, features = ["std"] }
 crossbeam-channel = { version = "0.5" }
+crypto-common = { version = "0.1", default-features = false, features = ["getrandom", "std"] }
 derive_more = { version = "2", features = ["as_ref", "constructor", "deref", "deref_mut", "display", "from", "into", "is_variant", "try_unwrap", "unwrap"] }
 either = { version = "1", features = ["use_std"] }
 fixedbitset = { version = "0.5" }
@@ -62,6 +63,7 @@ rand = { version = "0.10" }
 regex-automata = { version = "0.4" }
 regex-syntax = { version = "0.8" }
 ron = { version = "0.12" }
+serde = { version = "1", features = ["alloc", "derive"] }
 serde_core = { version = "1", features = ["alloc"] }
 serde_json = { version = "1", features = ["raw_value"] }
 skrifa = { version = "0.44", default-features = false, features = ["autohint_shaping", "std"] }
@@ -84,12 +86,14 @@ zerovec = { version = "0.11", default-features = false, features = ["alloc", "de
 
 [build-dependencies]
 bevy_reflect_derive = { version = "0.20", features = ["auto_register_inventory", "reflect_documentation"] }
+cc = { version = "1", default-features = false, features = ["parallel"] }
 derive_more-impl = { version = "2", features = ["as_ref", "constructor", "deref", "deref_mut", "display", "from", "into", "is_variant", "try_unwrap", "unwrap"] }
 either = { version = "1", features = ["use_std"] }
 foldhash = { version = "0.2", default-features = false, features = ["std"] }
 hashbrown = { version = "0.17", default-features = false, features = ["default-hasher", "inline-more", "raw-entry"] }
 indexmap = { version = "2", features = ["serde"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = { version = "1" }
 regex-automata = { version = "0.4" }
 regex-syntax = { version = "0.8" }
 serde_core = { version = "1", features = ["alloc"] }
@@ -100,6 +104,7 @@ winnow = { version = "1" }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
+libc = { version = "0.2", features = ["extra_traits"] }
 linux-raw-sys = { version = "0.12", default-features = false, features = ["auxvec", "elf", "errno", "general", "if_ether", "ioctl", "net", "netlink", "no_std", "prctl", "system", "xdp"] }
 memchr = { version = "2" }
 nix = { version = "0.31", default-features = false, features = ["event", "ioctl", "signal"] }
@@ -109,6 +114,7 @@ wayland-backend = { version = "0.3", default-features = false, features = ["clie
 wayland-sys = { version = "0.31", default-features = false, features = ["client", "dlopen"] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
+libc = { version = "0.2", features = ["extra_traits"] }
 memchr = { version = "2" }
 
 [target.x86_64-pc-windows-msvc.dependencies]
@@ -118,6 +124,7 @@ memchr = { version = "2" }
 windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.x86_64-pc-windows-msvc.build-dependencies]
+getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 memchr = { version = "2" }
 
 ### END HAKARI SECTION

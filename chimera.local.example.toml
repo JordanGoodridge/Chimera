@@ -21,3 +21,16 @@
 [games.combat_arms]
 # Folder containing the game (only with the local Combat Arms loader).
 path = "~/games/combat-arms-classic"
+
+# Optional: the asset store (docs/plans/active/asset-service.md; records
+# packed by `chimera_pack`, checked with `chimera_assets`). Default: the
+# user's cache (~/.cache/chimera/assets, %LOCALAPPDATA%\chimera\assets),
+# layered under each install. The environment wins over this section:
+# CHIMERA_ASSET_STORE, CHIMERA_ASSET_USE_INSTALL=0/1.
+# [assets]
+# store = "~/.cache/chimera/assets"
+# false: games the store has a manifest for load from it alone (no install
+# looked for, no keys needed).
+# use_install = true
+# The build to mount per game (default: the newest in the store).
+# builds = { cs_source = "25338318" }

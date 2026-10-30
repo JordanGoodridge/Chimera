@@ -4,7 +4,8 @@
 //! once, beside the world) and a second map after it, each under a budget
 //! with room for a busy box; and a weapon's view model loading on demand
 //! (`view_model::on_demand`), once per session. Passes with a note
-//! without `[games.combat_arms] path` in chimera.local.toml.
+//! without `[games.combat_arms] path` in chimera.local.toml (or an asset
+//! store serving Combat Arms).
 
 use std::time::{Duration, Instant};
 
@@ -19,15 +20,18 @@ use combat_arms::{
 };
 
 fn mount() -> Option<chimera_core::mount::Mount> {
+    // The install, or the asset store's records of it (`mount::served`).
     let Some(install) = LocalConfig::load().ok().and_then(|c| c.game_path(GAME)) else {
         eprintln!("skipping: no Combat Arms install configured");
         return None;
     };
-    if !install.join("Game").is_dir() {
-        eprintln!("skipping: no Combat Arms install at {}", install.display());
-        return None;
+    match (INFO.open)(&install) {
+        Ok(mount) => Some(mount),
+        Err(e) => {
+            eprintln!("skipping: no Combat Arms install at {} ({e})", install.display());
+            None
+        }
     }
-    Some((INFO.open)(&install).unwrap())
 }
 
 /// The process's peak resident memory (MB; Linux only, else 0).

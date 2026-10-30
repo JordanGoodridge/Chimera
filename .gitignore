@@ -10,6 +10,13 @@
 *.vvd
 *.vtx
 *.rez
+# The asset store's records and manifests (chimera_pack, CHIMERA_VFS_LOG
+# logs): they live in the user's cache (~/.cache/chimera/assets), never
+# here; these catch one written into a checkout by mistake.
+*.zst
+/records/
+/manifests/
+vfs*.log
 
 # Local overrides (e.g. game install paths).
 /chimera.local.toml

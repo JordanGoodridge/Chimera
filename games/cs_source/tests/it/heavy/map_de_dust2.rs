@@ -1,4 +1,5 @@
-//! de_dust2 from a real CS:S install, headless. Skipped without one.
+//! de_dust2 from a real CS:S install (or the asset store's records of one,
+//! `mount::served`), headless. Skipped without either.
 
 use bevy::prelude::*;
 use crate::stack::{
@@ -146,9 +147,9 @@ fn dust2() -> Option<MapData> {
     let installed = LocalConfig::load()
         .ok()?
         .game_path_in(cs_source::GAME, cs_source::INFO.steam.as_ref())
-        .is_some_and(|p| p.join("cstrike").is_dir());
+        .is_some_and(|p| cs_source::mount::open(&p).is_ok());
     if !installed {
-        eprintln!("skipping: no CS:S install configured");
+        eprintln!("skipping: no CS:S install configured (or asset store serving it)");
         return None;
     }
     Some(games::load_map("cs_source:de_dust2").expect("load de_dust2"))

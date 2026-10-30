@@ -24,6 +24,9 @@ serde.workspace = true
 # `mount`: the VFS and KeyValues it re-exports, `chimera.local.toml`, the
 # user's settings and Steam libraries.
 chimera_vfs.workspace = true
+# `mount::served`: the asset store (`[assets]`) layered into a game's mount,
+# and the vfs access log (`CHIMERA_VFS_LOG`).
+chimera_assets.workspace = true
 source_formats.workspace = true
 dirs.workspace = true
 toml.workspace = true

@@ -98,6 +98,7 @@ mod heavy {
     mod options;
     mod props;
     mod scopes;
+    mod served;
     mod radio;
     mod radar;
     mod view_model;
