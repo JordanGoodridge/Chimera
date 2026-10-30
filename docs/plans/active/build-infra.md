@@ -11,6 +11,10 @@ the Windows numbers added to `docs/performance.md` "Test cycle".
 This plan is about *building* (cargo, rustc, link, test selection), not
 about the game's frame time (that is `docs/performance.md`).
 
+The measured reports are [build-infra-before.md](build-infra-before.md)
+and [build-infra-after.md](build-infra-after.md); both are produced with
+`scripts\build-bench.ps1` so they can be repeated in any slot.
+
 ## What is slow now (2026-10-29, this machine)
 
 Ryzen 7 7800X3D (8 cores / 16 threads), 32 GB, NVMe, Windows 11.
@@ -272,7 +276,9 @@ edits.
 2026-10-29: plan written. Baseline gathered from the two fast-tier logs
 in the parent checkout (581 units cold, 44 test binaries, 4,095 tests, 11 min cold /
 2 min 9 s warm) and from the target directories (23.7 GB in `Chimera\`,
-none in slot1/slot3). No measurement has been taken in a seeded slot yet.
+none in slot1/slot3). The before/after benchmark harness is
+`scripts\build-bench.ps1`; the before run is in
+`build-infra-before.md`.
 
 ## Decision log
 
