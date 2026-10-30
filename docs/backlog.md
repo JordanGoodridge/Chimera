@@ -72,6 +72,10 @@ the user's go-ahead: no Actions runs unless asked.
     ownership to the host (Steam sign-in, then the owned-apps check per
     game's app id), and the protocol between client, server and service.
     Games not on Steam need another ownership check, or default mode.
+  - *Plan:* [plans/active/asset-service.md](plans/active/asset-service.md)
+    (2026-10-30: native files content-addressed first, IR transforms
+    only where measured; the dev server first, then delivery from the
+    game server, then a host's download server).
 
 ## 0. Playtest feedback (2026-10-07), top priority
 
