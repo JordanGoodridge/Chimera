@@ -34,6 +34,11 @@ try {
         $env:PATH = (Split-Path -Parent $cargo) + ';' + $env:PATH
     }
     $format = if ($Nextest) { 'nextest' } else { 'cargo' }
+    # `cargo run` would use target/, then the test command with --features dev
+    # (and more dependency features) would relink the same helper binary.
+    # Give selection its own cache so both sides stay warm.
+    $originalTargetDir = $env:CARGO_TARGET_DIR
+    $env:CARGO_TARGET_DIR = Join-Path $root 'target\affected-selector'
     $select = @('run', '-q', '-p', 'repo_checks', '--bin', 'affected', '--', '--format', $format, '--remote', $Remote)
     if ($Nextest) { $select += '--skip-heavy' }
     if ($Direct) { $select += '--direct' }
@@ -48,9 +53,17 @@ try {
     # Windows PowerShell treats native stderr as errors under Stop; Cargo
     # writes normal progress there. Check native exit codes explicitly.
     $ErrorActionPreference = 'Continue'
-    $selected = @(& $cargo @select)
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = 'Stop'
+    try {
+        $selected = @(& $cargo @select)
+        $code = $LASTEXITCODE
+    } finally {
+        if ($null -eq $originalTargetDir) {
+            Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
+        } else {
+            $env:CARGO_TARGET_DIR = $originalTargetDir
+        }
+        $ErrorActionPreference = 'Stop'
+    }
     if ($code -ne 0) { throw "affected selection failed (exit $code)" }
     $selected = @($selected | Where-Object { $_ -and $_.Trim().Length -gt 0 })
     if ($selected.Count -eq 0) { throw 'affected selected nothing' }
