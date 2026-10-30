@@ -1,8 +1,8 @@
 //! A gun game rung's fitted parts (`game::rungs`, docs/backlog.md
 //! "Rung attachments may not fit their gun"): the draw takes only parts
 //! the gun lists for a slot, in their own `Kinds` slot, never in a slot
-//! its record closes (`AttachParams::slot_options` 0 or 2), keeps the
-//! stock part most of the time at the data's odds (sights most often,
+//! its record closes (`AttachParams::slot_options` 0 or 2) or one with a
+//! default part (it stays), keeps the stock part most of the time at the data's odds (sights most often,
 //! power parts rarely, at most two: data/attachments/rung_odds.toml),
 //! which a definition tunes (`rung_extras = { attachments = { ... } }`);
 //! the rung line names the parts by display name, shortened and capped.
@@ -90,11 +90,15 @@ fn slots_the_record_closes_take_no_part() {
     };
     let (share, _) = tally(&params, &all, 100);
     assert_eq!(share, [1.0, 0.0, 0.0, 1.0, 1.0]);
-    // A slot's default part is its stock, never drawn as an extra.
+    // A slot with a default part (a sniper's scope, an event weapon's
+    // built-in parts) keeps it: nothing drawn there, the rest as before.
     let mut params = m4a1();
     params.defaults.sight = Some("DotSight_A_AR".into());
+    params.defaults.magazine = Some("Magazine_A_AR".into());
     let table = CaModTable::built_in();
-    assert!(!rungs::slot_candidates(table, &params, SIGHT).contains(&"DotSight_A_AR"));
+    assert!(rungs::slot_candidates(table, &params, SIGHT).is_empty());
+    let (share, _) = tally(&params, &all, 100);
+    assert_eq!(share, [1.0, 0.0, 0.0, 1.0, 1.0]);
 }
 
 #[test]

@@ -8,11 +8,13 @@
 //!   can go on a weapon (`ModRecord::weapon_part`) in their own `Kinds`
 //!   slot, but none in a slot the gun's modification record closes
 //!   (`AttachParams::slot_options` 0, or 2: a built-in part; the install's
-//!   FMG-9 lists sights and magazines but takes neither), never its default
-//!   (`slot_candidates`); each slot gets one of them at its odds
+//!   FMG-9 lists sights and magazines but takes neither), nor in a slot
+//!   with a default part (a sniper's scope, an event weapon's built-in
+//!   parts: kept, `slot_candidates`); each slot gets one of them at its odds
 //!   (`RungOdds`: data/attachments/rung_odds.toml, tuned by a definition's
 //!   `rung_extras = { attachments = { sight = 0.5, max_parts = 1 } }`;
-//!   sights most often, power parts least, at most two), else keeps its
+//!   sights most often, power parts least, at most two; Gold and Red
+//!   are grades of a part, drawn like it), else keeps its
 //!   stock part, drawn alike; given to the rung's gun as
 //!   `attachments::CaRungParts` (fitting, `fit_given`, takes it over the
 //!   player's own choice), named in the HUD's rung line by display name
@@ -335,21 +337,18 @@ pub fn draw_parts(world: &World, weapon: &str, odds: &RungOdds, rng: &mut Rng) -
 /// list names that can go on a weapon (`ModRecord::weapon_part`) and
 /// whose own `Kinds` is the slot (each once), but none when the weapon's
 /// modification record says the slot takes no part or a built-in one
-/// (`AttachParams::slot_options` 0 or 2: a sniper's own scope), and never
-/// the weapon's default for the slot (that is its stock).
+/// (`AttachParams::slot_options` 0 or 2: a sniper's own scope), nor when
+/// the weapon names a default part for it (`DefaultScopeAttach` and
+/// friends: a sniper's scope, an event weapon's built-in parts), which is
+/// its stock and stays.
 pub fn slot_candidates<'a>(table: &'a CaModTable, params: &AttachParams, slot: usize) -> Vec<&'a str> {
-    if matches!(params.slot_options.get(slot), Some(0 | 2)) {
+    if matches!(params.slot_options.get(slot), Some(0 | 2)) || params.defaults.get(slot).is_some() {
         return Vec::new();
     }
-    let default = params.defaults.get(slot);
     let mut out: Vec<&str> = Vec::new();
     for a in &params.accepts {
         let Some(r) = table.find(a.name()).and_then(|i| table.get(i)) else { continue };
-        if r.slot() != Some(slot)
-            || !r.weapon_part()
-            || default.is_some_and(|d| d.eq_ignore_ascii_case(&r.name))
-            || out.iter().any(|c| c.eq_ignore_ascii_case(&r.name))
-        {
+        if r.slot() != Some(slot) || !r.weapon_part() || out.iter().any(|c| c.eq_ignore_ascii_case(&r.name)) {
             continue;
         }
         out.push(&r.name);

@@ -90,8 +90,10 @@ the user's go-ahead: no Actions runs unless asked.
   `MuzzleOPtion` 0, or 2 for a built-in part: the FMG-9 takes no sight
   or magazine, the Luger P08 no silencer, sight or magazine; 1053 guns
   list sights for a closed slot), and the draw ignored that. The draw
-  now takes only parts a slot accepts and its record leaves open
-  (`rungs::slot_candidates`), at the odds of
+  now takes only parts a slot accepts and its record leaves open, never
+  in a slot with a default part (a sniper's scope, an event weapon's
+  built-in parts stay) (`rungs::slot_candidates`; Gold and Red are
+  grades of a part, drawn like it), at the odds of
   `data/attachments/rung_odds.toml` (sight 0.40, silencer 0.30,
   mechanical sight 0.20, magazine and bullet 0.10, at most two; about
   78% of slots stock), tunable per definition (`rung_extras = {
