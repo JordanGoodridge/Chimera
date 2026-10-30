@@ -1139,3 +1139,66 @@ fn a_smoke_cloud_is_drawn_on_clients() {
     assert!(drawn.len() >= 32, "{} sprites drawn", drawn.len());
     assert!(drawn.iter().filter(|a| **a > 0.99).count() >= 16, "{drawn:?}");
 }
+
+/// CS:S's grenades in flight (`NetItem`s the server writes every tick)
+/// are drawn smoothly by a client, a frame at a time (1/144 s), at 20 and
+/// 66 updates a second: no frame's step more than 25 % over the server's
+/// speed over a frame, none standing still once it moves (backlog, "Gun
+/// game playtest, 2026-10-28"; Combat Arms' are its `net_projectiles`).
+#[test]
+fn grenades_in_flight_drawn_smoothly() {
+    use crate::stack::{
+        games::cs_source::grenades::{FLASHBANG, SMOKEGRENADE},
+        net::server::RateLimits,
+        weapon::{grenade::spawn_projectile, spawn_weapon},
+    };
+    const FRAME: f64 = 1.0 / 144.0;
+    let mut bad = Vec::new();
+    for rate in [20.0, 66.0] {
+        let mut sim = joined(link(30, 0, 0.0), 49, 1);
+        {
+            let mut limits = sim.server.app.world_mut().resource_mut::<RateLimits>();
+            limits.min_updaterate = rate;
+            limits.max_updaterate = rate;
+        }
+        sim.set_frame(FRAME);
+        sim.ticks(60);
+        for id in [HEGRENADE, FLASHBANG, SMOKEGRENADE] {
+            let w = sim.server.app.world_mut();
+            let weapon = spawn_weapon(w, id, Entity::PLACEHOLDER).unwrap();
+            let e = spawn_projectile(w, weapon, Vec3::new(0.0, 40.0, 0.0), Vec3::new(3.0, 10.0, 2.0)).unwrap();
+            let mut samples: Vec<(Vec3, f32)> = Vec::new();
+            for _ in 0..100 {
+                sim.step();
+                let Some(v) = sim.server.app.world().get::<Projectile>(e).map(|p| p.velocity.length()) else {
+                    break;
+                };
+                let w = sim.clients[0].app.world_mut();
+                if let Some(t) = w.query_filtered::<&Transform, With<NetItem>>().iter(w).next() {
+                    samples.push((t.translation, v));
+                }
+            }
+            if let Ok(s) = sim.server.app.world_mut().get_entity_mut(e) {
+                s.despawn();
+            }
+            sim.ticks(60);
+            assert!(samples.len() > 40, "{id}: drawn for {} frames", samples.len());
+            let first = samples.iter().position(|s| s.0 != samples[0].0).unwrap_or(0);
+            let samples = &samples[first.saturating_sub(1)..];
+            let n = samples.len();
+            let fastest = samples.iter().map(|s| s.1).fold(0.0f32, f32::max);
+            let (mut worst, mut still) = (0.0f32, 0);
+            for k in (n / 5).max(1)..n - n / 5 {
+                let step = samples[k].0.distance(samples[k - 1].0);
+                worst = worst.max(step / (fastest * FRAME as f32));
+                still += usize::from(step < 1e-6);
+            }
+            let line = format!("{rate} Hz {id}: worst step x{worst:.2} of its speed, still {still} frames");
+            println!("{line}");
+            if worst > 1.25 || still > 0 {
+                bad.push(line);
+            }
+        }
+    }
+    assert!(bad.is_empty(), "choppy:\n{}", bad.join("\n"));
+}

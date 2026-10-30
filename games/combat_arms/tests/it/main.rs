@@ -48,6 +48,7 @@ mod music_ambience;
 mod net;
 mod net_modes;
 mod net_modes_2;
+mod net_projectiles;
 mod options;
 mod own_sounds;
 mod radio_chat;
