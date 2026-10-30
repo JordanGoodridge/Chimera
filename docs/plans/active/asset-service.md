@@ -573,3 +573,15 @@ the same commit.
   (an `Authenticator` per account kind) and must be on before any public
   exposure. So M2 starts with internal accounts; Steam sign-in moves to
   the milestone that opens the server.
+- **Developers outside the game (2026-10-30).** Everything that loads
+  assets (the game, `cargo test` and the heavy tests, mapsweep, refcmp,
+  dedicated servers, agents' slots) goes through Chimera's vfs, and the
+  service is one more mount there. Config: an `[assets]` section in
+  `chimera.local.toml` (URL, token), overridable by `CHIMERA_ASSET_URL`
+  and `CHIMERA_ASSET_TOKEN`. One user-wide content cache
+  (`~/.cache/chimera/assets`, `%LOCALAPPDATA%\chimera\assets`) shared by
+  every checkout, worktree and slot. Files are fetched on demand when a
+  program opens one it lacks. A CLI, `chimera_assets`, does the rest:
+  `login`, `fetch <game> <set>` (prefetch, e.g. `heavy-tests`), `status`,
+  `verify`, `gc`, `lock` (the repo's `assets.lock`). Tests that need an
+  install accept "install or asset service".
