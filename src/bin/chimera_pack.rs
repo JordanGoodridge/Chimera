@@ -19,11 +19,7 @@ use std::{path::PathBuf, process::ExitCode};
 use chimera_assets::{Manifest, Store, pack, read_log};
 use chimera_core::{
     game_registry::GameInfo,
-    mount::{
-        Mount,
-        config::LocalConfig,
-        install::{self, read_manifest},
-    },
+    mount::{Mount, config::LocalConfig, install},
 };
 
 const USAGE: &str = "\
@@ -96,7 +92,7 @@ fn run(args: &[String]) -> Result<(), String> {
     };
     let build = match build {
         Some(b) => b,
-        None => build_id(&install, game.app)
+        None => install::install_build_id(&install, game.app)
             .ok_or_else(|| format!("{}: no Steam app manifest for app {}: pass --build", install.display(), game.app))?,
     };
     let mount = (game.open_install)(&install).map_err(|e| format!("{}: {e}", install.display()))?;
@@ -148,14 +144,6 @@ fn run(args: &[String]) -> Result<(), String> {
     }
     println!("manifest: {}", manifest_path.display());
     Ok(())
-}
-
-/// The install's Steam build: its own `steamapps/` (an install made with
-/// SteamCMD's `force_install_dir`), else its Steam library's.
-fn build_id(install: &std::path::Path, app: u32) -> Option<String> {
-    read_manifest(&install.join("steamapps").join(format!("appmanifest_{app}.acf")))
-        .and_then(|m| m.build_id)
-        .or_else(|| install::build_id_near(install, &install::SteamGame { app_id: app, name: "", required: &[] }))
 }
 
 fn main() -> ExitCode {

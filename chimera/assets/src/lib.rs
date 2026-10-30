@@ -16,9 +16,7 @@
 //! repo. Keys never reach it: Combat Arms' files are stored decrypted by
 //! the host's packer.
 //!
-//! Known shortcuts: a mount layered under an install takes the newest
-//! build's manifest (or the one `[assets] builds` pins), not the install's
-//! own build; a read of a record that isn't in the store fails (no fetcher
+//! Known shortcuts: a read of a record that isn't in the store fails (no fetcher
 //! until M2); `verify` and `gc` read the whole store single-threaded.
 
 pub mod cached;

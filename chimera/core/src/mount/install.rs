@@ -346,6 +346,15 @@ fn windows_registry_steam_path() -> Option<PathBuf> {
     (!path.is_empty()).then(|| PathBuf::from(path))
 }
 
+/// The Steam build of the install at `path` of app `app_id`: its own
+/// `steamapps/` (an install made with SteamCMD's `force_install_dir`),
+/// else its Steam library's (`build_id_near`).
+pub fn install_build_id(path: &Path, app_id: u32) -> Option<String> {
+    read_manifest(&path.join("steamapps").join(format!("appmanifest_{app_id}.acf")))
+        .and_then(|m| m.build_id)
+        .or_else(|| build_id_near(path, &SteamGame { app_id, name: "", required: &[] }))
+}
+
 /// The Steam build of an install found some other way: its library's
 /// manifest, when it sits in `<library>/steamapps/common/<dir>`.
 pub fn build_id_near(path: &Path, game: &SteamGame) -> Option<String> {

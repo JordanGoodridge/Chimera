@@ -482,8 +482,14 @@ the same commit.
   meshes and texels). Differences from the text above: sets so far are
   per map (`de_dust2`, `warehouse`, recorded from the heavy tests), not
   yet `base`/weapons/players/`heavy-tests`; no size cap (`gc` drops
-  unreferenced records); a store layered under an install mounts the
-  newest build (or `[assets] builds`), not the install's own; Combat
+  unreferenced records); a store layered under an install mounts only
+  the install's own build (its Steam app manifest; none when that build
+  isn't in the store, isn't known, or `[assets] builds` pins another:
+  fixed 2026-10-30 after the merge, `mount::served`'s tests); the store
+  standing in for a missing install holds only the sets packed so far,
+  so heavy checks of a whole install (`map_load`'s TERRORDOME and view
+  model, `pools`) skip what it lacks (`mount::served::alone`,
+  `GameInfo::served_alone`); Combat
   Arms' `ATTRIBUTES.rez`, opened as its own archive, is read through the
   game mount when served (same paths) and recorded either way; its
   music (`ui::music`, loose files in `Game/BGM`) isn't served yet.

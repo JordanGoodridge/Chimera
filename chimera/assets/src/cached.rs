@@ -21,6 +21,8 @@ use crate::{Manifest, Store, manifest::FileRecord};
 pub struct Index {
     pub game: String,
     pub build: String,
+    /// The Steam app the build is of, when the manifest says.
+    pub app: Option<u32>,
     files: HashMap<String, FileRecord>,
     /// Folder -> the files directly in it (normalized paths).
     dirs: HashMap<String, Vec<String>>,
@@ -36,6 +38,7 @@ impl Index {
         Self {
             game: manifest.game.clone(),
             build: manifest.build.clone(),
+            app: manifest.app,
             files: manifest.files.iter().map(|(p, f)| (p.clone(), f.clone())).collect(),
             dirs,
         }
