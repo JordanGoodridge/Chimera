@@ -24,7 +24,7 @@ $gamedir = Join-Path $Game "cstrike"
 if (-not $Bin) { $Bin = Join-Path $Game "bin" }
 foreach ($tool in "vbsp.exe", "vvis.exe", "vrad.exe") {
     if (-not (Test-Path (Join-Path $Bin $tool))) {
-        throw "$tool not found in $Bin: pass -Bin with the Source SDK Base 2013 Multiplayer bin folder"
+        throw "$tool not found in ${Bin}: pass -Bin with the Source SDK Base 2013 Multiplayer bin folder"
     }
 }
 
