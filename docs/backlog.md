@@ -25,7 +25,7 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## Roadmap after the gun game settles (user, 2026-10-29)
 
-- **First: ECS cleanup where new games plug in (2026-10-29).** For
+- **First: ECS cleanup where new games plug in (2026-10-29).** Order (user, 2026-10-30): after the current gameplay work, before any new game; performance is fine today. Plan: [plans/active/ecs-cleanup.md](plans/active/ecs-cleanup.md) (step 1 done). For
   extensibility more than speed. Counts today: ~350 functions taking the
   whole world (`&mut World`), ~720 queries built inside them, 78
   callback registries of `fn(&mut World, ..)`, 26 observers, ~40
