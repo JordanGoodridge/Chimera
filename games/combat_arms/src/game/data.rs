@@ -756,6 +756,7 @@ fn effects_patch(doc: &mut Table, w: &WeaponRecord, ammo: Option<&AmmoRecord>) {
     }
     fx.insert("fire_sound".into(), text(&w.fire_snd));
     fx.insert("fire_radius".into(), Value::Float(f64::from(w.fire_snd_radius)));
+    fx.insert("alt_fire_sound".into(), text(&w.alt_fire_snd));
     fx.insert("silenced_sounds".into(), string_array(&w.silenced_fire_snd, 0, true));
     fx.insert("dry_fire_sound".into(), text(&w.dry_fire_snd));
     fx.insert("reload_sounds".into(), string_array(&w.reload_snd, 0, true));

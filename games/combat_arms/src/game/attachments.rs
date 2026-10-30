@@ -1368,18 +1368,30 @@ fn apply_fitted(
 
 /// The draw time of each weapon whose fitted set or gear rates changed:
 /// the select animation over its summed rate (the item's own bonuses with
-/// the parts' and the gear's, inventory.md 6.4).
+/// the parts' and the gear's, inventory.md 6.4); a weapon without parts
+/// (knives, grenades, specials) gets the item's and the gear's terms too
+/// (inventory.md Corrections (2026-10-30) 2), on its `DrawStock`.
 #[allow(clippy::type_complexity)]
 fn apply_draw(
     mut weapons: Query<
         (&mut Weapon, &CaAttachSlots, &CaMods, Option<&CaItem>, Option<&CaGearRates>),
         Or<(Changed<CaMods>, Changed<CaGearRates>)>,
     >,
+    mut bare: Query<
+        (&mut Weapon, &super::inventory::DrawStock, Option<&CaItem>, &CaGearRates),
+        (Without<CaAttachSlots>, Or<(Changed<CaGearRates>, Changed<super::inventory::DrawStock>)>),
+    >,
 ) {
     for (mut w, slots, mods, item, gear) in &mut weapons {
         let (_, _, select) = mods.rates();
         let gear = gear.map_or(0.0, |g| g.select);
         let draw = slots.stock.draw / animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + select + gear);
+        if w.draw_time != draw {
+            w.draw_time = draw;
+        }
+    }
+    for (mut w, stock, item, gear) in &mut bare {
+        let draw = stock.0 / animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + gear.select);
         if w.draw_time != draw {
             w.draw_time = draw;
         }

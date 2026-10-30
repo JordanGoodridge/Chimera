@@ -485,8 +485,8 @@ that):
   games, Lucker Party's `gun_game_dust2` and Ultimate Gun Game's
   automatic definition; Host settings turn it off): after the guns the
   ladder ends on melee rungs where the player holds only a melee weapon.
-  How many (`melee_rungs`, default `"auto"`, or a number): the band's
-  share of the gun rungs (`melee_share`, 7%), rounded, at least 1: 1 for
+  How many (`melee_rungs`, default `"auto"`, or a number): the power
+  curve's melee band (below), 7% of the whole ladder, at least 1: 1 for
   10 or 20 guns, 2 for 30, so a longer game ends longer. Each
   melee rung draws its own weapon, from the ladder's seed, from the
   knives and melee weapons of the games in play (CS:S's knife, Combat
@@ -496,6 +496,30 @@ that):
   melee rung's place, at most once a ladder, and the last rung is melee
   either way; the last melee rung's kill wins. The draw is the host's and
   replicated with the match.
+- **A natural power curve** (user, 2026-10-29/30; `minigame::power`,
+  chimera/sim/data/power_curve.toml): a drawn ladder climbs in bands,
+  warm-up (pistols), rising (SMGs, shotguns), peak (rifles, carbines),
+  heavy (machine guns, marksman rifles, snipers, heavy pistols: heavier,
+  not harder), specials (launchers, flamethrowers), a grenade, melee
+  last. Each gun class maps to a band by data (a weapon's `class`; a
+  pistol hitting 50 or more a body hit is a heavy pistol). Each band has
+  a share of the ladder (15/20/28/15/8/7/7%): rung i of N sits at
+  (i + 0.5) / N and takes the band covering that point (a point on a
+  boundary the band above), every ladder moving the boundaries up to 3%
+  (seeded), the first rung always warm-up and the last melee. A band's
+  guns are drawn at random from its pool, the games mixed, then sorted by
+  a **power score**: how fast the gun kills a baseline player (100
+  health, no armour, the same for all) at 10, 15 and 20 m, from its data
+  (damage per pellet with falloff, pellets, fire interval, pre-fire
+  latency, spread as a hit rate on a 0.3 m target, a small headshot share
+  and magazine term; each game's readers say what its hooks' numbers
+  mean). The score orders guns only inside a band; the bands are
+  categories, so a strong SMG never comes after a weak rifle.
+  `ladder_power` prints every gun's score and band. A band without guns
+  gives its rungs to the nearest band with guns to spare. Ultimate Gun
+  Game's ladder is drawn this way; a hand-written definition keeps its
+  ladder unless it opts in (`ladder = "auto"`, `rungs`, `power_curve` to
+  tune it), drawn on the host at each match's start and replicated.
 - **Rung extras, the same for everyone on a rung** (`rung_extras`,
   default on): when a ladder is made (each map, each new ladder) a game
   may draw something for each of its rungs from the match's seeded
@@ -568,12 +592,13 @@ Ultimate Gun Game's ladder and maps are made, not written
   (`GameParts::guns`) plus every weapon of its own whose data names a
   class (`class = "rifle"` in the weapon TOML, docs/weapon-data.md), so
   an install's extra weapons (Combat Arms' copies of our documents)
-  join without a hand list. A ladder draws from all of them (each game
-  at least once, a game's guns weighted by one over the square root of
-  its count, a class at most a third), climbs by class, and puts one or
-  two grenade rungs (class `grenade`: thrown and lethal, CS:S's HE,
-  Combat Arms' M67) in its top third, never last; the ladder gives a
-  thrown rung grenade back (`chimera:ladder`'s `refill_ammo`).
+  join without a hand list. A ladder draws from all of them on the power
+  curve (above: bands by class, shares of the ladder, each band's guns
+  by power score; each game at least once, a game's guns weighted by one
+  over the square root of its count); its grenade band holds the games'
+  grenades (class `grenade`: thrown and lethal, CS:S's HE, Combat Arms'
+  M67), before the melee band; the ladder gives a thrown rung grenade
+  back (`chimera:ladder`'s `refill_ammo`).
 - **A fresh seed every launch, a new ladder every match**: the apps take
   a random seed at launch and say it; each rotation makes the next
   match's ladder from the next seed (`NextMatchHooks`); `ugg_new <seed>`

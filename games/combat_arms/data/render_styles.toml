@@ -11,10 +11,14 @@
 
 [styles]
 "RS\\default.ltb" = "opaque"
-# characters.md 2: the team-mark pieces' style; mark 0 (`Alpha.dtx`)
-# shows nothing through it.
-"RS\\MARKTRANSPARENT.LTB" = "blend"
-"RS\\transparent.ltb" = "blend"
+# characters.md 2 and Corrections (2026-10-30) 2, models_ltb.md R1: the
+# team-mark pieces' and the ghillie leaves' style: the texture alone
+# (unlit), alpha-tested (kept where alpha >= 160/255), not blended; mark 0
+# (`Alpha.dtx`) shows nothing through it.
+"RS\\MARKTRANSPARENT.LTB" = { cutout = { reference = 160, unlit = true } }
+# attachments.md Corrections (2026-10-30) 4: a sight's lens: texture x
+# lit colour, alpha-tested (kept where alpha > 160/255), two-sided.
+"RS\\transparent.ltb" = { cutout = { reference = 160, strict = true, two_sided = true } }
 "RS\\translucent.ltb" = "blend"
 "RS\\translucent2pass.ltb" = "blend"
 "RS\\translucent_nolight.ltb" = "blend"

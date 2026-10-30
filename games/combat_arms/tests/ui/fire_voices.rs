@@ -128,7 +128,8 @@ fn mix(sim: &mut Sim, shooter: Entity, gun: Entity) -> Mix {
         let (l, r) = p.gains();
         m.all += 1;
         m.loudest = m.loudest.max(l.max(r));
-        if p.source() == Some(shooter) && p.channel() == Some(CHANNEL_FIRE) {
+        // The fire voice is per attacker and weapon: the gun's.
+        if p.source() == Some(gun) && p.channel() == Some(CHANNEL_FIRE) {
             m.fire += 1;
         }
         if p.source() == Some(shooter) || p.source() == Some(gun) {

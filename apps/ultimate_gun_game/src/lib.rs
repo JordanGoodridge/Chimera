@@ -20,10 +20,11 @@
 //! server, apps/ultimate_gun_game_server: `UltimateGunGamePlugin::launch`) take a fresh seed at launch
 //! (`random_seed`), said on the console and in the log with each ladder;
 //! `ugg_new <seed>` replays one; the default plugin (tests) keeps `SEED`.
-//! Its ladder has `RUNGS` rungs drawn from every gun of the games every
-//! connected player has (`minigame_net::installed_by_all`, L3's mount
-//! reports; their install's weapons too), with grenade rungs near the top
-//! (`auto::ladder`); its pool every game's maps, their installs' too
+//! Its ladder has `RUNGS` rungs in all, drawn from every gun of the games
+//! every connected player has (`minigame_net::installed_by_all`, L3's
+//! mount reports; their install's weapons too) on the power curve
+//! (`auto::ladder`, `minigame::power`: warm-up pistols to melee, each
+//! band's guns by power score); its pool every game's maps, their installs' too
 //! (`auto::find_installed_maps`, the apps only), rotated at random but the
 //! last `AVOID_RECENT` played (`minigame::rotation`, seeded by the launch
 //! seed); its kit each gun's game's knife (the base game's, `BASE`, for a
@@ -46,6 +47,7 @@ use chimera_sim::{
     minigame::{
         self, MinigameDef,
         auto::{self, AutoOptions, Capabilities, Rng},
+        power::PowerReaders,
         rotation::MapHistory,
     },
     weapon::data::WeaponCatalog,
@@ -54,8 +56,9 @@ use chimera_sim::{
 /// The automatic gun game's id.
 pub const MINIGAME: &str = "ultimate_gun_game:auto";
 
-/// Rungs in a ladder.
-pub const RUNGS: usize = 12;
+/// Rungs in a ladder, the melee finale's too (12 guns and grenades, 1
+/// melee rung on the shipped curve).
+pub const RUNGS: usize = 13;
 
 /// The seed of `UltimateGunGamePlugin::default()` (the tests'); the apps
 /// take a fresh one at launch (`random_seed`).
@@ -82,6 +85,7 @@ pub fn options(seed: u64, rungs: usize) -> AutoOptions {
         base: BASE,
         time_limit: 600.0,
         avoid_recent: Some(AVOID_RECENT),
+        curve: chimera_sim::minigame::power::PowerCurve::shipped(),
     }
 }
 
@@ -122,7 +126,14 @@ pub fn generate(world: &mut World, seed: u64, rungs: usize) -> Result<&'static M
     let caps = auto::report(world);
     let games: Vec<&'static str> = caps.iter().map(|c| c.game).collect();
     let installed = chimera_net::minigame_net::installed_by_all(world, &games);
-    let text = auto::definition(&caps, &options(seed, rungs), &|g| installed.contains(&g))?;
+    let opts = options(seed, rungs);
+    let powers = {
+        let empty = WeaponCatalog::default();
+        let catalog = world.get_resource::<WeaponCatalog>().unwrap_or(&empty);
+        let readers = world.get_resource::<PowerReaders>().cloned().unwrap_or_default();
+        auto::powers(&caps, catalog, &readers, &opts.curve)
+    };
+    let text = auto::definition(&caps, &powers, &opts, &|g| installed.contains(&g))?;
     minigame::add(world, MINIGAME, &text)
 }
 
@@ -139,7 +150,9 @@ fn make(world: &mut World, l: AutoLadder, why: &str) -> Result<&'static Minigame
     let made = generate(world, l.seed, l.rungs);
     let text = match &made {
         Ok(def) => {
-            let ladder = def.rules.params.get("ladder").and_then(|v| v.as_array()).map_or(0, Vec::len);
+            let guns = def.rules.params.get("ladder").and_then(|v| v.as_array()).map_or(0, Vec::len);
+            let melee = def.rules.params.get("melee_rungs").and_then(|v| v.as_integer()).unwrap_or(0) as usize;
+            let ladder = guns + melee;
             format!("Ultimate Gun Game: {why}: seed {} ({ladder} rungs; `ugg_new {}` replays it)", l.seed, l.seed)
         }
         Err(e) => format!("Ultimate Gun Game: {why}: seed {}: {e}", l.seed),

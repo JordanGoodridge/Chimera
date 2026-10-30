@@ -44,8 +44,10 @@
 //!   trigger's (`Trigger::postfire`: an install copy's from its view
 //!   model, `timing`; ours have none, the M92FS's 150 ms included); the
 //!   pre-fire is the trigger's latency
-//!   (`Trigger::latency`: 3 updates from the press, 2 on primary shotguns,
-//!   Corrections 3; the minigun's 1 with its spin-up), none on an alt-fire
+//!   (`Trigger::latency`: 3 updates from the press, 2 on primary shotguns
+//!   and pistols, Corrections 3 and Corrections (2026-10-30) 1; a copy's
+//!   longer pre-fire its whole length, `timing::prefire_latency`; the
+//!   minigun's 1 with its spin-up), none on an alt-fire
 //!   volley; no launchers, M32, snowball gun or crossbow (projectiles:
 //!   their own specs).
 //! - 5.6 (the server's reload bookkeeping): its window drops shots

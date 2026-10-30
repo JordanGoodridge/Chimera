@@ -33,8 +33,10 @@ draw = 1.0                      # s until the first attack
 max_speed = 221.0               # length units/s while held
 weight = 25                     # auto-switch priority (SwitchWeight)
 class = "rifle"                 # an automatic gun game's class (GunClass:
-#   pistol, smg, shotgun, rifle, heavy, sniper; grenade: a thrown one that
-#   kills): its game lends it to a ladder (minigame::auto); none: not in one;
+#   pistol, smg, shotgun, carbine, rifle, heavy (a machine gun), marksman,
+#   sniper, heavy_pistol, launcher, flamethrower; grenade: a thrown one that
+#   kills): its game lends it to a ladder (minigame::auto), its band on the
+#   power curve (chimera/sim/data/power_curve.toml); none: not in one;
 #   not inherited from `base`
 
 [buy]                           # economy::Prices

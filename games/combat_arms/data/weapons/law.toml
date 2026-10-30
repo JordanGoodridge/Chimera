@@ -13,7 +13,7 @@ slot = 4
 draw = 1.333
 # Its class in an automatic gun game (docs/weapon-data.md); install
 # weapons copied from this document keep it.
-class = "heavy"
+class = "launcher"
 
 # Clip 1 and total 3 [2, Stock values].
 [ammo."combat_arms:law_rocket"]

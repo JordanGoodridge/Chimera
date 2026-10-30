@@ -82,10 +82,11 @@
 //! body's default face and head piece; a player keeps the last rung look
 //! (and an infected its marker) if the ladder stops for a minigame of
 //! other rules; the infected's override render styles (the virus blend,
-//! the glow), first-person hands and glowing eye trails aren't drawn,
-//! nor the infected's screen overlay (unspecified:
-//! docs/plans/active/combat-arms.md); the infection sound's files and
-//! radius are ours (the spec names none).
+//! the glow), first-person hands and glowing eye trails aren't drawn
+//! (the eyes are the face's and head's `ClientFX#` groups, game_modes.md
+//! Corrections (2026-10-30) 4: not played); the infection sound's files
+//! and radius are ours (the spec's auto-cast record isn't read), played
+//! on each machine (the spec's is a server sound), one at a time on it.
 
 use bevy::prelude::*;
 use serde::Deserialize;
@@ -94,8 +95,11 @@ use chimera_sim::minigame::{
     ladder::{OnRung, RungCharacter, RungDraw, RungExtras, RungExtrasAppExt, RungExtrasHook, RungOptions},
 };
 
+use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
+
 use super::{
     GAME,
+    inventory::UNIT,
     attachments::{ATTACHMENTS, AttachParams, BULLET, CaModTable, CaRungParts, MAGAZINE, MECH_SIGHT, MUZZLE, SIGHT, SLOTS},
     characters::{self, CaRungLook, models, records::Selection},
     data::CaData,
@@ -604,31 +608,46 @@ fn apply(world: &mut World, e: Entity, extras: Option<&RungExtras>) {
 /// player who arrives on the infected's rung from another rung
 /// (`OnRung::from`: not one this machine first sees there) and wasn't the
 /// infected gets the infection sound (data/effects.toml `infection`, the
-/// female list for a female body) and the change effect (`INFECTION_FX`)
-/// where it stands.
+/// female list for a female body: one file drawn uniformly, 3D at the
+/// infection point, and only when the last one has finished:
+/// `InfectionSound`) and the change effect (`INFECTION_FX`) at the
+/// infection point: the floor straight below the player + 0.1 u, up +Y
+/// (game_modes.md Corrections (2026-10-30) 1 and 2, `infection_point`).
 #[allow(clippy::too_many_arguments)]
 pub fn infection_moment(
     on: On<Insert<OnRung>>,
     players: Query<(&OnRung, &GlobalTransform, Option<&Selection>, Has<CaRungInfected>)>,
     tables: Option<Res<CaFxTables>>,
     data: Option<Res<CaData>>,
+    (time, lengths, spatial): (Res<Time>, Option<Res<super::effects::CaSoundLengths>>, SpatialQuery),
+    (mut playing, mut rng): (ResMut<InfectionSound>, Local<u32>),
     mut sounds: MessageWriter<CaSound>,
     mut fx: MessageWriter<CaFxRequest>,
 ) {
-    let Ok((rung, at, look, was)) = players.get(on.event_target()) else { return };
+    let player = on.event_target();
+    let Ok((rung, at, look, was)) = players.get(player) else { return };
     let Some(tables) = tables else { return };
     if !infected_rung(rung) || rung.from.is_none() || was {
         return;
     }
-    let at = at.translation();
+    let origin = at.translation();
+    let filter = SpatialQueryFilter::from_excluded_entities([player])
+        .with_mask(crate::core::SOLID_LAYERS.0 & !crate::core::ITEM_LAYER.0);
+    let below = spatial.cast_ray(origin, Dir3::NEG_Y, 1000.0 * UNIT, true, &filter).map(|h| h.distance);
+    let at = infection_point(origin, below);
     let female = look
         .zip(data.as_deref())
         .and_then(|(l, d)| d.characters().model(l.model).map(|m| m.figure == 1))
         .unwrap_or(false);
     let s = &tables.sounds;
     let files = if female && !s.infection_female.is_empty() { &s.infection_female } else { &s.infection };
-    if let Some(file) = files.first() {
-        sounds.write(CaSound::at(file.clone(), at, s.infection_radius));
+    *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+    let roll = (*rng >> 8) as f32 / (1u32 << 24) as f32;
+    if let Some(file) = super::effects::rules::draw_any(files, roll) {
+        let length = lengths.as_deref().and_then(|l| l.0.get(file).copied()).unwrap_or(0.0);
+        if playing.try_start(time.elapsed_secs_f64(), f64::from(length)) {
+            sounds.write(CaSound::at(file.to_string(), at, s.infection_radius));
+        }
     }
     fx.write(CaFxRequest {
         group: INFECTION_FX.into(),
@@ -636,4 +655,32 @@ pub fn infection_moment(
         normal: Vec3::Y,
         kind: FxKind::Ammo,
     });
+}
+
+/// Where an infection's change effect and sound play (game_modes.md
+/// Corrections (2026-10-30) 2): the player's position `origin` (m)
+/// dropped by `below` (m: the distance to the first solid surface
+/// straight below; None: none found, the position itself) plus 0.1 u.
+pub fn infection_point(origin: Vec3, below: Option<f32>) -> Vec3 {
+    match below {
+        Some(d) => origin - Vec3::Y * d + Vec3::Y * (0.1 * UNIT),
+        None => origin,
+    }
+}
+
+/// The infection sound playing (until when, s): at most one at a time
+/// (game_modes.md Corrections (2026-10-30) 1: like the hurt sounds, a new
+/// one plays only once the last has finished).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct InfectionSound(pub f64);
+
+impl InfectionSound {
+    /// Start one of `length` s at `now` unless the last still plays.
+    pub fn try_start(&mut self, now: f64, length: f64) -> bool {
+        if now < self.0 {
+            return false;
+        }
+        self.0 = now + length;
+        true
+    }
 }

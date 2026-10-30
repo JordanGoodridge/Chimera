@@ -33,7 +33,9 @@
 //!   reload is the trigger's chain (`Trigger::latency`, Corrections 1).
 //! - The knife (8): the `combat_arms:knife` hook (`Knife`), its own state
 //!   machine per update: the first update after a press arms it, the next
-//!   starts the pre-fire, the swing starts at the update that sees it done;
+//!   starts the swing (the melee class plays no pre-fire: Corrections
+//!   (2026-10-30) 1; an attack's `prefire` is not played); hit keys that
+//!   pass in the same update make one hit (special_weapons.md 5.1);
 //!   each hit key casts one ray from the eye with the gun's square spread
 //!   at the knife's cone (`perturb`, n = 1 for the M9), range, first thing
 //!   hit, no penetration, dealing `B x u x b x k_zone` after armour (u
@@ -292,6 +294,14 @@ pub struct CaItem {
     pub fire_rate: f32,
 }
 
+/// A weapon's draw at rate 1, s (its data's `draw`, a copy's own
+/// `select` length): the draw time is this over the summed select rate
+/// (`attachments::apply_draw`: the item's, the parts' and the gear's,
+/// for every weapon, knives, grenades and specials included: inventory.md
+/// Corrections (2026-10-30) 2).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct DrawStock(pub f32);
+
 impl Default for CaItem {
     fn default() -> Self {
         Self {
@@ -339,6 +349,8 @@ struct KnifeData {
 /// One knife attack (8.2): seconds of animation time, damage as health.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Attack {
+    /// The model's pre-fire: kept (the timing hook carries it), never
+    /// played (the melee class has none: Corrections (2026-10-30) 1).
     pub prefire: f32,
     pub length: f32,
     /// Hit events, seconds into the swing.
@@ -352,9 +364,8 @@ pub struct Attack {
 pub enum KnifePhase {
     #[default]
     Idle,
-    /// "Firing" set; the pre-fire starts on the next update.
+    /// "Firing" set; the swing starts on the next update (no pre-fire).
     Armed,
-    PreFire,
     Swing,
     PostFire,
 }
@@ -487,7 +498,10 @@ impl Plugin for CaInventoryPlugin {
             if let Some(mut w) = e.get_mut::<Weapon>() {
                 w.draw_time = d.draw / played_rate(1.0 + item.select_rate);
             }
-            e.insert(item);
+            e.insert((item, DrawStock(d.draw)));
+            if !e.contains::<super::gear::CaGearRates>() {
+                e.insert(super::gear::CaGearRates::default());
+            }
         })
         .register_weapon_hook::<KnifeData>(KNIFE_HOOK, |e, d, p| {
             e.insert(knife(d, p));
@@ -1022,18 +1036,12 @@ fn swing_knives(
                 }
             }
             KnifePhase::Armed => {
-                knife.state.phase = KnifePhase::PreFire;
+                // The melee class plays no pre-fire: the update after the
+                // one that set "firing" starts the swing (inventory.md
+                // Corrections (2026-10-30) 1).
+                knife.state.phase = KnifePhase::Swing;
                 knife.state.since = now;
-            }
-            KnifePhase::PreFire => {
-                // The main swing starts at the update that sees the
-                // pre-fire done (8.2: the time of u2, nothing carried).
-                let prefire = knife.attacks[st.attack].prefire;
-                if elapsed(st.since) >= prefire as f64 {
-                    knife.state.phase = KnifePhase::Swing;
-                    knife.state.since = now;
-                    knife.state.hits = 0;
-                }
+                knife.state.hits = 0;
             }
             KnifePhase::Swing => {
                 let attack = knife.attacks[st.attack].clone();
@@ -1041,6 +1049,11 @@ fn swing_knives(
                 while knife.state.hits < attack.hits.len() && attack.hits[knife.state.hits] as f64 <= t {
                     let n = knife.state.hits;
                     knife.state.hits += 1;
+                    // Keys passed in the same advance raise one "fire now":
+                    // one hit (special_weapons.md 5.1, its case 46).
+                    while knife.state.hits < attack.hits.len() && attack.hits[knife.state.hits] as f64 <= t {
+                        knife.state.hits += 1;
+                    }
                     let eye = at.translation + state.eye_offset;
                     // The gun's square spread at the knife's cone (8.3).
                     let mut spread = shared_random(intent.command, "combat_arms:knife_spread", n as i32);

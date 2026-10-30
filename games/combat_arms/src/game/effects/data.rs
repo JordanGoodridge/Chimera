@@ -368,6 +368,10 @@ pub struct CaWeaponFx {
     /// data: else the attachments' `fire_sound_radius`).
     pub fire_sound: String,
     pub fire_radius: f32,
+    /// `Alt_FireSnd`: the attacker's own client plays it for a shot or
+    /// swing started with the secondary button (empty: `fire_sound`;
+    /// effects_sounds.md Corrections (2026-10-30) 2).
+    pub alt_fire_sound: String,
     /// `SilencedFireSnd1..`.
     pub silenced_sounds: Vec<String>,
     pub dry_fire_sound: String,
@@ -396,6 +400,7 @@ impl Default for CaWeaponFx {
             hh_flash_hider: Vec::new(),
             fire_sound: String::new(),
             fire_radius: 2000.0,
+            alt_fire_sound: String::new(),
             silenced_sounds: Vec::new(),
             dry_fire_sound: String::new(),
             reload_sounds: Vec::new(),
@@ -421,7 +426,7 @@ impl CaWeaponFx {
 
     /// The files it names.
     pub fn sound_files(&self) -> impl Iterator<Item = &str> {
-        [&self.fire_sound, &self.dry_fire_sound, &self.select_sound, &self.deselect_sound]
+        [&self.fire_sound, &self.alt_fire_sound, &self.dry_fire_sound, &self.select_sound, &self.deselect_sound]
             .into_iter()
             .chain(&self.silenced_sounds)
             .chain(&self.reload_sounds)

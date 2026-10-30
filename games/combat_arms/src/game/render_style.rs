@@ -5,15 +5,17 @@
 //! weapon's `PVRenderStyle#` / `HHRenderStyle#`, a head piece's or
 //! face's); a missing entry is the engine's default style. How each file
 //! draws is our data (data/render_styles.toml, by file name: opaque,
-//! blended by the texture's alpha, added, or glowing), applied to the
-//! piece's mesh (`apply`).
+//! blended by the texture's alpha, added, glowing, or alpha-tested cut
+//! out as models_ltb.md "Render styles and sprite skins" reads the
+//! files), applied to the piece's mesh (`apply`).
 //!
-//! Known shortcuts: the render-style files' format isn't in the specs
-//! (models_ltb.md "Other files": "not covered"), so what each one does
-//! is our reading of its name (the transparent team mark, characters.md
-//! 2: "drawn with the transparent mark render style, so enemies show
-//! nothing", is the texture's alpha blended); a file not in our table
-//! draws opaque, as the default style.
+//! Known shortcuts: the files aren't read (their format is in
+//! models_ltb.md now); the table is our summary of them, so a style
+//! not in it draws opaque, as the default style, and the environment and
+//! rim maps of slot 1 (`envmap`, `itemedge`, `pv_char`...) aren't drawn
+//! (Chimera's model material has no reflection- or normal-generated
+//! second texture yet); a model skin that is a sprite (`.spr`) shows its
+//! first frame (`world::textures`), not its frames on the model's clock.
 
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -34,6 +36,31 @@ pub enum Style {
     Add,
     /// At its texture's own brightness, ignoring the lighting.
     Glow,
+    /// Alpha-tested, not blended (models_ltb.md "Render styles and sprite
+    /// skins"): drawn opaque where the texture's alpha passes the test
+    /// against `reference`/255 (≥, or > when `strict`), discarded
+    /// elsewhere; `unlit`: the texture's colour alone; `two_sided`: no
+    /// culling.
+    Cutout {
+        reference: u8,
+        #[serde(default)]
+        strict: bool,
+        #[serde(default)]
+        unlit: bool,
+        #[serde(default)]
+        two_sided: bool,
+    },
+}
+
+impl Style {
+    /// Whether a texel of alpha `alpha` (0..255) is drawn.
+    pub fn keeps(self, alpha: u8) -> bool {
+        match self {
+            Style::Cutout { reference, strict: false, .. } => alpha >= reference,
+            Style::Cutout { reference, strict: true, .. } => alpha > reference,
+            _ => alpha > 0,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -79,6 +106,13 @@ pub fn apply(mesh: &mut MapMesh, style: Style) {
             mesh.unlit = true;
         }
         Style::Glow => mesh.unlit = true,
+        Style::Cutout { reference, strict, unlit, two_sided } => {
+            // The cut between the passing and failing texel values.
+            let cut = if strict { f32::from(reference) + 0.5 } else { f32::from(reference) - 0.5 };
+            mesh.alpha = MapAlpha::Mask(cut / 255.0);
+            mesh.unlit |= unlit;
+            mesh.double_sided |= two_sided;
+        }
     }
 }
 
@@ -89,15 +123,21 @@ mod tests {
     #[test]
     fn stock_body_styles() {
         assert_eq!(style("RS\\default.ltb"), Style::Opaque);
-        assert_eq!(style("RS\\MARKTRANSPARENT.LTB"), Style::Blend);
-        assert_eq!(style("rs/marktransparent.ltb"), Style::Blend);
+        let mark = Style::Cutout { reference: 160, strict: false, unlit: true, two_sided: false };
+        assert_eq!(style("RS\\MARKTRANSPARENT.LTB"), mark);
+        assert_eq!(style("rs/marktransparent.ltb"), mark);
         assert_eq!(style("RS\\nothing_like_it.ltb"), Style::Opaque);
         let list = ["RS\\default.ltb".to_string(), "RS\\GLOW.LTB".into(), "RS\\MARKTRANSPARENT.LTB".into()];
-        assert_eq!(of_list(&list, 2), Style::Blend);
+        assert_eq!(of_list(&list, 2), mark);
         assert_eq!(of_list(&list, 3), Style::Opaque);
         assert_eq!(of_list(&list, -1), Style::Opaque);
         let mut m = MapMesh::default();
         apply(&mut m, Style::Blend);
         assert_eq!(m.alpha, MapAlpha::Blend);
+        // models_ltb.md R1: alpha 159 discarded, 160 drawn, unlit.
+        assert!(!mark.keeps(159) && mark.keeps(160));
+        let mut m = MapMesh::default();
+        apply(&mut m, mark);
+        assert!(matches!(m.alpha, MapAlpha::Mask(c) if 159.0 / 255.0 < c && c < 160.0 / 255.0) && m.unlit);
     }
 }

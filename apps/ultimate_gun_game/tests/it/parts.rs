@@ -34,6 +34,13 @@ pub(crate) fn rungs(world: &World) -> Vec<String> {
         .collect()
 }
 
+/// The powers of the guns of `caps` (`auto::powers`) as `world` scores them.
+pub(crate) fn powers(world: &World, caps: &[auto::Capabilities]) -> chimera_sim::minigame::power::Powers {
+    use chimera_sim::minigame::power::{PowerCurve, PowerReaders};
+    let catalog = world.resource::<chimera_sim::weapon::data::WeaponCatalog>();
+    auto::powers(caps, catalog, world.resource::<PowerReaders>(), &PowerCurve::shipped())
+}
+
 pub(crate) fn of(rungs: &[String], game: &str) -> usize {
     rungs.iter().filter(|id| id.starts_with(&format!("{game}:"))).count()
 }
@@ -68,7 +75,7 @@ fn each_game_reports_what_it_lends() {
 fn the_ladder_spreads_across_both_games_and_keeps_its_seed() {
     let mut sim = ugg();
     let first = rungs(sim.app.world());
-    assert_eq!(first.len(), RUNGS);
+    assert_eq!(first.len(), RUNGS - 1, "{RUNGS} rungs, one of them melee");
     assert!(of(&first, "cs_source") > 0 && of(&first, "combat_arms") > 0, "{first:?}");
     let def = sim.app.world().resource::<Minigames>().get(MINIGAME).unwrap();
     assert_eq!(
@@ -94,7 +101,7 @@ fn the_ladder_spreads_across_both_games_and_keeps_its_seed() {
     // `ugg_new` makes one and plays it.
     sim.app.world_mut().resource_mut::<chimera_core::console::Console>().submit("ugg_new 7 6 greybox");
     sim.ticks(2);
-    assert_eq!(rungs(sim.app.world()).len(), 6);
+    assert_eq!(rungs(sim.app.world()).len(), 5, "6 rungs, one of them melee");
     let active = sim.app.world().resource::<minigame::ActiveMinigame>();
     assert_eq!(active.def.id, MINIGAME);
 }

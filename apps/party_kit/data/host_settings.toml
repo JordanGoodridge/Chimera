@@ -73,7 +73,7 @@ choices = [["", "Minigame's"], ["true", "On"], ["false", "Off"]]
 label = "Melee rungs"
 cvar = "mp_melee_rungs"
 key = "rules.melee_rungs"
-help = "How many melee rungs end the ladder: auto (7% of the guns, at least 1) or a number."
+help = "How many melee rungs end the ladder: auto (7% of the ladder, at least 1) or a number."
 choices = [["", "Minigame's"], ["auto", "Auto"], ["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]]
 
 [[setting]]

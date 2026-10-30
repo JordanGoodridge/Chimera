@@ -135,6 +135,10 @@ fn clients_join_and_see_each_other_move() {
 fn looks_replicate_to_others() {
     let mut sim = NetSim::new(CsSim, lan(), 2, 2, greybox);
     sim.until_joined(200);
+    // The server spawns the character after the client sees it, and its
+    // spawn facing replaces the client's look when it arrives: script
+    // ours after the client has taken it.
+    sim.until_looks_taken(200);
     let me = sim.local_player(0).unwrap();
     {
         let world = sim.clients[0].app.world_mut();

@@ -492,6 +492,11 @@ graf, sakura, sea and weastland skins): drawn as the files say it
 scatters, no reading bug; its held skin `HH_SR_ASW338Lspunk.dtx` and the
 AUG A3 Champions Lightning's view skin aren't in the install (grey, as
 the game leaves a missing skin).
+single-texture styles. (4) open: not on this box (models_ltb.md Open
+question 8). **Partly done (2026-10-30):** the lens and mark styles are
+cut-outs (`render_style::Style::Cutout`); not yet: sprite skins'
+animation (a skin shows its first frame) and slot 1's reflection and rim
+maps (Chimera's model material has no generated second texture).
 
 `cargo test -p combat_arms --features dev,ui --test it
 heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
@@ -547,6 +552,11 @@ render styles). (4) `pv_char`, `pv_char_b`, `env_alpha_mask`,
 build 26236938 still lacks both files; the engine loads
 `models\default.ltb` in place of a model file that doesn't load, so the
 game draws such a character as that small untextured placeholder.
+(5) still open (needs the Windows PC's install). **Done (2026-10-30):**
+the mark and leaves cut-out (data/render_styles.toml), the colour lists
+read (`ColourSkins`, `CharacterData::skins_in`; every player's colour is
+-1, no cosmetic items: the hands' list isn't used); tests characters
+t58-t60.
 
 ## Dot-sight reticles: open questions for a spec session (2026-10-29)
 
@@ -575,6 +585,12 @@ watched weapon's image, during draw animations, not in the free-look or
 chase death cameras nor under a scope overlay; (3) the red dot is only
 the zoom overlay and the attachment model; the HUD's dot-sight-mode image
 is switched off in code; (4) stretched, as ours.
+
+**Checked (2026-10-30):** ours already draws the reticle this way (the
+viewed player's weapon, untinted, blended, no weapon-state test, gated by
+the scope overlay and the death cameras, stretched per axis); tests ui
+hud t102_reticle_gates, t103_reticle_stretch (t101's blend is the UI's
+ordinary alpha blend of the untinted image, `spawn_reticle`).
 
 ## The infected's look and moment: open questions for a spec session (2026-10-29)
 
@@ -632,6 +648,14 @@ subtypes S and P the assassin and tanker eyes);
 `PolyTrail` is the trail key; (5) virus/host styles draw like default;
 hands from the override's `HandIndex`, none without one; (6) the
 mission's `Model` is never used.
+**Partly done (2026-10-30):** (2) the rung's change effect at the floor
++ 0.1 u (`rungs::infection_point`); (1) its sound one at a time
+(`rungs::InfectionSound`, per machine) and drawn uniformly from the list
+(still our files, not the auto-cast records; no local auto-cast sound);
+(3) the `InfectedTex` overlay for the local player while infected
+(Quarantine's or a rung's: `ui::hud` `draw_infected`); tests rung_character
+t109, t110, ui hud t111. Left: (4) the eyes' `ClientFX#` groups, (5) the
+override's styles and hands, Quarantine's own change effect and sounds.
 
 ## Attachment models: open questions for a spec session (2026-10-29)
 
@@ -676,6 +700,14 @@ socket's angles, third person composes them after the socket's rotation;
 (3) the flash stays at the data flash point; (4) the lens style is
 alpha-tested at 160, two-sided, opaque; (5) default animation, no
 sockets used.
+**Done (2026-10-30):** our reading was the difference: a part model is
+drawn in the pose of its first animation, not its bind pose (as the
+held weapons already were); `PV_silencerA`'s animation turns it half a
+turn, so posed it straddles the M4A1's muzzle (-0.3 to +0.9 u) with no
+turn of ours. `parts::turn_ahead` is gone; first person uses
+`parts::first_person_frame` (angles added), third person the offset
+after the socket; the lens style is a cut-out (`render_style`). Tests:
+attachments t41-t43, heavy `rung_attachments`.
 
 ## View-model attached effects and melee sounds: open questions for a spec session (2026-10-29)
 
@@ -745,8 +777,12 @@ Shining's), 2.9 s long. Open:
    voice; ours matches). Impact: the surface's melee list at R 153
    (flesh on characters), nothing on a miss. Keys merging in one frame
    give one hit and one sound. special_weapons.md 5.1 and Quirk 10, test
-   cases 40-47; effects_sounds.md Corrections (2026-10-30) 2. To do in
-   ours: `Alt_FireSnd` for the own secondary.
+   cases 40-47; effects_sounds.md Corrections (2026-10-30) 2. **Done
+   (2026-10-30):** `Alt_FireSnd` for the own secondary
+   (`effects::fire_sound_of`), the fire voice per attacker and weapon
+   (`effects::fire_voice`), each hit's impact before its fire sound, a
+   head hit's head surface; tests effects_sounds t71, t72, t45. Hit
+   keys passing in one update make one hit (case 46, inventory t46).
 6. **The attached keys' looks.** An attached `DynaLight` (the PSY
    bomb's): does it light the world, the view model, or both? Do the
    particles of an attached system move with the view model (as ours) or

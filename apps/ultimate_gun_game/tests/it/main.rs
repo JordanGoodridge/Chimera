@@ -8,4 +8,5 @@ mod fallbacks;
 mod minimal_hud;
 mod net;
 mod parts;
+mod power_curve;
 mod variety;

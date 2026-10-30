@@ -217,6 +217,9 @@ pub struct InstallUi {
     /// The HUD layout attributes' strings (`[HUDLayout0]`), by key in
     /// lower case: texture names.
     pub hud_layout: HashMap<String, String>,
+    /// The same sections' points (`InfectedPos`, `InfectedSize`...), keys
+    /// in lower case.
+    pub hud_points: HashMap<String, [i32; 2]>,
     /// The install's font list (T1), in its order.
     pub fonts: Vec<InstallFont>,
     pub strings: Option<Strings>,
@@ -316,6 +319,27 @@ pub fn apply_font_list(list: &[InstallFont], fonts: &mut FontList) {
     }
 }
 
+/// The HUD layout attributes' points (`HUD_LAYOUT` and `OBSERVE_MODE`
+/// of `LAYOUT_ATTRIBUTES`), keys in lower case.
+pub fn hud_points(mount: &Mount) -> HashMap<String, [i32; 2]> {
+    let Some(doc) = mount
+        .read(LAYOUT_ATTRIBUTES)
+        .ok()
+        .and_then(|b| lithtech_formats::attributes::Document::parse(&b).ok())
+    else {
+        return HashMap::new();
+    };
+    [HUD_LAYOUT, OBSERVE_MODE]
+        .into_iter()
+        .filter_map(|name| doc.section(name))
+        .flat_map(|s| s.iter())
+        .filter_map(|(k, v)| match v {
+            lithtech_formats::attributes::Value::Point(p) => Some((k.to_lowercase(), *p)),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The HUD layout attributes' strings (`HUD_LAYOUT` of
 /// `LAYOUT_ATTRIBUTES`), keys in lower case.
 pub fn hud_layout(mount: &Mount) -> HashMap<String, String> {
@@ -369,6 +393,8 @@ pub const HUD_LAYOUT_ART: &[&str] = &[
     "guage_teamchagne_tex",
     "humanroundwintex",
     "infectorroundwintex",
+    // The infected's screen (game_modes.md Corrections (2026-10-30) 3).
+    "infectedtex",
 ];
 
 /// The gauge sight's image name prefixes (`[HUDLayout0]` keys, lower
@@ -576,6 +602,7 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         kill_cam,
         options,
         hud_layout,
+        hud_points: hud_points(mount),
         fonts,
         strings,
         language,
@@ -683,6 +710,11 @@ impl InstallUi {
     /// as a texture key.
     pub fn hud_texture(&self, key: &str) -> Option<String> {
         self.hud_layout.get(&key.to_lowercase()).map(|t| texture_key(t))
+    }
+
+    /// A `[HUDLayout0]` point by key (any case).
+    pub fn hud_point(&self, key: &str) -> Option<[i32; 2]> {
+        self.hud_points.get(&key.to_lowercase()).copied()
     }
 
     /// A `[HUDLayout0]` texture name prefix by key (lower case, `/`, no
