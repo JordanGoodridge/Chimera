@@ -969,6 +969,7 @@ fn t32_silenced_sound() {
 fn t33_part_model_variant() {
     let breach = |variant| PartModel {
         slot: at::SIGHT,
+        name: "DotSight_A_AR".into(),
         socket: "breach".into(),
         variant,
         visible: true,

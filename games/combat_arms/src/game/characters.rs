@@ -1210,6 +1210,12 @@ fn dress_corpses(
     }
 }
 
+/// The held model a character's weapon wants with its fitted parts on it
+/// (`view_model::parts::view_key`; None: the bare gun's): what
+/// `held_on_demand` loads, `Held` until it is there.
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
+pub struct WantHeld(pub Option<String>);
+
 /// Characters wear their body model when the map has it (`BodyName`,
 /// with the body number for their body, face and head piece:
 /// `models::drawn`), with their skin family for the local player
@@ -1224,10 +1230,11 @@ fn dress(
         Option<&Team>,
         (Option<&BodyName>, Option<&BodyNumber>, Option<&BodySkin>),
         Option<&Inventory>,
-        (Option<&Held>, Option<&GameIdentity>),
+        (Option<&Held>, Option<&GameIdentity>, Option<&WantHeld>),
     )>,
     local: Query<Option<&Team>, With<LocalPlayer>>,
-    weapons: Query<&Weapon>,
+    weapons: Query<(&Weapon, Option<&super::attachments::CaMods>)>,
+    late: Option<Res<crate::map::LateHeldModels>>,
     anims: Query<&CaAnim>,
     view: Option<Res<super::rules::CaMatchView>>,
     clock: Res<SimClock>,
@@ -1243,7 +1250,7 @@ fn dress(
     dress_corpses(&data, &models, clock.now, &bodies, &mut commands);
     let quarantine = view.is_some_and(|v| v.mode == super::gear::QUARANTINE);
     let mine = local.iter().next().flatten().copied();
-    for (e, look, team, (name, number, skin), inventory, (held, identity)) in &characters {
+    for (e, look, team, (name, number, skin), inventory, (held, identity, want_held)) in &characters {
         // Another game's character for now (`GameIdentity`: the weapon it
         // holds): our look comes off; that game dresses it.
         if !GameIdentity::allows(identity, super::GAME) {
@@ -1269,11 +1276,18 @@ fn dress(
         }
         // An emote hides the weapon in hand (2).
         let emoting = anims.get(e).is_ok_and(|a| a.driver.emote.is_some());
-        let id = inventory
-            .and_then(|i| i.active)
-            .and_then(|w| weapons.get(w).ok())
-            .map(|w| w.id.to_string())
-            .filter(|_| !emoting);
+        let active = inventory.and_then(|i| i.active).and_then(|w| weapons.get(w).ok()).filter(|_| !emoting);
+        // With drawn parts, the model with them (`held_on_demand` makes it
+        // from `WantHeld`), the bare gun's until it is there.
+        let full = active.map(|(w, mods)| super::view_model::parts::view_key(w.id, mods));
+        let with_parts = full.filter(|k| active.is_some_and(|(w, _)| k != w.id));
+        let id = match &with_parts {
+            Some(k) if late.as_ref().is_some_and(|l| l.has(k)) => Some(k.clone()),
+            _ => active.map(|(w, _)| w.id.to_string()),
+        };
+        if want_held.is_none_or(|w| w.0 != with_parts) {
+            commands.entity(e).insert(WantHeld(with_parts));
+        }
         if held.is_none_or(|h| h.0 != id) {
             commands.entity(e).insert(Held(id));
         }

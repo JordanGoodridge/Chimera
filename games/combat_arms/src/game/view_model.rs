@@ -43,6 +43,10 @@
 //! post-fire). Hidden (11) from the frame zoom leaves level 0 to the
 //! frame the zoom-out ends, and while dead.
 //!
+//! Fitted parts (attachments.md "View model and world model"): a weapon
+//! whose parts have first-person models shows a view model with them on
+//! it (`parts`), made on demand; the machine plays on when it arrives.
+//!
 //! Placement (4, 6): `sway::Sway` steps first (the run flag, the moving
 //! flag, speed per frame, footing; `CaSwayOption` is the profile's
 //! `WeaponSway`), then the model's origin is `Pos` + (w, h, 0) + the shot
@@ -131,6 +135,7 @@
 pub mod hands;
 pub mod machine;
 pub mod on_demand;
+pub mod parts;
 pub mod place;
 pub mod sway;
 
@@ -459,6 +464,25 @@ fn skin_of(skins: &[String]) -> impl Fn(&lithtech_formats::ltb::Lod) -> String +
     }
 }
 
+/// A fitted part's model `path` (`parts`), skinned with `skins` by
+/// texture index, converted (meshes in metres at its bind pose), its
+/// textures added to `map`; with each mesh's render-style index.
+pub fn load_part(
+    path: &str,
+    skins: &[String],
+    map: &mut MapData,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<(Vec<crate::map::MapMesh>, Vec<i32>), String> {
+    let loaded = model::load_own(path, file)?;
+    let mut m = model::convert(&loaded, VIEW_SCALE, &skin_of(skins));
+    let styles = model::drawn_lods(&loaded.model).iter().map(|l| l.render_style).collect();
+    super::world::textures(&mut m.meshes, map, file);
+    for mesh in m.meshes.iter_mut().filter(|m| m.texture.is_none()) {
+        mesh.color = UNSKINNED;
+    }
+    Ok((m.meshes, styles))
+}
+
 /// The hand model of `choice`, converted (meshes in metres at its bind
 /// pose, its bones), its textures added to `map`.
 pub fn load_hands(
@@ -661,17 +685,27 @@ fn drive(
             .map_or((0.0, 0.0), |g| g.0.vest_rates(look.map_or(0, |l| super::gear::vest_of(l, rung))));
         let active = inventory.active.filter(|_| alive);
         let parts = active.and_then(|w| weapons.get(w).ok());
-        let key = parts.as_ref().map(|p| p.0.id);
+        // With drawn parts, the view model with them (`parts::view_key`)
+        // once it is made, the bare gun's until then.
+        let with_parts = parts.as_ref().map(|p| self::parts::view_key(p.0.id, p.5.2));
+        let loaded = |k: &str| models.as_ref().is_some_and(|m| m.get(k).is_some());
+        let key = match (&with_parts, parts.as_ref()) {
+            (Some(k), _) if loaded(k) => Some(k.as_str()),
+            (_, Some(p)) => Some(p.0.id),
+            _ => None,
+        };
         // Its view model loaded since the weapon was drawn (`on_demand`):
         // drawn afresh.
-        if models.as_ref().is_some_and(|m| m.is_changed())
-            && view.animator.is_none()
-            && key.is_some_and(|k| models.as_ref().is_some_and(|m| m.get(k).is_some()))
-        {
+        if models.as_ref().is_some_and(|m| m.is_changed()) && view.animator.is_none() && key.is_some_and(loaded) {
             view.key = None;
         }
+        // The same gun with its parts now made: the machine plays on.
+        let same_gun = vm.weapon == active
+            && vm.machine.is_some()
+            && view.animator.is_some()
+            && view.key.as_deref().map(|k| self::parts::split_key(k).0) == key.map(|k| self::parts::split_key(k).0);
         // A new weapon in hand: a fresh model drawing.
-        let shown_changed = view.show(key, models.as_deref());
+        let shown_changed = view.show(key, models.as_deref()) && !same_gun;
         if shown_changed || vm.weapon != active {
             vm.weapon = active;
             vm.machine = None;

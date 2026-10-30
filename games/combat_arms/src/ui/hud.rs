@@ -1284,6 +1284,11 @@ impl Plugin for CaHudPlugin {
         if let Some(i) = &ui.install {
             names.0.extend(i.weapon_names.iter().cloned());
         }
+        // The install's attachment names: the gun game's rung line
+        // (`rungs::label`).
+        if let Some(i) = &ui.install {
+            app.insert_resource(crate::game::rungs::CaPartNames::new(i.part_names.iter().cloned()));
+        }
         app.insert_resource(ui)
             .insert_resource(names)
             .insert_resource(InstallHud(panels))

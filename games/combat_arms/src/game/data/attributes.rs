@@ -395,11 +395,25 @@ pub struct WeaponRecord {
     pub pos: [f64; 3],
     pub muzzle_pos: [f64; 3],
     pub breach_offset: [f64; 3],
+    /// Where fitted parts sit at their sockets (attachments.md "View model
+    /// and world model"), each (position, rotation) in the socket's frame:
+    /// `MuzzlePVPosOff`/`RotOff`, `ScopePVPosOff`/`RotOff`,
+    /// `MuzzleHHPosOff`/`RotOff`, `ScopeHHPosOff`/`RotOff` (missing: zero).
+    pub muzzle_pv_off: [[f64; 3]; 2],
+    pub scope_pv_off: [[f64; 3]; 2],
+    pub muzzle_hh_off: [[f64; 3]; 2],
+    pub scope_hh_off: [[f64; 3]; 2],
 }
 
 impl WeaponRecord {
     /// Read a weapon, linking its `AmmoName#` list to `ammo` by name.
     pub fn read(s: &Section, ammo: &[AmmoRecord]) -> Self {
+        let offsets = |k: &str| {
+            [
+                s.vector(&format!("{k}PosOff")).unwrap_or_default(),
+                s.vector(&format!("{k}RotOff")).unwrap_or_default(),
+            ]
+        };
         let n = |k: &str, d: f64| s.number(k, d);
         let i = |k: &str, d: i32| s.int(k, d);
         let names = s.string_list("AmmoName");
@@ -534,6 +548,10 @@ impl WeaponRecord {
             pos: s.vector("Pos").unwrap_or_default(),
             muzzle_pos: s.vector("MuzzlePos").unwrap_or_default(),
             breach_offset: s.vector("BreachOffset").unwrap_or_default(),
+            muzzle_pv_off: offsets("MuzzlePV"),
+            scope_pv_off: offsets("ScopePV"),
+            muzzle_hh_off: offsets("MuzzleHH"),
+            scope_hh_off: offsets("ScopeHH"),
         }
     }
 
@@ -1221,7 +1239,31 @@ pub fn read_mod(s: &Section) -> ModRecord {
     }
     let fov: Vec<f32> = (0..10).map_while(|l| s.number_opt(&format!("ZoomFov{l}")).map(|v| v as f32)).collect();
     let socket = s.fixed_string("Socket", "");
+    let hh_socket = s.fixed_string("HHModelSocket", "");
+    // Per variant c: `<model>c` and its skins `<skin>c_0`, `<skin>c_1`, ...
+    let models = |k: &str| -> Vec<String> {
+        let list: Vec<String> = (0..10).map(|c| s.string(&format!("{k}{c}")).map(text).unwrap_or_default()).collect();
+        let used = list.iter().rposition(|m| !m.is_empty()).map_or(0, |i| i + 1);
+        list[..used].to_vec()
+    };
+    let skins = |k: &str, n: usize| -> Vec<Vec<String>> {
+        (0..n)
+            .map(|c| (0..).map_while(|i| s.string(&format!("{k}{c}_{i}")).map(text)).collect())
+            .collect()
+    };
+    let scale = |k: &str| s.vector(k).map(|v| v.map(|x| x as f32));
+    let attach_models = models("AttachModel");
+    let attach_hh_models = models("AttachHHModel");
     ModRecord {
+        attach_skins: skins("AttachSkin", attach_models.len()),
+        attach_hh_skins: skins("AttachHHSkin", attach_hh_models.len()),
+        attach_models,
+        attach_hh_models,
+        attach_render_styles: s.string_list("AttachRenderStyle").iter().map(|v| text(v)).collect(),
+        hh_render_styles: s.string_list("HHRenderStyle").iter().map(|v| text(v)).collect(),
+        attach_scale: scale("AttachScale"),
+        attach_hh_scale: scale("AttachHHModelScale"),
+        hh_socket: (!hh_socket.is_empty()).then_some(hh_socket),
         name: name_of(s),
         kinds: opt_int("Kinds"),
         kind: opt_int("Type"),
@@ -1281,7 +1323,13 @@ pub struct ModWeaponRecord {
     /// `ModName#` with its `ModModel#` (default 0); a name that matches no
     /// attachment is dropped with its index.
     pub accepts: Vec<(String, i32)>,
+    /// `MuzzleOPtion`, `SightOption`, `MagazineOption`, `BulletOption`,
+    /// `MechSightOption` (default -1): the lobby's per-slot state.
+    pub options: [i32; 5],
 }
+
+/// The per-slot option keys of a `Weapon#` record, slot order.
+pub const SLOT_OPTIONS: [&str; 5] = ["MuzzleOPtion", "SightOption", "MagazineOption", "BulletOption", "MechSightOption"];
 
 /// The modification file (`MOD.TXT`): attachment records and per-weapon
 /// accepted lists.
@@ -1310,6 +1358,7 @@ impl ModFile {
                 ModWeaponRecord {
                     name: name_of(s),
                     accepts,
+                    options: SLOT_OPTIONS.map(|k| s.int(k, -1)),
                 }
             })
             .collect();

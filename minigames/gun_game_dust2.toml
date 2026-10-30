@@ -58,6 +58,8 @@ refill_ammo = true   # the ladder gives each gun once: 200 rounds of M60 run out
 # same for everyone on it, and one rung of the top third the infected's
 # (their hands alone, when the install has them) (the default; `false`,
 # or by part: { attachments = false, character = false, melee = false,
-# infected = false }).
+# infected = false }; the parts' odds tuned by a table:
+# { attachments = { sight = 0.4, muzzle = 0.3, max_parts = 2 } }, the
+# rest as games/combat_arms/data/attachments/rung_odds.toml).
 rung_extras = true
 win = { kind = "ladder_end" }

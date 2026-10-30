@@ -55,6 +55,7 @@ mod other_modes;
 mod radar;
 mod schedules;
 mod rung_character;
+mod rung_parts;
 mod search_destroy;
 mod server_docs;
 mod skeleton;
@@ -76,6 +77,7 @@ mod world_objects_play;
 mod heavy {
     mod attributes;
     mod body_skins;
+    mod rung_attachments;
     mod bots;
     mod characters;
     mod effects_sounds;

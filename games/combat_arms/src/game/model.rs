@@ -246,6 +246,27 @@ pub fn rest_entry<'a>(loaded: &'a LoadedModel, name: &str) -> Option<&'a lta::En
     list.find(name).or((!list.entries.is_empty()).then_some(0)).map(|i| &list.entries[i])
 }
 
+/// Each node's global transform (right-handed, units) in `entry`'s pose
+/// at t = 0, or at the bind pose without one.
+pub fn posed_globals(model: &Model, entry: Option<&lta::Entry>) -> Vec<Mat4> {
+    match entry {
+        Some(entry) => {
+            let pose: Vec<(ltb::Vec3, ltb::Quat)> = (0..model.nodes.len()).map(|j| lta::sample(entry, j, 0.0)).collect();
+            lta::globals(model, &pose).iter().map(|g| mat(&ltb::to_rh_mat(g))).collect()
+        }
+        None => {
+            let bones = bones(model);
+            let mut out: Vec<Mat4> = Vec::with_capacity(bones.len());
+            for b in &bones {
+                let local = Mat4::from_rotation_translation(b.rotation, b.position);
+                let g = b.parent.and_then(|p| out.get(p)).map_or(local, |parent| *parent * local);
+                out.push(g);
+            }
+            out
+        }
+    }
+}
+
 /// `meshes` (`convert`'s, `scale` metres per unit) skinned once into
 /// `entry`'s pose at t = 0, each vertex by its joints and weights: the
 /// model as drawn in that pose, in model space.

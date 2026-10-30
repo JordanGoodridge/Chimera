@@ -6,7 +6,8 @@
 //! another seed draws others; the knife finale draws none; `rung_extras =
 //! false` turns them off; the HUD's rung line carries the label; a
 //! character's rung (`RungCharacter`) gives its weapon alone and fires its
-//! game's enter and leave moments once each.
+//! game's enter and leave moments once each; a tuned option (a table)
+//! is on and keeps its table.
 
 use bevy::prelude::*;
 use chimera_core::core::{Damage, DamageKind, Hitgroup, LocalPlayer};
@@ -309,4 +310,18 @@ fn a_characters_rung_makes_its_players_the_character_holding_its_weapon_alone_un
     assert!(have.contains(&"kit:shotgun"), "the next rung's gun: {have:?}");
     assert!(sim.app.world().get::<AsRungCharacter>(a).is_none());
     assert_eq!(moments(&sim), [(a, "enter"), (a, "leave")]);
+}
+
+/// A key tuned with a table of its own (`rung_extras = { label = { ... } }`):
+/// on, its table kept for the hook (`RungOptions::table`); the other keys
+/// as before.
+#[test]
+fn a_tuned_option_is_on_and_keeps_its_table() {
+    let def = DEF.replace("rung_extras = { ghost = false }", "rung_extras = { ghost = false, label = { often = 0.5 } }");
+    let sim = sim_with(&def, 3);
+    let o = &ladder(&sim).options;
+    assert!(o.on("label") && !o.on("ghost") && o.on("melee"));
+    assert_eq!(o.table("label").and_then(|t| t.get("often")).and_then(|v| v.as_float()), Some(0.5));
+    assert!(o.table("melee").is_none());
+    assert!(ladder(&sim).extras.iter().flatten().any(|x| x.label.is_some()), "the label still drawn");
 }

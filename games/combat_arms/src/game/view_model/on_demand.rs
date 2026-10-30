@@ -10,6 +10,10 @@
 //! ready the front end's placeholder box stands in, and `drive` starts
 //! the model afresh when it arrives.
 //!
+//! A weapon with drawn parts shows its own view model (`parts::view_key`:
+//! `<weapon>+<part>+...`), made here from the weapon's with the parts'
+//! models on it (`load_with_parts`); the bare gun's stands in meanwhile.
+//!
 //! Only Combat Arms' own weapons load here (`ours`): another game's gun in
 //! a mashup (CS:S's in Lucker Party) has its own game's view model, which
 //! that game's loader or Chimera's driver draws.
@@ -33,7 +37,7 @@ use bevy::{
     tasks::{AsyncComputeTaskPool, Task, block_on, poll_once},
 };
 
-use super::{hands, load, load_hands};
+use super::{super::attachments::CaMods, hands, load, load_hands, parts};
 use crate::{
     core::LocalPlayer,
     map::{MapData, MapTexture, MapViewModel, ViewAnimator, ViewModels, add_view_model},
@@ -70,6 +74,12 @@ pub fn cached(id: &str) -> Option<Loaded> {
 /// the default character's hands when they read), with its own textures;
 /// Err when its data names none or it doesn't read.
 pub fn load_weapon(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<LoadedViewModel, String> {
+    // A weapon with fitted parts (`parts::view_key`): its own view model,
+    // the parts on it.
+    let (base, names) = parts::split_key(id);
+    if !names.is_empty() {
+        return load_with_parts(id, base, file);
+    }
     let w = super::super::data::CaData::install()
         .weapon_set()
         .weapons
@@ -108,6 +118,36 @@ pub fn load_weapon(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<L
     })
 }
 
+/// View-model key `key` (`parts::view_key`): weapon `base`'s view model
+/// (`load_cached`) with its parts' models on it, its textures with
+/// theirs.
+fn load_with_parts(key: &str, base: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<LoadedViewModel, String> {
+    let bare = load_cached(base, file)?;
+    let ca = super::super::data::CaData::install();
+    let params = ca
+        .weapon_set()
+        .get(base)
+        .and_then(|w| w.hook::<super::super::attachments::AttachParams>(super::super::attachments::ATTACHMENTS))
+        .unwrap_or_default();
+    let mut model = bare.model.clone();
+    model.key = key.to_string();
+    let mut own = MapData {
+        textures: (*bare.textures).clone(),
+        ..default()
+    };
+    let mut warnings = bare.warnings.clone();
+    for part in parts::parts_of(key, ca.attachments(), &params) {
+        if let Err(e) = parts::attach(&mut model, &part, &mut own, file) {
+            warnings.push(format!("{base} view-model part: {e}"));
+        }
+    }
+    Ok(LoadedViewModel {
+        model,
+        textures: Arc::new(own.textures),
+        warnings,
+    })
+}
+
 /// `load_weapon` once per session: the cached result after the first.
 pub fn load_cached(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Loaded {
     if let Some(l) = cached(id) {
@@ -136,7 +176,7 @@ pub fn load_on_demand(
     models: Option<Res<ViewModels>>,
     local: Query<&Inventory, With<LocalPlayer>>,
     shown: Query<&ViewAnimator>,
-    weapons: Query<&Weapon>,
+    weapons: Query<(&Weapon, Option<&CaMods>)>,
     mut pending: Local<Pending>,
     mut commands: Commands,
 ) {
@@ -159,14 +199,19 @@ pub fn load_on_demand(
     });
     // The active weapon first, then the rest of the inventory, then what
     // characters show (a spectated player's).
-    let mut wanted: Vec<&str> = Vec::new();
+    // A weapon with drawn parts: its bare view model first (the parts'
+    // is made from it), then the one with its parts (`parts::view_key`).
+    let mut wanted: Vec<String> = Vec::new();
     for inv in &local {
-        let ids = inv.active.iter().chain(&inv.weapons).filter_map(|e| weapons.get(*e).ok()).map(|w| w.id);
-        wanted.extend(ids);
+        for (w, mods) in inv.active.iter().chain(&inv.weapons).filter_map(|e| weapons.get(*e).ok()) {
+            wanted.push(w.id.to_string());
+            wanted.push(parts::view_key(w.id, mods));
+        }
     }
-    wanted.extend(shown.iter().filter_map(|v| v.key.as_deref()));
-    let mut seen = Vec::new();
-    for id in wanted {
+    wanted.extend(shown.iter().filter_map(|v| v.key.clone()));
+    let mut seen: Vec<&str> = Vec::new();
+    for id in &wanted {
+        let id = id.as_str();
         if !ours(id) || seen.contains(&id) || has(id) || pending.0.contains_key(id) {
             continue;
         }
