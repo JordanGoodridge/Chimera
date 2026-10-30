@@ -65,7 +65,8 @@ fn install_attribute_data() {
     // The plaintext directory: one ATTRIBUTES folder with the files by role.
     let entries = archive.entries();
     let size = |p: &str| entries.iter().find(|e| e.path == p).map(|e| e.size);
-    assert_eq!(size(WEAPONS_FILE), Some(9_007_972));
+    // Steam build 26236938 (9,007,972 bytes in 25595979).
+    assert_eq!(size(WEAPONS_FILE), Some(9_275_149));
     assert_eq!(size(SERVER_FILE), Some(2_176));
     assert!(size(MODELS_FILE).is_some());
     assert!(entries.iter().all(|e| e.path.starts_with("attributes/")), "a file outside ATTRIBUTES/");

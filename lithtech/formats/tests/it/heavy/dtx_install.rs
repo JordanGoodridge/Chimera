@@ -82,14 +82,18 @@ fn whole_install_sweep() {
             *formats.entry(format!("{:?}", t.format)).or_insert(0) += 1;
         }
     }
-    assert_eq!((entries, empty), (9_658, 1));
+    eprintln!("{entries} unkeyed textures ({empty} empty): {formats:?}");
+    // Steam build 26236938, where six archives that were V2-keyed in
+    // 25595979 ship unkeyed (25595979: 9,658 and 1; Bgra32 3,237, Dxt1
+    // 4,068, Dxt3 457, Dxt5 1,895).
+    assert_eq!((entries, empty), (12_325, 2));
     assert_eq!(
         formats,
         BTreeMap::from([
-            ("Bgra32".to_string(), 3_237),
-            ("Dxt1".to_string(), 4_068),
-            ("Dxt3".to_string(), 457),
-            ("Dxt5".to_string(), 1_895)
+            ("Bgra32".to_string(), 5_066),
+            ("Dxt1".to_string(), 4_446),
+            ("Dxt3".to_string(), 470),
+            ("Dxt5".to_string(), 2_341)
         ])
     );
 }

@@ -132,10 +132,12 @@ fn every_archive_opens() {
         mount.layers().count(),
         locked.len()
     );
+    // Steam build 26236938 (25595979: 32,024 files, 40 keyed; six of its
+    // V2 archives ship unkeyed now).
     assert_eq!(mount.layers().count(), 108);
-    assert_eq!(files, 32_024);
+    assert_eq!(files, 32_202);
     assert_eq!(locked.len(), keyed);
-    assert_eq!(locked.len(), 40);
+    assert_eq!(locked.len(), 34);
 }
 
 /// Plain archives read as stored: maps in WORLDS2/WORLDS3 are readable

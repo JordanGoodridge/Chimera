@@ -99,7 +99,9 @@ fn v2_archives_decrypt_to_valid_headers() {
     for (ext, (ok, seen)) in &by_type {
         assert_eq!(ok, seen, "{ext}: first files that don't start with the type's header");
     }
-    assert!(by_type.len() >= 6, "{by_type:?}");
+    // Textures, models and worlds (build 26236938; in 25595979 the V2
+    // archives also held a PCX, a BMP and a PNG).
+    assert!(by_type.len() >= 3, "{by_type:?}");
 }
 
 /// A map from WORLDS and one from WORLDS4 parse with the world reader.
@@ -146,7 +148,8 @@ fn v1_weapons_attributes_parse() {
     let rez = RezArchive::open(game.join("ATTRIBUTES.rez"), &keys).unwrap();
     assert_eq!(rez.header().key_scheme(), Some("V1"));
     let b = rez.read("attributes/weapons.txt").unwrap().unwrap();
-    assert_eq!(b.len(), 9_007_972);
+    // Steam build 26236938 (9,007,972 bytes in 25595979).
+    assert_eq!(b.len(), 9_275_149);
     let doc = Document::parse(&b).unwrap_or_else(|err| panic!("weapons.txt: {err}"));
     let weapons = doc.records("Weapon");
     eprintln!("weapons.txt: {} sections, {} weapon records", doc.sections().len(), weapons.len());
