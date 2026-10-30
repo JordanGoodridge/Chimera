@@ -240,8 +240,9 @@ the user's go-ahead: no Actions runs unless asked.
     the band covering that point. Each ladder moves the boundaries a few
     percent at random. At least one warm-up rung and one melee rung.
     Defaults (data): warm-up pistols 15%; rising SMGs and shotguns 20%;
-    peak rifles and carbines 25%; heavy LMGs, marksman rifles, snipers and
-    heavy pistols 15%; specials 8%; grenade 7%; melee 10%.
+    peak rifles and carbines 28%; heavy LMGs, marksman rifles, snipers and
+    heavy pistols 15%; specials 8%; grenade 7%; melee 7% (user: melee
+    rarer, about 1 on 10-20 rungs and 2 on 30; at least 1).
 - **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
   - The party gun games' protection becomes 2 s (from 1.5 s); retime the
     tests that assume 1.5 s.
