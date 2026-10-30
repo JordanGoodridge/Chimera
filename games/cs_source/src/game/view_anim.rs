@@ -26,7 +26,7 @@ use crate::{
     },
     weapon::{
         WeaponEventKind,
-        view_anim::{self, Pick, ViewAnimRules, ViewFrame, ViewState},
+        view_anim::{self, Pick, ViewAnimAppExt, ViewAnimRules, ViewFrame, ViewState},
     },
 };
 
@@ -190,8 +190,8 @@ impl Plugin for ViewAnimPlugin {
         if !app.is_plugin_added::<view_anim::ViewAnimPlugin>() {
             app.add_plugins(view_anim::ViewAnimPlugin);
         }
+        add_rules(app);
         app.insert_resource(settings())
-            .insert_resource(rules())
             .init_resource::<ViewMotion>()
             .add_systems(Update, view_motion::update.in_set(DriveAnimation));
         cvars(app);
@@ -281,6 +281,12 @@ fn variants(activities: &[&str], silenced: bool) -> Pick {
 /// so this falls back to the plain ones).
 fn silenced(state: &ViewState) -> bool {
     state.mode > 0
+}
+
+/// CS:S's view-model rules registered for its weapons (`cs_source:`
+/// ids): an app with CS:S's guns but not `ViewAnimPlugin` calls this.
+pub fn add_rules(app: &mut App) {
+    app.view_anim_rules(super::GAME, rules());
 }
 
 /// CS:S's view-model rules on Chimera's driver (`weapon::view_anim`).

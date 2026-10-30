@@ -163,7 +163,7 @@ impl Plugin for MashupPartsPlugin {
         // CS:S's guns' view models: Chimera's generic driver with CS:S's
         // rules plays them (Combat Arms' driver lets go of a character
         // holding another game's gun).
-        app.insert_resource(cs_source::game::view_anim::rules());
+        cs_source::game::view_anim::add_rules(app);
         app.add_plugins((
             source_logic::logic::LogicPlugin,
             cs_source::game::weapons::CsGunsPlugin,

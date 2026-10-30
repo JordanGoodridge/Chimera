@@ -210,11 +210,6 @@ const ALLOWED_REGISTRIES: &[(&str, &str, &str)] = &[
         "buying an item gives its part: spawning",
     ),
     (
-        "chimera/sim/src/weapon/grenade.rs",
-        "LaunchHook",
-        "B: a throw spawns its projectile; to an entity event (step 3)",
-    ),
-    (
         "chimera/sim/src/weapon/mod.rs",
         "BuildWeapon",
         "building a weapon entity: spawning",
@@ -303,7 +298,7 @@ const EXCLUSIVE_BASELINE: &[(&str, usize)] = &[
     ("chimera/sim", 13),
     ("chimera/world", 1),
     ("games/combat_arms", 20),
-    ("games/cs_source", 5),
+    ("games/cs_source", 4),
 ];
 
 fn is_ident(c: char) -> bool {

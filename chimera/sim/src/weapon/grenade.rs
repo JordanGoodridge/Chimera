@@ -35,9 +35,11 @@
 //! restart; buying stacks grenades up to their limit and keeps the hand.
 //! Another game's throw (`ThrowOptions` on the weapon; Combat Arms'):
 //! the release when the pin animation ends whatever the button does, no
-//! live drop on death, and its own projectile
-//! (`LaunchHook`, a `Projectile` marked `GameFlown` that the game flies
-//! and detonates; `Detonated` and the network's drawing still apply).
+//! live drop on death, and its own projectile (`ThrowOptions::
+//! game_launch`: a `Launch` event on the weapon where the grenade leaves
+//! the hand, the server's only, which the game's observer answers for its
+//! own weapons with a `Projectile` marked `GameFlown` that it flies and
+//! detonates; `Detonated` and the network's drawing still apply).
 //!
 //! Known shortcuts (docs/tech-debt.md): Grenades (specs/cs_source/grenades.md)
 //! follow the SDK template where CS:S is unmeasured: release + 0.1 s to the
@@ -541,8 +543,9 @@ pub struct ThrowOptions {
     /// Dying with the pin out drops the grenade live (`drop_primed`).
     pub drop_primed: bool,
     /// The game makes the projectile itself when the grenade leaves the
-    /// hand (where the default would `launch` one by `ThrowRule`).
-    pub launch: Option<LaunchHook>,
+    /// hand (where the default would `launch` one by `ThrowRule`): a
+    /// `Launch` event on the weapon, which the game observes.
+    pub game_launch: bool,
 }
 
 impl Default for ThrowOptions {
@@ -552,16 +555,23 @@ impl Default for ThrowOptions {
             release_at_pin_end: false,
             hold_loop: None,
             drop_primed: true,
-            launch: None,
+            game_launch: false,
         }
     }
 }
 
-/// A grenade leaving the hand, for a game's `LaunchHook`: the weapon, its
-/// thrower, the thrower's eye (m), view (radians, ours: `Intent`'s yaw
-/// and pitch), velocity and command number (a seed).
-#[derive(Clone, Copy, Debug)]
+/// A grenade leaving the hand of a weapon with `ThrowOptions::
+/// game_launch`, an event on the weapon: its thrower, the thrower's eye
+/// (m), view (radians, ours: `Intent`'s yaw and pitch), velocity and
+/// command number (a seed). Triggered once per throw where projectiles are
+/// made (the server, single player; never in a client's prediction), from
+/// the throw's commands, so the observers run where a command would (in
+/// order with the throw's other commands). A game's observer makes the
+/// projectile (`spawn_projectile`, then its own parts) for weapons with
+/// its own part and leaves the others alone.
+#[derive(EntityEvent, Clone, Copy, Debug)]
 pub struct Launch {
+    #[event_target]
     pub weapon: Entity,
     pub thrower: Entity,
     pub eye: Vec3,
@@ -570,11 +580,6 @@ pub struct Launch {
     pub velocity: Vec3,
     pub command: u32,
 }
-
-/// A game's launch: makes the projectile (`spawn_projectile`, then the
-/// game's own parts on it). Runs only where projectiles are made (the
-/// server, single player).
-pub type LaunchHook = fn(&mut World, Launch);
 
 /// On a `Projectile` a game flies, bounces and detonates itself (its own
 /// rules): the default flight leaves it alone. The rest (drawing, the
@@ -837,7 +842,7 @@ fn throw_frame(
             t.throw_at = None;
             let eye = transform.translation + state.eye_offset;
             let carried = vel.map_or(Vec3::ZERO, |v| v.0);
-            if let Some(hook) = options.launch {
+            if options.game_launch {
                 if server {
                     let launch = Launch {
                         weapon: entity,
@@ -848,7 +853,7 @@ fn throw_frame(
                         velocity: carried,
                         command: intent.command,
                     };
-                    commands.queue(move |w: &mut World| hook(w, launch));
+                    commands.trigger(launch);
                 }
             } else {
                 let (mut start, velocity) = t.throw.throw(eye, intent.yaw, intent.pitch, carried);

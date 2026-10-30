@@ -330,13 +330,15 @@ fn a_rungs_gun_keeps_its_reserve() {
 }
 
 /// A soldier holding CS:S's gun has its view model driven by Chimera's
-/// generic driver (CS:S's rules, the party's `ViewAnimRules`); Combat
-/// Arms' lets go of it, and takes it back with a Combat Arms gun.
+/// generic driver (CS:S's rules, its entry in the party's
+/// `GameViewAnimRules`); Combat Arms' lets go of it, and takes it back
+/// with a Combat Arms gun.
 #[test]
 fn a_cs_source_guns_view_model_is_driven_by_chimera_and_ours_by_combat_arms() {
     use chimera_sim::weapon::view_anim::{OwnViewAnim, ViewModelPlay};
     let mut sim = party();
-    assert!(sim.app.world().contains_resource::<chimera_sim::weapon::view_anim::ViewAnimRules>());
+    let rules = sim.app.world().resource::<chimera_sim::weapon::view_anim::GameViewAnimRules>();
+    assert!(rules.for_weapon(cs_source::game::weapons::GLOCK).is_some());
     let a = soldier(&mut sim);
     let _b = soldier(&mut sim);
     sim.seconds(1.5);

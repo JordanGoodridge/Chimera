@@ -3,7 +3,8 @@
 Status: the audit (roadmap item 1) done 2026-10-29 on main at
 a5e70668, read-only. Section 4's step 1 (guards) done 2026-10-29:
 `checks/tests/it/ecs.rs` and `determinism.rs` over every simulation
-crate, DESIGN.md "ECS style" (what landed: step 1 below). Next: step 2.
+crate, DESIGN.md "ECS style" (what landed: step 1 below). Step 3
+(the weapon seam) and step 10 done 2026-10-30. Next: step 2.
 The roadmap item's other parts (docs/backlog.md, "First: ECS cleanup
 where new games plug in") follow section 4's order. Goal (user, 2026-10-29): outcomes, not a rewrite. The
 next games (Half-Life 2: Deathmatch, Team Fortress 2, later Call of
@@ -528,6 +529,32 @@ what must pass, beyond each crate's fast tier. The guards:
 - Effect: the weapon frame's three exceptions are gone. The pattern for
   HL2's predicted objectives (TF2's carts and points) is a system, not a
   world function.
+- **Done 2026-10-30.** `view_anim::GameViewAnimRules` (a list of
+  (game id, `ViewAnimRules`), registered with `ViewAnimAppExt::
+  view_anim_rules(game, rules)`; a game registering again replaces its
+  own entry); `drive` takes the entry of the held weapon's id prefix
+  (draw, idle, events and animation effects); a weapon of a game without
+  rules shows its reference pose. CS:S's `view_anim::add_rules` (its
+  plugin, the party, the mashup). `grenade::Launch` is an `EntityEvent`
+  on the weapon, `ThrowOptions::launch` became `game_launch: bool`; the
+  throw triggers it with `commands.trigger` where the hook's
+  `commands.queue` was (the throw was already a normal system, so the
+  observers run where the hook ran: in the same command queue, O2), on
+  the server only. Combat Arms' grenades and devices each observe it
+  filtered by their own part (`CaGrenadeData`, `CaDeviceData`) and queue
+  their unchanged `launch`. `bomb::arm` is a normal system (declared
+  queries, an `ArmMessages` param) in the same place; `Arming`, the
+  bomb's despawn and the planted bomb go through `Commands` (applied
+  before `predict_defuse`, which is chained after, and by the end of the
+  command's schedule, where prediction saves the state: O1); the
+  inventory changes in place. Tests: `chimera_sim` `view_anim::
+  two_games_rules_each_play_their_own_weapons_in_either_order`,
+  `a_game_without_rules_leaves_its_weapons_alone`; Combat Arms
+  `net_projectiles::net_a_throw_launches_once_on_the_server_and_never_
+  in_prediction`; the bomb's unchanged `ui` tests (`objectives::`,
+  `net_rules::arming_and_defusing_are_predicted`: 0 prediction errors
+  at 100 ms). `Predict::Weapons` ambiguities unchanged (9, 0 opposite).
+  `ecs.rs`: `LaunchHook` off the allowed list; CS:S ratchet 5 to 4.
 
 ### Step 4: a mode's per-tick hooks as systems (M; order flag)
 

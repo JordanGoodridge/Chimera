@@ -318,3 +318,44 @@ fn net_own_projectile_from_the_server_by_default() {
     }
     assert!(shown > 10, "the server's copy drawn ({shown} frames)");
 }
+
+/// Chimera's `Launch` events seen in an app.
+#[derive(Resource, Default)]
+struct Launches(Vec<Entity>);
+
+/// A client's own grenade throw (Chimera's `ThrowOptions::game_launch`):
+/// the `Launch` event fires once on the server, whose observer makes the
+/// one grenade, and never on the client, which predicts the throw (live
+/// and in its replays) but not the projectile.
+#[test]
+fn net_a_throw_launches_once_on_the_server_and_never_in_prediction() {
+    use chimera_sim::weapon::grenade::{Launch, Projectile};
+    let mut sim = net_sim_of(1);
+    let count = |app: &mut App| {
+        app.init_resource::<Launches>()
+            .add_observer(|l: On<Launch>, mut seen: ResMut<Launches>| seen.0.push(l.weapon));
+    };
+    count(&mut sim.server.app);
+    count(&mut sim.clients[0].app);
+    let thrower = sim.character_of(0).unwrap();
+    weapon::give(sim.server.app.world_mut(), thrower, M67).unwrap();
+    sim.ticks(400);
+    let me = sim.local_player(0).unwrap();
+    let w = sim.clients[0].app.world();
+    let held = w.get::<Inventory>(me).unwrap().active.unwrap();
+    assert_eq!(w.get::<Weapon>(held).unwrap().id, M67, "drawn on the client");
+    sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().fire = true;
+    sim.ticks(4);
+    sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().fire = false;
+    let mut flown = 0;
+    for _ in 0..200 {
+        sim.ticks(1);
+        let w = sim.server.app.world_mut();
+        flown = flown.max(w.query_filtered::<(), With<Projectile>>().iter(w).count());
+    }
+    let on_server = &sim.server.app.world().resource::<Launches>().0;
+    assert_eq!(on_server.len(), 1, "one launch on the server: {on_server:?}");
+    assert_eq!(flown, 1, "its observer made one grenade");
+    let on_client = &sim.clients[0].app.world().resource::<Launches>().0;
+    assert!(on_client.is_empty(), "none in prediction: {on_client:?}");
+}

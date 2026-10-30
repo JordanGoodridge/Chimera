@@ -14,7 +14,8 @@
 //! three kinds' animations are alike. The spent weapon is kept at total 0
 //! by `inventory` with Chimera's `KeepSpent`; no default live drop on death
 //! (this module's `death_release`). The projectile is made here
-//! (`launch`): from the eye along the view, perturbed by the weapon's
+//! (`launch`, from this module's observer of Chimera's `Launch` on a
+//! weapon with `CaGrenadeData`): from the eye along the view, perturbed by the weapon's
 //! square spread (`throw_perturb`: weapon_firing.md's cone, the limits
 //! multiplied by the dynamic factor g first, none when the top is 0: the
 //! flash and smoke fly exactly along the view), at `speed` with none of
@@ -576,7 +577,7 @@ pub fn throwable(e: &mut EntityWorldMut, d: &'static WeaponData, p: &GrenadePara
             release_at_pin_end: true,
             hold_loop: Some(p.throw_loop),
             drop_primed: false,
-            launch: Some(launch),
+            game_launch: true,
         },
         CaGrenadeData {
             params: p.clone(),
@@ -893,6 +894,7 @@ impl Plugin for CaGrenadesPlugin {
             .add_message::<Damage>()
             .add_message::<Died>()
             .add_message::<callout::CaThrowCallout>()
+            .add_observer(on_launch)
             // Predicted with the throw: sprint holds a grenade's fire.
             .add_systems(Predict::Weapons, sprint_gate.before(WeaponFrame))
             .add_systems(
@@ -989,6 +991,16 @@ fn pin_flags(
         if *pin != next {
             *pin = next;
         }
+    }
+}
+
+/// A throw leaving the hand of one of our grenades (Chimera's `Launch`,
+/// the server's): its projectile (`launch`), in the throw's place among
+/// its commands. Other weapons' launches are their games'.
+fn on_launch(l: On<Launch>, ours: Query<(), With<CaGrenadeData>>, mut commands: Commands) {
+    if ours.contains(l.weapon) {
+        let l = *l.event();
+        commands.queue(move |w: &mut World| launch(w, l));
     }
 }
 
