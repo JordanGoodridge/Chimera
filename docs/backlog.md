@@ -230,9 +230,11 @@ the user's go-ahead: no Actions runs unless asked.
   - *Generation:* split the rungs over the bands; draw each band's guns
     at random from its pool, sort them by score, and mix the games. A
     console command prints each rung's band and score.
-  - *Open:* whether the heavy band is a step down or power keeps rising;
-    a grenade rung before melee or a grenade plus knife; band sizes for
-    10 rungs (proposed 2/2/2/1/1/1/1).
+  - *Decided (user, 2026-10-30):* power keeps climbing: warm-up, rising,
+    peak, heavy (snipers and heavy calibre are heavier, not harder), then
+    specials, then a grenade rung, then melee (1-3 rungs, see "Melee
+    finale on by default"). Band sizes for 10 rungs: 2/2/2/1/1/1/1,
+    scaled for other lengths, as data a ladder can tune.
 - **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
   - The party gun games' protection becomes 2 s (from 1.5 s); retime the
     tests that assume 1.5 s.
