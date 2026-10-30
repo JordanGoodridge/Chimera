@@ -95,11 +95,15 @@ the user's go-ahead: no Actions runs unless asked.
   grenades already were (`special::sync_objects`): every kind 1.0-1.1x,
   none still, at 20/30/66 (`net_projectiles`). Combat Arms' grenades and
   CS:S's (which fly every tick) were smooth before and after
-  (`grenades_in_flight_drawn_smoothly`). And the shooter's own rockets,
-  shells, flame puffs and bolts now leave the muzzle on the fire frame:
-  his client flies its own copy from the shot until the server's rests
-  or goes (`net::own_items`, net36). Thrown grenades stay the server's
-  (Source predicts the throw only).
+  (`grenades_in_flight_drawn_smoothly`). An option, off by default
+  (parity: the original's client makes no copy of its own projectile,
+  special_weapons.md "Projectile looks and sounds in flight"):
+  `cl_predict_projectiles 1` makes the shooter's own rockets, shells,
+  flame puffs and bolts leave the muzzle on the fire frame, his client
+  flying its own copy from the shot until the server's rests or goes
+  (`net::own_items`, net36); the user decides whether it becomes the
+  default. Thrown grenades stay the server's (Source predicts the throw
+  only).
 - **Spawn facing toward open space (user idea, 2026-10-30).** Today the gun
   game spawns face one of eight fixed directions (`minigame::spawns`), so
   a player can face a wall, and views can line up with map edges (the

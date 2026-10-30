@@ -17,7 +17,7 @@ use chimera_net::{
     net::{NetItem, memory::LinkConditions, server::RateLimits},
 };
 use chimera_core::core::Intent;
-use chimera_net::net::own_items::PredictedItem;
+use chimera_net::net::own_items::{OwnItemSettings, PredictedItem};
 use chimera_sim::weapon::{self, Inventory, Magazine, Weapon};
 use chimera_world::map::loose::ShownItem;
 use chimera_world::greybox::GreyboxMapPlugin;
@@ -206,7 +206,8 @@ fn net_projectiles_drawn_smoothly() {
     assert!(bad.is_empty(), "choppy:\n{}", bad.join("\n"));
 }
 
-/// The shooter's own projectile (`net::own_items`): a client firing a LAW,
+/// The shooter's own projectile with `cl_predict_projectiles 1`
+/// (`net::own_items`): a client firing a LAW,
 /// the M32 or a crossbow draws its round from the frame its predicted
 /// weapon fires (the clip drops), flying smoothly; the server's copy, when
 /// it comes, isn't drawn beside it on that client (one of the model at a
@@ -216,6 +217,7 @@ fn net_projectiles_drawn_smoothly() {
 fn net_own_projectile_drawn_from_the_shot() {
     for id in ["combat_arms:law", "combat_arms:m32", "combat_arms:assassin_bowgun_nor"] {
         let mut sim = net_sim_of(2);
+        sim.clients[0].app.world_mut().resource_mut::<OwnItemSettings>().predict = 1;
         let shooter = sim.character_of(0).unwrap();
         weapon::give(sim.server.app.world_mut(), shooter, id).unwrap();
         sim.ticks(400);
@@ -286,4 +288,33 @@ fn net_own_projectile_drawn_from_the_shot() {
         let copies: Vec<String> = w.query::<(&NetItem, &Transform)>().iter(w).map(|p| format!("{p:?}")).collect();
         assert!(left.is_empty(), "{id}: gone after the blast: {left:?}; copies {copies:?}; server {objs:?}");
     }
+}
+
+/// By default (`cl_predict_projectiles 0`, the original's way) a client's
+/// own LAW round is the server's copy, drawn from snapshots: no
+/// prediction, the copy shown.
+#[test]
+fn net_own_projectile_from_the_server_by_default() {
+    let id = "combat_arms:law";
+    let mut sim = net_sim_of(1);
+    let shooter = sim.character_of(0).unwrap();
+    weapon::give(sim.server.app.world_mut(), shooter, id).unwrap();
+    sim.ticks(400);
+    let me = sim.local_player(0).unwrap();
+    {
+        let mut i = sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap();
+        i.fire = true;
+        i.pitch = -0.2;
+    }
+    let mut shown = 0;
+    for frame in 0..300 {
+        sim.step();
+        if frame == 2 {
+            sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().fire = false;
+        }
+        let w = sim.clients[0].app.world_mut();
+        assert_eq!(w.query::<&PredictedItem>().iter(w).count(), 0, "no prediction");
+        shown += w.query_filtered::<(), (With<NetItem>, With<ShownItem>)>().iter(w).count();
+    }
+    assert!(shown > 10, "the server's copy drawn ({shown} frames)");
 }

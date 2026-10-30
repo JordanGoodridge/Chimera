@@ -1,8 +1,11 @@
 //! A client's own projectiles, drawn from the fire frame (backlog, "Gun
-//! game playtest, 2026-10-28"). The server flies every projectile and
-//! clients draw it from snapshots (`NetItem`, `weapons::draw_items`), in
-//! the past by the interpolation delay; the shooter's own would leave the
-//! muzzle that delay plus the round trip after the shot. So a game's
+//! game playtest, 2026-10-28"), an option: `cl_predict_projectiles 1`
+//! (archived; default 0, the originals': Source and Combat Arms make no
+//! client copy of a projectile, special_weapons.md "Projectile looks and
+//! sounds in flight"). The server flies every projectile and clients
+//! draw it from snapshots (`NetItem`, `weapons::draw_items`), in the past
+//! by the interpolation delay; the shooter's own leaves the muzzle that
+//! delay plus the round trip after the shot. With the option a game's
 //! client, when its predicted weapon frame fires a projectile the first
 //! time (`WeaponEvent::replay` false), spawns a `PredictedItem`: the
 //! projectile's model, start and velocity, flown here on the same steps
@@ -132,12 +135,37 @@ impl PredictedItem {
     }
 }
 
+/// `cl_predict_projectiles`: 1, a client draws its own projectiles from
+/// the shot (games read it before spawning a `PredictedItem`).
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct OwnItemSettings {
+    pub predict: u8,
+}
+
+impl OwnItemSettings {
+    pub fn on(&self) -> bool {
+        self.predict != 0
+    }
+}
+
 /// A server copy shown by a `PredictedItem` instead (no `ShownItem`
 /// meanwhile).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ShownByPrediction(pub Entity);
 
 pub(super) fn plugin(app: &mut App) {
+    app.init_resource::<OwnItemSettings>();
+    if app.world().get_resource::<crate::console::Console>().is_some() {
+        crate::console::resource_cvar::<OwnItemSettings, u8>(
+            app,
+            "cl_predict_projectiles",
+            "1: your own rockets, launcher shells and bolts leave the muzzle on the shot, drawn by your client \
+             until the server's copy takes over; 0: drawn from the server's copy, as the original games do \
+             (default).",
+            |s| &mut s.predict,
+        );
+        app.world_mut().resource_mut::<crate::console::Console>().archive("cl_predict_projectiles");
+    }
     app.add_systems(
         RunFixedMainLoop,
         (fly, hand_over)

@@ -120,7 +120,7 @@ use super::{
 use crate::{
     core::{Damage, DamageKind, Died, Health, LocalPlayer, NetRole, Predict, SimClock, SimSet, Team},
     map::loose::ShownItem,
-    net::{NetCharacter, NetItem, own_items::PredictedItem},
+    net::{NetCharacter, NetItem, own_items::{OwnItemSettings, PredictedItem}},
     weapon::{
         CarriedAppExt, NetPart, Weapon, WeaponEvent, WeaponEventKind, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
@@ -467,7 +467,8 @@ impl Plugin for CaSpecialPlugin {
 }
 
 /// A network client's own impact projectiles and bolts, drawn from the
-/// shot (Chimera's `net::own_items`): the first time its predicted
+/// shot with `cl_predict_projectiles 1` (Chimera's `net::own_items`; the
+/// original makes no client copy): the first time its predicted
 /// weapon frame fires one, the same direction from the shared seed as
 /// the server's (`fire`), at the record's speed, on the server's 20 Hz
 /// steps (`SERVER_FRAME`) under the object gravity with its quarter term
@@ -477,8 +478,13 @@ fn predict_shots(
     local: Query<(), With<LocalPlayer>>,
     projectiles: Query<&CaProjectileData>,
     bolts: Query<(&CaBoltData, &Weapon)>,
+    settings: Option<Res<OwnItemSettings>>,
     mut commands: Commands,
 ) {
+    if !settings.is_some_and(|s| s.on()) {
+        events.clear();
+        return;
+    }
     for e in events.read() {
         let WeaponEventKind::Fired {
             origin,
