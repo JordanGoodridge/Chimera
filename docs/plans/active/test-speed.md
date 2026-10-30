@@ -105,8 +105,8 @@ optimizations.
 
 | Scenario | Now | Target | Notes |
 |---|---|---|---|
-| fast-cargo (Windows, warm) | 115.0 s wall / 952.3 s CPU / 1,563 MB | ≤ 75 s | 3,928 passed, 9 failed (known Windows LF/metrics failures) |
-| fast-nextest (Windows, warm, `fast`) | 89.3 s wall / 1,047.5 s CPU / 1,197 MB | ≤ 75 s | 3,929 passed, 8 failed; **22% faster wall** than cargo |
+| fast-cargo (Windows, warm) | 106.8 s wall / 985.8 s CPU / 1,552 MB | ≤ 75 s | 3,956 passed, 1 failed (CA `t36_rate_cap`) |
+| fast-nextest (Windows, warm, `fast` = 8) | 117.4 s wall / 950.1 s CPU / 865 MB | ≤ 75 s | 3,956 passed, 1 failed; slower than cargo, lower peak memory |
 | commit | 226 s (docs) | ≤ 60 s | check measured 2.7x on `source_tools`; multi-crate pending |
 | full-nextest | 1,757 s (docs) | ≤ 1,200 s | heavy ~80% |
 | heavy at 5 slots | ~1,100 s floor | measure 6/8 | 32 GB, 16 threads; slots out of scope for now |
@@ -322,15 +322,17 @@ the testbench's `fast-nextest` scenario uses it. The fast-tier comparison
 runs as soon as the warm build finishes; heavy slots stay out of scope per
 the user's call.
 
-2026-10-30: fast-tier comparison on the Windows box (warm, load 0-4):
-`fast-cargo` 115.0 s wall / 952.3 s CPU / 1,563 MB peak, 3,928 passed and
-9 failed; `fast-nextest --profile fast` 89.3 s wall / 1,047.5 s CPU /
-1,197 MB, 3,929 passed and 8 failed. Nextest is **22% faster wall** and
-uses less peak memory, at more CPU (parallelism). The failures are the
-known LF/metrics Windows failures, not this branch's code. The dust2
-cache compiles and the affected tests pass; the heavy dust2 file skipped
-all 67 tests because this clone has no CS:S install configured, so its
-runtime gain is still unmeasured.
+2026-10-30: after rebasing onto upstream/main (melee/projectile), the fast
+tier on Windows: `fast-cargo` 106.8 s wall / 985.8 s CPU / 1,552 MB peak,
+3,956 passed and 1 failed; `fast-nextest --profile fast` (8 threads)
+117.4 s wall / 950.1 s CPU / 865 MB, 3,956 passed and 1 failed. Cargo is
+faster; nextest uses less peak memory. The earlier 89.3 s nextest result
+was at 12 threads before upstream; after it, 12 threads peaked at 39 GB
+(swap), so `fast` is back to 8. The one failure is
+`combat_arms::inventory::t36_rate_cap`. The dust2 cache compiles and the
+affected tests pass; the heavy dust2 file skipped all 67 tests because
+this clone has no CS:S install configured, so its runtime gain is still
+unmeasured.
 
 ## Decision log
 
@@ -349,11 +351,12 @@ memory limit is raised without a measurement.
 faster for the full suite (heavy tests contend in one process), but 3,900
 fast tests in separate processes may not beat `cargo test`.
 
-2026-10-30: nextest did win the Windows fast tier: 89.3 s vs 115.0 s
-(22%), with lower peak memory. Keep it opt-in as the `fast` profile for now;
-the default stays 8 threads and `cargo test` remains the fallback. Do not
-switch the pre-commit hook to nextest without measuring a real commit on
-the Linux box, where its process overhead may differ.
+2026-10-30: keep `cargo test` for the fast tier and `nextest` for the full
+and heavy tiers. The 12-thread nextest win (89 s) did not survive the
+upstream melee/projectile merge: at 8 threads it is 117 s vs cargo's
+107 s, and 12 threads peaked at 39 GB. `fast` stays opt-in (JUnit and
+lower memory), not the default; the pre-commit hook stays on cargo until a
+real commit is measured on Linux.
 
 2026-10-30: the map cache is the heavy-tier lever; slot tuning comes first
 because it is a config change and a measurement, not a new cache.
