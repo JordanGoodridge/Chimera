@@ -55,11 +55,12 @@ join_rung = "lowest"       # a late joiner starts on the others' lowest rung (th
 knife_finale = false       # true: a knife-only rung after the AWP (the default: off)
 refill_ammo = true   # the ladder gives each gun once: 200 rounds of M60 run out
 # Each Combat Arms rung's fitted parts, character and melee weapon, the
-# same for everyone on it, and one rung of the top third the infected's
-# (their hands alone, when the install has them) (the default; `false`,
-# or by part: { attachments = false, character = false, melee = false,
-# infected = false }; the parts' odds tuned by a table:
-# { attachments = { sight = 0.4, muzzle = 0.3, max_parts = 2 } }, the
-# rest as games/combat_arms/data/attachments/rung_odds.toml).
+# same for everyone on it, and with the knife finale on its rung
+# sometimes the infected's (their hands alone, when the install has them)
+# (the default; `false`, or by part: { attachments = false, character =
+# false, melee = false, infected = false }; odds tuned by a table:
+# { attachments = { sight = 0.4, muzzle = 0.3, max_parts = 2 } },
+# { infected = { odds = 0.25 } }, the rest as Combat Arms' data:
+# data/attachments/rung_odds.toml, data/rung_melee.toml).
 rung_extras = true
 win = { kind = "ladder_end" }

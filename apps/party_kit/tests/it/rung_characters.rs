@@ -3,10 +3,14 @@
 //! vest (no correction for a network client at a swap to another body);
 //! the infected's rung (Chimera's `ladder::RungCharacter`, with a
 //! test-written infected's hand: the install's are the Quarantine hands)
-//! turns everyone on it into the infected holding the hands alone, at
-//! the baseline's health and movement, its moment once on entering and
-//! once on leaving, and the next rung makes them themselves again; a
-//! network client sees the same.
+//! is a melee rung's choice, the knife finale's, at the data's odds (never
+//! a gun rung; never at odds 0 or with the option off); it turns everyone
+//! on it into the infected holding the hands alone, at the baseline's
+//! health and movement, Combat Arms' observers of `ladder::OnRung` putting
+//! the marker on and playing the infection's moment once on arriving and
+//! taking it off once on leaving, and another rung makes them themselves
+//! again; a network client sees the same, its own `OnRung` observers
+//! firing once per arrival and leaving.
 
 use std::time::Duration;
 
@@ -19,7 +23,7 @@ use chimera_net::{
 use chimera_sim::{
     minigame::{
         self, MinigameAppExt, Minigames,
-        ladder::{self, Ladder, RungSeed},
+        ladder::{self, Ladder, OnRung, RungSeed},
     },
     weapon::{Inventory, Weapon},
 };
@@ -30,6 +34,7 @@ use combat_arms::{
         characters::records::Selection,
         data::{CaData, WEAPON_DATA},
         gear::CaGearData,
+        effects::CaFxRequest,
         movement::{CaCharacter, CaInfected},
         rungs::{self, CaRungInfected},
     },
@@ -52,16 +57,28 @@ fn data() -> CaData {
     CaData::builtin_with_weapons(docs)
 }
 
+/// The infected always, on the knife finale's rung.
+const ALWAYS: &str = "knife_finale = true\nrung_extras = { infected = { odds = 1.0 } }";
+
+/// The gun game as `originals:variant` in `app`, `[rules]` lines `extra`
+/// added (`knife_finale = true` in them turns the finale on).
+fn add_variant(app: &mut App, extra: &str) {
+    let text = app.world().resource::<Minigames>().text(DEFAULT_MINIGAME).unwrap().to_string();
+    let finale = extra.contains("knife_finale = true");
+    let extra = extra.replace("knife_finale = true", "");
+    let text = text
+        .replace(&format!("id = \"{DEFAULT_MINIGAME}\""), "id = \"originals:variant\"")
+        .replace("\nrung_extras = true\n", "\n")
+        .replace("knife_finale = false", if finale { "knife_finale = true" } else { "knife_finale = false" })
+        .replace("[rules]\n", &format!("[rules]\n{extra}\n"));
+    app.add_minigames(&[("variant.toml", &text)]).unwrap();
+}
+
 /// The gun game on seed `seed`, `[rules]` lines `extra` added.
 fn party<B>(base: impl bevy::app::Plugins<B>, extra: &str, seed: u64) -> Sim {
     let mut sim = Sim::new(base, (GreyboxMapPlugin, PartyPartsPlugin));
     sim.app.insert_resource(RungSeed(seed));
-    let text = sim.app.world().resource::<Minigames>().text(DEFAULT_MINIGAME).unwrap().to_string();
-    let text = text
-        .replace(&format!("id = \"{DEFAULT_MINIGAME}\""), "id = \"originals:variant\"")
-        .replace("\nrung_extras = true\n", "\n")
-        .replace("[rules]\n", &format!("[rules]\n{extra}\n"));
-    sim.app.add_minigames(&[("variant.toml", &text)]).unwrap();
+    add_variant(&mut sim.app, extra);
     minigame::start(sim.app.world_mut(), "originals:variant").expect("it starts");
     sim
 }
@@ -97,7 +114,7 @@ fn kill(sim: &mut Sim, p: Entity, by: Entity) {
     sim.ticks(2);
 }
 
-/// The infection's moments as they came: (player, became or left).
+/// The infected's marker as it came and went: (player, became or left).
 #[derive(Resource, Default)]
 struct Moments(Vec<(Entity, &'static str)>);
 
@@ -107,18 +124,37 @@ fn count_moments(app: &mut App) {
         .add_observer(|on: On<Remove<CaRungInfected>>, mut m: ResMut<Moments>| m.0.push((on.event_target(), "leave")));
 }
 
+/// The `OnRung` observers' calls as they came: (player, arrived or left,
+/// the rung).
+#[derive(Resource, Default)]
+struct RungMoments(Vec<(Entity, &'static str, usize)>);
+
+fn count_rung_moments(app: &mut App) {
+    app.init_resource::<RungMoments>()
+        .add_observer(|on: On<Insert<OnRung>>, q: Query<&OnRung>, mut m: ResMut<RungMoments>| {
+            m.0.push((on.event_target(), "arrive", q.get(on.event_target()).unwrap().index));
+        })
+        .add_observer(|on: On<Discard<OnRung>>, q: Query<&OnRung>, mut m: ResMut<RungMoments>| {
+            m.0.push((on.event_target(), "leave", q.get(on.event_target()).unwrap().index));
+        });
+}
+
+/// How many infection effects were asked for this update.
+fn infection_fx(world: &World) -> usize {
+    world.resource::<Messages<CaFxRequest>>().iter_current_update_messages().filter(|r| r.group == rungs::INFECTION_FX).count()
+}
+
 fn character(world: &World, p: Entity) -> String {
     format!("{:?}", world.get::<CaCharacter>(p).expect("a Combat Arms character"))
 }
 
 #[test]
 fn the_infected_rung_makes_everyone_on_it_the_infected_with_the_hands_alone_until_the_next_rung() {
-    let mut sim = party(CaSimWith(data()), "", 3);
+    let mut sim = party(CaSimWith(data()), ALWAYS, 3);
     count_moments(&mut sim.app);
     let l = ladder_of(&sim);
     let z = infected_rung(&l);
-    assert!(z >= l.rungs.len() * 2 / 3 && z + 1 < l.rungs.len(), "in the top third, not last: {z}");
-    assert!(l.rungs[z].starts_with("combat_arms:"), "a Combat Arms rung: {}", l.rungs[z]);
+    assert_eq!(z + 1, l.rungs.len(), "the knife finale's rung");
     let x = l.extras(z).unwrap();
     assert_eq!(x.character.as_ref().map(|c| c.weapon.as_str()), Some(HANDS));
     let body: i32 = x.value(rungs::MODEL).expect("an infected body").parse().unwrap();
@@ -127,8 +163,9 @@ fn the_infected_rung_makes_everyone_on_it_the_infected_with_the_hands_alone_unti
     let (a, b, c) = (soldier(&mut sim), soldier(&mut sim), soldier(&mut sim));
     sim.seconds(1.5);
     ladder::set_rung(sim.app.world_mut(), c, other, &l);
-    for p in [a, b] {
+    for (i, p) in [a, b].into_iter().enumerate() {
         ladder::set_rung(sim.app.world_mut(), p, z, &l);
+        assert_eq!(infection_fx(sim.app.world()), i + 1, "the infection's effect, from Combat Arms' observer");
     }
     sim.seconds(1.0);
     let w = sim.app.world();
@@ -142,34 +179,74 @@ fn the_infected_rung_makes_everyone_on_it_the_infected_with_the_hands_alone_unti
         assert_eq!(character(w, p), character(w, c), "the baseline's movement");
     }
     assert_eq!(w.resource::<Moments>().0, [(a, "enter"), (b, "enter")], "once each");
-    // b dies on the rung and comes back the infected: no new moment.
-    kill(&mut sim, b, a);
+    // b, shot by c, comes back on the rung the infected: no new moment.
+    kill(&mut sim, b, c);
     sim.seconds(4.0);
     assert!(alive(&sim, b));
     let w = sim.app.world();
+    assert_eq!(w.get::<ladder::Rung>(b).map(|r| r.0), Some(z), "still on the rung");
     assert_eq!(carried(w, b), [HANDS]);
     assert!(w.get::<CaRungInfected>(b).is_some());
-    // a's kill took it a rung up: itself again.
-    assert_eq!(w.get::<ladder::Rung>(a).map(|r| r.0), Some(z + 1));
+    assert_eq!(w.resource::<Moments>().0, [(a, "enter"), (b, "enter")], "nothing for a respawn");
+    // a goes down a rung (a gun's): itself again.
+    let down = z - 1;
+    ladder::set_rung(sim.app.world_mut(), a, down, &l);
+    assert_eq!(infection_fx(sim.app.world()), 0, "no effect for leaving");
+    sim.seconds(1.0);
+    let w = sim.app.world();
     let have = carried(w, a);
-    assert!(!have.contains(&HANDS) && have.contains(&l.rungs[z + 1]), "the next rung's gun, the hands gone: {have:?}");
+    assert!(!have.contains(&HANDS) && have.contains(&l.rungs[down]), "the rung's gun, the hands gone: {have:?}");
     assert!(have.len() >= 2, "the kit's knife back: {have:?}");
     assert!(w.get::<CaRungInfected>(a).is_none());
     assert_eq!(w.resource::<Moments>().0, [(a, "enter"), (b, "enter"), (a, "leave")]);
 }
 
-#[test]
-fn the_infected_option_off_or_no_infected_hands_draws_no_infected_rung() {
-    let off = ladder_of(&party(CaSimWith(data()), "rung_extras = { infected = false }", 3));
-    assert!((0..off.rungs.len()).all(|i| off.character(i).is_none()));
-    let plain = ladder_of(&party(CaSim, "", 3));
-    assert!((0..plain.rungs.len()).all(|i| plain.character(i).is_none()), "built-in data: no hands");
-    // No gun rung's melee weapon is ever a hand.
-    for seed in 0..20 {
-        let l = ladder_of(&party(CaSimWith(data()), "", seed));
-        assert!(l.extras.iter().flatten().all(|x| x.melee.as_deref() != Some(HANDS)), "seed {seed}");
-        infected_rung(&l);
+/// Of `n` ladders made in a row on `sim` (each draws anew), how many have
+/// the infected's rung; each such rung the last (the knife finale's),
+/// and no gun rung's melee weapon a hand.
+fn infected_ladders(sim: &mut Sim, n: usize) -> usize {
+    let mut found = 0;
+    for i in 0..n {
+        minigame::start(sim.app.world_mut(), "originals:variant").expect("it starts");
+        let l = ladder_of(sim);
+        assert!(l.extras.iter().flatten().all(|x| x.melee.as_deref() != Some(HANDS)), "ladder {i}");
+        let rungs: Vec<usize> = (0..l.rungs.len()).filter(|r| l.character(*r).is_some()).collect();
+        match rungs.as_slice() {
+            [] => {}
+            [z] => {
+                assert_eq!(z + 1, l.rungs.len(), "ladder {i}: only the knife finale's rung");
+                found += 1;
+            }
+            many => panic!("ladder {i}: more than one infected's rung: {many:?}"),
+        }
     }
+    found
+}
+
+#[test]
+fn the_infected_is_a_melee_rungs_choice_at_its_odds() {
+    // The data's odds (a quarter), over 200 ladders.
+    let mut sim = party(CaSimWith(data()), "knife_finale = true", 1);
+    let n = infected_ladders(&mut sim, 200);
+    assert!((30..=70).contains(&n), "about a quarter of 200: {n}");
+    // Tuned.
+    let mut sim = party(CaSimWith(data()), "knife_finale = true\nrung_extras = { infected = { odds = 0.75 } }", 1);
+    let n = infected_ladders(&mut sim, 200);
+    assert!((130..=170).contains(&n), "about three quarters of 200: {n}");
+}
+
+#[test]
+fn the_infected_never_comes_at_odds_0_with_the_option_off_without_a_melee_rung_or_hands() {
+    for extra in [
+        "knife_finale = true\nrung_extras = { infected = { odds = 0 } }",
+        "knife_finale = true\nrung_extras = { infected = false }",
+        "rung_extras = { infected = { odds = 1.0 } }",
+    ] {
+        let mut sim = party(CaSimWith(data()), extra, 1);
+        assert_eq!(infected_ladders(&mut sim, 30), 0, "{extra}");
+    }
+    let mut plain = party(CaSim, ALWAYS, 3);
+    assert_eq!(infected_ladders(&mut plain, 10), 0, "built-in data: no hands");
 }
 
 fn link() -> LinkConditions {
@@ -180,13 +257,26 @@ fn link() -> LinkConditions {
     }
 }
 
-fn net<B>(base: impl bevy::app::Plugins<B> + Clone + Send + Sync + 'static) -> NetSim {
+/// The gun game over the network (`[rules]` lines `extra` added, none: as
+/// it ships), its two clients' `OnRung` observers counted.
+fn net<B>(base: impl bevy::app::Plugins<B> + Clone + Send + Sync + 'static, extra: Option<&str>) -> NetSim {
     let mut sim = NetSim::new(base, link(), 7, 2, |app| {
         app.add_plugins((GreyboxMapPlugin, PartyPartsPlugin));
     });
     sim.set_frame(TICK_INTERVAL);
     sim.server.app.insert_resource(RungSeed(3));
-    minigame::start(sim.server.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
+    let mut id = DEFAULT_MINIGAME;
+    if let Some(extra) = extra {
+        add_variant(&mut sim.server.app, extra);
+        for c in &mut sim.clients {
+            add_variant(&mut c.app, extra);
+        }
+        id = "originals:variant";
+    }
+    for c in &mut sim.clients {
+        count_rung_moments(&mut c.app);
+    }
+    minigame::start(sim.server.app.world_mut(), id).expect("the gun game starts");
     sim.until_joined(900);
     sim.ticks(300);
     sim
@@ -222,7 +312,7 @@ fn walk(sim: &mut NetSim, n: u32, mut at: impl FnMut(&mut NetSim, u32)) {
 
 #[test]
 fn a_network_client_predicts_a_swap_to_another_rung_body_without_a_correction() {
-    let mut sim = net(CaSim);
+    let mut sim = net(CaSim, None);
     let l = sim.server.app.world().resource::<Ladder>().clone();
     let gear = sim.server.app.world().resource::<CaGearData>().0.clone();
     let ca: Vec<usize> = (0..l.rungs.len()).filter(|i| l.rungs[*i].starts_with("combat_arms:")).collect();
@@ -249,11 +339,22 @@ fn a_network_client_predicts_a_swap_to_another_rung_body_without_a_correction() 
 
 #[test]
 fn a_network_client_sees_the_infected_and_their_return() {
-    let mut sim = net(CaSimWith(data()));
+    let mut sim = net(CaSimWith(data()), Some(ALWAYS));
     let l = sim.server.app.world().resource::<Ladder>().clone();
     let z = infected_rung(&l);
+    // Each client's own player: arrived on the first rung once.
+    let rung_moments = |sim: &mut NetSim, i: usize| -> Vec<(&'static str, usize)> {
+        let me = sim.local_player(i).unwrap();
+        sim.clients[i].app.world().resource::<RungMoments>().0.iter().filter(|m| m.0 == me).map(|m| (m.1, m.2)).collect()
+    };
+    for i in 0..2 {
+        assert_eq!(rung_moments(&mut sim, i), [("arrive", 0)], "client {i}");
+    }
     all_on(&mut sim, z);
     sim.ticks(120);
+    for i in 0..2 {
+        assert_eq!(rung_moments(&mut sim, i), [("arrive", 0), ("leave", 0), ("arrive", z)], "client {i}");
+    }
     let first = sim.character_of(0).unwrap();
     let server_look = sim.server.app.world().get::<Selection>(first).copied();
     for i in 0..2 {
@@ -265,13 +366,18 @@ fn a_network_client_sees_the_infected_and_their_return() {
         assert_eq!(w.get::<Selection>(me).copied(), server_look);
     }
     reset_graphs(&mut sim);
-    all_on(&mut sim, z + 1);
+    all_on(&mut sim, z - 1);
     sim.ticks(120);
     for i in 0..2 {
         let me = sim.local_player(i).unwrap();
         let w = sim.clients[i].app.world();
         assert!(w.get::<CaRungInfected>(me).is_none(), "client {i}: itself again");
         assert!(!carried(w, me).contains(&HANDS));
+        assert_eq!(
+            rung_moments(&mut sim, i),
+            [("arrive", 0), ("leave", 0), ("arrive", z), ("leave", z), ("arrive", z - 1)],
+            "client {i}"
+        );
     }
     assert_no_errors(&sim, "leaving the infected's rung");
 }
