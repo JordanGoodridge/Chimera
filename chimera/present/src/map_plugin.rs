@@ -40,6 +40,18 @@ impl MapPlugin {
         }
     }
 
+    /// `new` from a map already shared (`Arc`), without converting it again
+    /// or deep-cloning it: the plugin holds the same map, so its bulk stays
+    /// with the other owners instead of being freed after the spawn (the
+    /// test map cache and an app that reuses a converted map). The map is
+    /// immutable once built.
+    pub fn from_arc(data: Arc<MapData>) -> Self {
+        Self {
+            data: Mutex::new(Some(data)),
+            view: MapDebugView::Normal,
+        }
+    }
+
     /// The map systems and materials without a map loaded yet.
     pub fn empty() -> Self {
         Self {

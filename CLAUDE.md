@@ -65,6 +65,8 @@ cargo test -p repo_checks      # architecture and docs checks (seconds)
                              # Windows: scripts/affected-tests.ps1 -Staged
                              # or -Files <repo-relative paths> for local edits;
                              # -Base upstream/main considers committed changes only
+scripts\testbench.ps1 -Scenario fast-cargo   # test-cycle timings (wall, CPU, peak RSS)
+                                   # and baselines (plans/active/test-speed.md)
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`
 cargo run --features dev --bin cs_source_server -- +map de_dust2   # dedicated server
@@ -104,7 +106,7 @@ still work.
 - Verify your own work with tests, screenshots or remote queries
   (docs/OBSERVABILITY.md) before calling it done. New behavior gets a
   scenario test.
-- Commit at working milestones: `.githooks/pre-commit` builds the
+- Commit at working milestones: `.githooks/pre-commit` checks the
   affected crates' tests and runs the changed crates' fast tier;
   `pre-push` checks identity and `repo_checks` only (enable per clone:
   `git config core.hooksPath .githooks`). Push first, test after: run

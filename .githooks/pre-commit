@@ -7,8 +7,10 @@
 # whose tests depend on them (checks/src/affected.rs has the rules: the
 # workspace manifest, .config/, the hooks or a build.rs select everything;
 # the lockfile the crates whose resolved dependencies changed; Markdown
-# and docs only the repository checks). The hook compiles the tests of
-# all of those (`cargo test --no-run`) and runs only the changed
+# and docs only the repository checks). The hook checks the tests of
+# all of those (`cargo check --all-targets`: type-checks every target
+# without codegen or linking; CHIMERA_COMMIT_DEPENDENTS=build restores the
+# old full build of their test binaries) and runs only the changed
 # packages' own (`affected --direct`) and repo_checks'; the dependents'
 # tests, and the heavy ones, run after the push (tools/post-push-tests.sh).
 # CHIMERA_COMMIT_TESTS=affected runs every affected package's fast tier
@@ -62,11 +64,20 @@ if [ "$build" != "$tests" ]; then
     # shellcheck disable=SC2086
     set -- $build
     unset IFS
-    echo "pre-commit: building the affected tests: $*" >&2
-    if ! run cargo test "$@" --features dev --quiet --no-run >"$log" 2>&1; then
-        grep -E "^error" -A6 "$log" | head -30
-        echo "pre-commit: the affected tests don't build (full log: $log); not committing." >&2
-        exit 1
+    if [ "${CHIMERA_COMMIT_DEPENDENTS:-check}" = build ]; then
+        echo "pre-commit: building the affected tests: $*" >&2
+        if ! run cargo test "$@" --features dev --quiet --no-run >"$log" 2>&1; then
+            grep -E "^error" -A6 "$log" | head -30
+            echo "pre-commit: the affected tests don't build (full log: $log); not committing." >&2
+            exit 1
+        fi
+    else
+        echo "pre-commit: checking the affected tests: $*" >&2
+        if ! run cargo check "$@" --features dev --quiet --all-targets >"$log" 2>&1; then
+            grep -E "^error" -A6 "$log" | head -30
+            echo "pre-commit: the affected tests don't check (full log: $log; CHIMERA_COMMIT_DEPENDENTS=build builds them); not committing." >&2
+            exit 1
+        fi
     fi
 fi
 IFS='

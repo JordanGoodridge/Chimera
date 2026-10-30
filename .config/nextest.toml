@@ -86,3 +86,19 @@ priority = 90
 filter = 'test(/^heavy::/)'
 test-group = 'heavy'
 slow-timeout = { period = "120s", terminate-after = 6 }
+
+# scripts/testbench.ps1: the same suite, with per-test times written as
+# JUnit under target/testbench/ for the benchmark's slowest-tests table.
+# Not a CI profile; it changes no test selection.
+[profile.bench]
+inherits = "default"
+
+[profile.bench.junit]
+path = "target/testbench/junit.xml"
+
+# The fast tier at 12 test processes: the default's 8 is conservative for
+# heavy memory, but the heavy group caps itself at 5. Opt-in, for the
+# benchmark's fast-nextest scenario; the default stays 8 until measured.
+[profile.fast]
+inherits = "bench"
+test-threads = 12

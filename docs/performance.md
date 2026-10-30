@@ -2138,7 +2138,9 @@ What changed:
   hook with cargo's default (incremental): the profile differs, so each
   workspace crate was built twice per change, once by each (checked on
   repo_checks: switching recompiles, switching back doesn't).
-- pre-commit builds the affected crates' tests (`--no-run`) and runs only
+- pre-commit checks the affected crates' tests (`cargo check --all-targets`:
+  no codegen or linking; `CHIMERA_COMMIT_DEPENDENTS=build` builds them) and
+  runs only
   the changed crates' fast tier and repo_checks (`affected --direct`).
   The old hook on a commit that selected everything (it changed the
   hooks): 6,629 s (load 30-56), the whole fast tier from a worktree's
@@ -2180,6 +2182,11 @@ The hooks, a one-line change in chimera_sim staged in a warm slot (load
 At the time of this measurement, `cargo run`/`build` kept full debug info,
 so a slot that also ran the game built the dependencies a second time.
 The default dev profile now uses line tables too (see below).
+
+From 2026-10-30 the dependents are type-checked with
+`cargo check --all-targets` instead of built; the 226 s row is the old
+behaviour and the new number is still to be measured
+(docs/plans/active/test-speed.md).
 
 Linking cs_source's test binary (478 MB, line tables), replaying its
 link command three times under load 33: LLD 4.3, 2.8, 3.5 s; mold 2.5,

@@ -172,12 +172,13 @@ compared commit missing from the clone (the remote moved since the last
 fetch) is fetched first.
 
 - Before every commit (`.githooks/pre-commit`): the tests of the crates
-  the staged changes can affect are built (`affected --staged`; `cargo
-  test -p <crates> --features dev --no-run`), and the fast tier (unit
-  tests and everything outside `heavy`) runs for the crates whose own
-  files changed and `repo_checks` (`affected --staged --direct`; a change
-  that selects everything runs only `repo_checks`). The dependents' tests
-  run after the push. `CHIMERA_COMMIT_TESTS=affected` runs every affected
+  the staged changes can affect are checked (`affected --staged`; `cargo
+  check -p <crates> --features dev --all-targets`: type-checked without
+  codegen or linking; `CHIMERA_COMMIT_DEPENDENTS=build` builds them
+  instead), and the fast tier (unit tests and everything outside `heavy`)
+  runs for the crates whose own files changed and `repo_checks`
+  (`affected --staged --direct`; a change that selects everything runs only
+  `repo_checks`). The dependents' tests run after the push. `CHIMERA_COMMIT_TESTS=affected` runs every affected
   crate's fast tier (the hook before 2026-10-27), `=all` the whole fast
   tier (`cargo test --features dev -- --skip heavy::`, about 90 s warm),
   `=0` none. In an agent checkout (`.claude/worktrees/*`,
