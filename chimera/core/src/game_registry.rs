@@ -89,6 +89,13 @@ impl GameInfo {
         (self.open)(&self.install()?).ok()
     }
 
+    /// Whether the mount is the asset store alone (`mount::served::alone`:
+    /// the install off or missing): only the sets packed so far, so a
+    /// check of the whole install has nothing to check.
+    pub fn served_alone(&self) -> bool {
+        self.install().is_some_and(|i| crate::mount::served::alone(self.id, &i))
+    }
+
     /// Chimera's content cache for the game (imported maps).
     pub fn content_cache(&self) -> Option<PathBuf> {
         config::content_dir(self.id)

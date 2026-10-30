@@ -5,7 +5,8 @@
 //! with room for a busy box; and a weapon's view model loading on demand
 //! (`view_model::on_demand`), once per session. Passes with a note
 //! without `[games.combat_arms] path` in chimera.local.toml (or an asset
-//! store serving Combat Arms).
+//! store serving Combat Arms); served by the store alone, a map or model
+//! the packed sets lack is skipped with a note.
 
 use std::time::{Duration, Instant};
 
@@ -34,6 +35,16 @@ fn mount() -> Option<chimera_core::mount::Mount> {
     }
 }
 
+/// Whether `path` is missing because the mount is the asset store alone
+/// (only the sets packed so far): the check is skipped with a note.
+fn not_served(mount: &chimera_core::mount::Mount, path: Option<&str>, what: &str) -> bool {
+    if INFO.served_alone() && path.is_none_or(|p| !mount.contains(p)) {
+        eprintln!("skipping: {what} is not in the asset store's sets (the store alone, no install)");
+        return true;
+    }
+    false
+}
+
 /// The process's peak resident memory (MB; Linux only, else 0).
 fn peak_mb() -> u64 {
     std::fs::read_to_string("/proc/self/status")
@@ -51,6 +62,11 @@ fn peak_mb() -> u64 {
 /// `peak_budget` MB.
 fn loads_within(name: &str, next: &str, budget: Duration, peak_budget: u64) {
     let Some(mount) = mount() else { return };
+    for map in [name, next] {
+        if not_served(&mount, world::find(&mount, map).as_deref(), map) {
+            return;
+        }
+    }
     for (k, map) in [name, next].into_iter().enumerate() {
         let started = Instant::now();
         let data = world::load_from(&mount, map).unwrap_or_else(|e| panic!("{map}: {e}"));
@@ -158,7 +174,11 @@ fn view_model_loads_on_demand_once() {
     let Some(mount) = mount() else { return };
     let file = |p: &str| mount.read(p).ok();
     let started = Instant::now();
-    let first = on_demand::load_cached(weapons::RIFLE, &file).unwrap_or_else(|e| panic!("{e}"));
+    let first = match on_demand::load_cached(weapons::RIFLE, &file) {
+        Ok(first) => first,
+        Err(e) if not_served(&mount, None, &format!("{} ({e})", weapons::RIFLE)) => return,
+        Err(e) => panic!("{e}"),
+    };
     let took = started.elapsed();
     eprintln!(
         "{}: {:.2} s, {} meshes, {} textures, {} sequences, peak {} MB",

@@ -23,7 +23,10 @@ pub struct AssetsConfig {
     /// install hidden. Default true: the store is layered under the
     /// install (and stands in for a missing one).
     pub use_install: Option<bool>,
-    /// The build to mount per game (default: the newest in the store).
+    /// The build to mount per game when the store serves it alone
+    /// (default: the newest in the store); under an install, only the
+    /// install's own build is mounted, and only if this names it or
+    /// names none (`chimera_core::mount::served`).
     #[serde(default)]
     pub builds: BTreeMap<String, String>,
 }
@@ -87,7 +90,7 @@ impl AssetSettings {
     }
 
     /// The path that stands for `game`'s install when it is served from
-    /// the store alone (its manifest folder): `served_only` recognizes it.
+    /// the store alone (its manifest folder): `chimera_core::mount::served::alone` recognizes it.
     pub fn stand_in_install(&self, game: &str) -> Option<PathBuf> {
         Some(self.store.as_ref()?.manifest_dir(game))
     }

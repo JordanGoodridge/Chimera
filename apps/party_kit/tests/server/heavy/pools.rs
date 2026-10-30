@@ -3,7 +3,7 @@
 //! and each `maps = [...]` list of `minigames/*.toml`. A Combat Arms name is
 //! a `worlds*/<name>.dat` of the install's archives (`world::find`), a CS:S
 //! one a `cstrike/maps/<name>.bsp`. Passes with a note for a game without
-//! an install; only file names are listed, nothing is read or written.
+//! an install (or served by the asset store alone); only file names are listed, nothing is read or written.
 
 use chimera_core::mount::config::LocalConfig;
 
@@ -30,7 +30,10 @@ fn pools() -> Vec<(String, String)> {
 #[test]
 fn every_map_in_every_pool_resolves() {
     let config = LocalConfig::load().ok();
-    let ca = combat_arms::game::INFO.mount();
+    // The asset store alone holds only the sets packed so far: no
+    // install to check the pools against.
+    let info = &combat_arms::game::INFO;
+    let ca = info.mount().filter(|_| !info.served_alone());
     let css = config
         .as_ref()
         .and_then(|c| c.game_path_in(cs_source::game::GAME, cs_source::game::INFO.steam.as_ref()))
