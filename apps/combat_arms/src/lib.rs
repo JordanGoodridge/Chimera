@@ -22,7 +22,7 @@
 
 use bevy::prelude::*;
 use chimera_client::client::{AppHooks, Args, ClientPlugins};
-use chimera_world::{greybox, map::MapData};
+use chimera_world::{greybox, map::{MapData, MapLoadOptions}};
 
 /// This build's version (`version` command, bug reports): see
 /// `version::format_version`; stamped by build.rs.
@@ -37,7 +37,7 @@ pub const BUILD: &str = env!("CHIMERA_GIT");
 pub fn client_hooks() -> AppHooks {
     AppHooks {
         build: BUILD,
-        load_map: load_map,
+        load_map: |id, options| load_map_with(id, options),
         load_map_file: |id, _, _| Err(no_maps(id)),
         map_file_bytes: |_| None,
         unload_greybox: greybox::unload,
@@ -52,11 +52,16 @@ fn no_maps(id: &str) -> String {
 /// Map `id` (`combat_arms:<name>`, or a bare name) from the install; the
 /// HDR level doesn't apply.
 pub fn load_map(id: &str, _hdr_level: u8) -> Result<MapData, String> {
+    load_map_with(id, &MapLoadOptions::default())
+}
+
+/// `load_map` with `options`.
+pub fn load_map_with(id: &str, options: &MapLoadOptions) -> Result<MapData, String> {
     match id.split_once(':') {
         Some((game, _)) if format!("{game}:") != combat_arms::game::world::MAP_PREFIX => {
             Err(format!("{id}: not a Combat Arms map (combat_arms:<name>)"))
         }
-        _ => combat_arms::game::world::load(id),
+        _ => combat_arms::game::world::load_with(id, options),
     }
 }
 

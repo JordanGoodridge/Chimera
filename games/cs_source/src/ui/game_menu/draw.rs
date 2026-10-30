@@ -91,6 +91,7 @@ pub(super) fn draw(
     frame_backing: Option<ResMut<widgets::FrameBacking>>,
     mut last: Local<(Vec2, Option<Page>)>,
     version: Option<Res<crate::core::BuildVersion>>,
+    reporter: Option<Res<crate::map::loading::LoadReporter>>,
     mut commands: Commands,
 ) {
     let size = windows_q
@@ -193,7 +194,7 @@ pub(super) fn draw(
         return;
     }
     if let Some(map) = &menu.loading {
-        loading_frame(&mut commands, root, &menu, &look, map);
+        loading_frame(&mut commands, root, &menu, &look, map, reporter.as_ref().and_then(|r| r.current()));
         if details.0 != 0 {
             details_panel(&mut commands, root, &look, size);
         }

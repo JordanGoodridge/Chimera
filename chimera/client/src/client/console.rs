@@ -27,7 +27,7 @@
 //! remote method.
 
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     sync::{Arc, Mutex, OnceLock},
 };
 
@@ -56,6 +56,7 @@ pub struct ConsoleUiPlugin;
 impl Plugin for ConsoleUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ConsoleUi>()
+            .init_resource::<MapLists>()
             .init_resource::<Overlays>()
             .init_resource::<HeldActions>()
             .init_resource::<SoundMarks>()
@@ -412,7 +413,7 @@ fn candidates(world: &mut World, input: &str) -> (String, Vec<(String, String)>)
             }
             "map" | "maps" if arg == 0 => {
                 let game = crate::game_registry::default_game(world);
-                out.extend(map_names(game).iter().map(|m| (m.clone(), String::new())))
+                out.extend(map_names(world, game).iter().map(|m| (m.clone(), String::new())))
             }
             "jointeam" if arg == 0 => {
                 out.push(("1".into(), "spectators".into()));
@@ -997,6 +998,7 @@ fn autoexec(
     args: Res<super::ClientArgs>,
     games: Option<Res<Games>>,
     gameplay: Option<Res<crate::gameplay::Gameplay>>,
+    mut defaults: ResMut<super::binds::BindDefaults>,
     mut root: Query<&mut Visibility, With<ConsoleRoot>>,
 ) {
     // Every key is a bind: the defaults first, then the player's config.
@@ -1008,7 +1010,7 @@ fn autoexec(
     let binds = games.as_ref().and_then(|g| {
         gameplay.as_ref().and_then(|p| g.get(p.binds)).or_else(|| g.default_game())
     });
-    super::binds::read_install_defaults(binds);
+    defaults.read_install(binds);
     let config = crate::console::read_cfg("config.cfg");
     let marked = config.as_ref().is_none_or(|t| t.contains(super::binds::CONFIG_MARK));
     let current = config.as_ref().is_none_or(|t| t.contains(super::binds::DEFAULTS_MARK));
@@ -1885,50 +1887,68 @@ fn run_binds(
 
 // ------------------------------------------------------------- commands
 
-/// Map names found by `map_names` (for `map` completion), with their
-/// game's id, until an import changes them.
-static MAP_NAMES: Mutex<Option<(&'static str, Vec<String>)>> = Mutex::new(None);
+/// What each game's install offers for maps, read once (the install is
+/// read from disk): the names for `map` completion and the map cycle,
+/// keyed by the game's id, until an import changes them. A resource of
+/// the console's plugin, so apps in one process keep their own. Behind a
+/// lock so the callers that only have a `&World` (completion, the
+/// debug UI) can fill it.
+#[derive(Resource, Debug, Default)]
+pub struct MapLists {
+    names: Mutex<BTreeMap<&'static str, Vec<String>>>,
+    cycles: Mutex<BTreeMap<&'static str, Vec<String>>>,
+}
+
+impl MapLists {
+    /// The install changed: find the maps again.
+    pub fn forget(&self) {
+        self.names.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.cycles.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+
+    fn names(&self, game: &GameInfo) -> Vec<String> {
+        self.names_by(game.id, || read_map_names(game))
+    }
+
+    /// Game `id`'s names: `read` them on the first ask only.
+    fn names_by(&self, id: &'static str, read: impl FnOnce() -> Vec<String>) -> Vec<String> {
+        let mut cached = self.names.lock().unwrap_or_else(|e| e.into_inner());
+        cached.entry(id).or_insert_with(read).clone()
+    }
+
+    fn cycle(&self, game: &GameInfo) -> Vec<String> {
+        let mut cached = self.cycles.lock().unwrap_or_else(|e| e.into_inner());
+        cached
+            .entry(game.id)
+            .or_insert_with(|| game.mount().map(|m| (game.map_cycle)(&m)).unwrap_or_default())
+            .clone()
+    }
+}
+
+fn read_map_names(game: &GameInfo) -> Vec<String> {
+    let Some(mount) = game.mount() else { return Vec::new() };
+    let mut names = (game.map_names)(&mount);
+    names.sort();
+    names.dedup();
+    names
+}
 
 /// The install changed: find its maps again.
-pub fn forget_map_names() {
-    *MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner()) = None;
+pub fn forget_map_names(w: &World) {
+    if let Some(lists) = w.get_resource::<MapLists>() {
+        lists.forget();
+    }
 }
 
 /// Every map `game` (the default game: `game_registry`) can load: the
-/// install's, its downloads and Chimera's cache (cached; `import` refreshes
-/// it). None without a game.
-pub fn map_names(game: Option<&'static GameInfo>) -> Vec<String> {
+/// install's, its downloads and Chimera's cache (cached in `MapLists`;
+/// `import` refreshes it). None without a game.
+pub fn map_names(w: &World, game: Option<&'static GameInfo>) -> Vec<String> {
     let Some(game) = game else { return Vec::new() };
-    let mut cached = MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner());
-    if cached.as_ref().is_some_and(|(id, _)| *id != game.id) {
-        *cached = None;
+    match w.get_resource::<MapLists>() {
+        Some(lists) => lists.names(game),
+        None => read_map_names(game),
     }
-    cached
-        .get_or_insert_with(|| {
-            let Some(mount) = game.mount() else {
-                return (game.id, Vec::new());
-            };
-            let mut names = (game.map_names)(&mount);
-            names.sort();
-            names.dedup();
-            (game.id, names)
-        })
-        .1
-        .clone()
-}
-
-/// The default game's map cycle (`GameInfo::map_cycle`), its maps those
-/// installed (cached).
-fn map_cycle(game: &'static GameInfo) -> Vec<String> {
-    static CYCLE: Mutex<Option<(&'static str, Vec<String>)>> = Mutex::new(None);
-    let mut cached = CYCLE.lock().unwrap_or_else(|e| e.into_inner());
-    if cached.as_ref().is_some_and(|(id, _)| *id != game.id) {
-        *cached = None;
-    }
-    cached
-        .get_or_insert_with(|| (game.id, game.mount().map(|m| (game.map_cycle)(&m)).unwrap_or_default()))
-        .1
-        .clone()
 }
 
 /// The rules' map cycle follows the map loaded (the end of a game moves
@@ -1936,6 +1956,7 @@ fn map_cycle(game: &'static GameInfo) -> Vec<String> {
 fn follow_map_cycle(
     name: Option<Res<crate::map::LoadedMapName>>,
     games: Option<Res<Games>>,
+    lists: Option<Res<MapLists>>,
     mut cycle: ResMut<crate::core::MapCycle>,
 ) {
     let Some(name) = name.filter(|n| n.is_changed()) else { return };
@@ -1946,7 +1967,10 @@ fn follow_map_cycle(
     if cycle.maps.is_empty()
         && let Some(game) = games.and_then(|g| g.default_game())
     {
-        cycle.maps = map_cycle(game);
+        cycle.maps = match lists {
+            Some(l) => l.cycle(game),
+            None => game.mount().map(|m| (game.map_cycle)(&m)).unwrap_or_default(),
+        };
     }
 }
 
@@ -1990,7 +2014,10 @@ pub fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>)
     w.insert_resource(crate::map::LoadedMapName(id.to_string()));
     // At the HDR level set now (mat_hdr_level), as the game does.
     let hdr_level = w.get_resource::<super::hdr::HdrSettings>().map_or(0, |s| s.level);
-    crate::map::loading::reset();
+    // This load's own progress (the loading screen reads the resource).
+    let progress = crate::map::loading::LoadReporter::default();
+    w.insert_resource(progress.clone());
+    let options = crate::map::MapLoadOptions { hdr_level, progress, ..default() };
     // The app loads it (`AppHooks`), then the spawn's own work is done
     // there too (`map::prepare`): the frame that swaps it in only spawns.
     let hooks = w.get_resource::<super::AppHooks>().copied();
@@ -2000,8 +2027,8 @@ pub fn start_map_load(w: &mut World, id: &str, file: Option<std::path::PathBuf>)
         async move {
             let hooks = hooks.ok_or("this app loads no maps")?;
             let data = match file {
-                Some(f) => (hooks.load_map_file)(&id, &f, hdr_level),
-                None => (hooks.load_map)(&id, hdr_level),
+                Some(f) => (hooks.load_map_file)(&id, &f, &options),
+                None => (hooks.load_map)(&id, &options),
             }?;
             let prepared = prepare.run(&data);
             Ok((data, prepared))
@@ -2320,7 +2347,7 @@ pub fn client_commands(app: &mut App) {
             let Some(game) = crate::game_registry::default_game(w) else {
                 return Err("no game registered".into());
             };
-            let lines: Vec<String> = map_names(Some(game))
+            let lines: Vec<String> = map_names(w, Some(game))
                 .into_iter()
                 .filter(|m| m.contains(&filter))
                 .map(|m| {
@@ -2352,7 +2379,7 @@ pub fn client_commands(app: &mut App) {
             }
             let game = crate::game_registry::default_game(w).ok_or("no game registered")?;
             let name = (game.import_map)(std::path::Path::new(&path))?;
-            *MAP_NAMES.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            forget_map_names(w);
             Ok(Some(format!("imported {name}; load it with: map {name}")))
         },
     )
@@ -2375,7 +2402,7 @@ pub fn client_commands(app: &mut App) {
                 return Ok(Some("loaded the greybox".into()));
             };
             let short = crate::net::maps::map_name(&id).to_string();
-            let names = map_names(game);
+            let names = map_names(w, game);
             if check && !names.is_empty() && !names.iter().any(|m| *m == short) {
                 return Err(format!("no map \"{short}\" in the install"));
             }
@@ -2402,7 +2429,7 @@ pub fn client_commands(app: &mut App) {
                 return Ok(Some("changed level to the greybox".into()));
             };
             let short = crate::net::maps::map_name(&id).to_string();
-            let names = map_names(game);
+            let names = map_names(w, game);
             if check && !names.is_empty() && !names.iter().any(|m| *m == short) {
                 return Err(format!("no map \"{short}\" in the install"));
             }
@@ -2604,6 +2631,66 @@ mod tests {
         }
         assert!(exits_with("+map de_dust2"), "a play session saves the config");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The install is read once per game, games keep separate lists, and
+    /// an import (`forget`) reads again; two apps' lists are their own.
+    #[test]
+    fn map_lists_read_each_games_install_once() {
+        let calls = std::cell::Cell::new(0);
+        let read = |names: &[&str]| {
+            calls.set(calls.get() + 1);
+            names.iter().map(|n| n.to_string()).collect::<Vec<_>>()
+        };
+        let lists = MapLists::default();
+        assert_eq!(lists.names_by("a", || read(&["x"])), ["x"]);
+        assert_eq!(lists.names_by("a", || read(&["never"])), ["x"]);
+        assert_eq!(calls.get(), 1, "asked twice, read once");
+        assert_eq!(lists.names_by("b", || read(&["y"])), ["y"]);
+        assert_eq!(lists.names_by("a", || read(&["never"])), ["x"], "b didn't drop a's");
+        assert_eq!(calls.get(), 2);
+        let other = MapLists::default();
+        assert_eq!(other.names_by("a", || read(&["z"])), ["z"], "another app's own");
+        lists.forget();
+        assert_eq!(lists.names_by("a", || read(&["w"])), ["w"]);
+        let mut w = World::new();
+        w.insert_resource(MapLists::default());
+        forget_map_names(&w);
+    }
+
+    /// Two apps in one process load a map each: each loading screen sees
+    /// its own load's progress (`LoadReporter`), not the other's.
+    #[test]
+    fn two_apps_keep_their_own_load_progress() {
+        use crate::map::loading::LoadReporter;
+        fn hooks() -> super::super::AppHooks {
+            super::super::AppHooks {
+                build: "test",
+                load_map: |id, options| {
+                    options.progress.report(if id == "g:a" { 0.25 } else { 0.75 }, "stage");
+                    Err("stop".into())
+                },
+                load_map_file: |_, _, _| Err("no".into()),
+                map_file_bytes: |_| None,
+                unload_greybox: |_| {},
+                respawn_greybox: |_| {},
+            }
+        }
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::default);
+        let (mut a, mut b) = (World::new(), World::new());
+        for w in [&mut a, &mut b] {
+            w.insert_resource(hooks());
+            w.init_resource::<LoadReporter>();
+        }
+        start_map_load(&mut a, "g:a", None);
+        start_map_load(&mut b, "g:b", None);
+        for w in [&mut a, &mut b] {
+            let task = &mut w.resource_mut::<MapLoad>().task;
+            assert!(bevy::tasks::block_on(task).is_err());
+        }
+        let seen = |w: &World| w.resource::<LoadReporter>().current().map(|p| p.fraction);
+        assert_eq!(seen(&a), Some(0.25));
+        assert_eq!(seen(&b), Some(0.75));
     }
 
     #[test]

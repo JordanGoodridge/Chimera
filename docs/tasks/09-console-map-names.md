@@ -1,5 +1,7 @@
 # Console map names and map cycle per game, as a resource
 
+**Done 2026-10-30** (ecs-cleanup.md, step 10).
+
 ## Context
 
 `chimera_client::client::console` caches the maps a game can load (`map`
@@ -16,10 +18,10 @@ another game asks. Step 10 of
 
 ## Definition of done
 
-- [ ] A resource keyed by game id holding both lists, filled lazily as now;
+- [x] A resource keyed by game id holding both lists, filled lazily as now;
       `import` (`forget_map_names`) clears it.
-- [ ] Both statics gone; ratchet lowered.
-- [ ] A unit test with a fake `GameInfo` whose `map_names` counts calls:
+- [x] Both statics gone; ratchet lowered.
+- [x] A unit test with a fake `GameInfo` whose `map_names` counts calls:
       asked twice, the install is read once; two games keep separate lists.
 
 ## Constraints

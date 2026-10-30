@@ -103,7 +103,7 @@ pub fn load_level(mount: &Mount, name: &str, hdr_level: u8) -> Result<MapData, S
 /// `load_level` with `options` (`MapLoadOptions::lean`: no textures
 /// decoded, for a dedicated server or a test that never draws).
 pub fn load_level_with(mount: &Mount, name: &str, options: &MapLoadOptions) -> Result<MapData, String> {
-    crate::map::loading::report(0.02, "LoadingProgress_LoadMap");
+    options.progress.report(0.02, "LoadingProgress_LoadMap");
     let path = format!("maps/{name}.bsp");
     let bytes = mount.read(&path).map_err(|e| format!("{path}: {e}"))?;
     load_level_bytes_with(mount, name, bytes, options)
@@ -125,7 +125,7 @@ pub fn load_level_bytes_with(
     let hdr_level = options.hdr_level;
     // Stages for a loading screen, worded as the game words them
     // (`map::loading`; the fractions are rough shares of the time).
-    use crate::map::loading::report;
+    let report = |f: f32, stage: &'static str| options.progress.report(f, stage);
     let mut timer = crate::map::loading::LoadTimer::default();
     report(0.02, "LoadingProgress_LoadMap");
     let path = format!("maps/{name}.bsp");

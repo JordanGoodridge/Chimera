@@ -181,7 +181,9 @@ pub(super) fn ui_loaded(
 /// The menu's cvars now (the settings', Create Server's and Multiplayer
 /// > Advanced's: the install's scripts' once the GameUI look is in), the
 /// binds and every console name.
-fn menu_values(w: &mut World) -> (HashMap<String, String>, BTreeMap<String, String>, BTreeSet<String>) {
+type MenuValues = (HashMap<String, String>, BTreeMap<String, String>, BTreeSet<String>, Vec<(String, String)>);
+
+fn menu_values(w: &mut World) -> MenuValues {
     {
         let mut names: Vec<String> = SETTINGS
             .iter()
@@ -211,7 +213,8 @@ fn menu_values(w: &mut World) -> (HashMap<String, String>, BTreeMap<String, Stri
             .into_iter()
             .filter_map(|c| (c.get)(w).map(|v| (c.name.clone(), v)))
             .collect::<HashMap<_, _>>();
-        (values, binds, known)
+        let defaults = w.get_resource::<crate::client::binds::BindDefaults>().map(|d| d.default_binds()).unwrap_or_default();
+        (values, binds, known, defaults)
     }
 }
 
@@ -266,11 +269,11 @@ pub(super) fn read_window_mode(
 
 /// Open the menu on a page, reading the settings from the console.
 pub(super) fn open_menu(w: &mut World, page: Page) {
-    let (mut get, binds, known) = menu_values(w);
+    let (mut get, binds, known, defaults) = menu_values(w);
     let current = w
         .get_resource::<crate::map::LoadedMapName>()
         .map(|m| m.0.rsplit(':').next().unwrap_or(&m.0).to_string());
-    let maps = crate::client::console::map_names(crate::game_registry::default_game(w));
+    let maps = crate::client::console::map_names(w, crate::game_registry::default_game(w));
     let (mut bots, mut players) = ([0; 2], [0; 2]);
     let mut q = w.query_filtered::<(&Team, Has<crate::bot::Bot>), With<Intent>>();
     for (team, bot) in q.iter(w) {
@@ -299,7 +302,7 @@ pub(super) fn open_menu(w: &mut World, page: Page) {
     let mut menu = w.resource_mut::<GameMenu>();
     menu.set_counts(bots, players);
     menu.no_spectators = no_spectators;
-    menu.set_binds(binds, known);
+    menu.set_binds(binds, known, defaults);
     menu.resolutions = crate::client::video::resolutions(&modes, window);
     menu.open(page, maps, current.as_deref(), |n| get.get(n).cloned());
     // The aspect ratio of the window as it is when the size is as started.

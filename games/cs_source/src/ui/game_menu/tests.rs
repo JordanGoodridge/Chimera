@@ -914,10 +914,12 @@ fn the_sensitivity_text_entry_beside_its_slider() {
 fn keyboard() -> GameMenu {
     let mut m = menu();
     let mut b = BTreeMap::new();
-    binds::use_game_defaults(crate::game::DEFAULT_BINDS);
-    binds::bind_defaults(&mut b, true);
+    let mut defaults = binds::BindDefaults::default();
+    defaults.use_game(&crate::game::INFO);
+    let defaults = defaults.default_binds();
+    binds::bind_defaults(&mut b, true, &defaults);
     let known = binds::POLLED.iter().map(|c| c.to_string()).chain(["bugreport".to_string()]);
-    m.set_binds(b, known.collect());
+    m.set_binds(b, known.collect(), defaults);
     click(&mut m, MainItem::Options);
     m
 }

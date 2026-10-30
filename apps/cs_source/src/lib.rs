@@ -92,8 +92,8 @@ impl Plugin for SimPlugins {
 pub fn client_hooks() -> client::AppHooks {
     client::AppHooks {
         build: core::BUILD,
-        load_map: games::load_map_level,
-        load_map_file: games::load_map_file,
+        load_map: games::load_map_with,
+        load_map_file: games::load_map_file_with,
         map_file_bytes: games::map_file_bytes,
         unload_greybox: greybox::unload,
         respawn_greybox: greybox::respawn,

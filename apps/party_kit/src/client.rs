@@ -35,7 +35,7 @@ use chimera_world::greybox;
 pub fn client_hooks() -> AppHooks {
     AppHooks {
         build: super::BUILD,
-        load_map: super::load_map,
+        load_map: super::load_map_with,
         load_map_file: |id, _, _| Err(format!("{id}: Lucker Party loads maps by id only, not from a file")),
         map_file_bytes,
         unload_greybox: greybox::unload,

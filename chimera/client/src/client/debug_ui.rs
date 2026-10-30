@@ -807,7 +807,7 @@ fn world_tab(ui: &mut egui::Ui, world: &mut World, state: &mut DebugUi) {
         .map_or("greybox".to_string(), |m| m.0.clone());
     let loading = super::console::map_loading(world);
     ui.label(format!("{name}{}", if loading { " (loading...)" } else { "" }));
-    let maps = super::console::map_names(crate::game_registry::default_game(world));
+    let maps = super::console::map_names(world, crate::game_registry::default_game(world));
     ui.horizontal(|ui| {
         if state.map_pick.is_empty() {
             state.map_pick = name.rsplit(':').next().unwrap_or("").to_string();
