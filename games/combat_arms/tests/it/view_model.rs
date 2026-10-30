@@ -987,7 +987,7 @@ defaults = { sight = "DotSight_A_Pistol" }
 /// A stand-in view model: one bone with a `flash` socket 1 unit ahead,
 /// each animation `AnimInfo` played exactly (two frames over its length),
 /// its keys as events.
-fn view_model(key: &str, anims: &[AnimInfo]) -> MapViewModel {
+pub(super) fn view_model(key: &str, anims: &[AnimInfo]) -> MapViewModel {
     let defaults = vec![(Quat::IDENTITY, Vec3::ZERO)];
     let mut set = AnimSet {
         bases: vec![defaults.clone()],

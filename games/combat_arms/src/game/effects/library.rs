@@ -6,7 +6,8 @@
 //!   archive, `lithtech_formats::fxf`), parsed once per process
 //!   (`library`);
 //! - the textures of the effect groups the tables and the weapons name
-//!   (the `FX` archive, unkeyed), each a particle material of the map
+//!   (their view models' attached effects included; the `FX` archive,
+//!   unkeyed), each a particle material of the map
 //!   (`material_name`: texture and blend), its size kept for sprites
 //!   (`FxLibrary::texture_size`);
 //! - the world's surface types on the drawn meshes (`tag_surfaces`): each
@@ -193,7 +194,7 @@ pub fn add_looks(map: &mut MapData, data: &super::super::data::CaDataInner, file
         .weapons
         .iter()
         .filter_map(|w| w.hook::<super::super::view_model::CaViewParams>(super::super::view_model::VIEW))
-        .map(|p| p.muzzle_fx)
+        .flat_map(|p| std::iter::once(p.muzzle_fx).chain(p.attach_fx))
         .collect();
     let groups = wanted_groups(CaFxTables::built_in(), &weapons, &muzzles, &fx);
     let mut textures: HashMap<String, UVec2> = HashMap::new();

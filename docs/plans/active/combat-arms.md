@@ -614,6 +614,62 @@ sit right on the rail; muzzle parts did not, so ours turns them. Open:
    render-style table's reading, drawn opaque red)?
 5. **A part model's own animations and sockets** (none played or used).
 
+## View-model attached effects and melee sounds: open questions for a spec session (2026-10-29)
+
+The view model's attached effects (view_models.md 3, `game::view_model::
+attached`, drawn by `ui::attached_fx`) and the chainsaw's sounds. Census
+of the Steam install (`heavy::attached_fx`): 23 of 2321 weapon records
+name `PVAttachFXName#` groups, all but the XK-2 with
+`PVAttachFXAlwaysShow` 1: five chainsaws (`Chainsaw`,
+`Halloween_chainsaw`, `WildRebel Chain Saw`, `TheShining Chainsaw`,
+`ChainsawALLSTAR`) the group `Chainsaw_PV_idle`, which is only one
+looping, local `PlaySound` of `GUNS_SND_MELEE\CHAINSAW\IDLE.WAV` over
+its 3 s phase (nothing drawn); 16 bombs `PSYBomb_PV_Fire` (a wick
+sprite, a light, smoke particles and a looping burning sound, at the
+`FireFX01` socket); `Ice_Ball` `IceBall_PV_CoolAir` (three smoke
+emitters at the `Smoke` socket); the XK-2 its five `Timebomb*` lights.
+Every key uses `UpdatePos` PV_SocketAttach. The chainsaws' `alt_fire_0`
+(900 ms) has `sound_key 1` at 0 ms (`ReloadSnd1`, `RELOAD1.wav`,
+1.23 s) and seven `ALT_FIRE_KEY`s; `fire_0` (600 ms) one `FIRE_KEY` at
+257 ms; `FireSnd` = `Alt_FireSnd` = `fire.wav` (`fire2.wav` for The
+Shining's), 2.9 s long. Open:
+1. **The XK-2's lights.** `TimebombGreen`, `TimebombRed`,
+   `TimebombYellow1..3` are not in the Steam install's effect file
+   (`clientfx/clientfx.fxf`), so they play nothing here (a missing group
+   plays nothing). Do they live in another effect file or database the
+   client also loads, or does the stock XK-2 really show no lights?
+2. **A hidden group's sound.** While an attached group is hidden (scope,
+   a `HIDE_PVATTACHFX` key), does its looping `PlaySound` key keep
+   sounding, pause, or stop and start from the beginning when shown?
+   Ours: stopped while hidden, started from the start when shown.
+3. **The loop of a sound key.** The idle's key lasts its group's 3 s
+   and has `Loop` Yes: does the file loop on its own for as long as the
+   group lives (ours), or is it restarted at each pass of the group?
+   Is a looping key's sound cut at the key's end in a non-looping group
+   (effects_sounds.md says this was not traced)?
+4. **Others and spectators.** Do other players hear a chainsaw's idle
+   (and see a PSY bomb's wick) in third person: does the held
+   (`HH*`) model have attached effects of its own, from which keys? Does
+   a first-person spectator see and hear the spectated player's
+   attached groups? Ours: only your own view model's, and only your
+   own sounds.
+5. **Which sound a melee hit plays.** inventory.md 8 and special_weapons.md
+   5 say what a hit does but not what it sounds like. Does every hit key
+   (`FIRE_KEY`, `ALT_FIRE_KEY`) play the weapon's fire sound (seven a
+   chainsaw secondary swing), or once per swing, or none (only the view
+   model's `sound_key`s and the impact)? Does a secondary hit play
+   `Alt_FireSnd` rather than `FireSnd`? Does a new fire sound of a weapon
+   cut its previous one (one fire voice per weapon) or play over it?
+   Ours: `FireSnd` at each hit on the player's fire channel, so each hit
+   replaces the last (the 2.9 s file at seven hits a swing piled up
+   before: the playtest's "right click spams sound").
+6. **The attached keys' looks.** An attached `DynaLight` (the PSY
+   bomb's): does it light the world, the view model, or both? Do the
+   particles of an attached system move with the view model (as ours) or
+   stay in the world where they were emitted? A `PlayerView`
+   (`UpdatePos` 2) attached key: what point does the weapon code give it
+   (no stock attached key uses it)?
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the

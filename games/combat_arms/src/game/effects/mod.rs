@@ -23,7 +23,8 @@
 //!   (`rules::flyby`, played at the nearest point of the line, also for
 //!   shots that hit nothing); your hits
 //!   on characters queue a ding (`rules::DingQueue`, played next frame);
-//!   dry fire and knife swings their sounds. A round whose gun is gone
+//!   dry fire and knife swings their sounds (a knife hit's fire sound on
+//!   the player's fire channel, as a gun's: it replaces the last). A round whose gun is gone
 //!   when it is drawn (the gun game swaps it on the kill's tick) is drawn
 //!   as that gun (`KnownWeapons`: by entity until its despawn's frame is
 //!   drawn, by weapon ID for others' rounds a client hears after their gun
@@ -297,6 +298,8 @@ impl Plugin for CaEffectsPlugin {
         .add_message::<RemoteShot>()
         .add_message::<crate::map::GameSound>()
         .add_message::<crate::map::PlaySound>()
+        .add_message::<crate::map::SoundControl>()
+        .add_message::<crate::game::view_model::attached::CaLoopSound>()
         .add_systems(
             Update,
             (
@@ -314,6 +317,8 @@ impl Plugin for CaEffectsPlugin {
                 step_effects,
                 spawn_fx,
                 sounds::play,
+                crate::game::view_model::attached::sounds,
+                sounds::loops,
             )
                 .chain()
                 .in_set(CaEffectsSet)
@@ -1040,7 +1045,11 @@ fn shot_effects(
             WeaponEventKind::Swing { at, .. } => {
                 if let Some((file, radius)) = fire_sound(wfx, mods, true) {
                     let origin = characters.get(e.owner).ok().and_then(|c| c.3).map_or(Vec3::ZERO, |t| t.translation);
-                    sounds.write(if mine { CaSound::local(file) } else { CaSound::at(file, origin, radius) });
+                    // One fire voice per player, as a gun's: a hit's fire sound
+                    // replaces the last (the chainsaw's 2.9 s file at seven hits
+                    // a swing piled up; Open question in the combat-arms plan).
+                    let s = if mine { CaSound::local(file) } else { CaSound::at(file, origin, radius) };
+                    sounds.write(s.from_source(e.owner, CHANNEL_FIRE));
                 }
                 let Some((point, n, hit)) = at.as_ref().filter(|_| draws) else { continue };
                 let (has_health, is_character, ..) = characters.get(*hit).unwrap_or((false, false, None, None));

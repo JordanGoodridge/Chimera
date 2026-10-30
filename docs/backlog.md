@@ -87,6 +87,20 @@ the user's go-ahead: no Actions runs unless asked.
   times in each 900 ms swing (special_weapons.md case 37). Check that
   each sound plays as the spec says and isn't restarted every tick or
   hit.
+  Done 2026-10-29: the attached groups are made, shown and hidden with
+  the view model (`view_model::attached`), their looping sounds played
+  (the chainsaws' idle engine; the PSY bombs' burning) and their sprites
+  and particles drawn camera-relative at their sockets (`ui::attached_fx`;
+  the PSY bombs' wick, the Ice Ball's cold air). 23 install weapons have
+  them: 5 chainsaws, 16 bombs, the Ice Ball, the XK-2 (whose five lights
+  aren't in the Steam effect file, so nothing plays). The right-click
+  spam: each of the 7 hits played the 2.9 s `fire.wav` on top of the
+  last (nothing restarted per tick); a hit's fire sound now replaces the
+  last on the player's fire channel, as a gun's, plus `ReloadSnd1` once a
+  swing (its `sound_key 1`). What the spec doesn't say (one fire sound
+  per hit or per swing, a hidden group's sound, others hearing the idle,
+  the XK-2's lights): docs/plans/active/combat-arms.md, "View-model
+  attached effects and melee sounds".
 - **The infected rung is a melee option, and the hook fires on every rung
   (user, 2026-10-29).**
   - *Infected:* not a guaranteed rung in every ladder. It becomes one

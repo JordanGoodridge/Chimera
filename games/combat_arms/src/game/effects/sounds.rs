@@ -29,7 +29,7 @@ use bevy::prelude::*;
 
 use super::{library, rules};
 use crate::map::{
-    GameSound, MapSoundEntry, PlaySound, SoundLevel,
+    GameSound, MapSoundEntry, PlaySound, SoundControl, SoundLevel, StartSound,
     sound::{Interval, SoundBank},
 };
 
@@ -266,5 +266,47 @@ pub fn server_sound(file: &str, at: Vec3, (r, big_r): (f32, f32)) -> CaSound {
     CaSound {
         radii: (r, big_r),
         ..CaSound::at(file, at, big_r).server()
+    }
+}
+
+/// Start and stop the long-lived looping sounds (`view_model::attached::
+/// CaLoopSound`: the attached effects' sounds), each file read the first
+/// time as `play` does, scaled by the effects master when started.
+pub fn loops(
+    mut loops: MessageReader<crate::game::view_model::attached::CaLoopSound>,
+    bank: Option<ResMut<SoundBank>>,
+    mut files: ResMut<CaSoundFiles>,
+    data: Res<crate::game::data::CaData>,
+    mut lengths: ResMut<super::CaSoundLengths>,
+    volumes: Option<Res<crate::game::music::mix::CaVolumes>>,
+    mut control: MessageWriter<SoundControl>,
+) {
+    let Some(mut bank) = bank else {
+        loops.clear();
+        return;
+    };
+    let mount = data.mount();
+    let master = volumes.map_or(1.0, |v| v.sound());
+    for l in loops.read() {
+        let Some(s) = &l.sound else {
+            control.write(SoundControl::Stop(l.key));
+            continue;
+        };
+        let entry = s.entry();
+        if bank.0.entry(&entry).is_none() {
+            let Some(mount) = mount.as_deref() else { continue };
+            if !ensure(&mut bank, &mut files, &mut lengths, mount, s) {
+                continue;
+            }
+        }
+        control.write(SoundControl::Start(StartSound {
+            key: l.key,
+            entry,
+            at: s.at,
+            follow: if s.at.is_some() { l.follow } else { None },
+            volume: Some((s.volume / 100.0 * master).clamp(0.0, 1.0)),
+            looping: true,
+            ..default()
+        }));
     }
 }
