@@ -10,8 +10,14 @@
 //! light has `shadow_maps_enabled` or still lists cascades' entities (it
 //! clears those itself the frame shadows go off): the same results as
 //! running it every frame. (A system's own set takes no condition, so the
-//! plugin takes Bevy's out of `PostUpdate` at `finish` and adds it back
-//! with the condition, in Bevy's set and order.)
+//! plugin takes Bevy's out of `PostUpdate` and adds it back with the
+//! condition, in Bevy's set and order: in `PreStartup`, once every plugin
+//! is in. Taking a system out builds the schedule, which initializes every
+//! system in it; done in the plugin's `finish` it froze `PostUpdate`'s
+//! systems before later plugins' `finish` had run: replicon's
+//! `collect_changes` then lacked read access to the components the
+//! network's parts replicate, registered in `NetPlugin::finish`, and a
+//! listen server panicked on its first send, playtest 2026-10-28.)
 //!
 //! Known shortcuts: the order constraints are copied from bevy_light's
 //! `LightPlugin` as of Bevy 0.20; a Bevy update that moves the system
@@ -24,21 +30,26 @@ use bevy::{
     prelude::*,
 };
 
+#[derive(Clone, Copy)]
 pub struct IdleLightsPlugin;
 
 impl Plugin for IdleLightsPlugin {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.add_systems(PreStartup, swap_dir_light_check);
+    }
+}
 
-    fn finish(&self, app: &mut App) {
-        // Bevy's system out (a system's own set can't take a condition),
-        // then back with the condition and the same place: Bevy's set and
-        // order constraints (bevy_light's `LightPlugin`).
-        let removed = app.world_mut().try_schedule_scope(PostUpdate, |world, schedule| {
-            schedule.remove_systems_in_set(check_dir_light_mesh_visibility, world, ScheduleCleanupPolicy::RemoveSystemsOnly)
-        });
-        if removed.is_ok_and(|r| r.is_ok_and(|n| n > 0)) {
-            app.add_systems(
-                PostUpdate,
+/// Bevy's system out (a system's own set can't take a condition), then
+/// back with the condition and the same place: Bevy's set and order
+/// constraints (bevy_light's `LightPlugin`). At startup, not in a plugin's
+/// `build` or `finish`: removing builds `PostUpdate`, initializing its
+/// systems, which must see every plugin's registrations (the module doc).
+fn swap_dir_light_check(world: &mut World) {
+    let _ = world.try_schedule_scope(PostUpdate, |world, schedule| {
+        let removed =
+            schedule.remove_systems_in_set(check_dir_light_mesh_visibility, world, ScheduleCleanupPolicy::RemoveSystemsOnly);
+        if removed.is_ok_and(|n| n > 0) {
+            schedule.add_systems(
                 check_dir_light_mesh_visibility
                     .run_if(dir_shadows_used)
                     .in_set(SimulationLightSystems::CheckLightVisibility)
@@ -49,7 +60,7 @@ impl Plugin for IdleLightsPlugin {
                     .before(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible),
             );
         }
-    }
+    });
 }
 
 /// Some directional light casts shadows, or has cascade entities left to

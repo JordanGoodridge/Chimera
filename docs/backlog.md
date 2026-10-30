@@ -53,6 +53,18 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **The infected rung is a melee option, and the hook fires on every rung
+  (user, 2026-10-29).**
+  - *Infected:* not a guaranteed rung in every ladder. It becomes one
+    choice in the melee pool, and melee rungs sit toward or at the end
+    (the power curve's melee finale). How often each kind of rung comes
+    up, the infected hands included, is data in the ladder rules, next
+    to the band sizes. A visual editor for those odds could come later.
+  - *Hook:* generalise `RungCharacterHook { enter, leave }` to fire
+    whenever a player arrives on a rung and when they leave it, for
+    every rung, with the rung's draw available. Games react to what the
+    rung holds: Combat Arms plays the infection moment for the infected
+    hands. A respawn on the same rung doesn't fire it.
 - **A vertical seam through the frame on de_dust2.** A 2026-10-30 capture
   (Lucker Party, outside the arch toward B tunnels) shows a hard vertical
   line down the middle of the frame. Left of it the ground is a
@@ -187,6 +199,34 @@ the user's go-ahead: no Actions runs unless asked.
   - *Specs:* game_modes.md (Quarantine M8, infected knock-back S14),
     gear_perks.md 15 (infection-mode perks), missions.md F4.1; anything
     the specs lack goes to a spec session.
+- **Hosting from inside the app crashes (user, 2026-10-29): fixed,
+  confirm in a playtest.** `ultimate_gun_game +maxplayers 4` (a listen
+  server) panicked on its first send in bevy_replicon's
+  `collect_changes` (`replication_query.rs`: no read access to a
+  replicated component); Lucker Party's and CS:S's apps host through
+  the same plugins, and all three listen without it now. Since
+  perf-pass3 (abf4fde4), `IdleLightsPlugin` took Bevy's directional
+  light check out of `PostUpdate` in its `finish`, which builds the
+  schedule and initializes its systems; that ran before
+  `NetPlugin::finish` registered the network parts' replicated
+  components, so replicon's query was made without them. The swap now
+  runs in `PreStartup`, once every plugin is in. Tests: party_kit
+  `listen_server` (a listen server with its own player, two bots, two
+  clients and rung swaps), chimera_present
+  `idle_lights::post_update_initializes_after_every_plugins_finish`.
+- **Party panels draw washed out with no darkened backdrop (user,
+  2026-10-29): fixed, confirm in a playtest.** The Escape menu and the
+  Controls page asked for a 0.55 (0.5) black shade and a 0.96 panel, but
+  Bevy's UI blends in linear light: the shade left the world at ~70% of
+  its brightness and bright text behind the panel showed through as a
+  ~25% grey. With `mat_monitorgamma` below 2.2 (1.8 on the dev box) the
+  brightness pass lifts the whole frame, menus too, which washes them
+  out further. Not the cameras: with every camera's copy back
+  (`CHIMERA_SKIP_OUTPUTS=0`) the panel's pixels were the same. Their
+  alphas now go through `widgets::display_alpha` (`1 - (1 - a)^2.2`:
+  covering as that alpha does blended in display space, VGUI's way).
+  Test: chimera_client
+  `widgets::display_alpha_darkens_as_a_display_space_blend_would`.
 - **A client without the Combat Arms key, or with another install
   version, builds other weapons than the server: fixed, confirm in a
   playtest.** The ~2,300 install copies come from the attribute file
