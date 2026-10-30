@@ -477,6 +477,17 @@ reference on the Windows PC:
    ARX160 Lv.1-4 and their "(limit)" copies all name
    `PV_AR_ARX_160_LINE.SPR`): no question there.
 
+**Answered (2026-10-30)**, models_ltb.md "Render styles and sprite
+skins (added 2026-10-30)": (1) a sprite is five u32 (frame count, frames
+per second, keyed, translucent, colour key) then the frames; as a skin it
+loops on the model object's own clock, ⌊1000/r⌋ ms a frame, the whole
+texture swapped, no blending. (2) the render-style file format, the
+fixed-function rules and the stock `default`, `env_alpha_mask`,
+`itemedge`, `envmap` styles. (3) slot 0 is the colour map, slot 1 only an
+environment or rim map on generated coordinates, unused under
+single-texture styles. (4) open: not on this box (models_ltb.md Open
+question 8).
+
 `cargo test -p combat_arms --features dev,ui --test it
 heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
 and skins, grouped by cause (needs the keys).
@@ -518,6 +529,16 @@ reference:
    `CW_Body_Medium_Female_KE.ltb`, which the dev box's install doesn't
    have: does the Windows PC's? What does the game draw for a record
    whose body file is missing?
+
+**Answered (2026-10-30)** but 5: (1)-(2) characters.md Corrections
+(2026-10-30) 1: slot 5 + k = `AdditionalSkins{k}` for every camouflage
+index; the model colour is the player's chosen colour of the equipped
+cosmetic character item (the vest's wins), default none, and its lists
+replace upper, lower, additional and hands lists one by one. (3)
+alpha-tested at 160/255, unlit (characters.md Corrections 2, models_ltb.md
+render styles). (4) `pv_char`, `pv_char_b`, `env_alpha_mask`,
+`edgeamp01` in models_ltb.md; the second slot is a reflection picture.
+(5) still open (needs the Windows PC's install).
 
 ## Dot-sight reticles: open questions for a spec session (2026-10-29)
 
