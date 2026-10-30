@@ -119,7 +119,8 @@ the user's go-ahead: no Actions runs unless asked.
   (`net::own_items`, net36); the user decides whether it becomes the
   default. Thrown grenades stay the server's (Source predicts the throw
   only).
-- **Spawn facing toward open space (user idea, 2026-10-30).** Today the gun
+- **Spawn facing toward open space (user idea, 2026-10-30; fixed, confirm in a
+  playtest).** Was: today the gun
   game spawns face one of eight fixed directions (`minigame::spawns`), so
   a player can face a wall, and views can line up with map edges (the
   de_dust2 seam).

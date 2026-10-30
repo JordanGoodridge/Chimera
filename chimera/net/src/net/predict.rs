@@ -26,6 +26,12 @@
 //!   state (`OwnState::alive` changed: a spawn point, the loadout, a
 //!   death drop) its state is taken the same way but counted as a restart
 //!   (`NetGraph::resyncs`), not an error: no command led to it.
+//! - **Turned look.** When the server turns the player's look (a spawn
+//!   facing: `core::set_view`, `core::ViewSet`) the state carries it
+//!   (`OwnState::look`); the client takes it into its `Intent` once and
+//!   echoes the count in its commands (`NetCmd::look_ack`). The server
+//!   keeps its own look over the commands' until the count matches, so the
+//!   old look still in flight doesn't undo it for the others.
 //! - **Held view.** `hold_view` (client `Update`, after the input writes
 //!   the local `Intent`) applies the freeze's hold to the drawn side too:
 //!   view models and effects read the raw trigger every frame.
@@ -210,6 +216,10 @@ struct Pending {
     alive: Option<bool>,
     rebased: Option<u32>,
     life_changed: bool,
+    /// The server's turn of our look not yet taken (`OwnState::look`), and
+    /// the count of the last one taken (echoed in commands).
+    turn: Option<(f32, f32)>,
+    look_ack: u8,
 }
 
 /// The server's own states this client holds (tick, encoded), oldest
@@ -620,6 +630,12 @@ fn receive_own_states(
     }
     pending.alive = Some(s.alive);
     pending.rebased = Some(s.rebased);
+    if let Some((n, yaw, pitch)) = s.look
+        && pending.look_ack != n
+    {
+        pending.turn = Some((yaw, pitch));
+        pending.look_ack = n;
+    }
     graph.buffered = s.buffered;
     graph.missed = s.missed;
     graph.late = s.late;
@@ -721,6 +737,16 @@ fn start_command(world: &mut World) {
     let Some(player) = predicted_player(world) else {
         return;
     };
+    if let Some((yaw, pitch)) = world.resource_mut::<Pending>().turn.take() {
+        if let Some(mut i) = world.get_mut::<Intent>(player) {
+            i.yaw = yaw;
+            i.pitch = pitch;
+        }
+        if let Some(raw) = world.resource_mut::<RawIntent>().0.as_mut() {
+            raw.yaw = yaw;
+            raw.pitch = pitch;
+        }
+    }
     let (pending, restart) = {
         let mut p = world.resource_mut::<Pending>();
         let restart = p.state.is_some() && std::mem::take(&mut p.life_changed);
@@ -945,11 +971,13 @@ fn capture_command(
     mut raw: ResMut<RawIntent>,
     interp: Res<super::interp::InterpClock>,
     settings: Res<PredictSettings>,
+    pending: Res<Pending>,
 ) {
     let (Some(tick), Some(intent)) = (clock.tick, player.as_deref_mut()) else {
         return;
     };
     let mut cmd = NetCmd::normalize(tick, intent);
+    cmd.look_ack = pending.look_ack;
     // Others as drawn when this command was made (the last frame's
     // render time): our shots are traced against them there.
     if interp.running && settings.lagcompensation != 0 {

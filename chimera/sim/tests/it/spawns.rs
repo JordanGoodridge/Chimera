@@ -12,7 +12,7 @@ use chimera_core::core::{Damage, DamageKind, Dead, Hitgroup, Intent, MapBrush, S
 use chimera_sim::{
     minigame::{
         self, MinigameAppExt, MinigamePlugin,
-        spawns::{SpawnHazardAppExt, SpawnSeed, SpawnSpots},
+        spawns::{self, SpawnHazardAppExt, SpawnSeed, SpawnSpots},
     },
     movement::placeholder,
     testkit,
@@ -306,4 +306,85 @@ fn spots_in_solid_or_void_leaves_are_not_spawned_in() {
     assert!(at.iter().all(|p| p.x >= 0.0), "none in the solid leaf: {at:?}");
     let spots = sim.app.world().resource::<SpawnSpots>().clone();
     assert!(spots.spots.len() > 40 && spots.spots.iter().all(|s| s.x >= 0.0));
+}
+
+/// A dead end on the greybox's floor: walls north, south and east of
+/// (25, 20), open to the west. Returns the spot (feet).
+fn dead_end(sim: &mut Sim) -> Vec3 {
+    let w = sim.app.world_mut();
+    for (size, at) in [
+        (Vec3::new(42.0, 4.0, 0.5), Vec3::new(5.0, 2.0, 18.0)),
+        (Vec3::new(42.0, 4.0, 0.5), Vec3::new(5.0, 2.0, 22.0)),
+        (Vec3::new(0.5, 4.0, 4.0), Vec3::new(26.0, 2.0, 20.0)),
+    ] {
+        w.spawn((RigidBody::Static, Collider::cuboid(size.x, size.y, size.z), Transform::from_translation(at)));
+    }
+    Vec3::new(25.0, 0.0, 20.0)
+}
+
+/// The direction a yaw faces, flat.
+fn heading(yaw: f32) -> Vec3 {
+    Quat::from_rotation_y(yaw) * Vec3::NEG_Z
+}
+
+#[test]
+fn a_spawn_faces_away_from_the_wall_in_front_and_varies_in_its_sector() {
+    let mut sim = started(DEF, |_| {});
+    let feet = dead_end(&mut sim);
+    sim.ticks(3);
+    let f = minigame::def::Facing::default();
+    let yaws: Vec<f32> = (0..40)
+        .map(|seed| {
+            let (yaw, pitch) = spawns::facing_at(sim.app.world_mut(), feet, &f, seed).expect("physics");
+            assert!((pitch + 2f32.to_radians()).abs() < 1e-4, "pitch a little down: {pitch}");
+            yaw
+        })
+        .collect();
+    for yaw in &yaws {
+        // West is -X: within the jitter of it, never toward the wall at +X.
+        let off = heading(*yaw).angle_between(Vec3::NEG_X).to_degrees();
+        assert!(off <= f.jitter + 1.0, "{off} degrees off the open side");
+    }
+    let (lo, hi) = yaws.iter().fold((f32::MAX, f32::MIN), |(l, h), y| (l.min(*y), h.max(*y)));
+    assert!((hi - lo).to_degrees() > 10.0, "varies over seeds: {} degrees", (hi - lo).to_degrees());
+    // Without the jitter or the wall's reach the facing is the open side exactly.
+    let still = minigame::def::Facing { jitter: 0.0, ..f };
+    let (yaw, _) = spawns::facing_at(sim.app.world_mut(), feet, &still, 1).unwrap();
+    assert!(heading(yaw).angle_between(Vec3::NEG_X).to_degrees() < 6.0);
+    // Deterministic for a seed.
+    let mut again = |s| spawns::facing_at(sim.app.world_mut(), feet, &f, s).unwrap();
+    let (a, b, c) = (again(5), again(5), again(6));
+    assert_eq!(a, b);
+    assert_ne!(a.0, c.0);
+}
+
+#[test]
+fn respawned_players_face_open_space_not_a_fixed_direction() {
+    let mut sim = started(DEF, |_| {});
+    let (_, b, _) = respawns(&mut sim, 12);
+    let w = sim.app.world();
+    let i = w.get::<Intent>(b).unwrap();
+    // Pitched a little down, and (jittered) off the eight fixed headings.
+    assert!((i.pitch + 2f32.to_radians()).abs() < 1e-3, "pitch {}", i.pitch);
+    let on_grid = (i.yaw / std::f32::consts::FRAC_PI_4).fract().abs() < 1e-3;
+    assert!(!on_grid, "yaw {} is a fixed heading", i.yaw);
+}
+
+#[test]
+fn facing_costs_well_under_a_millisecond() {
+    let mut sim = started(DEF, |_| {});
+    let f = minigame::def::Facing::default();
+    respawns(&mut sim, 1);
+    let spots = sim.app.world().resource::<SpawnSpots>().spots.clone();
+    assert!(spots.len() > 40);
+    let w = sim.app.world_mut();
+    spawns::facing_at(w, spots[0], &f, 0);
+    let n = 300;
+    let t = std::time::Instant::now();
+    for k in 0..n {
+        spawns::facing_at(w, spots[k % spots.len()], &f, k as u32);
+    }
+    let each = t.elapsed() / n as u32;
+    println!("facing_at: {each:?} per spawn");
+    assert!(each < std::time::Duration::from_millis(1), "{each:?} per spawn");
 }

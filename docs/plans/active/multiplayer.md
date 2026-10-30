@@ -1766,6 +1766,13 @@ it): with `cl_predict_projectiles 1` that player's client hides the
 server's copy while it draws its own prediction of the projectile
 (`net::own_items`).
 
+### net37 (2026-10-30)
+
+A server-turned look (a spawn facing) reaches the owning client:
+`OwnState` gains `look` (`core::ViewSet`: count, yaw, pitch) and `NetCmd`
+gains `look_ack` (the count the client has taken); the server keeps its
+look over a command's until they match.
+
 ## Server-pushed weapon parameters
 
 The seam: a game registers a codec by name (`weapon::params`,

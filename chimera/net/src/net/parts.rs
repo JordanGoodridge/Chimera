@@ -278,11 +278,8 @@ pub fn enter_at_spawn(world: &mut World, e: Entity) {
     if let Some(mut p) = ent.get_mut::<Position>() {
         p.0 = at.translation;
     }
-    if let Some(mut i) = ent.get_mut::<Intent>() {
-        let (yaw, _, _) = at.rotation.to_euler(EulerRot::YXZ);
-        i.yaw = yaw;
-        i.pitch = 0.0;
-    }
+    let (yaw, _, _) = at.rotation.to_euler(EulerRot::YXZ);
+    crate::core::set_view(world, e, yaw, 0.0);
 }
 
 /// Bots (`core::Bot`) as the game keeps them (CS:S's `bot_quota`).
