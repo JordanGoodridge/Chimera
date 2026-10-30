@@ -93,6 +93,14 @@ cargo run --features dev -- --help               # screenshot, spawn, look optio
 
 ## Definition of done
 
+**Test your change before it reaches main.** There is no CI or PR test
+runner (a test machine may come later), so this is on you: run the
+affected tests for what you changed (Linux: `cargo run -q -p repo_checks
+--bin affected -- --base main` lists them and the pre-commit hook runs
+their fast tier; Windows: `.\scripts\affected-tests.ps1 -Base origin/main`),
+and add a scenario test for new behaviour. A guideline, not enforced
+beyond the hooks: say in the PR what you ran.
+
 - New behaviour has a scenario test (or a unit test for pure logic); the
   affected crates' fast tier and `cargo test -p repo_checks` pass.
 - Visible changes: a screenshot (before and after) in the PR, from a tool
