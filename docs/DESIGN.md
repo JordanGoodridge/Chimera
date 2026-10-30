@@ -235,6 +235,38 @@ Prior art: Minecraft's item data components; Unreal's Gameplay Ability System.
 - LLM help is used offline for bulk tagging and proposing normalized values;
   the rules are saved as importer code and spot-checked by a human.
 
+### ECS style
+
+Prefer, in order: components for facts about an entity, observers for
+reactions to them (`On<Insert<C>>`, `On<Discard<C>>`), messages for
+per-tick flows (hits, deaths, weapon events) read by normal systems,
+events triggered at a known moment (`world.trigger`, so the observers
+run at once, where a hook would have run), and systems with declared
+queries gated by run conditions (`gameplay_is`, `hud_is`; never a new
+set, whose flattening reorders unordered systems) for per-tick logic. A
+fact other machines must see the same way is put on locally from
+replicated state, as `ladder::OnRung` is (see "Arriving on a rung is a
+component" under "Gun game rules"). Data hooks stay for decisions the
+runtime asks (`fn(&World, ..) -> answer`) and for what is keyed by an
+id (weapon builds, movements, codecs). Whole-world access (`&mut World`,
+exclusive systems, callback registries) only where the job is the
+world: map loading, spawning, network apply and capture, codecs, the
+console, menus, tools.
+
+How a game registers its hooks: its plugin adds its systems to the
+schedule's existing sets gated by `gameplay_is(<its id>)` (its HUD's by
+`hud_is`), its observers filtered by its own components, and its data
+hooks under its own id (`ModeAppExt::add_modes(game, ..)`,
+`WeaponDataAppExt::add_weapon_data`, a movement by id, `NetAppExt::
+net_part`). It never inserts a single-slot hook resource that another
+game's plugin would replace: those (`JoinRules`, `Holds`, `BotHooks`,
+`NewGame`, `LogSubjects`, `ViewAnimRules`) are being keyed by game
+(docs/plans/active/ecs-cleanup.md, steps 2 and 3).
+`checks/tests/it/ecs.rs` keeps the callback registries on an allowed
+list and ratchets each crate's exclusive systems in per-tick schedules;
+`checks/tests/it/determinism.rs` checks every simulation crate, a new
+one from its first commit.
+
 ### Normalization and mixing rules
 
 - The host game's rules win; imported parts adapt to the host.
