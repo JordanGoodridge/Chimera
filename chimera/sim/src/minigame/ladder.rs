@@ -17,9 +17,17 @@
 //! others (`join_rung = "lowest"`, the default), their average rounded
 //! down (`"average"`) or the first (`"first"`), never the last rung; at a
 //! match's start everyone is on the first. With `knife_finale` the
-//! ladder ends with a knife-only rung: after the last gun the player
-//! holds only a knife (the kit's melee weapon of the last gun's game, or
-//! the one named), and a knife kill wins (off by default).
+//! ladder ends with melee rungs, knife-only: after the last gun the
+//! player holds only the rung's melee weapon, and the last one's kill
+//! wins (off by default in the module; both gun games turn it on). There
+//! are `melee_rungs` of them (`"auto"`, the default: the band's share
+//! of the gun rungs, `melee_share`, 7% by default, rounded, at least 1,
+//! `auto_melee_rungs`; or a number), each drawn
+//! from the ladder's seed (`finale`) from the melee weapons of the
+//! catalogue the definition allows, none twice while the pool has enough
+//! and never a rung character's hands (`RungExtrasHook::characters`);
+//! `knife_finale = "<id>"` names the last rung's. The host's draw is
+//! replicated with the match (`NetMinigame::rungs`).
 //! Combat Arms' own Arms Race (`games/combat_arms`, its rules) is not
 //! this module and keeps its spec's rules (no cost for a suicide).
 //!
@@ -44,7 +52,8 @@
 //! a rung keeps its own weapon unless a game's draw makes it a
 //! character's (below); every hook is asked in turn (`RungDraw::melee`),
 //! the first with a character wins, at that game's odds (data, tuned in
-//! the rules: Combat Arms' infected, `infected = { odds = 0.25 }`).
+//! the rules: Combat Arms' infected, `infected = { odds = 0.25 }`), but
+//! one character a ladder at most.
 //! `rung_extras = false`
 //! turns them all off; a table turns a hook's options off by key
 //! (`rung_extras = { attachments = false }`; every key is on by default;
@@ -80,8 +89,10 @@
 //! demote_on = "melee_death"        # or "none" (the default)
 //! demote_on_suicide = true         # a suicide, fall or `kill` costs a rung (default)
 //! join_rung = "lowest"             # a late joiner's rung: "lowest" (default), "average", "first"
-//! knife_finale = false             # true (the kit's knife) or a weapon id: a knife-only
-//!                                  # last rung (default: false)
+//! knife_finale = false             # true (drawn knives) or a weapon id (the last
+//!                                  # rung's): knife-only last rungs (default: false)
+//! melee_rungs = "auto"             # how many: "auto" (a share of the ladder) or a number
+//! melee_share = 0.07               # the share "auto" takes (default 0.07, at least 1 rung)
 //! refill_ammo = true               # a rung's gun never runs dry, its grenade comes
 //!                                  # back once thrown (default: false)
 //! rung_extras = true               # the games' per-rung draws (default: on); or by
@@ -186,7 +197,41 @@ struct Params {
     #[serde(default)]
     knife_finale: Finale,
     #[serde(default)]
+    melee_rungs: MeleeRungs,
+    #[serde(default = "melee_share")]
+    melee_share: f64,
+    #[serde(default)]
     rung_extras: ExtrasParam,
+}
+
+/// `melee_rungs`: how many trailing melee rungs the finale has.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum MeleeRungs {
+    /// A number (at least 1).
+    Count(usize),
+    /// `"auto"`: the band's share (`melee_share`, 7%) of the gun rungs.
+    Auto(String),
+}
+
+impl Default for MeleeRungs {
+    fn default() -> Self {
+        Self::Auto("auto".into())
+    }
+}
+
+/// The melee band's default share of the ladder (`melee_share`).
+pub const MELEE_SHARE: f64 = 0.07;
+
+/// The melee rungs a ladder of `guns` gun rungs gets by default: the
+/// band's `share` of them, rounded, at least 1 (7%: 1 for 10 or 20, 2 for
+/// 30).
+pub fn auto_melee_rungs(guns: usize, share: f64) -> usize {
+    ((guns as f64 * share).round() as usize).max(1)
+}
+
+fn melee_share() -> f64 {
+    MELEE_SHARE
 }
 
 fn yes() -> bool {
@@ -394,6 +439,13 @@ pub struct RungExtrasHook {
     pub game: &'static str,
     /// The option keys it reads (`rung_extras = { <key> = false }`).
     pub options: &'static [&'static str],
+    /// The melee weapons of its that carry no `melee` data of the catalogue
+    /// (Combat Arms' knives, a hook of its own): melee rungs all the same.
+    pub melee: fn(&WeaponCatalog) -> Vec<&'static str>,
+    /// The weapons of its that are rung characters' (Combat Arms' infected
+    /// hands): they are no melee rung's weapon of their own, only a
+    /// character's, at the odds of `draw`.
+    pub characters: fn(&WeaponCatalog) -> Vec<&'static str>,
     /// The rung's extras (the host's, once per ladder), drawn on `rng`:
     /// for its own rungs, and on the melee band's (`RungDraw::melee`) a
     /// character or nothing.
@@ -490,6 +542,9 @@ pub struct Ladder {
     /// The last rung is a knife alone (`knife_finale`): its weapon is the
     /// last of `rungs`, held without the kit.
     pub knife_finale: bool,
+    /// How many trailing rungs are melee rungs (`melee_rungs`; 0 without
+    /// the knife finale).
+    pub melee_rungs: usize,
     /// Each rung's extras (`RungExtras`), one per rung (the host's, none
     /// for a rung that drew nothing); a network client's stays empty until
     /// the server's come in.
@@ -502,13 +557,13 @@ impl Ladder {
     /// Whether `id` is one of the ladder's guns (a rung's weapon, but not
     /// the knife finale's, which is a kit weapon).
     pub fn is_gun(&self, id: &str) -> bool {
-        let guns = self.rungs.len() - usize::from(self.knife_finale && !self.rungs.is_empty());
+        let guns = self.rungs.len().saturating_sub(self.melee_rungs);
         self.rungs[..guns].contains(&id)
     }
 
     /// Whether `rung` is the knife-only last rung.
     pub fn knife_only(&self, rung: usize) -> bool {
-        self.knife_finale && rung + 1 == self.rungs.len()
+        self.melee_rungs > 0 && rung + self.melee_rungs >= self.rungs.len()
     }
 
     /// Rung `rung`'s extras.
@@ -578,42 +633,115 @@ fn check(def: &MinigameDef, catalog: &WeaponCatalog) -> Result<(), String> {
     for id in &p.ladder {
         super::weapon(def, catalog, id)?;
     }
-    finale(def, catalog, &p)?;
-    Ok(())
+    // The games' hooks name more melee weapons than the catalogue's data
+    // does (Combat Arms' knives), so an empty pool is no error here: the
+    // match starts without a finale (and says so).
+    match finale(def, catalog, &[], &p, &mut Rng::new(0)) {
+        Err(e) if e == NO_MELEE => Ok(()),
+        r => r.map(|_| ()),
+    }
 }
 
-/// The knife finale's weapon (None: off): the named one, or the kit's
-/// first melee weapon for the last gun's game; a melee weapon either way.
-fn finale(def: &MinigameDef, catalog: &WeaponCatalog, p: &Params) -> Result<Option<&'static str>, String> {
-    let melee = |id: &str| catalog.get(id).is_some_and(|w| w.melee.is_some());
-    let id = match &p.knife_finale {
-        Finale::On(false) => return Ok(None),
-        Finale::Weapon(id) => super::weapon(def, catalog, id)?,
-        Finale::On(true) => {
-            let game = p.ladder.last().and_then(|g| g.split_once(':')).map(|(g, _)| g);
-            let knife = def.spawn.kit.for_game(game).into_iter().find(|id| melee(id));
-            let Some(knife) = knife else {
-                return Err(format!(
-                    "[rules] knife_finale: the kit has no melee weapon for {}; name one (knife_finale = \"<id>\")",
-                    game.unwrap_or("the last gun")
-                ));
-            };
-            super::weapon(def, catalog, knife)?
+/// The melee weapons a finale may draw: every melee weapon of the
+/// catalogue the definition allows (CS:S's knife, Combat Arms' knife-class
+/// weapons, ...), but a hook's rung characters' (`characters`: the
+/// infected's hands come only as a character, at their odds), in the
+/// catalogue's order.
+fn melee_pool(def: &MinigameDef, catalog: &WeaponCatalog, hooks: &[RungExtrasHook]) -> Vec<&'static str> {
+    let hands: Vec<&'static str> = hooks.iter().flat_map(|h| (h.characters)(catalog)).collect();
+    let knives: Vec<&'static str> = hooks.iter().flat_map(|h| (h.melee)(catalog)).collect();
+    let mut pool: Vec<&'static str> = Vec::new();
+    for set in &catalog.sets {
+        for w in &set.weapons {
+            let Some(data) = catalog.get(&w.id) else { continue };
+            let id: &'static str = &data.id;
+            if (data.melee.is_some() || knives.contains(&id)) && def.allows_weapon(id) && !hands.contains(&id) && !pool.contains(&id) {
+                pool.push(id);
+            }
+        }
+    }
+    pool
+}
+
+/// Whether weapon `id` is a melee weapon: it has `melee` data, or a hook
+/// names it (`RungExtrasHook::melee`).
+pub fn is_melee(catalog: &WeaponCatalog, hooks: &[RungExtrasHook], id: &str) -> bool {
+    catalog.get(id).is_some_and(|w| w.melee.is_some()) || hooks.iter().any(|h| (h.melee)(catalog).contains(&id))
+}
+
+const NO_MELEE: &str = "[rules] knife_finale: the games have no melee weapon for it";
+
+/// The knife finale's melee rungs' weapons, in order (none: off): as many
+/// as `melee_rungs` says for `guns` gun rungs (`"auto"`, the default:
+/// `auto_melee_rungs`), each drawn on `rng` from the melee pool, none
+/// twice while the pool has enough; a named weapon (`knife_finale =
+/// "<id>"`) is the last rung's.
+fn finale(
+    def: &MinigameDef,
+    catalog: &WeaponCatalog,
+    hooks: &[RungExtrasHook],
+    p: &Params,
+    rng: &mut Rng,
+) -> Result<Vec<&'static str>, String> {
+    let named = match &p.knife_finale {
+        Finale::On(false) => return Ok(Vec::new()),
+        Finale::On(true) => None,
+        Finale::Weapon(id) => {
+            let id = super::weapon(def, catalog, id)?;
+            if !is_melee(catalog, hooks, id) {
+                return Err(format!("[rules] knife_finale: {id} is not a melee weapon"));
+            }
+            Some(id)
         }
     };
-    if !melee(id) {
-        return Err(format!("[rules] knife_finale: {id} is not a melee weapon"));
+    let want = match &p.melee_rungs {
+        MeleeRungs::Count(0) => return Err("[rules] melee_rungs: at least 1 (or \"auto\")".into()),
+        MeleeRungs::Count(n) => *n,
+        MeleeRungs::Auto(a) if a == "auto" => auto_melee_rungs(p.ladder.len(), p.melee_share.clamp(0.0, 1.0)),
+        MeleeRungs::Auto(a) => return Err(format!("[rules] melee_rungs: `{a}` is not a number or \"auto\"")),
+    };
+    let mut pool = melee_pool(def, catalog, hooks);
+    pool.retain(|id| Some(*id) != named);
+    if pool.is_empty() && named.is_none() {
+        return Err(NO_MELEE.into());
     }
-    Ok(Some(id))
+    let mut out: Vec<&'static str> = Vec::new();
+    // Seeded shuffle, taken in turn (a pool shorter than the finale
+    // repeats, in a new order).
+    let mut bag: Vec<&'static str> = Vec::new();
+    while out.len() < want - usize::from(named.is_some()) && !(pool.is_empty()) {
+        if bag.is_empty() {
+            bag = pool.clone();
+            for i in (1..bag.len()).rev() {
+                bag.swap(i, rng.below(i + 1));
+            }
+        }
+        out.push(bag.pop().expect("a refilled bag"));
+    }
+    out.extend(named);
+    Ok(out)
 }
 
 fn start(world: &mut World, def: &MinigameDef) {
     let Ok(p) = params(def) else { return };
     let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
+    let hooks = world.get_resource::<RungExtrasHooks>().cloned().unwrap_or_default();
     let mut rungs: Vec<&'static str> =
         p.ladder.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
-    let knife = finale(def, &catalog, &p).ok().flatten();
-    rungs.extend(knife);
+    // The melee rungs' weapons are the host's draw (from this ladder's
+    // seed); a network client takes the server's rungs once they are in
+    // (`minigame_net`), the first ones of the pool until then.
+    let client = world.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client);
+    let mut rng = ladder_rng(world, def, 0x4D45_4C45_4521);
+    if client {
+        rng = Rng::new(0);
+    }
+    let melee = finale(def, &catalog, &hooks.0, &p, &mut rng).unwrap_or_else(|e| {
+        warn!("{}: {e}; no finale", def.id);
+        Vec::new()
+    });
+    let melee_rungs = melee.len();
+    rungs.extend(melee);
     world.insert_resource(crate::weapon::drop::NoDeathDrops);
     let options = RungOptions::of(&p.rung_extras);
     let extras = draw_extras(world, def, &rungs, &options);
@@ -623,10 +751,21 @@ fn start(world: &mut World, def: &MinigameDef) {
         refill_ammo: p.refill_ammo,
         demote_on_suicide: p.demote_on_suicide,
         join_rung: p.join_rung,
-        knife_finale: knife.is_some(),
+        knife_finale: melee_rungs > 0,
+        melee_rungs,
         extras,
         options,
     });
+}
+
+/// The generator of the ladder about to be made: the app's seed, the
+/// definition's id and the host's count of ladders (`salt` apart for each
+/// use), so each ladder draws anew.
+fn ladder_rng(world: &World, def: &MinigameDef, salt: u64) -> Rng {
+    let made = world.get_resource::<LaddersMade>().map_or(0, |n| n.0) + 1;
+    let seed = world.get_resource::<RungSeed>().map_or(0, |s| s.0);
+    let id = def.id.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+    Rng::new(seed ^ id ^ salt ^ made.wrapping_mul(0x9E37_79B9_7F4A_7C15))
 }
 
 /// The rungs' extras (`RungExtras`), one per rung: each rung whose
@@ -641,6 +780,8 @@ fn draw_extras(world: &mut World, def: &MinigameDef, rungs: &[&'static str], opt
     }
     let hooks = world.get_resource::<RungExtrasHooks>().cloned().unwrap_or_default();
     if options.off || hooks.0.is_empty() {
+        // Still a ladder made (the melee rungs' draw moves on).
+        world.get_resource_or_init::<LaddersMade>().0 += 1;
         return vec![None; rungs.len()];
     }
     for key in options.keys.keys() {
@@ -658,7 +799,7 @@ fn draw_extras(world: &mut World, def: &MinigameDef, rungs: &[&'static str], opt
     let mut rng = Rng::new(seed ^ id ^ made.wrapping_mul(0x9E37_79B9_7F4A_7C15));
     let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
     let melee = |m: &str| super::weapon(def, &catalog, m).ok();
-    let band = melee_band(rungs, &catalog);
+    let band = melee_band(rungs, &catalog, &hooks.0);
     let world: &World = world;
     let mut drawn: Vec<Option<RungExtras>> = Vec::new();
     for (rung, weapon) in rungs.iter().enumerate() {
@@ -674,8 +815,10 @@ fn draw_extras(world: &mut World, def: &MinigameDef, rungs: &[&'static str], opt
         };
         let game = weapon.split_once(':').map(|(g, _)| g);
         let mut x = if in_band {
-            // Every game may make it its character's (the first that does).
-            hooks.0.iter().find_map(|h| {
+            // Every game may make it its character's (the first that does),
+            // but one character a ladder at most.
+            let taken = drawn.iter().flatten().any(|x| x.character.is_some());
+            hooks.0.iter().filter(|_| !taken).find_map(|h| {
                 let mut x = (h.draw)(world, &draw, &mut rng).filter(|x| x.character.is_some())?;
                 x.game = h.game.to_string();
                 Some(x)
@@ -703,9 +846,23 @@ fn draw_extras(world: &mut World, def: &MinigameDef, rungs: &[&'static str], opt
 
 /// Where the ladder's melee band starts: its last rungs whose weapon is a
 /// melee weapon (the knife finale's among them; `rungs.len()`: none).
-pub fn melee_band(rungs: &[&str], catalog: &WeaponCatalog) -> usize {
-    let melee = |id: &&&str| catalog.get(id).is_some_and(|w| w.melee.is_some());
+pub fn melee_band(rungs: &[&str], catalog: &WeaponCatalog, hooks: &[RungExtrasHook]) -> usize {
+    let melee = |id: &&&str| is_melee(catalog, hooks, id);
     rungs.len() - rungs.iter().rev().take_while(melee).count()
+}
+
+/// A network client takes the server's rungs (the melee rungs' draw is
+/// the host's): `ids` in place of the ladder's own when the lengths agree;
+/// an id this catalogue lacks stays the client's.
+pub fn take_rungs(world: &mut World, ids: &[String]) {
+    let Some(catalog) = world.get_resource::<WeaponCatalog>().cloned() else { return };
+    let Some(mut ladder) = world.get_resource_mut::<Ladder>() else { return };
+    if ids.len() != ladder.rungs.len() || ladder.rungs.iter().zip(ids).all(|(a, b)| a == b) {
+        return;
+    }
+    let taken: Vec<&'static str> =
+        ids.iter().zip(&ladder.rungs).map(|(b, a)| catalog.get(b).map_or(*a, |w| w.id.as_str())).collect();
+    ladder.rungs = taken;
 }
 
 /// `e` armed for `rung` (the host's, before its weapons are given): the

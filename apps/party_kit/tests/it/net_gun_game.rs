@@ -48,6 +48,7 @@ pub(crate) fn joined() -> NetSim {
         setup,
     );
     sim.set_frame(TICK_INTERVAL);
+    crate::gun_game::no_finale(sim.server.app.world_mut());
     minigame::start(sim.server.app.world_mut(), DEFAULT_MINIGAME).expect("the gun game starts");
     sim.until_joined(900);
     sim.ticks(300);

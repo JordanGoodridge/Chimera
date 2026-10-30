@@ -132,6 +132,8 @@ pub const INFECTED_VALUE: &str = "infected";
 pub const HOOK: RungExtrasHook = RungExtrasHook {
     game: GAME,
     options: &[ATTACHMENTS_KEY, CHARACTER_KEY, MELEE_KEY, INFECTED_KEY],
+    melee: knives,
+    characters,
     draw,
     apply,
 };
@@ -222,6 +224,45 @@ pub fn infected_hands(world: &World, d: &RungDraw) -> Vec<&'static str> {
         .map(|data| STOCK_HANDS.iter().filter_map(|i| data.weapon_for_index(*i)).filter(|id| pool.contains(id)).collect())
         .unwrap_or_default();
     if stock.is_empty() { pool } else { stock }
+}
+
+/// Every knife-class weapon of ours (`inventory::KNIFE_HOOK`; the infected's
+/// hands among them): melee, though the catalogue has no `melee` data for
+/// them.
+fn knives(catalog: &WeaponCatalog) -> Vec<&'static str> {
+    let prefix = format!("{GAME}:");
+    let mut out: Vec<&'static str> = Vec::new();
+    for set in &catalog.sets {
+        for w in &set.weapons {
+            if let Some(data) = catalog.get(&w.id)
+                && data.id.starts_with(&prefix)
+                && data.has_hook(KNIFE_HOOK)
+                && !out.contains(&data.id.as_str())
+            {
+                out.push(&data.id);
+            }
+        }
+    }
+    out
+}
+
+/// Every infected's weapon of ours (the hands): no melee rung's weapon of
+/// their own, only the infected character's.
+fn characters(catalog: &WeaponCatalog) -> Vec<&'static str> {
+    let prefix = format!("{GAME}:");
+    let mut out: Vec<&'static str> = Vec::new();
+    for set in &catalog.sets {
+        for w in &set.weapons {
+            if let Some(data) = catalog.get(&w.id)
+                && data.id.starts_with(&prefix)
+                && data.has_hook(INFECTED)
+                && !out.contains(&data.id.as_str())
+            {
+                out.push(&data.id);
+            }
+        }
+    }
+    out
 }
 
 /// A Combat Arms rung's draw.

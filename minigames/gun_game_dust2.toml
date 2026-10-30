@@ -52,10 +52,12 @@ advance_on = "kill"
 demote_on = "melee_death"
 demote_on_suicide = true   # a suicide, a fall or `kill` costs a rung (the default)
 join_rung = "lowest"       # a late joiner starts on the others' lowest rung (the default)
-knife_finale = false       # true: a knife-only rung after the AWP (the default: off)
+knife_finale = true        # the ladder ends on knife-only melee rungs (the module default: off)
+melee_rungs = "auto"       # how many: "auto" (7% of the guns, at least 1; melee_share) or a number
+                           # (each draws its own knife or melee weapon of the installed games)
 refill_ammo = true   # the ladder gives each gun once: 200 rounds of M60 run out
 # Each Combat Arms rung's fitted parts, character and melee weapon, the
-# same for everyone on it, and with the knife finale on its rung
+# same for everyone on it, and of the knife finale's melee rungs one
 # sometimes the infected's (their hands alone, when the install has them)
 # (the default; `false`, or by part: { attachments = false, character =
 # false, melee = false, infected = false }; odds tuned by a table:

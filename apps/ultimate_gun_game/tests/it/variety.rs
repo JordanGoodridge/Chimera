@@ -166,3 +166,32 @@ fn a_rotation_picks_a_fresh_map_with_a_new_ladder() {
     let said = format!("seed {seed} ");
     assert!(console.output.iter().any(|l| l.text.contains(&said)), "the console says {said}");
 }
+
+/// Ultimate Gun Game's automatic definition ends on melee by default: one
+/// melee rung for its twelve guns, a melee weapon of the games in play;
+/// the host's setting off takes it away, a longer ladder gets more.
+#[test]
+fn the_automatic_gun_game_ends_on_melee_by_default_and_longer_ends_longer() {
+    use chimera_sim::minigame::overrides::MinigameOverrides;
+    let mut sim = ugg();
+    minigame::start(sim.app.world_mut(), MINIGAME).expect("the automatic gun game starts");
+    let w = sim.app.world();
+    let l = w.resource::<Ladder>();
+    let catalog = w.resource::<chimera_sim::weapon::data::WeaponCatalog>();
+    assert!(l.knife_finale && l.melee_rungs == 1 && l.rungs.len() == RUNGS + 1, "{:?}", l.rungs);
+    let last = l.rungs.last().unwrap();
+    assert!(catalog.get(last).is_some_and(|w| w.melee.is_some() || w.has_hook(combat_arms::game::inventory::KNIFE_HOOK)), "{last}");
+    // Forty guns: three melee rungs, no two alike (CS:S's knife and
+    // Combat Arms' knives are more than three).
+    ultimate_gun_game::generate(sim.app.world_mut(), SEED, 40).unwrap();
+    minigame::start(sim.app.world_mut(), MINIGAME).expect("it starts");
+    let l = sim.app.world().resource::<Ladder>();
+    assert_eq!(l.melee_rungs, 3, "{:?}", l.rungs);
+    let band = &l.rungs[l.rungs.len() - 3..];
+    assert!(band[0] != band[1] && band[1] != band[2] && band[0] != band[2], "{band:?}");
+    // The host's off.
+    sim.app.world_mut().resource_mut::<MinigameOverrides>().keys.insert("rules.knife_finale".into(), "false".into());
+    minigame::start(sim.app.world_mut(), MINIGAME).expect("it starts");
+    let l = sim.app.world().resource::<Ladder>();
+    assert!(!l.knife_finale && l.melee_rungs == 0);
+}

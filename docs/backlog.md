@@ -95,13 +95,19 @@ the user's go-ahead: no Actions runs unless asked.
     picks the facing and sends it.
   - Test: a spawn beside a wall faces away from it, and the facing varies
     within its open sector.
-- **Melee finale on by default, longer for longer games (user, 2026-10-30).**
-  Both gun games (Lucker Party's `gun_game_dust2` and Ultimate Gun Game's
-  automatic definition) end on melee by default. A longer ladder gets
-  more melee rungs (e.g. one per ~10 rungs, at most 3). Each melee rung
-  draws its own melee weapon from the games' knives and melee weapons,
-  the infected hands among them at their odds. Host settings can still
-  turn it off.
+- **Melee finale on by default, longer for longer games (user, 2026-10-30):
+  fixed, confirm in a playtest.** Both gun games (Lucker Party's
+  `gun_game_dust2` and Ultimate Gun Game's automatic definition) end on
+  melee by default (`knife_finale = true`; Host settings "Knife finale"
+  turn it off). The number of melee rungs is `melee_rungs`, `"auto"` by
+  default (7% of the gun rungs, `melee_share`, rounded, at least 1) or a number, also a
+  Host setting ("Melee rungs"). Each melee rung draws its own weapon from
+  the installed games' knives and melee weapons (CS:S's knife, Combat
+  Arms' knife-class weapons), none twice while there are enough; the
+  infected's hands come up on a melee rung at their odds, once a ladder
+  at most; the last rung is melee either way and its kill wins. The
+  draw is the host's and replicated (`NetMinigame::rungs`). Docs/DESIGN.md
+  "Gun game rules".
 - **Tracers seen through walls (user, 2026-10-29): done, decided by the
   user 2026-10-30.** Found: CS:S's tracers (and impacts, flashes, every
   effect group's particles) were already depth tested

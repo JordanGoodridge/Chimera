@@ -49,7 +49,9 @@ fn ugg_new(sim: &mut NetSim, line: &str) {
 
 /// Every client plays the server's ladder.
 fn assert_clients_play_the_servers(sim: &NetSim, clients: &[usize]) {
-    let server = rungs(sim.server.app.world());
+    // The server's ladder as played: the definition's guns and the melee
+    // finale it drew (the client takes the drawn rungs).
+    let server: Vec<String> = sim.server.app.world().resource::<Ladder>().rungs.iter().map(|s| s.to_string()).collect();
     for &i in clients {
         let w = sim.clients[i].app.world();
         assert_eq!(w.resource::<ActiveMinigame>().def.id, MINIGAME, "client {i}");

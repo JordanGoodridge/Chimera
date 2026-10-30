@@ -708,14 +708,18 @@ fn a_knife_finale_is_a_knife_alone_and_its_kill_wins() {
     assert!(matches!(phase(&sim), Phase::RoundOver { .. }), "{:?}", phase(&sim));
     assert_eq!(sim.app.world().resource::<Match>().winner, Some(team_a));
 
-    // Checked: a knife the kit lacks, a gun named as one.
+    // Checked: a gun named as a knife; no melee weapon at all in the games: no finale.
     let mut sim = knife_sim(DEF);
-    for (finale, says) in [("true", "no melee weapon"), ("\"kit:rifle\"", "not a melee weapon")] {
+    for (finale, says) in [("\"kit:rifle\"", "not a melee weapon")] {
         let text = DEF.replace("demote_on =", &format!("knife_finale = {finale}\ndemote_on =")).replace("kit:gun_game", "kit:bad");
         sim.app.add_minigames(&[("bad.toml", &text)]).unwrap();
         let err = minigame::start(sim.app.world_mut(), "kit:bad").map(|_| ()).unwrap_err();
         assert!(err.contains(says), "{finale}: {err}");
     }
+    let bare = DEF.replace("demote_on =", "knife_finale = true\ndemote_on =").replace("kit:gun_game", "kit:bare");
+    let mut none = sim_with(&bare);
+    minigame::start(none.app.world_mut(), "kit:bare").expect("starts, without a finale");
+    assert!(!none.app.world().resource::<minigame::ladder::Ladder>().knife_finale);
     let named = DEF.replace("demote_on =", "knife_finale = \"kit:knife\"\ndemote_on =").replace("kit:gun_game", "kit:named");
     sim.app.add_minigames(&[("named.toml", &named)]).unwrap();
     minigame::start(sim.app.world_mut(), "kit:named").expect("a named knife, no kit");

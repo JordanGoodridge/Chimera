@@ -100,6 +100,8 @@ fn apply(world: &mut World, e: Entity, x: Option<&RungExtras>) {
 const HOOK: RungExtrasHook = RungExtrasHook {
     game: "kit",
     options: &["label", "melee", "ghost", "finale_ghost"],
+    melee: |_| Vec::new(),
+    characters: |_| vec![GHOST_KNIFE],
     draw,
     apply,
 };
@@ -228,7 +230,7 @@ fn another_seed_or_another_ladder_draws_other_extras() {
 
 #[test]
 fn the_knife_finale_draws_nothing_and_keeps_its_knife() {
-    let def = DEF.replace("[rules]", "[rules]\nknife_finale = true");
+    let def = DEF.replace("[rules]", "[rules]\nknife_finale = \"kit:knife\"");
     let mut sim = sim_with(&def, 1);
     let l = ladder(&sim);
     assert_eq!(l.rungs.last(), Some(&"kit:knife"));
@@ -357,7 +359,7 @@ fn a_tuned_option_is_on_and_keeps_its_table() {
 /// keeps its knife.
 #[test]
 fn the_melee_band_is_a_characters_only_when_a_game_draws_one() {
-    let def = DEF.replace(OPTIONS, "knife_finale = true\nrung_extras = { ghost = false, finale_ghost = true }");
+    let def = DEF.replace(OPTIONS, "knife_finale = \"kit:knife\"\nrung_extras = { ghost = false, finale_ghost = true }");
     let mut sim = sim_with(&def, 1);
     let l = ladder(&sim);
     assert_eq!(l.rungs.len(), 4);
@@ -373,4 +375,94 @@ fn the_melee_band_is_a_characters_only_when_a_game_draws_one() {
     }
     assert_eq!(sim.app.world().get::<Rung>(a).map(|r| r.0), Some(3));
     assert_eq!(carried(&sim, a), [GHOST_KNIFE], "the ghost's weapon alone, not the finale's knife");
+}
+
+/// `DEF` with `n` gun rungs and `extra` rules lines.
+fn long_def(n: usize, extra: &str) -> String {
+    let guns = vec!["\"kit:pistol\""; n].join(", ");
+    let base = if extra.contains("rung_extras") { DEF.replace(OPTIONS, "") } else { DEF.to_string() };
+    base.replace("ladder = [\"kit:pistol\", \"kit:rifle\", \"kit:shotgun\"]", &format!("ladder = [{guns}]\n{extra}"))
+}
+
+#[test]
+fn the_melee_band_grows_with_the_ladder_and_each_rung_draws_its_own_melee_weapon() {
+    for (guns, melee) in [(3, 1), (10, 1), (20, 1), (30, 2), (60, 4)] {
+        let sim = sim_with(&long_def(guns, "knife_finale = true"), 1);
+        let l = ladder(&sim);
+        assert_eq!(l.melee_rungs, melee, "{guns} guns");
+        assert_eq!(l.rungs.len(), guns + melee);
+        let band = &l.rungs[guns..];
+        assert!(band.iter().all(|w| w.starts_with("kit:knife") && *w != GHOST_KNIFE), "melee weapons, not hands: {band:?}");
+        let mut distinct = band.to_vec();
+        distinct.sort();
+        distinct.dedup();
+        assert_eq!(distinct.len(), band.len(), "no repeats where the pool (4 knives) has enough: {band:?}");
+        assert!(l.knife_only(guns) && !l.knife_only(guns - 1));
+    }
+    // A number, and the draw varies with the seed.
+    let sim = sim_with(&long_def(10, "knife_finale = true\nmelee_rungs = 3"), 1);
+    assert_eq!(ladder(&sim).melee_rungs, 3);
+    let seen: std::collections::BTreeSet<_> =
+        (1..12).map(|s| ladder(&sim_with(&long_def(10, "knife_finale = true"), s)).rungs[10]).collect();
+    assert!(seen.len() > 1, "the knife varies: {seen:?}");
+    // A named weapon is the last rung's; more melee rungs than knives repeat.
+    let sim = sim_with(&long_def(10, "knife_finale = \"kit:knife_c\"\nmelee_rungs = 3"), 1);
+    let l = ladder(&sim);
+    assert_eq!(l.rungs.last(), Some(&"kit:knife_c"));
+    assert_eq!(l.rungs[10..12].iter().filter(|w| **w == "kit:knife_c").count(), 0);
+    let sim = sim_with(&long_def(10, "knife_finale = true\nmelee_rungs = 6"), 1);
+    assert_eq!(ladder(&sim).melee_rungs, 6);
+    // Off: no melee rungs at all.
+    let sim = sim_with(&long_def(10, "knife_finale = false"), 1);
+    let l = ladder(&sim);
+    assert_eq!((l.melee_rungs, l.rungs.len(), l.knife_finale), (0, 10, false));
+    assert!(!l.knife_only(9));
+}
+
+#[test]
+fn a_character_takes_at_most_one_melee_rung_and_the_last_rung_stays_melee() {
+    let def = long_def(40, "knife_finale = true\nrung_extras = { ghost = false, finale_ghost = true }");
+    let sim = sim_with(&def, 1);
+    let l = ladder(&sim);
+    assert_eq!(l.melee_rungs, 3);
+    let characters: Vec<usize> = (0..l.rungs.len()).filter(|i| l.character(*i).is_some()).collect();
+    assert_eq!(characters.len(), 1, "once a ladder: {:?}", l.extras);
+    assert!(characters[0] >= 40, "on a melee rung: {characters:?}");
+    // The infected's rung still counts as a melee rung.
+    assert!(l.knife_only(characters[0]));
+    assert!(l.knife_only(l.rungs.len() - 1));
+}
+
+#[test]
+fn a_bad_melee_rungs_is_refused() {
+    for (extra, says) in [("melee_rungs = 0", "at least 1"), ("melee_rungs = \"many\"", "not a number")] {
+        let def = long_def(3, &format!("knife_finale = true\n{extra}"));
+        let mut sim = Sim::with(chimera_sim::SimBasePlugins, |app| {
+            app.add_plugins((greybox::GreyboxMapPlugin, MinigamePlugin));
+            testkit::add_weapons(app);
+            app.add_minigames(&[("kit_gun_game.toml", &def)]).ok();
+        });
+        let err = minigame::start(sim.app.world_mut(), "kit:gun_game").map(|_| ()).unwrap_err();
+        assert!(err.contains(says), "{extra}: {err}");
+    }
+}
+
+#[test]
+fn a_full_game_runs_up_through_the_melee_rungs_and_the_last_ones_kill_wins() {
+    use chimera_sim::mode::{Match, Phase};
+    let mut sim = sim_with(&DEF.replace("[rules]", "[rules]\nknife_finale = true\nmelee_rungs = 2"), 1);
+    let l = ladder(&sim);
+    assert_eq!(l.rungs.len(), 5);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    settle(&mut sim);
+    for rung in 1..5 {
+        kill(&mut sim, b, a);
+        settle(&mut sim);
+        assert_eq!(sim.app.world().get::<Rung>(a).map(|r| r.0), Some(rung));
+    }
+    assert_eq!(carried(&sim, a), [l.rungs[4]], "a melee weapon alone on the last rung");
+    assert_eq!(sim.app.world().resource::<Match>().phase, Phase::Live);
+    kill(&mut sim, b, a);
+    assert!(matches!(sim.app.world().resource::<Match>().phase, Phase::RoundOver { .. } | Phase::MatchOver), "{:?}", sim.app.world().resource::<Match>().phase);
 }

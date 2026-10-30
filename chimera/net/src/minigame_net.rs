@@ -120,6 +120,9 @@ pub struct NetMinigame {
     /// The ladder's rung extras (`ladder::Ladder::extras`: what each rung
     /// gives everyone on it), which a client's ladder takes.
     pub rung_extras: Vec<Option<RungExtras>>,
+    /// The ladder's rungs' weapons (`ladder::Ladder::rungs`): the melee
+    /// rungs' are the host's draw, which a client's ladder takes.
+    pub rungs: Vec<String>,
 }
 
 /// A character's spawn protection (`core::SpawnProtected`), its windows'
@@ -244,6 +247,7 @@ fn write_minigame(world: &mut World) {
         }),
         next: world.get_resource::<NextMatch>().map(|n| (n.map.clone(), tick_of(&clock, n.at))),
         rung_extras: world.get_resource::<Ladder>().map(|l| l.extras.clone()).unwrap_or_default(),
+        rungs: world.get_resource::<Ladder>().map(|l| l.rungs.iter().map(|r| r.to_string()).collect()).unwrap_or_default(),
     };
     // Another minigame, or its definition made again (same id, new text).
     let announced = world.get_resource::<Announced>().map(|a| a.0);
@@ -720,7 +724,9 @@ fn apply_minigame(world: &mut World, mut refused: Local<Option<String>>) {
         phase::OVER => (Phase::MatchOver, None),
         _ => (Phase::Waiting, None),
     };
-    // The server's rung extras (the client's ladder draws none).
+    // The server's rungs (the melee rungs' draw is the host's) and rung
+    // extras (the client's ladder draws none).
+    minigame::ladder::take_rungs(world, &n.rungs);
     if let Some(mut ladder) = world.get_resource_mut::<Ladder>()
         && ladder.extras != n.rung_extras
     {
