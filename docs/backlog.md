@@ -33,7 +33,9 @@ the user's go-ahead: no Actions runs unless asked.
   1. A read-only audit classifies each one: fine as it is (map loads,
      spawning, network apply); better as observers or messages (rung,
      death and swap reactions, rules hooks); better as normal systems
-     with declared queries (per-tick game logic).
+     with declared queries (per-tick game logic). **Done 2026-10-29:**
+     [plans/active/ecs-cleanup.md](plans/active/ecs-cleanup.md) (the
+     inventory, its counts and the ordered steps that follow).
   2. Convert the seams new games use: rung and identity reactions
      (see the rung hook item), the weapon and rules hooks, and the
      statics shared between client and server. The schedule ratchets
