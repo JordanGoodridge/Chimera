@@ -72,6 +72,13 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Melee finale on by default, longer for longer games (user, 2026-10-30).**
+  Both gun games (Lucker Party's `gun_game_dust2` and Ultimate Gun Game's
+  automatic definition) end on melee by default. A longer ladder gets
+  more melee rungs (e.g. one per ~10 rungs, at most 3). Each melee rung
+  draws its own melee weapon from the games' knives and melee weapons,
+  the infected hands among them at their odds. Host settings can still
+  turn it off.
 - **Tracers seen through walls (user, 2026-10-29): done, decided by the
   user 2026-10-30.** Found: CS:S's tracers (and impacts, flashes, every
   effect group's particles) were already depth tested
