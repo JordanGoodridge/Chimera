@@ -744,6 +744,18 @@ Shining's), 2.9 s long. Open:
    (`UpdatePos` 2) attached key: what point does the weapon code give it
    (no stock attached key uses it)?
 
+**Answered (2026-10-30)** but 6's light-on-view-model and player-view
+parts: (1) only one effect file is loaded and it has no `Timebomb*`
+groups, so the stock XK-2 shows no lights (view_models.md Corrections
+(2026-10-30) 1); (2)-(3) effects_sounds.md Corrections (2026-10-30) 1:
+a hidden group's sound stops and restarts from the start, the clock
+freezes; a whole-group loop key is never restarted; (4) the held model
+plays only the weapon's `HHAttachFXName`, for other players; a
+first-person spectator gets the full view-model groups (view_models.md
+Corrections 2); (5) special_weapons.md 5.1; (6) effect lights are world
+lights, particles follow `MoveParticlesWithSystem` (default Yes: with the
+emitter) (view_models.md Corrections 3, Open question 18).
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the
