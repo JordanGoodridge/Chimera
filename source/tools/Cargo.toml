@@ -30,5 +30,8 @@ required-features = ["tools"]
 name = "testmap"
 
 [features]
+# Nothing: lets `--features dev` name this package alongside the others
+# (cargo test -p ... -p <crate> --features dev; .githooks/pre-commit).
+dev = []
 # The debugging binaries (docs/OBSERVABILITY.md).
 tools = []
