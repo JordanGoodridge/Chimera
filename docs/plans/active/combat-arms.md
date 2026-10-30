@@ -871,6 +871,18 @@ addition to specs/combat_arms/special_weapons.md (a "Corrections" or
 Same rules as brief 24 (identity, UTC, no code, no machine paths, test
 cases with numbers, "Open questions").
 
+**Answered (2026-10-30)** in special_weapons.md "Follow-up (2026-10-30):
+projectile looks and sounds in flight" (items 1-9, test cases 48-53):
+the `FXName` group is made once and parented to the projectile (loops
+only with `FXLoop`, smooth shut-down only with `FXSmoothShutdown`);
+`FlySound` loops and follows, `Sound` is not read; the flare is an unlit
+sprite, the light is never made, the smoke trail is drawn; the model
+faces the launch direction and never turns in flight; launchers get the
+FireFX group from a fire-only event; launched ammo uses the surface's
+impact group. Left open there: which flame sound fields the stock
+records fill and the boss flame launcher's keys (Open questions 14-15),
+both need the install's data.
+
 ### 25. Radar and minimap
 
 ```text
