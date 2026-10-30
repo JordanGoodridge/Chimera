@@ -208,6 +208,7 @@
 //! and draw from its view model `timing`'s.
 
 pub mod classes;
+pub mod power;
 pub mod timing;
 pub mod zoom;
 
@@ -1682,6 +1683,7 @@ pub struct CaWeaponsPlugin;
 
 impl Plugin for CaWeaponsPlugin {
     fn build(&self, app: &mut App) {
+        power::plugin(app);
         app.register_weapon_hook::<DamageParams>(DAMAGE, |e, d: &'static WeaponData, p| {
             let mut dmg = CaDamage::new(p, d.units.length, d.units.damage);
             if p.reload_third_person.is_none() {

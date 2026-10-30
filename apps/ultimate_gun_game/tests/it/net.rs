@@ -58,6 +58,11 @@ fn assert_clients_play_the_servers(sim: &NetSim, clients: &[usize]) {
         let ladder: Vec<String> = w.resource::<Ladder>().rungs.iter().map(|s| s.to_string()).collect();
         assert_eq!(ladder, server, "client {i} plays the server's ladder");
         assert_eq!(
+            w.resource::<Ladder>().melee_rungs,
+            sim.server.app.world().resource::<Ladder>().melee_rungs,
+            "client {i}: the server's melee band"
+        );
+        assert_eq!(
             w.resource::<Minigames>().text(MINIGAME),
             sim.server.app.world().resource::<Minigames>().text(MINIGAME),
             "client {i}: the server's text"

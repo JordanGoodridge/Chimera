@@ -17,13 +17,15 @@
 //!   HUD, `PartsRegistry::fallback_hud`; no characters, the shell's
 //!   capsule (`map::CharacterModels::for_identity` finds none of its
 //!   game); no maps, the other games'.
-//! - `ladder`: `rungs` weapons, seeded and deterministic (SplitMix64; no
-//!   hash maps): guns drawn from every game's guns (each game at least
-//!   once; a game's guns weighted one over the square root of its count;
-//!   at most a third of one class), climbing by class (pistols first,
-//!   snipers last), then one or two grenade rungs (one per
-//!   `GRENADE_EVERY` rungs at most) in the top third, never last. Two
-//!   seeds share few rungs, and every gun comes up over many.
+//! - `ladder`: `rungs` rungs in all, seeded and deterministic (SplitMix64;
+//!   no hash maps), on the power curve (`minigame::power`): the rungs
+//!   split over the bands (warm-up, rising, peak, heavy, specials,
+//!   grenade, melee) by the curve's shares, boundaries jittered; each
+//!   band's guns drawn from every game's guns of its classes (each game at
+//!   least once; a game's guns weighted one over the square root of its
+//!   count), sorted by power score, weakest first; the melee band counted
+//!   for the knife finale, which draws its weapons when the match starts.
+//!   Two seeds share few rungs, and every gun comes up over many.
 //! - `map_pool`: every map of every game whose install the players have,
 //!   the games in turn; none: the greybox.
 //! - `definition`: the minigame's TOML (`MinigameDef`), filtered by
@@ -41,6 +43,7 @@ use chimera_core::{
 
 use bevy::prelude::*;
 
+use super::power::{self, Band, PowerCurve, PowerReaders, Powers};
 use crate::weapon::data::WeaponCatalog;
 
 /// What a game really lends in this app: its claim (`GameParts`) checked
@@ -200,98 +203,147 @@ impl Rng {
     }
 }
 
-fn class_index(c: GunClass) -> usize {
-    GunClass::ALL.iter().position(|x| *x == c).unwrap_or(0)
-}
-
-/// A ladder gets a grenade rung for each this many rungs at most (and one
-/// at least when it is that long and a game lends a grenade).
-pub const GRENADE_EVERY: usize = 6;
-
 fn shuffle<T>(items: &mut [T], rng: &mut Rng) {
     for i in (1..items.len()).rev() {
         items.swap(i, rng.below(i + 1));
     }
 }
 
-/// `rungs` weapons of `games` (each playable), seeded: guns drawn from
-/// every game's guns (each game at least one; a game's guns weighted by
-/// one over the square root of its count, so a game with many guns gives
-/// more rungs but doesn't drown the others; at most a third of the guns
-/// of one class), climbing by class (pistols first, snipers last; a
-/// class's guns in the drawn order), then a grenade rung or two (one
-/// for each `GRENADE_EVERY` rungs at most, of the games' grenades) put
-/// in the top third, never on the last rung. Shorter when the games
-/// have fewer guns.
-pub fn ladder(games: &[&Capabilities], rungs: usize, seed: u64) -> Vec<&'static str> {
+/// A drawn ladder (`ladder`): its gun and grenade rungs in order, each
+/// rung's band, and how many melee rungs end it (the knife finale's,
+/// drawn when the match starts: `chimera:ladder`'s `melee_rungs`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Drawn {
+    pub rungs: Vec<&'static str>,
+    pub bands: Vec<Band>,
+    pub melee: usize,
+}
+
+impl Drawn {
+    /// Rungs in all, the melee ones too.
+    pub fn len(&self) -> usize {
+        self.rungs.len() + self.melee
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// One candidate: (weapon, its game, its weight).
+type Candidate = (&'static str, usize, f64);
+
+/// A ladder of `rungs` rungs in all (melee included) of `games` (each
+/// playable), seeded, on the power curve (`power`): the rungs split over
+/// the bands by the curve's shares (`power::band_counts`, boundaries
+/// jittered, the first rung warm-up, the last melee); a band whose pool is
+/// empty or short gives its rungs to the nearest band with guns to spare
+/// (the earlier on a tie; none left: the ladder is shorter); each band's
+/// guns drawn at random from its pool, every game's guns mixed (a game's
+/// weighted one over the square root of its count, so a game with many
+/// guns gives more rungs but doesn't drown the others; each game at least
+/// once when it can be), then sorted by power score, weakest first. The
+/// grenade band holds the games' grenades; the melee band is only counted
+/// (`Drawn::melee`).
+pub fn ladder(games: &[&Capabilities], powers: &Powers, curve: &PowerCurve, rungs: usize, seed: u64) -> Drawn {
     let games: Vec<&Capabilities> = games.iter().copied().filter(|c| c.playable()).collect();
     if games.is_empty() || rungs == 0 {
-        return Vec::new();
+        return Drawn::default();
     }
     let mut rng = Rng::new(seed);
-    let mut grenades: Vec<&'static str> = Vec::new();
-    for g in games.iter().flat_map(|c| &c.grenades) {
-        if !grenades.contains(g) {
-            grenades.push(g);
-        }
-    }
-    let most = (rungs / GRENADE_EVERY).min(grenades.len());
-    let thrown = if most == 0 { 0 } else { 1 + rng.below(most) };
-    let want = rungs - thrown;
-    // (gun, its game, its weight)
-    let mut pool: Vec<(GunPart, usize, f64)> = Vec::new();
+    let mut counts = power::band_counts(rungs, curve, &mut rng);
+    let melee = counts[Band::Melee.index()];
+    const DRAWN: usize = 6;
+    let mut pools: [Vec<Candidate>; DRAWN] = Default::default();
+    let seen = |pools: &[Vec<Candidate>; DRAWN], id: &str| pools.iter().any(|p| p.iter().any(|c| c.0 == id));
     for (i, c) in games.iter().enumerate() {
-        let weight = 1.0 / (c.guns.len() as f64).sqrt();
+        let weight = 1.0 / (c.guns.len().max(1) as f64).sqrt();
         for gun in &c.guns {
-            if !pool.iter().any(|(p, ..)| p.id == gun.id) {
-                pool.push((*gun, i, weight));
+            let band = powers.get(gun.id).map_or_else(|| curve.class_band(gun.class), |p| p.band);
+            if band != Band::Melee && !seen(&pools, gun.id) {
+                pools[band.index()].push((gun.id, i, weight));
+            }
+        }
+        let weight = 1.0 / (c.grenades.len().max(1) as f64).sqrt();
+        for g in &c.grenades {
+            if !seen(&pools, g) {
+                pools[Band::Grenade.index()].push((g, i, weight));
             }
         }
     }
-    let mut picked: Vec<GunPart> = Vec::new();
-    // Each game once, in a seeded order.
+    // Short bands give their rungs to the nearest band with guns to spare.
+    for b in 0..DRAWN {
+        while counts[b] > pools[b].len() {
+            let to = (0..DRAWN)
+                .filter(|&t| t != b && counts[t] < pools[t].len())
+                .min_by_key(|&t| (t.abs_diff(b), t));
+            counts[b] -= 1;
+            if let Some(t) = to {
+                counts[t] += 1;
+            }
+        }
+    }
+    let mut picked: [Vec<Candidate>; DRAWN] = Default::default();
+    for b in 0..DRAWN {
+        while picked[b].len() < counts[b] && !pools[b].is_empty() {
+            let total: f64 = pools[b].iter().map(|c| c.2).sum();
+            let mut at = rng.unit() * total;
+            let mut chosen = pools[b].len() - 1;
+            for (k, c) in pools[b].iter().enumerate() {
+                if at < c.2 {
+                    chosen = k;
+                    break;
+                }
+                at -= c.2;
+            }
+            picked[b].push(pools[b].remove(chosen));
+        }
+    }
+    // Each game at least once: a missing game's gun in place of a gun of a
+    // game that has more than one, in a band where it has one left.
     let mut order: Vec<usize> = (0..games.len()).collect();
     shuffle(&mut order, &mut rng);
     for g in order {
-        let of: Vec<usize> = (0..pool.len()).filter(|&k| pool[k].1 == g).collect();
-        if picked.len() >= want || of.is_empty() {
+        let of = |picked: &[Vec<Candidate>; DRAWN], g: usize| picked.iter().flatten().filter(|c| c.1 == g).count();
+        if of(&picked, g) > 0 {
             continue;
         }
-        picked.push(pool.remove(of[rng.below(of.len())]).0);
+        let bands: Vec<usize> = (0..DRAWN)
+            .filter(|&b| pools[b].iter().any(|c| c.1 == g) && picked[b].iter().any(|c| of(&picked, c.1) > 1))
+            .collect();
+        if bands.is_empty() {
+            continue;
+        }
+        let b = bands[rng.below(bands.len())];
+        let out: Vec<usize> = (0..picked[b].len()).filter(|&k| of(&picked, picked[b][k].1) > 1).collect();
+        let k = out[rng.below(out.len())];
+        let mine: Vec<usize> = (0..pools[b].len()).filter(|&k| pools[b][k].1 == g).collect();
+        let new = pools[b].remove(mine[rng.below(mine.len())]);
+        let old = std::mem::replace(&mut picked[b][k], new);
+        pools[b].push(old);
     }
-    // The rest by weight, a class at most a third of the guns.
-    let cap = want.div_ceil(3).max(2);
-    while picked.len() < want && !pool.is_empty() {
-        let full = |c: GunClass| picked.iter().filter(|p| p.class == c).count() >= cap;
-        let mut open: Vec<usize> = (0..pool.len()).filter(|&k| !full(pool[k].0.class)).collect();
-        if open.is_empty() {
-            open = (0..pool.len()).collect();
-        }
-        let total: f64 = open.iter().map(|&k| pool[k].2).sum();
-        let mut at = rng.unit() * total;
-        let mut chosen = open[open.len() - 1];
-        for &k in &open {
-            if at < pool[k].2 {
-                chosen = k;
-                break;
-            }
-            at -= pool[k].2;
-        }
-        picked.push(pool.remove(chosen).0);
-    }
-    picked.sort_by_key(|g| class_index(g.class));
-    let mut out: Vec<&'static str> = picked.into_iter().map(|g| g.id).collect();
-    shuffle(&mut grenades, &mut rng);
-    for g in grenades.into_iter().take(thrown) {
-        let len = out.len();
-        if len == 0 {
-            break;
-        }
-        // In the top third, before the last rung.
-        let low = (rungs * 2 / 3).min(len - 1);
-        out.insert(low + rng.below(len - low), g);
+    let score = |id: &str| powers.get(id).map_or(0.0, |p| p.score);
+    let mut out = Drawn {
+        melee,
+        ..Default::default()
+    };
+    for (b, band) in picked.iter_mut().enumerate() {
+        band.sort_by(|x, y| score(x.0).total_cmp(&score(y.0)).then(x.0.cmp(y.0)));
+        out.rungs.extend(band.iter().map(|c| c.0));
+        out.bands.extend(std::iter::repeat_n(Band::ALL[b], band.len()));
     }
     out
+}
+
+/// The powers of every gun and grenade of `caps` (`power::Powers::of`).
+pub fn powers(caps: &[Capabilities], catalog: &WeaponCatalog, readers: &PowerReaders, curve: &PowerCurve) -> Powers {
+    let guns = caps.iter().flat_map(|c| {
+        c.guns
+            .iter()
+            .map(|g| (g.id, g.class))
+            .chain(c.grenades.iter().map(|g| (*g, GunClass::Grenade)))
+    });
+    Powers::of(guns, catalog, readers, curve)
 }
 
 /// Every map of the games in `caps` that `installed` says the players
@@ -373,6 +425,7 @@ pub fn fallbacks(registry: &PartsRegistry, game: &str) -> Option<Fallbacks> {
 pub struct AutoOptions {
     pub id: String,
     pub name: String,
+    /// Rungs in all, the melee finale's too.
     pub rungs: usize,
     pub seed: u64,
     /// The game whose binds, tick and bots the match uses, whose knife a
@@ -384,6 +437,8 @@ pub struct AutoOptions {
     /// After a match: a random map of the pool, not one of the last this
     /// many played (`def::Rotation::Random`); None: the pool's next.
     pub avoid_recent: Option<usize>,
+    /// The power curve the ladder follows (`PowerCurve::shipped`).
+    pub curve: PowerCurve,
 }
 
 /// TOML-quoted.
@@ -396,11 +451,18 @@ fn list(items: &[String]) -> String {
 }
 
 /// The automatic gun game's definition text: the ladder of the playable
-/// games every player has, the pool of their maps; an error when no game
-/// is left to play.
-pub fn definition(caps: &[Capabilities], opts: &AutoOptions, installed: &dyn Fn(&str) -> bool) -> Result<String, String> {
+/// games every player has (`powers`: their guns' power, `auto::powers`), its
+/// melee band as the knife finale's `melee_rungs`, the pool of their
+/// maps; an error when no game is left to play.
+pub fn definition(
+    caps: &[Capabilities],
+    powers: &Powers,
+    opts: &AutoOptions,
+    installed: &dyn Fn(&str) -> bool,
+) -> Result<String, String> {
     let games: Vec<&Capabilities> = caps.iter().filter(|c| c.playable() && installed(c.game)).collect();
-    let ladder = ladder(&games, opts.rungs, opts.seed);
+    let drawn = ladder(&games, powers, &opts.curve, opts.rungs, opts.seed);
+    let ladder = drawn.rungs;
     if ladder.is_empty() {
         return Err(format!(
             "no game lends guns and movement that every player has ({})",
@@ -449,7 +511,7 @@ pub fn definition(caps: &[Capabilities], opts: &AutoOptions, installed: &dyn Fn(
          [spawn]\nrespawn = {{ delay = \"2s\", protection = \"2s\" }}\npoints = \"random_hidden\"\n\
          min_distance = 20.32\nkit = {kit}\n\n\
          [rules]\nmodule = \"chimera:ladder\"\nladder = {ladder}\nadvance_on = \"kill\"\n\
-         demote_on = \"melee_death\"\nknife_finale = true\nrefill_ammo = true\nwin = {{ kind = \"ladder_end\" }}\n",
+         demote_on = \"melee_death\"\n{finale}refill_ammo = true\nwin = {{ kind = \"ladder_end\" }}\n",
         seed = opts.seed,
         id = q(&opts.id),
         name = q(&opts.name),
@@ -458,19 +520,26 @@ pub fn definition(caps: &[Capabilities], opts: &AutoOptions, installed: &dyn Fn(
         base = q(opts.base),
         sets = list(&sets),
         ladder = list(&ladder),
+        finale = if drawn.melee > 0 {
+            format!("knife_finale = true\nmelee_rungs = {}\n", drawn.melee)
+        } else {
+            "knife_finale = false\n".to_string()
+        },
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::minigame::power::Power;
 
-    fn guns(game: &'static str, n: usize) -> Capabilities {
+    /// `n` guns of `game`, their classes in turn from `classes`.
+    fn guns_of(game: &'static str, n: usize, classes: &[GunClass]) -> Capabilities {
         // Leaked: a test's few ids.
         let guns = (0..n)
             .map(|i| GunPart {
                 id: Box::leak(format!("{game}:gun{i}").into_boxed_str()),
-                class: GunClass::ALL[i % GunClass::ALL.len()],
+                class: classes[i % classes.len()],
             })
             .collect();
         Capabilities {
@@ -486,9 +555,32 @@ mod tests {
         }
     }
 
+    fn guns(game: &'static str, n: usize) -> Capabilities {
+        guns_of(game, n, &GunClass::ALL)
+    }
+
     fn with_grenade(mut c: Capabilities) -> Capabilities {
         c.grenades = vec![Box::leak(format!("{}:frag", c.game).into_boxed_str())];
         c
+    }
+
+    /// Each gun's band by its class, a made-up score that isn't the
+    /// guns' order.
+    fn powers_of(caps: &[&Capabilities]) -> Powers {
+        let curve = &PowerCurve::shipped();
+        let mut out = std::collections::BTreeMap::new();
+        for (k, g) in caps.iter().flat_map(|c| &c.guns).enumerate() {
+            let score = ((k * 37) % 23) as f32 + 1.0;
+            out.insert(g.id, Power { band: curve.class_band(g.class), score, ttk: 1.0 / score });
+        }
+        for g in caps.iter().flat_map(|c| &c.grenades) {
+            out.insert(*g, Power { band: Band::Grenade, score: 1.0, ttk: 1.0 });
+        }
+        Powers(out)
+    }
+
+    fn draw(caps: &[&Capabilities], rungs: usize, seed: u64) -> Drawn {
+        ladder(caps, &powers_of(caps), &PowerCurve::shipped(), rungs, seed)
     }
 
     fn class_of(caps: &[&Capabilities], id: &str) -> Option<GunClass> {
@@ -496,34 +588,71 @@ mod tests {
     }
 
     #[test]
-    fn a_ladder_takes_every_game_and_climbs() {
-        let (a, b, c) = (guns("a", 24), guns("b", 15), guns("c", 3));
+    fn a_ladder_climbs_the_bands_and_takes_every_game() {
+        let (a, b, c) = (with_grenade(guns("a", 60)), guns("b", 33), guns("c", 4));
         let caps = [&a, &b, &c];
-        for seed in 0..50 {
-            let l = ladder(&caps, 9, seed);
-            assert_eq!(l.len(), 9);
-            for g in ["a", "b", "c"] {
-                assert!(l.iter().any(|id| id.starts_with(&format!("{g}:"))), "{g} in {l:?}");
+        let powers = powers_of(&caps);
+        for n in [10usize, 13, 20, 30] {
+            for seed in 0..60 {
+                let l = draw(&caps, n, seed);
+                assert_eq!(l.len(), n, "{n} rungs in all: {l:?}");
+                assert!(l.melee >= 1, "a melee rung at least");
+                assert_eq!(l.bands.len(), l.rungs.len());
+                assert!(l.bands.windows(2).all(|w| w[0] <= w[1]), "warm-up to grenade in order: {:?}", l.bands);
+                assert_eq!(l.bands[0], Band::WarmUp, "a warm-up rung first");
+                assert_eq!(class_of(&caps, l.rungs[0]), Some(GunClass::Pistol), "a pistol first: {l:?}");
+                for g in ["a", "b", "c"] {
+                    assert!(l.rungs.iter().any(|id| id.starts_with(&format!("{g}:"))), "{g} in {l:?}");
+                }
+                let mut once = l.rungs.clone();
+                once.sort();
+                once.dedup();
+                assert_eq!(once.len(), l.rungs.len(), "a gun once");
+                // Inside a band, weakest first.
+                for w in 0..l.rungs.len().saturating_sub(1) {
+                    if l.bands[w] == l.bands[w + 1] {
+                        let (x, y) = (powers.get(l.rungs[w]).unwrap().score, powers.get(l.rungs[w + 1]).unwrap().score);
+                        assert!(x <= y, "scores climb in {:?}: {l:?}", l.bands[w]);
+                    }
+                }
+                // Launchers and flamethrowers only in the specials band, the
+                // grenade only in its own.
+                for (id, band) in l.rungs.iter().zip(&l.bands) {
+                    match class_of(&caps, id) {
+                        Some(GunClass::Launcher | GunClass::Flamethrower) => assert_eq!(*band, Band::Specials),
+                        None => assert_eq!(*band, Band::Grenade, "{id}"),
+                        _ => assert!(*band < Band::Specials, "{id}"),
+                    }
+                }
             }
-            let mut seen = l.clone();
-            seen.sort();
-            seen.dedup();
-            assert_eq!(seen.len(), l.len(), "a gun once");
-            let classes: Vec<usize> = l.iter().map(|id| class_index(class_of(&caps, id).unwrap())).collect();
-            assert!(classes.windows(2).all(|w| w[0] <= w[1]), "climbing: {classes:?}");
-            let most = GunClass::ALL.iter().map(|k| l.iter().filter(|id| class_of(&caps, id) == Some(*k)).count()).max();
-            assert!(most <= Some(3), "a class at most a third: {l:?}");
         }
-        // More rungs than guns: every gun once.
-        assert_eq!(ladder(&[&c], 10, 1).len(), 3);
+        // More rungs than guns: every gun once, then melee.
+        let few = guns("f", 3);
+        let l = draw(&[&few], 10, 1);
+        assert_eq!(l.rungs.len(), 3, "{l:?}");
+    }
+
+    #[test]
+    fn no_pistol_starts_on_the_weakest_smg() {
+        let a = guns_of("a", 20, &[GunClass::Smg, GunClass::Rifle, GunClass::Sniper, GunClass::Shotgun]);
+        let caps = [&a];
+        let powers = powers_of(&caps);
+        for seed in 0..40 {
+            let l = draw(&caps, 10, seed);
+            assert_eq!(l.bands[0], Band::Rising, "{l:?}");
+            let first = powers.get(l.rungs[0]).unwrap().score;
+            let rising: Vec<f32> =
+                l.rungs.iter().zip(&l.bands).filter(|(_, b)| **b == Band::Rising).map(|(id, _)| powers.get(id).unwrap().score).collect();
+            assert!(rising.iter().all(|s| *s >= first), "the weakest of its band first: {l:?}");
+        }
     }
 
     #[test]
     fn a_ladder_is_the_seeds_and_seeds_differ_widely() {
-        let (a, b) = (guns("a", 24), guns("b", 15));
+        let (a, b) = (guns("a", 44), guns("b", 33));
         let caps = [&a, &b];
-        assert_eq!(ladder(&caps, 12, 42), ladder(&caps, 12, 42));
-        let ladders: Vec<Vec<&str>> = (0..400).map(|s| ladder(&caps, 12, s)).collect();
+        assert_eq!(draw(&caps, 13, 42), draw(&caps, 13, 42));
+        let ladders: Vec<Vec<&str>> = (0..400).map(|s| draw(&caps, 13, s).rungs).collect();
         // Two ladders share few rungs.
         let mut shared = 0;
         let mut worst = 0;
@@ -542,56 +671,61 @@ mod tests {
     }
 
     #[test]
-    fn grenade_rungs_are_near_the_top_never_last() {
-        let (a, b) = (with_grenade(guns("a", 24)), with_grenade(guns("b", 15)));
+    fn grenade_rungs_come_after_the_specials_before_melee() {
+        let (a, b) = (with_grenade(guns("a", 44)), with_grenade(guns("b", 33)));
         let caps = [&a, &b];
         let mut counts = [0; 3];
         for seed in 0..300 {
-            let l = ladder(&caps, 12, seed);
-            assert_eq!(l.len(), 12);
-            let at: Vec<usize> = (0..l.len()).filter(|&i| l[i].ends_with(":frag")).collect();
-            assert!((1..=2).contains(&at.len()), "one or two grenade rungs: {l:?}");
+            let l = draw(&caps, 20, seed);
+            let at: Vec<usize> = (0..l.rungs.len()).filter(|&i| l.rungs[i].ends_with(":frag")).collect();
+            assert!(at.len() <= 2, "{l:?}");
             counts[at.len()] += 1;
-            assert!(at.iter().all(|&i| (8..11).contains(&i)), "in the top third, not last: {l:?}");
-            let guns: Vec<usize> =
-                l.iter().filter_map(|id| class_of(&caps, id)).map(class_index).collect();
-            assert!(guns.windows(2).all(|w| w[0] <= w[1]), "the guns still climb: {l:?}");
+            assert!(at.iter().all(|&i| l.bands[i] == Band::Grenade && i + 1 >= l.rungs.len() - 1), "{l:?}");
         }
         assert!(counts[1] > 0 && counts[2] > 0, "{counts:?}");
-        // Short ladders: none.
-        assert!(ladder(&caps, 5, 1).iter().all(|id| !id.ends_with(":frag")));
+        // No grenade: its rungs go to the specials.
+        let c = guns("c", 44);
+        let l = draw(&[&c], 20, 3);
+        assert_eq!(l.len(), 20);
+        assert!(l.bands.iter().all(|b| *b != Band::Grenade));
     }
 
     #[test]
     fn games_without_movement_or_install_stay_out() {
-        let a = guns("a", 6);
-        let mut b = guns("b", 6);
+        let a = guns("a", 12);
+        let mut b = guns("b", 12);
         b.movement = None;
-        assert!(ladder(&[&a, &b], 6, 3).iter().all(|id| id.starts_with("a:")));
-        let mut c = guns("c", 6);
+        assert!(draw(&[&a, &b], 6, 3).rungs.iter().all(|id| id.starts_with("a:")));
+        let mut c = guns("c", 12);
         c.maps = vec!["c:map1".into(), "c:map2".into()];
-        let mut d = guns("d", 6);
+        let mut d = guns("d", 12);
         d.maps = vec!["d:map1".into()];
         let opts = AutoOptions {
             id: "test:auto".into(),
             name: "Auto".into(),
-            rungs: 6,
+            rungs: 10,
             seed: 9,
             base: "a",
             time_limit: 600.0,
             avoid_recent: Some(10),
+            curve: PowerCurve::shipped(),
         };
         let caps = [a, c, d];
-        let text = definition(&caps, &opts, &|g| g != "c").unwrap();
+        let refs: Vec<&Capabilities> = caps.iter().collect();
+        let text = definition(&caps, &powers_of(&refs), &opts, &|g| g != "c").unwrap();
         let def = crate::minigame::MinigameDef::parse("auto", &text).expect(&text);
         assert_eq!(def.maps, ["d:map1"], "c isn't installed: its maps go too");
         assert_eq!(def.rotation, crate::minigame::def::Rotation::Random);
         assert_eq!(def.avoid_recent, 10);
         let ladder = def.rules.params["ladder"].as_array().unwrap();
         assert!(ladder.iter().all(|id| !id.as_str().unwrap().starts_with("c:")), "{ladder:?}");
+        // The melee band is the finale's.
+        let melee = def.rules.params["melee_rungs"].as_integer().unwrap() as usize;
+        assert!(melee >= 1 && ladder.len() + melee == 10, "{text}");
+        assert_eq!(def.rules.params["knife_finale"].as_bool(), Some(true));
         assert_eq!(map_pool(&caps, &|_| true), ["c:map1", "d:map1", "c:map2"], "in turn");
         assert_eq!(map_pool(&caps[..1], &|_| true), ["greybox"]);
-        assert!(definition(&caps, &opts, &|_| false).is_err());
+        assert!(definition(&caps, &powers_of(&refs), &opts, &|_| false).is_err());
     }
 
     #[test]

@@ -10,7 +10,7 @@ use chimera_core::{
     core::{Damage, DamageKind, Health, Hitgroup},
 };
 use chimera_sim::{
-    minigame::{self, Minigames, auto, ladder::{Ladder, Rung}, rotation::MapHistory},
+    minigame::{self, Minigames, auto, ladder::{Ladder, Rung}, power::PowerCurve, rotation::MapHistory},
     testkit,
     weapon::{Inventory, Weapon, grenade::Throwable},
 };
@@ -25,7 +25,10 @@ fn ladders_draw_on_every_gun_and_differ_by_seed() {
     let sim = ugg();
     let caps = auto::report(sim.app.world());
     let refs: Vec<&auto::Capabilities> = caps.iter().collect();
-    let ladders: Vec<Vec<&str>> = (0..500).map(|s| auto::ladder(&refs, RUNGS, s)).collect();
+    let powers = crate::parts::powers(sim.app.world(), &caps);
+    let curve = &PowerCurve::shipped();
+    let drawn: Vec<auto::Drawn> = (0..500).map(|s| auto::ladder(&refs, &powers, curve, RUNGS, s)).collect();
+    let ladders: Vec<Vec<&str>> = drawn.iter().map(|d| d.rungs.clone()).collect();
     for c in &caps {
         for g in c.guns.iter().map(|g| g.id).chain(c.grenades.iter().copied()) {
             assert!(ladders.iter().any(|l| l.contains(&g)), "{g} never in 500 ladders");
@@ -41,15 +44,17 @@ fn ladders_draw_on_every_gun_and_differ_by_seed() {
         .collect();
     let mean = |f: fn(&(usize, usize)) -> usize| shared.iter().map(f).sum::<usize>() as f64 / shared.len() as f64;
     let (all, guns) = (mean(|s| s.0), mean(|s| s.1));
-    // The guns: about what drawing 10 of ~38 allows; the grenades are
-    // two (CS:S's HE, Combat Arms' M67), so ladders often share one.
-    assert!(guns < 3.5, "two ladders share {guns:.1} guns on average");
-    assert!(all < 5.0, "two ladders share {all:.1} of {RUNGS} rungs on average");
+    // The guns: about what drawing each band's few of its pool allows
+    // (warm-up 2 of ~7 pistols, peak 3-4 of ~7 rifles, ...); the grenades
+    // are two (CS:S's HE, Combat Arms' M67), so ladders often share one.
+    assert!(guns < 5.0, "two ladders share {guns:.1} guns on average");
+    assert!(all < 6.0, "two ladders share {all:.1} of {RUNGS} rungs on average");
     assert!(shared.iter().all(|s| s.0 < RUNGS - 3), "never nearly the same");
-    for l in &ladders {
+    for d in &drawn {
+        let l = &d.rungs;
         assert!(l.iter().any(|id| id.starts_with("cs_source:")) && l.iter().any(|id| id.starts_with("combat_arms:")));
-        let last = l.last().unwrap();
-        assert!(!caps.iter().any(|c| c.grenades.contains(last)), "a grenade is never last: {l:?}");
+        assert_eq!(d.len(), RUNGS);
+        assert!(d.melee >= 1, "melee last: {d:?}");
     }
 }
 
@@ -151,7 +156,7 @@ fn a_rotation_picks_a_fresh_map_with_a_new_ladder() {
         assert_eq!(w.resource::<AutoLadder>().seed, seed);
         let now = rungs(w);
         assert_ne!(now, ladder, "a new ladder for {next}");
-        assert_eq!(now.len(), RUNGS);
+        assert_eq!(now.len(), RUNGS - 1, "{RUNGS} rungs, one of them melee");
         ladder = now;
         // The map change done (the sim loads no maps).
         w.remove_resource::<chimera_net::minigame_net::MapChange>();
@@ -168,8 +173,9 @@ fn a_rotation_picks_a_fresh_map_with_a_new_ladder() {
 }
 
 /// Ultimate Gun Game's automatic definition ends on melee by default: one
-/// melee rung for its twelve guns, a melee weapon of the games in play;
-/// the host's setting off takes it away, a longer ladder gets more.
+/// melee rung of its thirteen, a melee weapon of the games in play; the
+/// host's setting off takes it away, a longer ladder gets more (the
+/// power curve's melee band: 7% of forty, its boundary jittered).
 #[test]
 fn the_automatic_gun_game_ends_on_melee_by_default_and_longer_ends_longer() {
     use chimera_sim::minigame::overrides::MinigameOverrides;
@@ -178,17 +184,19 @@ fn the_automatic_gun_game_ends_on_melee_by_default_and_longer_ends_longer() {
     let w = sim.app.world();
     let l = w.resource::<Ladder>();
     let catalog = w.resource::<chimera_sim::weapon::data::WeaponCatalog>();
-    assert!(l.knife_finale && l.melee_rungs == 1 && l.rungs.len() == RUNGS + 1, "{:?}", l.rungs);
+    assert!(l.knife_finale && l.melee_rungs == 1 && l.rungs.len() == RUNGS, "{:?}", l.rungs);
     let last = l.rungs.last().unwrap();
     assert!(catalog.get(last).is_some_and(|w| w.melee.is_some() || w.has_hook(combat_arms::game::inventory::KNIFE_HOOK)), "{last}");
-    // Forty guns: three melee rungs, no two alike (CS:S's knife and
-    // Combat Arms' knives are more than three).
+    // Forty rungs: two to four melee rungs, no two alike (CS:S's knife
+    // and Combat Arms' knives are more than four).
     ultimate_gun_game::generate(sim.app.world_mut(), SEED, 40).unwrap();
     minigame::start(sim.app.world_mut(), MINIGAME).expect("it starts");
     let l = sim.app.world().resource::<Ladder>();
-    assert_eq!(l.melee_rungs, 3, "{:?}", l.rungs);
-    let band = &l.rungs[l.rungs.len() - 3..];
-    assert!(band[0] != band[1] && band[1] != band[2] && band[0] != band[2], "{band:?}");
+    assert!((2..=4).contains(&l.melee_rungs), "{:?}", l.rungs);
+    let band = &l.rungs[l.rungs.len() - l.melee_rungs..];
+    for (i, a) in band.iter().enumerate() {
+        assert!(!band[i + 1..].contains(a), "{band:?}");
+    }
     // The host's off.
     sim.app.world_mut().resource_mut::<MinigameOverrides>().keys.insert("rules.knife_finale".into(), "false".into());
     minigame::start(sim.app.world_mut(), MINIGAME).expect("it starts");

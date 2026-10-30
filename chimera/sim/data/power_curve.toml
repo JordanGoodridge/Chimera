@@ -1,0 +1,67 @@
+# The random ladder's power curve (chimera_sim::minigame::power; DESIGN.md
+# "Gun game rules"): which band each gun class plays in, each band's share
+# of the ladder, and the constants of the power score that orders guns
+# inside a band. Our own numbers, tuned by playtests; a definition tunes
+# them in its rules (`power_curve = { shares = { peak = 0.3 }, jitter = 0.02 }`).
+
+# Each ladder moves every boundary between two bands by up to this much
+# (a seeded draw, uniform), keeping their order.
+jitter = 0.03
+
+# Each band's share of the ladder, in climbing order; they add up to 1 (a
+# definition's shares are scaled to 1). Rung i of N sits at (i + 0.5) / N
+# and takes the band covering that point. Melee is the knife finale's
+# share too (`chimera:ladder`'s `melee_rungs = "auto"`).
+[shares]
+warm_up = 0.15
+rising = 0.20
+peak = 0.28
+heavy = 0.15
+specials = 0.08
+grenade = 0.07
+melee = 0.07
+
+# Each gun class's band (`GunClass`, a weapon's `class` in its data).
+[classes]
+pistol = "warm_up"
+smg = "rising"
+shotgun = "rising"
+carbine = "peak"
+rifle = "peak"
+heavy = "heavy"
+marksman = "heavy"
+sniper = "heavy"
+heavy_pistol = "heavy"
+launcher = "specials"
+flamethrower = "specials"
+grenade = "grenade"
+
+# The power score: how fast a gun kills a baseline player (100 health, no
+# armour: the same for every gun) at a typical range.
+[score]
+# Metres; the score is the mean over these.
+distances = [10.0, 15.0, 20.0]
+# The baseline player's health, in hit points.
+health = 100.0
+# The radius of the body's area a shot is aimed at, metres: a spread wider
+# than this at the range misses by the area's ratio.
+target_radius = 0.3
+# How far into its firing spread a gun's follow-up shots are (0: the first shot's,
+# 1: the most); each game's reader of its spread data applies it.
+firing = 0.25
+# The share of hits that land on the head (the weapon's head multiplier
+# over its body one; `default_head` where its data gives none).
+headshot_share = 0.05
+default_head = 2.0
+# Seconds per update, for a trigger's latency given in updates.
+update = 0.016
+# Seconds added to every time to kill (seeing and aiming): a one-shot gun
+# doesn't score infinitely.
+reaction = 0.25
+# The magazine term: up to this much more score for a clip of `magazine_full`
+# rounds or more (none for a clip of 1).
+magazine_weight = 0.1
+magazine_full = 30
+# A pistol whose body hit does at least this many hit points (the mean over
+# the distances) plays as a heavy pistol.
+heavy_pistol_damage = 50.0

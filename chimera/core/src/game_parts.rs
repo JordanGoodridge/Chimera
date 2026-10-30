@@ -21,33 +21,65 @@
 
 use bevy::prelude::*;
 
-/// A gun's class: the order an automatic ladder climbs (weakest first),
-/// and `Grenade`, a thrown weapon that kills (an automatic ladder mixes
-/// those in near its top). A weapon's data can name it (`class =
-/// "rifle"`, `chimera_sim::weapon::data`), so a game's weapons from its
-/// install join a ladder without a hand list.
+/// A gun's class: which band of an automatic ladder's power curve it
+/// plays in (`chimera_sim::minigame::power`, its data maps each class to
+/// a band: pistols warm up, SMGs and shotguns rise, rifles and carbines
+/// peak, machine guns, marksman rifles, snipers and heavy pistols are
+/// heavy, launchers and flamethrowers special), and `Grenade`, a thrown
+/// weapon that kills (the grenade band). A weapon's data can name it
+/// (`class = "rifle"`, `chimera_sim::weapon::data`), so a game's weapons
+/// from its install join a ladder without a hand list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GunClass {
     Pistol,
     Smg,
     Shotgun,
+    Carbine,
     Rifle,
+    /// A machine gun.
     Heavy,
+    Marksman,
     Sniper,
+    HeavyPistol,
+    Launcher,
+    Flamethrower,
     Grenade,
 }
 
 impl GunClass {
-    /// Every gun class, in climbing order (not `Grenade`: not a gun).
-    pub const ALL: [GunClass; 6] = [
+    /// Every gun class, roughly weakest first (not `Grenade`: not a gun).
+    pub const ALL: [GunClass; 11] = [
         GunClass::Pistol,
         GunClass::Smg,
         GunClass::Shotgun,
+        GunClass::Carbine,
         GunClass::Rifle,
         GunClass::Heavy,
+        GunClass::Marksman,
         GunClass::Sniper,
+        GunClass::HeavyPistol,
+        GunClass::Launcher,
+        GunClass::Flamethrower,
     ];
+
+    /// Its name in data (`heavy_pistol`).
+    pub fn name(self) -> &'static str {
+        match self {
+            GunClass::Pistol => "pistol",
+            GunClass::Smg => "smg",
+            GunClass::Shotgun => "shotgun",
+            GunClass::Carbine => "carbine",
+            GunClass::Rifle => "rifle",
+            GunClass::Heavy => "heavy",
+            GunClass::Marksman => "marksman",
+            GunClass::Sniper => "sniper",
+            GunClass::HeavyPistol => "heavy_pistol",
+            GunClass::Launcher => "launcher",
+            GunClass::Flamethrower => "flamethrower",
+            GunClass::Grenade => "grenade",
+        }
+    }
 }
 
 /// One gun a game lends: its weapon id (`game:name`, in the weapon
