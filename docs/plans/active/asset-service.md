@@ -539,3 +539,27 @@ the same commit.
    plain-HTTP map folder meaning today)?
 9. **Combat Arms' app id:** 1263550 (the Classic, installed here): is
    that the one contributors own?
+
+## Decisions (user, 2026-10-30)
+
+- **Hosting.** The dev server runs on the dev box first, shared privately
+  over Tailscale (no public ports), with Steam sign-in on top. Then it
+  goes public behind a Cloudflare Tunnel (still no open ports), and later
+  moves to a VPS with better upload.
+- **Contributors make their Steam game details public** so ownership can
+  be checked. Accepted.
+- **Order:** CS:S first, then Combat Arms. This is only test and rollout
+  order: the packer is generic, walking the files a game mounts through
+  Chimera's vfs, so a new game needs its mount description, its Steam
+  app id and a packer run, not a spec of its own.
+- **Identity is the Steam ID** from Steam sign-in, never IP, MAC or
+  passwords. A server-side allowlist file of Steam IDs (with display
+  names) says who may download; ownership is checked per game on top.
+  Each device gets its own revocable token.
+- **Publishers:** a separate list of Steam IDs; for now only the user.
+  Publishing is a command, `chimera_pack publish <game>`. On the dev box
+  it writes straight into the server's store; with a VPS it uploads over
+  HTTPS with a publisher token, and since files are content-addressed
+  only new files upload. A signed manifest per game build ends a
+  publish. No web UI or FTP; an admin page (access logs, revocation)
+  may come later.
