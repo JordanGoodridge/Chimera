@@ -47,6 +47,7 @@ use chimera_client::client::{
     binds::CapturedKeys,
     front_end::AppMenu,
     input::{capture_cursor, release_cursor},
+    widgets::display_alpha,
 };
 use chimera_core::console::{Console, ConsoleAppExt};
 use chimera_net::net::vote::{CallRefusal, VoteFailure, VoteNews, VoteSettings, VoteView};
@@ -432,6 +433,8 @@ pub const MENU_Z: i32 = 90;
 /// The vote panel: over the HUDs and the match-end screen, under the menu.
 pub const VOTE_Z: i32 = 88;
 
+/// The shade over the world and the panels: alphas as blended in display
+/// space (`widgets::display_alpha`).
 const SHADE: Color = Color::srgba(0.0, 0.0, 0.0, 0.55);
 const PANEL: Color = Color::srgba(0.08, 0.09, 0.11, 0.96);
 const BUTTON: Color = Color::srgb(0.2, 0.22, 0.26);
@@ -473,7 +476,7 @@ fn spawn_menu(commands: &mut Commands, menu: &EscMenu, shown: &Shown, vote: Opti
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(SHADE),
+            BackgroundColor(display_alpha(SHADE)),
             bevy::ui::FocusPolicy::Block,
         ))
         .with_children(|root| {
@@ -486,7 +489,7 @@ fn spawn_menu(commands: &mut Commands, menu: &EscMenu, shown: &Shown, vote: Opti
                     border: UiRect::top(px(3.0)),
                     ..default()
                 },
-                BackgroundColor(PANEL),
+                BackgroundColor(display_alpha(PANEL)),
                 BorderColor::all(ACCENT),
             ))
             .with_children(|panel| {
@@ -657,7 +660,7 @@ fn show_vote(
                     border: UiRect::left(px(3.0)),
                     ..default()
                 },
-                BackgroundColor(PANEL),
+                BackgroundColor(display_alpha(PANEL)),
                 BorderColor::all(ACCENT),
             ))
             .with_children(|p| {
