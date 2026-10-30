@@ -5,7 +5,10 @@
 //! player carries (`CaCarry`) and the action gauge it is filling
 //! (`CaAction`: plant, defuse, seize), and the helpers the modes use:
 //! touch tests against the player's box, the floor under a dropped item,
-//! giving and taking objective weapons, random draws.
+//! giving and taking objective weapons, random draws; and the same for a
+//! mode's per-tick systems, without the world: the players from declared
+//! queries (`Roster`), writes read back in the same run (`Edits`), the
+//! `_in` helpers, weapons given through `Commands` (`give_weapon_later`).
 //!
 //! Known shortcuts: a player's box is the fallback hull (15, 50, 15) about
 //! its position (as S4's occupied test); the floor under a dropped item is
@@ -14,7 +17,13 @@
 //! a hash, not the game's random generator.
 
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
-use bevy::{ecs::system::SystemState, prelude::*};
+use bevy::{
+    ecs::{
+        component::Mutable,
+        system::{SystemParam, SystemState},
+    },
+    prelude::*,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -23,7 +32,7 @@ use super::{
     state::{CaMatch, CaStats},
 };
 use crate::{
-    core::{Dead, Health, Intent, SimClock},
+    core::{Bot, Dead, Health, Intent, SimClock, Team},
     weapon::{Inventory, Weapon},
 };
 
@@ -358,20 +367,12 @@ pub fn take_weapon(world: &mut World, e: Entity, id: &str) -> bool {
 
 /// A draw in 0..n from the match's counter (`CaDraws`).
 pub fn draw(world: &mut World, n: usize) -> usize {
-    if n == 0 {
-        return 0;
-    }
-    let mut d = world.get_resource_or_init::<CaDraws>();
-    d.0 = d.0.wrapping_add(1);
-    (hash(d.0) % n as u64) as usize
+    draw_in(&mut world.get_resource_or_init::<CaDraws>(), n)
 }
 
 /// `list` shuffled by the match's counter.
 pub fn shuffle<T>(world: &mut World, list: &mut [T]) {
-    for i in (1..list.len()).rev() {
-        let j = draw(world, i + 1);
-        list.swap(i, j);
-    }
+    shuffle_in(&mut world.get_resource_or_init::<CaDraws>(), list);
 }
 
 /// The counter the modes' draws run on.
@@ -438,4 +439,268 @@ pub fn count_team_kill(world: &mut World, team: u8) {
 /// `e`'s statistics, made when missing.
 pub fn stats_of(world: &mut World, e: Entity) -> Mut<'_, CaStats> {
     super::scoring::stats(world, e)
+}
+
+// ---- The same helpers for a mode's per-tick systems (declared queries,
+// no world; plan ecs-cleanup step 4). Structural changes go through
+// `Commands`, applied at the sync point after the modes' systems, before
+// the phases step (O1); what a system writes and reads back in the same
+// run is kept in an `Edits` until then.
+
+/// The match's players and their state for a system: `flow::players`,
+/// `living`, `takers` and `flow::alive` from declared queries.
+#[derive(SystemParam)]
+pub struct Roster<'w, 's> {
+    players: Query<'w, 's, (Entity, &'static Team, Option<&'static flow::CaJoinOrder>), flow::Playing>,
+    states: Query<
+        'w,
+        's,
+        (
+            &'static Health,
+            Has<Dead>,
+            Has<super::spawns::CaHeld>,
+            Option<&'static Transform>,
+            Option<&'static Intent>,
+            Has<Bot>,
+        ),
+    >,
+}
+
+impl Roster<'_, '_> {
+    /// `flow::players`: on a team that plays, in join order.
+    pub fn players(&self) -> Vec<(Entity, u8)> {
+        flow::in_join_order(self.players.iter())
+    }
+
+    /// `e` has health left and isn't dead (held or not).
+    pub fn breathing(&self, e: Entity) -> bool {
+        self.states.get(e).is_ok_and(|(h, dead, ..)| h.current > 0.0 && !dead)
+    }
+
+    fn up(&self, e: Entity) -> bool {
+        self.states
+            .get(e)
+            .is_ok_and(|(h, dead, held, ..)| h.current > 0.0 && !dead && !held)
+    }
+
+    /// `living`: the living players in the match, in order.
+    pub fn living(&self) -> Vec<Living> {
+        self.players()
+            .into_iter()
+            .filter(|(e, _)| self.up(*e))
+            .filter_map(|(e, team)| {
+                let (_, _, _, t, intent, _) = self.states.get(e).ok()?;
+                Some(Living {
+                    e,
+                    team,
+                    at: t?.translation,
+                    intent: intent.cloned().unwrap_or_default(),
+                })
+            })
+            .collect()
+    }
+
+    /// `takers`: the living human players.
+    pub fn takers(&self) -> Vec<Living> {
+        self.living()
+            .into_iter()
+            .filter(|p| !self.states.get(p.e).is_ok_and(|s| s.5))
+            .collect()
+    }
+
+    /// `flow::alive`: the living players of `team`, teams as `team_of`
+    /// says (a system's team changes not yet applied).
+    pub fn alive_as(&self, team: u8, team_of: impl Fn(Entity, u8) -> u8) -> usize {
+        self.players()
+            .into_iter()
+            .filter(|(e, t)| team_of(*e, *t) == team && self.up(*e))
+            .count()
+    }
+}
+
+/// Component writes a system reads back in the same run (an `Edits` per
+/// component type): `get` sees them, `apply` writes them at its end
+/// (in place where the component is there and differs, else inserted or
+/// removed through `Commands`).
+pub struct Edits<T>(Vec<(Entity, Option<T>)>);
+
+impl<T> Default for Edits<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<T: Component<Mutability = Mutable> + Copy + PartialEq> Edits<T> {
+    /// `e`'s value, the edits first.
+    pub fn get(&self, q: &Query<&mut T>, e: Entity) -> Option<T> {
+        match self.0.iter().rev().find(|(x, _)| *x == e) {
+            Some((_, v)) => *v,
+            None => q.get(e).ok().copied(),
+        }
+    }
+
+    /// Set (Some) or remove (None) `e`'s value.
+    pub fn set(&mut self, e: Entity, v: Option<T>) {
+        self.0.push((e, v));
+    }
+
+    /// Write the edits: each entity's last, in the order first edited.
+    pub fn apply(self, q: &mut Query<&mut T>, commands: &mut Commands) {
+        let mut done: Vec<Entity> = Vec::new();
+        for (e, _) in &self.0 {
+            if done.contains(e) {
+                continue;
+            }
+            done.push(*e);
+            let last = self.0.iter().rev().find(|(x, _)| x == e).and_then(|(_, v)| *v);
+            match (last, q.get_mut(*e)) {
+                (Some(v), Ok(mut cur)) => {
+                    if *cur != v {
+                        *cur = v;
+                    }
+                }
+                (Some(v), Err(_)) => {
+                    if let Ok(mut ec) = commands.get_entity(*e) {
+                        ec.try_insert(v);
+                    }
+                }
+                (None, Ok(_)) => {
+                    if let Ok(mut ec) = commands.get_entity(*e) {
+                        ec.try_remove::<T>();
+                    }
+                }
+                (None, Err(_)) => {}
+            }
+        }
+    }
+}
+
+/// `carry` in a system (empty when nothing).
+pub fn carry_in(edits: &Edits<CaCarry>, q: &Query<&mut CaCarry>, e: Entity) -> CaCarry {
+    edits.get(q, e).unwrap_or_default()
+}
+
+/// `set_carry` in a system.
+pub fn set_carry_in(edits: &mut Edits<CaCarry>, e: Entity, c: CaCarry) {
+    edits.set(e, (!c.is_empty()).then_some(c));
+}
+
+/// `hold_action` in a system (`dt`: the tick's seconds).
+pub fn hold_action_in(
+    edits: &mut Edits<CaAction>,
+    q: &Query<&mut CaAction>,
+    dt: f32,
+    e: Entity,
+    kind: ActionKind,
+    length: f32,
+    on: bool,
+) -> bool {
+    let current = edits.get(q, e);
+    if !on {
+        if current.is_some_and(|a| a.kind == kind) {
+            edits.set(e, None);
+        }
+        return false;
+    }
+    let held = match current {
+        Some(a) if a.kind == kind => a.held + dt,
+        _ => 0.0,
+    };
+    if held + 1e-6 >= length {
+        edits.set(e, None);
+        return true;
+    }
+    edits.set(e, Some(CaAction { kind, held, length }));
+    false
+}
+
+/// `f` on `e`'s statistics in a system: in place, else made through
+/// `Commands` (as `scoring::stats` makes them).
+pub fn add_stats(
+    stats: &mut Query<&mut CaStats>,
+    commands: &mut Commands,
+    e: Entity,
+    f: impl FnOnce(&mut CaStats) + Send + 'static,
+) {
+    match stats.get_mut(e) {
+        Ok(mut s) => f(&mut s),
+        Err(_) => commands.queue(move |world: &mut World| {
+            if world.get_entity(e).is_ok() {
+                f(&mut super::scoring::stats(world, e));
+            }
+        }),
+    }
+}
+
+/// `has_weapon` in a system.
+pub fn has_weapon_in(inv: Option<&Inventory>, weapons: &Query<&Weapon>, id: &str) -> Option<Entity> {
+    inv?.weapons
+        .iter()
+        .copied()
+        .find(|w| weapons.get(*w).is_ok_and(|w| w.id == id))
+}
+
+/// `holding` in a system.
+pub fn holding_in(inv: Option<&Inventory>, weapons: &Query<&Weapon>, id: &str) -> bool {
+    inv.and_then(|i| i.active)
+        .and_then(|w| weapons.get(w).ok())
+        .is_some_and(|w| w.id == id)
+}
+
+/// `take_weapon` in a system: out of the list at once, the weapon
+/// despawned through `Commands`.
+pub fn take_weapon_in(inv: Option<&mut Inventory>, weapons: &Query<&Weapon>, commands: &mut Commands, id: &str) -> bool {
+    let Some(inv) = inv else { return false };
+    let Some(w) = has_weapon_in(Some(inv), weapons, id) else { return false };
+    inv.weapons.retain(|x| *x != w);
+    if inv.active == Some(w) {
+        inv.active = None;
+        inv.wanted = inv.weapons.first().copied();
+    }
+    if inv.wanted == Some(w) {
+        inv.wanted = inv.weapons.first().copied();
+    }
+    if inv.last == Some(w) {
+        inv.last = None;
+    }
+    if let Ok(mut ec) = commands.get_entity(w) {
+        ec.try_despawn();
+    }
+    true
+}
+
+/// `give_weapon` from a system: building a weapon is world work, queued
+/// (`Commands`), in order with the system's other commands.
+pub fn give_weapon_later(commands: &mut Commands, e: Entity, id: &'static str) {
+    commands.queue(move |world: &mut World| {
+        give_weapon(world, e, id);
+    });
+}
+
+/// `floor_below` in a system (`characters`: every `Intent` holder, left
+/// out of the ray).
+pub fn floor_below_in(spatial: Option<&SpatialQuery>, characters: &Query<Entity, With<Intent>>, at: Vec3) -> Vec3 {
+    let Some(query) = spatial else { return at };
+    let filter = SpatialQueryFilter::default().with_excluded_entities(characters.iter());
+    match query.cast_ray(at, Dir3::NEG_Y, 100.0, true, &filter) {
+        Some(hit) => at - Vec3::Y * hit.distance,
+        None => at,
+    }
+}
+
+/// `draw` on the counter itself (a system's `ResMut<CaDraws>`).
+pub fn draw_in(draws: &mut CaDraws, n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+    draws.0 = draws.0.wrapping_add(1);
+    (hash(draws.0) % n as u64) as usize
+}
+
+/// `shuffle` on the counter itself.
+pub fn shuffle_in<T>(draws: &mut CaDraws, list: &mut [T]) {
+    for i in (1..list.len()).rev() {
+        let j = draw_in(draws, i + 1);
+        list.swap(i, j);
+    }
 }

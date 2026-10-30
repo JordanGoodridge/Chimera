@@ -69,10 +69,10 @@ use super::{
     super::{inventory, movement::CustomMovePenalty},
     CaMode, CaRuleSettings, HIRED_GUNS, Hooks, LeftPlayer, Leaver, NO_HOOKS, Panel, RoundTime, ScoreOrder, Spawns,
     TEAM_POINTS, Teams, flow, mercs,
-    objectives::{self, Bullion, CaObjectives},
+    objectives::{self, Bullion, CaObjectives, Edits, Roster},
     objects::{CaMapObjects, ObjBox},
     scoring::stats,
-    state::{ALPHA, BRAVO, CaMatch, Death, DeathKind, Phase, enemy, side},
+    state::{ALPHA, BRAVO, CaMatch, CaStats, Death, DeathKind, Phase, enemy, side},
 };
 use crate::core::{Died, MovementState, Npc};
 
@@ -101,8 +101,6 @@ pub const MODE: CaMode = CaMode {
         match_end,
         hooks: Hooks {
             setup,
-            update,
-            touches,
             round_over,
             died,
             warmup_end: match_end,
@@ -263,58 +261,113 @@ fn setup(world: &mut World) {
     world.resource_mut::<CaObjectives>().placed = n as u32;
 }
 
-/// Joining a live real round: the base pay.
-fn update(world: &mut World) {
-    if !world.resource::<CaMatch>().counting() {
+/// Joining a live real round: the base pay (the mode's per-tick system,
+/// `rules::mode_updates`).
+pub(super) fn update(
+    m: Res<CaMatch>,
+    settings: Res<CaRuleSettings>,
+    roster: Roster,
+    paid: Query<&CaPaid>,
+    mut banks: Query<&mut CaBank>,
+    mut commands: Commands,
+) {
+    if !m.counting() {
         return;
     }
-    let base = world.resource::<CaRuleSettings>().hired_guns.base_bank;
-    let round = world.resource::<CaMatch>().round;
-    for (e, _) in flow::players(world) {
-        if world.get::<CaPaid>(e).is_none_or(|p| p.0 != round) {
-            pay(world, e, base);
-            world.entity_mut(e).insert(CaPaid(round));
+    let base = settings.hired_guns.base_bank;
+    let round = m.round;
+    let mut bank = Edits::default();
+    for (e, _) in roster.players() {
+        if paid.get(e).is_ok_and(|p| p.0 == round) {
+            continue;
+        }
+        pay_in(&mut bank, &banks, e, base);
+        if let Ok(mut ec) = commands.get_entity(e) {
+            ec.try_insert(CaPaid(round));
         }
     }
+    bank.apply(&mut banks, &mut commands);
 }
 
-/// Pick-ups, banking, the early end (after the tick's deaths).
-fn touches(world: &mut World) {
-    if !world.resource::<CaMatch>().counting() {
-        world.resource_mut::<CaHiredGuns>().prev_use.clear();
+/// `pay` in a system.
+fn pay_in(bank: &mut Edits<CaBank>, banks: &Query<&mut CaBank>, e: Entity, amount: i32) {
+    let now = bank.get(banks, e).map_or(0, |b| b.0);
+    bank.set(e, Some(CaBank((now + amount).max(0))));
+}
+
+/// What `touches` writes back as it goes.
+#[derive(Default)]
+struct Pockets {
+    carry: Edits<objectives::CaCarry>,
+    bank: Edits<CaBank>,
+    weight: Edits<CustomMovePenalty>,
+}
+
+/// Pick-ups, banking, the early end, after the tick's deaths (the mode's
+/// per-tick touches, `rules::mode_touches`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn touches(
+    settings: Res<CaRuleSettings>,
+    objects: Res<CaMapObjects>,
+    mut state: ResMut<CaHiredGuns>,
+    mut o: ResMut<CaObjectives>,
+    mut m: ResMut<CaMatch>,
+    roster: Roster,
+    eyes: Query<&MovementState>,
+    mut carries: Query<&mut objectives::CaCarry>,
+    mut banks: Query<&mut CaBank>,
+    mut weights: Query<&mut CustomMovePenalty>,
+    mut stats: Query<&mut CaStats>,
+    mut commands: Commands,
+) {
+    if !m.counting() {
+        state.prev_use.clear();
         return;
     }
-    let h = world.resource::<CaRuleSettings>().hired_guns.clone();
+    let h = &settings.hired_guns;
     let reach = objectives::units(h.pickup_reach);
     let half = objectives::player_half();
     let mut banked_now = false;
-    for p in objectives::takers(world) {
+    let mut edits = Pockets::default();
+    let weigh = |edits: &mut Pockets, carries: &Query<&mut objectives::CaCarry>, weights: &Query<&mut CustomMovePenalty>, e: Entity| {
+        let bars = objectives::carry_in(&edits.carry, carries, e).bars;
+        let p = h.penalty(bars);
+        let now = edits.weight.get(weights, e);
+        if p == 0.0 {
+            if now.is_some() {
+                edits.weight.set(e, None);
+            }
+        } else if now != Some(CustomMovePenalty(p)) {
+            edits.weight.set(e, Some(CustomMovePenalty(p)));
+        }
+    };
+    for p in roster.takers() {
         let pressed = {
-            let mut g = world.resource_mut::<CaHiredGuns>();
-            let before = g.prev_use.insert(p.e, p.intent.use_key).unwrap_or(false);
+            let before = state.prev_use.insert(p.e, p.intent.use_key).unwrap_or(false);
             p.intent.use_key && !before
         };
+        let mut taken: Vec<u32> = Vec::new();
         // A bar by use: the nearest the view ray meets.
         if pressed {
-            let eye = p.at + world.get::<MovementState>(p.e).map_or(Vec3::ZERO, |s| s.eye_offset);
+            let eye = p.at + eyes.get(p.e).map_or(Vec3::ZERO, |s| s.eye_offset);
             let dir = crate::weapon::aim_of(p.intent.yaw, p.intent.pitch) * Vec3::NEG_Z;
             let bar = objectives::units(BAR_HALF);
-            let aimed = world
-                .resource::<CaObjectives>()
+            let aimed = o
                 .bullion
                 .iter()
                 .filter(|b| !b.bag && b.at.distance(p.at) <= reach + 1e-5)
                 .filter_map(|b| inventory::ray_box(eye, dir, b.at - Vec3::splat(bar), b.at + Vec3::splat(bar)).map(|d| (d, b.id)))
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .map(|(_, id)| id);
-            if let Some(id) = aimed {
-                take(world, p.e, id);
-            }
+            taken.extend(aimed);
+        }
+        for id in taken {
+            take_in(&mut o, &mut edits, &carries, p.e, id);
+            weigh(&mut edits, &carries, &weights, p.e);
         }
         // Bags by touch.
         let bag = objectives::units(BAG_HALF);
-        let touched: Vec<u32> = world
-            .resource::<CaObjectives>()
+        let touched: Vec<u32> = o
             .bullion
             .iter()
             .filter(|b| b.bag && b.at.distance(p.at) <= reach + 1e-5)
@@ -322,65 +375,62 @@ fn touches(world: &mut World) {
             .map(|b| b.id)
             .collect();
         for id in touched {
-            take(world, p.e, id);
+            take_in(&mut o, &mut edits, &carries, p.e, id);
+            weigh(&mut edits, &carries, &weights, p.e);
         }
         // The bank.
-        let carry = objectives::carry(world, p.e);
+        let carry = objectives::carry_in(&edits.carry, &carries, p.e);
         if carry.money > 0 {
-            let in_bank = world
-                .resource::<CaMapObjects>()
+            let in_bank = objects
                 .banks
                 .iter()
                 .any(|b| b.team.is_none_or(|t| t == p.team) && b.area.touches(p.at, half));
             if in_bank {
-                bank(world, p.e, p.team, carry);
+                // M11.5: the whole pocket into the bank.
+                pay_in(&mut edits.bank, &banks, p.e, carry.money);
+                objectives::add_stats(&mut stats, &mut commands, p.e, move |s| {
+                    s.mission_points += carry.money;
+                    s.bars_banked += carry.bars;
+                });
+                if let Some(i) = side(p.team) {
+                    o.banked[i] += carry.bars;
+                }
+                let mut c = carry;
+                c.bars = 0;
+                c.money = 0;
+                objectives::set_carry_in(&mut edits.carry, p.e, c);
+                weigh(&mut edits, &carries, &weights, p.e);
+                info!("team {} banked {} bars", p.team, carry.bars);
                 banked_now = true;
             }
         }
     }
-    count_pockets(world);
-    if banked_now {
-        let o = world.resource::<CaObjectives>();
-        if o.banked[0] + o.banked[1] >= o.placed && o.bullion.is_empty() {
-            let mut m = world.resource_mut::<CaMatch>();
-            if !m.decided() {
-                m.end_requested = true;
-            }
+    // Every team's bars in pockets.
+    let mut n = [0u32; 2];
+    for (e, t) in roster.players() {
+        if let Some(i) = side(t) {
+            n[i] += objectives::carry_in(&edits.carry, &carries, e).bars;
         }
     }
+    if o.in_pockets != n {
+        o.in_pockets = n;
+    }
+    if banked_now && o.banked[0] + o.banked[1] >= o.placed && o.bullion.is_empty() && !m.decided() {
+        m.end_requested = true;
+    }
+    edits.carry.apply(&mut carries, &mut commands);
+    edits.bank.apply(&mut banks, &mut commands);
+    edits.weight.apply(&mut weights, &mut commands);
 }
 
-/// `e` takes item `id` whole.
-fn take(world: &mut World, e: Entity, id: u32) {
-    let item = {
-        let mut o = world.resource_mut::<CaObjectives>();
-        let Some(i) = o.bullion.iter().position(|b| b.id == id) else { return };
-        o.bullion.remove(i)
-    };
-    let mut c = objectives::carry(world, e);
+/// `take` in a system: `e` takes item `id` whole (`touches` weighs it).
+fn take_in(o: &mut ResMut<CaObjectives>, edits: &mut Pockets, carries: &Query<&mut objectives::CaCarry>, e: Entity, id: u32) {
+    let Some(i) = o.bullion.iter().position(|b| b.id == id) else { return };
+    let item = o.bullion.remove(i);
+    let mut c = objectives::carry_in(&edits.carry, carries, e);
     c.bars += item.bars;
     c.money += item.money;
-    objectives::set_carry(world, e, c);
-    weigh(world, e);
-}
-
-/// M11.5: the whole pocket into the bank.
-fn bank(world: &mut World, e: Entity, team: u8, carry: objectives::CaCarry) {
-    pay(world, e, carry.money);
-    {
-        let mut s = stats(world, e);
-        s.mission_points += carry.money;
-        s.bars_banked += carry.bars;
-    }
-    if let Some(i) = side(team) {
-        world.resource_mut::<CaObjectives>().banked[i] += carry.bars;
-    }
-    let mut c = carry;
-    c.bars = 0;
-    c.money = 0;
-    objectives::set_carry(world, e, c);
-    weigh(world, e);
-    info!("team {team} banked {} bars", carry.bars);
+    objectives::set_carry_in(&mut edits.carry, e, c);
 }
 
 /// A death in any phase: the pocket drops as a bag in a real round's live

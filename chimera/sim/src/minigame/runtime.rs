@@ -703,7 +703,7 @@ pub(super) fn plugin(app: &mut App) {
             (
                 (
                     join,
-                    mode::flow::update,
+                    super::ladder::per_tick(),
                     step_phases,
                     respawn_dead,
                     crate::spawning::hold_the_dead,
@@ -713,7 +713,7 @@ pub(super) fn plugin(app: &mut App) {
                 )
                     .chain()
                     .in_set(SimSet::Rules),
-                (handle_deaths, mode::flow::touches).chain().after(crate::core::apply_damage),
+                handle_deaths.after(crate::core::apply_damage),
             )
                 .run_if(crate::core::authoritative)
                 .run_if(on),

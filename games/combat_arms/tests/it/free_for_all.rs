@@ -316,3 +316,27 @@ fn hunted_spawns() {
     assert!(at(&sim, p).xz().distance(round.xz()) < 0.05, "round: {}", at(&sim, p));
 }
 
+
+/// A mode's per-tick system runs only in its mode (`mode::mode_is`):
+/// Hunted's turns a fist kit's loadout into the fist within a tick; in
+/// Team Death Match the same mark stays and the loadout with it.
+#[test]
+fn a_modes_tick_runs_only_in_its_mode() {
+    use combat_arms::game::rules::hunted::CaFistKit;
+    for (mode, runs) in [("HG", true), ("TDM", false)] {
+        let mut sim = game(mode, 12);
+        let p = join(&mut sim, JSF);
+        join(&mut sim, CREED);
+        until_live(&mut sim);
+        sim.ticks(2);
+        let before = weapons(&sim, p);
+        assert!(!before.is_empty(), "{mode}: a loadout");
+        sim.app.world_mut().entity_mut(p).insert(CaFistKit);
+        sim.ticks(2);
+        let kept = sim.app.world().get::<CaFistKit>(p).is_some();
+        assert_eq!(!kept, runs, "{mode}: the kit mark {}", if kept { "kept" } else { "taken" });
+        if !runs {
+            assert_eq!(weapons(&sim, p), before, "{mode}: the loadout left alone");
+        }
+    }
+}

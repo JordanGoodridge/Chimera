@@ -51,12 +51,14 @@ use bevy::prelude::*;
 
 use super::{
     CAPTURE_THE_FLAG, CaMode, CaRuleSettings, Hooks, NO_HOOKS, Panel, RoundTime, ScoreOrder, Spawns, Teams,
-    objectives::{self, CaCarry, CaObjectives, Flag, FlagAt},
+    objectives::{self, CaCarry, CaObjectives, Edits, Flag, FlagAt, Roster, add_stats, carry_in, set_carry_in},
     objects::CaMapObjects,
-    scoring::{personal, stats},
-    state::{CaMatch, Death, DeathKind, Phase, enemy, side},
+    scoring::personal,
+    state::{CaMatch, CaStats, Death, DeathKind, Phase, enemy, side},
 };
-use crate::core::{DamageKind, Died, SimClock};
+use crate::core::{DamageKind, Died, Intent, SimClock};
+use avian3d::prelude::SpatialQuery;
+use std::ops::DerefMut;
 
 /// The flags' and points' game type.
 pub const FAMILY: &str = "Capturetheflag";
@@ -79,7 +81,6 @@ pub const MODE: CaMode = CaMode {
         match_end: |w| Some(w.resource::<CaMatch>().winner),
         hooks: Hooks {
             setup,
-            update,
             died,
             round_end: |w| {
                 let carriers = w.resource::<CaFlagCarriers>().0;
@@ -138,9 +139,8 @@ fn setup(world: &mut World) {
 }
 
 /// The flag's box half-extents (its object's, else the default).
-fn flag_half(world: &World, team: u8) -> Vec3 {
-    world
-        .resource::<CaMapObjects>()
+fn flag_half(objects: &CaMapObjects, team: u8) -> Vec3 {
+    objects
         .flags
         .iter()
         .find(|f| f.team == team)
@@ -148,29 +148,47 @@ fn flag_half(world: &World, team: u8) -> Vec3 {
 }
 
 /// Send `team`'s flag home.
-fn send_home(world: &mut World, team: u8) {
-    let mut o = world.resource_mut::<CaObjectives>();
+fn send_home(o: &mut impl DerefMut<Target = CaObjectives>, team: u8) {
     if let Some(f) = o.flags.iter_mut().find(|f| f.team == team) {
         f.at = FlagAt::Home;
     }
 }
 
-/// Drop `team`'s flag at `at` (moved down to the floor), or send it home
-/// when `home`.
-fn drop_flag(world: &mut World, team: u8, at: Vec3, home: bool) {
+/// Drop `team`'s flag on `floor` (going home at `returns`), or send it
+/// home when `floor` is None.
+fn drop_flag_at(
+    carriers: &mut impl DerefMut<Target = CaFlagCarriers>,
+    o: &mut impl DerefMut<Target = CaObjectives>,
+    team: u8,
+    floor: Option<(Vec3, f64)>,
+) {
     if let Some(i) = side(team) {
-        world.resource_mut::<CaFlagCarriers>().0[i] = None;
+        carriers.0[i] = None;
     }
-    if home {
-        send_home(world, team);
+    let Some((floor, returns)) = floor else {
+        send_home(o, team);
         return;
-    }
-    let floor = objectives::floor_below(world, at);
-    let returns = world.resource::<SimClock>().now + world.resource::<CaRuleSettings>().objectives.flag_return as f64;
-    let mut o = world.resource_mut::<CaObjectives>();
+    };
     if let Some(f) = o.flags.iter_mut().find(|f| f.team == team) {
         f.at = FlagAt::Dropped { at: floor, returns };
     }
+}
+
+/// When a flag dropped now goes home.
+fn returns_at(clock: &SimClock, settings: &CaRuleSettings) -> f64 {
+    clock.now + settings.objectives.flag_return as f64
+}
+
+/// Drop `team`'s flag at `at` (moved down to the floor), or send it home
+/// when `home`.
+fn drop_flag(world: &mut World, team: u8, at: Vec3, home: bool) {
+    let floor = (!home).then(|| {
+        let floor = objectives::floor_below(world, at);
+        (floor, returns_at(world.resource(), world.resource()))
+    });
+    world.resource_scope::<CaFlagCarriers, _>(|world, mut carriers| {
+        drop_flag_at(&mut carriers, &mut world.resource_mut::<CaObjectives>(), team, floor);
+    });
 }
 
 /// A carrier's death drops the flag (a kill zone sends it home).
@@ -184,39 +202,57 @@ fn died(world: &mut World, d: &Died) {
     drop_flag(world, team, at, kill_zone);
 }
 
-/// Carriers, return timers, touches and captures.
-fn update(world: &mut World) {
-    let now = world.resource::<SimClock>().now;
+/// Carriers, return timers, touches and captures (the mode's per-tick
+/// system, `rules::mode_updates`; Clan Capture the Flag's too).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn update(
+    clock: Res<SimClock>,
+    settings: Res<CaRuleSettings>,
+    objects: Res<CaMapObjects>,
+    mut carriers: ResMut<CaFlagCarriers>,
+    mut o: ResMut<CaObjectives>,
+    mut m: ResMut<CaMatch>,
+    places: Query<(&Transform, Has<crate::core::Dead>)>,
+    roster: Roster,
+    spatial: Option<SpatialQuery>,
+    characters: Query<Entity, With<Intent>>,
+    mut carries: Query<&mut CaCarry>,
+    mut stats: Query<&mut CaStats>,
+    mut commands: Commands,
+) {
+    let now = clock.now;
     // Carriers: their last living place; one gone (left) drops the flag.
-    let carriers = world.resource::<CaFlagCarriers>().0;
-    for (i, c) in carriers.iter().enumerate() {
+    let snapshot = carriers.0;
+    for (i, c) in snapshot.iter().enumerate() {
         let Some((e, last)) = *c else { continue };
         let team = i as u8 + 1;
-        match world.get::<Transform>(e) {
-            Some(t) if world.get::<crate::core::Dead>(e).is_none() => {
-                let at = t.translation;
-                world.resource_mut::<CaFlagCarriers>().0[i] = Some((e, at));
+        match places.get(e) {
+            Ok((t, false)) => carriers.0[i] = Some((e, t.translation)),
+            Ok(_) => {}
+            Err(_) => {
+                let floor = objectives::floor_below_in(spatial.as_ref(), &characters, last);
+                let returns = returns_at(&clock, &settings);
+                drop_flag_at(&mut carriers, &mut o, team, Some((floor, returns)));
             }
-            Some(_) => {}
-            None => drop_flag(world, team, last, false),
         }
     }
     // Return timers.
-    let expired: Vec<u8> = world
-        .resource::<CaObjectives>()
+    let expired: Vec<u8> = o
         .flags
         .iter()
         .filter(|f| matches!(f.at, FlagAt::Dropped { returns, .. } if now + 1e-9 >= returns))
         .map(|f| f.team)
         .collect();
     for team in expired {
-        send_home(world, team);
+        send_home(&mut o, team);
     }
     // Touches.
     let half = objectives::player_half();
-    for p in objectives::takers(world) {
-        let flags = world.resource::<CaObjectives>().flags.clone();
-        let carry = objectives::carry(world, p.e);
+    let goal = settings.goal() as i32;
+    let mut carry = Edits::default();
+    for p in roster.takers() {
+        let flags = o.flags.clone();
+        let held = carry_in(&carry, &carries, p.e);
         for f in &flags {
             let at = match f.at {
                 FlagAt::Home => f.home,
@@ -225,97 +261,81 @@ fn update(world: &mut World) {
             };
             let area = super::objects::ObjBox {
                 centre: at,
-                half: flag_half(world, f.team),
+                half: flag_half(&objects, f.team),
             };
             if !area.touches(p.at, half) {
                 continue;
             }
-            if f.team != p.team && carry.flag.is_none() {
-                take(world, p.e, p.team, f.team, p.at);
+            if f.team != p.team && held.flag.is_none() {
+                // `p` takes the enemy flag.
+                if let Some(taken) = o.flags.iter_mut().find(|x| x.team == f.team) {
+                    taken.at = FlagAt::Carried;
+                    if let Some(i) = side(f.team) {
+                        carriers.0[i] = Some((p.e, p.at));
+                    }
+                    let mut c = carry_in(&carry, &carries, p.e);
+                    c.flag = Some(f.team);
+                    set_carry_in(&mut carry, p.e, c);
+                }
                 break;
             }
             if f.team == p.team && matches!(f.at, FlagAt::Dropped { .. }) {
-                send_home(world, f.team);
-                if credits(world) {
+                send_home(&mut o, f.team);
+                if credits(&m) {
                     if let Some(i) = side(p.team) {
-                        world.resource_mut::<CaMatch>().returns[i] += 1;
+                        m.returns[i] += 1;
                     }
-                    stats(world, p.e).returns += 1;
+                    add_stats(&mut stats, &mut commands, p.e, |s| s.returns += 1);
                 }
             }
         }
-        capture(world, p.e, p.team, p.at);
+        // A carrier of the enemy flag at its own flag zone with its own
+        // flag home captures.
+        let c = carry_in(&carry, &carries, p.e);
+        let Some(flag) = c.flag else { continue };
+        if flag == p.team || !credits(&m) {
+            continue;
+        }
+        let own_home = o.flag(p.team).is_none_or(|f| f.at == FlagAt::Home);
+        let in_zone = objects
+            .flag_zones
+            .iter()
+            .any(|z| z.team == p.team && z.area.touches(p.at, half));
+        if !own_home || !in_zone {
+            continue;
+        }
+        let mut cleared = c;
+        cleared.flag = None;
+        set_carry_in(&mut carry, p.e, cleared);
+        if let Some(i) = side(flag) {
+            carriers.0[i] = None;
+        }
+        send_home(&mut o, flag);
+        add_stats(&mut stats, &mut commands, p.e, |s| s.captures += 1);
+        let Some(i) = side(p.team) else { continue };
+        m.score[i] += 1;
+        // Every capture that leaves a team at G or more re-picks the
+        // winner: the team with more captures, an equal count keeping the
+        // old one (Corrections 2026-10-22, 15; the capturer when there is
+        // none).
+        if m.score[i] >= goal {
+            let w = match m.score[0].cmp(&m.score[1]) {
+                std::cmp::Ordering::Greater => super::state::ALPHA,
+                std::cmp::Ordering::Less => super::state::BRAVO,
+                std::cmp::Ordering::Equal => m.winner.unwrap_or(p.team),
+            };
+            m.win(w);
+        }
+        info!("flag captured by team {}: {:?}", p.team, m.score);
     }
+    carry.apply(&mut carries, &mut commands);
 }
 
 /// Captures and returns count in every phase of the match but the
 /// warm-up (Open question 34, Quirk 13: a capture in the round-over hold
 /// still scores).
-fn credits(world: &World) -> bool {
-    let m = world.resource::<CaMatch>();
+fn credits(m: &CaMatch) -> bool {
     !m.warmup && !matches!(m.phase, Phase::Waiting | Phase::Starting | Phase::MatchOver)
-}
-
-/// `e` (on `team`) takes `flag`'s flag.
-fn take(world: &mut World, e: Entity, _team: u8, flag: u8, at: Vec3) {
-    {
-        let mut o = world.resource_mut::<CaObjectives>();
-        let Some(f) = o.flags.iter_mut().find(|f| f.team == flag) else { return };
-        f.at = FlagAt::Carried;
-    }
-    if let Some(i) = side(flag) {
-        world.resource_mut::<CaFlagCarriers>().0[i] = Some((e, at));
-    }
-    let mut c = objectives::carry(world, e);
-    c.flag = Some(flag);
-    objectives::set_carry(world, e, c);
-}
-
-/// `e` (on `team`), carrying the enemy flag, at its own flag zone with its
-/// own flag home, captures.
-fn capture(world: &mut World, e: Entity, team: u8, at: Vec3) {
-    let c = objectives::carry(world, e);
-    let Some(flag) = c.flag else { return };
-    if flag == team || !credits(world) {
-        return;
-    }
-    let own_home = world
-        .resource::<CaObjectives>()
-        .flag(team)
-        .is_none_or(|f| f.at == FlagAt::Home);
-    let half = objectives::player_half();
-    let in_zone = world
-        .resource::<CaMapObjects>()
-        .flag_zones
-        .iter()
-        .any(|z| z.team == team && z.area.touches(at, half));
-    if !own_home || !in_zone {
-        return;
-    }
-    let goal = world.resource::<CaRuleSettings>().goal() as i32;
-    let mut cleared = c;
-    cleared.flag = None;
-    objectives::set_carry(world, e, cleared);
-    if let Some(i) = side(flag) {
-        world.resource_mut::<CaFlagCarriers>().0[i] = None;
-    }
-    send_home(world, flag);
-    stats(world, e).captures += 1;
-    let Some(i) = side(team) else { return };
-    let mut m = world.resource_mut::<CaMatch>();
-    m.score[i] += 1;
-    // Every capture that leaves a team at G or more re-picks the winner:
-    // the team with more captures, an equal count keeping the old one
-    // (Corrections 2026-10-22, 15; the capturer when there is none).
-    if m.score[i] >= goal {
-        let w = match m.score[0].cmp(&m.score[1]) {
-            std::cmp::Ordering::Greater => super::state::ALPHA,
-            std::cmp::Ordering::Less => super::state::BRAVO,
-            std::cmp::Ordering::Equal => m.winner.unwrap_or(team),
-        };
-        m.win(w);
-    }
-    info!("flag captured by team {team}: {:?}", m.score);
 }
 
 fn on_death(world: &mut World, d: &Death) {

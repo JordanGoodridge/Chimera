@@ -41,16 +41,22 @@
 //! the show; the defuse is the use key inside the site's box (no look or
 //! use-range test).
 
-use bevy::prelude::*;
+use bevy::{
+    ecs::{entity::Entities, system::SystemParam},
+    prelude::*,
+};
 
 use super::{
     CaRuleSettings,
-    objectives::{self, ActionKind, BOMB, CaObjectives, Planted},
+    objectives::{self, ActionKind, BOMB, CaAction, CaCarry, CaObjectives, Edits, Planted, Roster},
     objects::CaMapObjects,
     scoring::stats,
-    state::CaMatch,
+    state::{CaMatch, CaStats},
 };
-use crate::core::SimClock;
+use crate::{
+    core::SimClock,
+    weapon::{Inventory, Weapon},
+};
 
 /// Who planted this round's bomb (the server's; credited at the
 /// detonation).
@@ -60,7 +66,12 @@ pub struct CaPlanter(pub Option<Entity>);
 /// The sites of `family` (S&D's `Doobic`, Bombing Run's `Sabotage`); every
 /// site when the map has none of that family.
 pub fn zones(world: &World, family: &str) -> Vec<(usize, super::objects::BombZone)> {
-    let all = &world.resource::<CaMapObjects>().bomb_zones;
+    zones_in(world.resource::<CaMapObjects>(), family)
+}
+
+/// `zones` of the map's objects.
+pub fn zones_in(objects: &CaMapObjects, family: &str) -> Vec<(usize, super::objects::BombZone)> {
+    let all = &objects.bomb_zones;
     let mine: Vec<_> = all.iter().cloned().enumerate().filter(|(_, z)| z.family == family).collect();
     if mine.is_empty() {
         all.iter().cloned().enumerate().collect()
@@ -70,94 +81,123 @@ pub fn zones(world: &World, family: &str) -> Vec<(usize, super::objects::BombZon
 }
 
 /// The round counts and is undecided.
-fn open(world: &World) -> bool {
-    let m = world.resource::<CaMatch>();
+fn open(m: &CaMatch) -> bool {
     m.counting() && m.winner.is_none()
 }
 
-/// One tick of planting, defusing and the fuse on `family`'s sites.
-pub fn update(world: &mut World, family: &str) {
-    let now = world.resource::<SimClock>().now;
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
-    let sites = zones(world, family);
-    let players = objectives::takers(world);
-    let planted = world.resource::<CaObjectives>().planted;
-    // Plants.
-    for p in &players {
-        let site = sites.iter().find(|(_, z)| {
-            z.defusers != p.team && z.area.contains(p.at, objectives::units(o.plant_margin))
-        });
-        let on = planted.is_none()
-            && open(world)
-            && p.intent.fire
-            && site.is_some()
-            && objectives::holding(world, p.e, BOMB);
-        if objectives::hold_action(world, p.e, ActionKind::Plant, o.bomb_plant, on)
-            && let Some((index, z)) = site
-        {
-            let fuse = if z.detonate_time > 0.0 { z.detonate_time } else { o.bomb_fuse };
-            world.resource_mut::<CaObjectives>().planted = Some(Planted {
-                zone: *index,
-                number: z.number,
-                at: p.at,
-                team: p.team,
-                detonates: now + fuse as f64,
+/// What a tick of the bomb reads and writes (a mode's per-tick system's:
+/// S&D's, Bombing Run's `bombs`).
+#[derive(SystemParam)]
+pub struct Bombs<'w, 's> {
+    clock: Res<'w, SimClock>,
+    settings: Res<'w, CaRuleSettings>,
+    objects: Res<'w, CaMapObjects>,
+    objectives: ResMut<'w, CaObjectives>,
+    m: ResMut<'w, CaMatch>,
+    planter: ResMut<'w, CaPlanter>,
+    entities: &'w Entities,
+    roster: Roster<'w, 's>,
+    inventories: Query<'w, 's, &'static mut Inventory>,
+    weapons: Query<'w, 's, &'static Weapon>,
+    actions: Query<'w, 's, &'static mut CaAction>,
+    carries: Query<'w, 's, &'static mut CaCarry>,
+    stats: Query<'w, 's, &'static mut CaStats>,
+    commands: Commands<'w, 's>,
+}
+
+impl Bombs<'_, '_> {
+    /// One tick of planting, defusing and the fuse on `family`'s sites.
+    pub fn tick(&mut self, family: &str) {
+        let mut gauges = Edits::default();
+        let mut carry = Edits::default();
+        self.tick_with(family, &mut gauges, &mut carry);
+        gauges.apply(&mut self.actions, &mut self.commands);
+        carry.apply(&mut self.carries, &mut self.commands);
+    }
+
+    fn tick_with(&mut self, family: &str, gauges: &mut Edits<CaAction>, carry: &mut Edits<CaCarry>) {
+        let now = self.clock.now;
+        let dt = self.clock.dt() as f32;
+        let o = self.settings.objectives.clone();
+        let sites = zones_in(&self.objects, family);
+        let players = self.roster.takers();
+        let planted = self.objectives.planted;
+        // Plants.
+        for p in &players {
+            let site = sites.iter().find(|(_, z)| {
+                z.defusers != p.team && z.area.contains(p.at, objectives::units(o.plant_margin))
             });
-            if let Some(ends) = &mut world.resource_mut::<CaMatch>().round_ends {
-                *ends += fuse as f64;
-            }
-            world.resource_mut::<CaPlanter>().0 = Some(p.e);
-            objectives::take_weapon(world, p.e, BOMB);
-            let mut c = objectives::carry(world, p.e);
-            c.bomb = false;
-            objectives::set_carry(world, p.e, c);
-            // S&D keeps no plant statistic (Corrections 2026-10-22, 13);
-            // Bombing Run counts plants.
-            if family == super::bombing_run::FAMILY {
-                stats(world, p.e).plants += 1;
-            }
-            info!("bomb planted at site {} ({:?})", z.number, p.e);
-            return;
-        }
-    }
-    let Some(bomb) = planted else { return };
-    // Defuses.
-    let Some(z) = world.resource::<CaMapObjects>().bomb_zones.get(bomb.zone).cloned() else {
-        world.resource_mut::<CaObjectives>().planted = None;
-        return;
-    };
-    let length = if z.defuse_time > 0.0 { z.defuse_time } else { o.bomb_defuse };
-    for p in &players {
-        let on = z.can_defuse && p.team == z.defusers && p.intent.use_key && z.area.contains(p.at, 0.0);
-        if objectives::hold_action(world, p.e, ActionKind::Defuse, length, on) {
+            let on = planted.is_none()
+                && open(&self.m)
+                && p.intent.fire
+                && site.is_some()
+                && objectives::holding_in(self.inventories.get(p.e).ok(), &self.weapons, BOMB);
+            if objectives::hold_action_in(gauges, &self.actions, dt, p.e, ActionKind::Plant, o.bomb_plant, on)
+                && let Some((index, z)) = site
             {
-                let mut o = world.resource_mut::<CaObjectives>();
-                o.planted = None;
-                o.defused = Some(bomb.at);
+                let fuse = if z.detonate_time > 0.0 { z.detonate_time } else { o.bomb_fuse };
+                self.objectives.planted = Some(Planted {
+                    zone: *index,
+                    number: z.number,
+                    at: p.at,
+                    team: p.team,
+                    detonates: now + fuse as f64,
+                });
+                if let Some(ends) = &mut self.m.round_ends {
+                    *ends += fuse as f64;
+                }
+                self.planter.0 = Some(p.e);
+                objectives::take_weapon_in(
+                    self.inventories.get_mut(p.e).ok().as_deref_mut(),
+                    &self.weapons,
+                    &mut self.commands,
+                    BOMB,
+                );
+                let mut c = objectives::carry_in(carry, &self.carries, p.e);
+                c.bomb = false;
+                objectives::set_carry_in(carry, p.e, c);
+                // S&D keeps no plant statistic (Corrections 2026-10-22, 13);
+                // Bombing Run counts plants.
+                if family == super::bombing_run::FAMILY {
+                    objectives::add_stats(&mut self.stats, &mut self.commands, p.e, |s| s.plants += 1);
+                }
+                info!("bomb planted at site {} ({:?})", z.number, p.e);
+                return;
             }
-            if open(world) {
-                stats(world, p.e).defuses += 1;
-                world.resource_mut::<CaMatch>().win(z.defusers);
-                info!("bomb defused by {:?}", p.e);
-            }
+        }
+        let Some(bomb) = planted else { return };
+        // Defuses.
+        let Some(z) = self.objects.bomb_zones.get(bomb.zone).cloned() else {
+            self.objectives.planted = None;
             return;
-        }
-    }
-    // The fuse.
-    if now + 1e-9 >= bomb.detonates {
-        {
-            let mut o = world.resource_mut::<CaObjectives>();
-            o.planted = None;
-            o.detonation = Some((z.area.centre, now));
-        }
-        if open(world) {
-            if let Some(planter) = world.resource::<CaPlanter>().0
-                && world.get_entity(planter).is_ok()
-            {
-                stats(world, planter).detonations += 1;
+        };
+        let length = if z.defuse_time > 0.0 { z.defuse_time } else { o.bomb_defuse };
+        for p in &players {
+            let on = z.can_defuse && p.team == z.defusers && p.intent.use_key && z.area.contains(p.at, 0.0);
+            if objectives::hold_action_in(gauges, &self.actions, dt, p.e, ActionKind::Defuse, length, on) {
+                self.objectives.planted = None;
+                self.objectives.defused = Some(bomb.at);
+                if open(&self.m) {
+                    objectives::add_stats(&mut self.stats, &mut self.commands, p.e, |s| s.defuses += 1);
+                    self.m.win(z.defusers);
+                    info!("bomb defused by {:?}", p.e);
+                }
+                return;
             }
-            world.resource_mut::<CaMatch>().win(bomb.team);
-            info!("bomb detonated");
+        }
+        // The fuse.
+        if now + 1e-9 >= bomb.detonates {
+            self.objectives.planted = None;
+            self.objectives.detonation = Some((z.area.centre, now));
+            if open(&self.m) {
+                if let Some(planter) = self.planter.0
+                    && self.entities.contains(planter)
+                {
+                    objectives::add_stats(&mut self.stats, &mut self.commands, planter, |s| s.detonations += 1);
+                }
+                self.m.win(bomb.team);
+                info!("bomb detonated");
+            }
         }
     }
 }

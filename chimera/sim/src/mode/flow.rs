@@ -44,14 +44,14 @@
 //! round number counted as rounds start (`count_at_start`: at the
 //! mission start, before `MissionStart`).
 //!
-//! The systems a game chains into its rules: `mission_update`, `update`
-//! (the mode's objects, before it) and `touches` (after the tick's
-//! deaths); a game that does its own work around the step calls
+//! The system a game chains into its rules: `mission_update` (the mode's
+//! own per-tick systems before it, its touches after the tick's deaths:
+//! `mode::mode_is`); a game that does its own work around the step calls
 //! `step_game` from its rules' system instead.
 
 use bevy::prelude::*;
 
-use super::{Flow, FlowEvent, Mode, Span, assign_team_in, current, current_mode, current_of, state::*};
+use super::{Flow, FlowEvent, Mode, Span, assign_team_in, current, current_of, state::*};
 use crate::core::{Dead, FreezeTime, SimClock};
 
 /// The phases' frame counter (one step per `Flow::frame`).
@@ -91,21 +91,6 @@ fn due(world: &mut World, now: f64, flow: Flow) -> bool {
     }
     frames.0 = due;
     true
-}
-
-/// The mode's own update (its objects), every server tick before the
-/// phases step.
-pub fn update(world: &mut World) {
-    if let Some(mode) = current_mode(world) {
-        (mode.hooks.update)(world);
-    }
-}
-
-/// The mode's touches, after the tick's deaths.
-pub fn touches(world: &mut World) {
-    if let Some(mode) = current_mode(world) {
-        (mode.hooks.touches)(world);
-    }
 }
 
 /// One step: at most one phase on, except where a phase starts the next

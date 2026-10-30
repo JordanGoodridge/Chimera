@@ -1197,7 +1197,16 @@ pub struct QuarantineNumbers {
 }
 
 pub fn quarantine(world: &World) -> QuarantineNumbers {
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
+    quarantine_in(
+        world.get_resource::<CaMission>(),
+        world.resource::<CaRuleSettings>(),
+        world.resource::<super::data::CaData>(),
+    )
+}
+
+/// `quarantine` from the resources (a system's).
+pub fn quarantine_in(mission: Option<&CaMission>, settings: &CaRuleSettings, data: &super::data::CaData) -> QuarantineNumbers {
+    let o = settings.objectives.clone();
     let mut n = QuarantineNumbers {
         min_hosts: o.min_hosts,
         selection_rate: o.selection_rate,
@@ -1213,8 +1222,7 @@ pub fn quarantine(world: &World) -> QuarantineNumbers {
         infected_weapons: Vec::new(),
         host_weapons: Vec::new(),
     };
-    let data = world.resource::<super::data::CaData>();
-    if let Some(q) = installed(world).and_then(|m| m.quarantine.clone()) {
+    if let Some(q) = mission.and_then(|m| m.0.clone()).and_then(|m| m.quarantine.clone()) {
         n.min_hosts = q.min_hosts.max(0) as u32;
         n.selection_rate = q.selection_rate as f32;
         if let Some((tick, heal, wait)) = q.heal {
@@ -1237,8 +1245,13 @@ pub fn quarantine(world: &World) -> QuarantineNumbers {
 /// Spy Hunt's numbers (F4.2): intel items, the stage-2 time (s), the
 /// camera hold (s).
 pub fn spy_hunt(world: &World) -> (u32, f32, f32) {
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
-    match installed(world).and_then(|m| m.spy_hunt.clone()) {
+    spy_hunt_in(world.get_resource::<CaMission>(), world.resource::<CaRuleSettings>())
+}
+
+/// `spy_hunt` from the resources (a system's).
+pub fn spy_hunt_in(mission: Option<&CaMission>, settings: &CaRuleSettings) -> (u32, f32, f32) {
+    let o = &settings.objectives;
+    match mission.and_then(|m| m.0.clone()).and_then(|m| m.spy_hunt.clone()) {
         Some(s) => (s.intel_total.max(0) as u32, s.stage2_time as f32, s.agent_camera_hold as f32),
         None => (o.intel_count, o.stage2_time, o.agent_camera_hold),
     }
@@ -1248,8 +1261,13 @@ pub fn spy_hunt(world: &World) -> (u32, f32, f32) {
 /// `LastOccupyBonus` (a mission without the section: the built-in 120 s
 /// and 50).
 pub fn seize(world: &World) -> (f32, i32) {
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
-    match installed(world).map(|m| m.seize.clone().unwrap_or_default()) {
+    seize_in(world.get_resource::<CaMission>(), world.resource::<CaRuleSettings>())
+}
+
+/// `seize` from the resources (a system's).
+pub fn seize_in(mission: Option<&CaMission>, settings: &CaRuleSettings) -> (f32, i32) {
+    let o = &settings.objectives;
+    match mission.and_then(|m| m.0.clone()).map(|m| m.seize.clone().unwrap_or_default()) {
         Some(s) => (s.flag_move_time as f32, s.last_occupy_bonus),
         None => (o.flag_move_time, o.last_occupy_bonus),
     }
@@ -1258,8 +1276,14 @@ pub fn seize(world: &World) -> (f32, i32) {
 /// The use time the mission sets on activate trigger `name`, else our
 /// `seize_time`.
 pub fn activate_time(world: &World, name: &str) -> f32 {
-    let fallback = world.resource::<CaRuleSettings>().objectives.seize_time;
-    installed(world)
+    activate_time_in(world.get_resource::<CaMission>(), world.resource::<CaRuleSettings>(), name)
+}
+
+/// `activate_time` from the resources (a system's).
+pub fn activate_time_in(mission: Option<&CaMission>, settings: &CaRuleSettings, name: &str) -> f32 {
+    let fallback = settings.objectives.seize_time;
+    mission
+        .and_then(|m| m.0.clone())
         .and_then(|m| m.object().activate.iter().find(|(n, _)| n == name).map(|(_, t)| *t as f32))
         .unwrap_or(fallback)
 }

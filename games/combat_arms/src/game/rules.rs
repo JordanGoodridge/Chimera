@@ -20,15 +20,21 @@
 //! whether it respawns, has a warm-up, its forced setup, how it makes
 //! teams (`Teams`: two, free-for-all, everyone Alpha), what a death adds,
 //! its time-out rule, when the match ends; `Hooks` for its objects: the
-//! round's setup, a per-tick update, the round over and its end, a death
-//! in any phase, respawning and holding joiners) plus Combat Arms' own
+//! round's setup, the round over and its end, a death in any phase,
+//! respawning and holding joiners) plus Combat Arms' own
 //! (whether it scales friendly fire, gives assists, shows a timer, its
 //! spawn family (`Spawns`), its round length (`RoundTime`), whether firing
 //! ends protection, its death drops, its score panel and scoreboard
 //! order, what a leaver does and what a leaver's objects do). Every mode
 //! is registered with the runtime (`ModeAppExt::add_modes`, picked by
 //! `ca_mode`), which steps the match (`CaMatch`, the runtime's `Match`)
-//! through its phases with Combat Arms' flow (`flow::FLOW`). The shared
+//! through its phases with Combat Arms' flow (`flow::FLOW`). A mode's
+//! per-tick work (its objects' update before the step, its touches after
+//! the tick's deaths) is its module's systems with declared queries,
+//! gated by the mode playing (`mode::mode_is`) and chained in the rules'
+//! chain (`mode_updates`, `mode_touches`); what builds or removes weapons
+//! or respawns is world work they queue (`Commands`), applied before the
+//! step. The shared
 //! rules, one submodule each:
 //!
 //! - `settings`: the room's and the server file's settings, the shared
@@ -118,7 +124,10 @@ pub mod state;
 pub mod tdm;
 pub mod vip;
 
-use bevy::prelude::*;
+use bevy::{
+    ecs::{schedule::ScheduleConfigs, system::ScheduleSystem},
+    prelude::*,
+};
 use crate::gameplay::GameplayAppExt as _;
 
 pub use crate::mode::{Hooks, Mode, NO_HOOKS, Teams};
@@ -364,6 +373,57 @@ pub fn current_mode(world: &World) -> Option<&'static CaMode> {
 /// A mode by its room key.
 pub fn mode_by_key(key: &str) -> Option<&'static CaMode> {
     MODES.iter().find(|m| m.key == key)
+}
+
+/// Every mode's own per-tick systems (its objects, timers and touches
+/// before the phases step), gated by the mode playing (`mode::mode_is`,
+/// `mode_in`) and chained in the rules' chain where the runtime's update
+/// ran, before `flow::mission_update`: a mode's update writes before the
+/// step that may end its round (plan ecs-cleanup step 4, O1/O4). One mode
+/// plays at a time, so the modes need no sync point between them
+/// (`chain_ignore_deferred`); a mode's own steps are chained with one
+/// (`bombing_run::carry` then `bombs`). A clan mode runs its base mode's
+/// systems, then its own (`clan::ctf_half`, `leaver_ends_round`).
+fn mode_updates() -> ScheduleConfigs<ScheduleSystem> {
+    use crate::mode::{mode_in, mode_is};
+    (
+        (search_destroy::hand_out, search_destroy::bombs)
+            .chain()
+            .distributive_run_if(mode_in(search_destroy::RUNS_IN)),
+        ctf::update.run_if(mode_in(&[CAPTURE_THE_FLAG, CLAN_CTF])),
+        clan::ctf_half.run_if(mode_is(CLAN_CTF)),
+        clan::leaver_ends_round.run_if(mode_in(clan::MODES)),
+        (bombing_run::carry, bombing_run::bombs)
+            .chain()
+            .distributive_run_if(mode_is(BOMBING_RUN)),
+        seize::update.run_if(mode_in(&[SEIZE_AND_SECURE, SQUAD_MATCH_2])),
+        vip::update.run_if(mode_is(VIP_ELIMINATION)),
+        arms_race::update.run_if(mode_is(ARMS_RACE)),
+        hunted::update.run_if(mode_is(HUNTED)),
+        spy_hunt::update.run_if(mode_is(SPY_HUNT)),
+        quarantine::update.run_if(mode_is(QUARANTINE)),
+        hired_guns::update.run_if(mode_is(HIRED_GUNS)),
+        escort::update.run_if(mode_in(escort::RUNS_IN)),
+    )
+        .chain_ignore_deferred()
+        // Never beside a client's clock (run where others are shown,
+        // never with the rules): no order between them is right or wrong.
+        .ambiguous_with(super::characters::client_clock)
+}
+
+/// Every mode's own touches, after the tick's deaths (`scoring::
+/// handle_deaths`) and before `publish`, where the runtime's touches ran;
+/// gated and chained as `mode_updates`.
+fn mode_touches() -> ScheduleConfigs<ScheduleSystem> {
+    use crate::mode::{mode_in, mode_is};
+    (
+        hired_guns::touches.run_if(mode_is(HIRED_GUNS)),
+        escort::touches.run_if(mode_in(escort::RUNS_IN)),
+    )
+        .chain_ignore_deferred()
+        // Never beside a client's clock (run where others are shown,
+        // never with the rules): no order between them is right or wrong.
+        .ambiguous_with(super::characters::client_clock)
 }
 
 fn mode_on(settings: Res<CaRuleSettings>) -> bool {
@@ -639,7 +699,7 @@ impl Plugin for CaRulesPlugin {
                 (
                     (
                         update_team_counts,
-                        crate::mode::flow::update,
+                        mode_updates(),
                         crate::mode::flow::mission_update,
                         spawns::ask_for_respawns,
                         crate::spawning::hold_the_dead,
@@ -656,7 +716,7 @@ impl Plugin for CaRulesPlugin {
                         .after(SimSet::Weapons)
                         .before(crate::core::apply_damage),
                     spawns::firing_ends_protection.after(SimSet::Weapons),
-                    (scoring::log_damage, scoring::handle_deaths, crate::mode::flow::touches, publish)
+                    (scoring::log_damage, scoring::handle_deaths, mode_touches(), publish)
                         .chain()
                         .after(crate::core::apply_damage),
                 )

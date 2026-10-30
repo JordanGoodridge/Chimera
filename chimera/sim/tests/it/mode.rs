@@ -160,7 +160,7 @@ fn sim(key: &'static str) -> Sim {
         .add_modes(kit_game("kit"), &[&DEATHMATCH, &ROUNDS, &WARMUP_ENDS, &FREE_FOR_ALL])
         .add_systems(
             FixedUpdate,
-            (flow::update, flow::mission_update).chain().in_set(SimSet::Rules),
+            flow::mission_update.in_set(SimSet::Rules),
         );
     sim
 }
@@ -523,4 +523,45 @@ fn a_decided_round_is_over_at_once_and_the_next_follows_without_an_intermission(
     until(&mut sim, 1.0, |p| p == Phase::MatchOver);
     let m = sim.app.world().resource::<Match>().clone();
     assert_eq!((m.result, m.round, m.round_wins), (Some(Some(ALPHA)), 3, [0, 2]));
+}
+
+/// A mode's own per-tick systems (`mode::mode_is`): each runs only while
+/// its mode plays, where its game chains it (here before the phases'
+/// step: a tick's update comes before the step it may decide), and
+/// switching the mode switches which one runs.
+#[test]
+fn a_modes_tick_runs_only_while_it_plays_before_the_step() {
+    let mut sim = kit_sim();
+    sim.app
+        .insert_resource(Chosen("rounds"))
+        .init_resource::<Log>()
+        .init_resource::<Match>()
+        .add_modes(kit_game("kit"), &[&DEATHMATCH, &ROUNDS])
+        .add_systems(
+            FixedUpdate,
+            (
+                (|w: &mut World| log(w, "tick deathmatch")).run_if(mode::mode_is(DEATHMATCH.id)),
+                (|w: &mut World| log(w, "tick rounds")).run_if(mode::mode_is(ROUNDS.id)),
+                (|w: &mut World| log(w, "tick either")).run_if(mode::mode_in(&["kit:deathmatch", "kit:rounds"])),
+                flow::mission_update,
+            )
+                .chain()
+                .in_set(SimSet::Rules),
+        );
+    let _a = player(&mut sim, ALPHA);
+    let _b = player(&mut sim, BRAVO);
+    until(&mut sim, 0.2, |p| p == Phase::Starting);
+    log_of(&mut sim);
+    until(&mut sim, 0.2, |p| matches!(p, Phase::Setup { .. }));
+    let log = log_of(&mut sim);
+    // The mission start's tick: the mode's own systems, then the step.
+    let start = log.iter().position(|l| l == "Prepare { first: true }").expect("a mission start");
+    assert_eq!(log[start - 2..start], ["tick rounds", "tick either"], "{log:?}");
+    assert!(!log.iter().any(|l| l == "tick deathmatch"), "{log:?}");
+    sim.app.insert_resource(Chosen("dm"));
+    sim.ticks(1);
+    assert_eq!(log_of(&mut sim)[..2], ["tick deathmatch", "tick either"]);
+    sim.app.insert_resource(Chosen("none"));
+    sim.ticks(1);
+    assert!(log_of(&mut sim).is_empty(), "no mode: none runs");
 }

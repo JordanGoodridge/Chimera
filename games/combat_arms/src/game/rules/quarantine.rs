@@ -72,7 +72,6 @@ pub const MODE: CaMode = CaMode {
         match_end,
         hooks: Hooks {
             setup,
-            update,
             round_over,
             holds_joiner: hosts_chosen,
             counts_joiners: false,
@@ -203,97 +202,171 @@ fn revive_in_place(world: &mut World, e: Entity) {
     world.entity_mut(e).remove::<(spawns::CaAsked, spawns::CaHeld)>();
 }
 
-/// Host selection, the infected's kit and heal, the win tests.
-fn update(world: &mut World) {
-    let now = world.resource::<SimClock>().now;
-    let o = world.resource::<CaRuleSettings>().objectives.clone();
-    let counting = world.resource::<CaMatch>().counting();
-    if !counting {
+/// The heal's view of an infected player (`update`).
+type Healing<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Option<&'static mut CaStill>,
+        &'static Transform,
+        &'static mut Health,
+        &'static crate::core::Intent,
+        Option<&'static super::super::gear::CaLoadout>,
+    ),
+>;
+
+/// Host selection, the infected's kit and heal, the win tests (the mode's
+/// per-tick system, `rules::mode_updates`). The hosts picked this tick are
+/// infected through `Commands` and counted as such by the rest of the tick
+/// (their kit, their stillness, the win test); the kits' weapons are world
+/// work, queued.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn update(
+    clock: Res<SimClock>,
+    mission: Option<Res<super::super::missions::CaMission>>,
+    settings: Res<CaRuleSettings>,
+    data: Res<super::super::data::CaData>,
+    mut state: ResMut<CaQuarantine>,
+    mut m: ResMut<CaMatch>,
+    mut draws: ResMut<objectives::CaDraws>,
+    kits: Query<(Entity, &CaInfectedKit)>,
+    inventories: Query<&crate::weapon::Inventory>,
+    weapons: Query<&crate::weapon::Weapon>,
+    mut sets: ParamSet<(objectives::Roster, Healing)>,
+    mut commands: Commands,
+) {
+    let now = clock.now;
+    let o = &settings.objectives;
+    if !m.counting() {
         return;
     }
-    let n = super::super::missions::quarantine(world);
-    let state = *world.resource::<CaQuarantine>();
+    let n = super::super::missions::quarantine_in(mission.as_deref(), &settings, &data);
     let since = match state.live_since {
         Some(s) => s,
         None => {
-            world.resource_mut::<CaQuarantine>().live_since = Some(now);
+            state.live_since = Some(now);
             now
         }
     };
+    // The hosts picked now, with their new stillness.
+    let mut picked: Vec<(Entity, CaStill)> = Vec::new();
     if !state.picked && now + 1e-9 >= since + o.host_delay as f64 {
-        world.resource_mut::<CaQuarantine>().picked = true;
-        let h = hosts(players(world).len(), n.selection_rate, n.min_hosts);
-        let mut humans: Vec<Entity> = objectives::living(world)
+        state.picked = true;
+        let roster = sets.p0();
+        let h = hosts(roster.players().len(), n.selection_rate, n.min_hosts);
+        let mut humans: Vec<(Entity, Vec3)> = roster
+            .living()
             .into_iter()
             .filter(|p| p.team == ALPHA)
-            .map(|p| p.e)
+            .map(|p| (p.e, p.at))
             .collect();
         if humans.len() <= h {
-            world.resource_mut::<CaMatch>().end_without_winner();
+            m.end_without_winner();
             return;
         }
-        objectives::shuffle(world, &mut humans);
-        for e in humans.into_iter().take(h) {
-            infect(world, e, true);
+        objectives::shuffle_in(&mut draws, &mut humans);
+        let healing = sets.p1();
+        for (e, at) in humans.into_iter().take(h) {
+            let health = healing.get(e).map_or(0.0, |(_, _, h, ..)| h.current);
+            let still = CaStill {
+                at,
+                since: now,
+                next_heal: now,
+                health,
+            };
+            if let Ok(mut ec) = commands.get_entity(e) {
+                ec.try_insert((Team(BRAVO), super::super::movement::CaInfected, still, CaInfectedKit { host: true }));
+            }
+            picked.push((e, still));
         }
     }
     // The infected's weapons only, once the loadout is there.
-    let kits: Vec<(Entity, CaInfectedKit)> = world.query::<(Entity, &CaInfectedKit)>().iter(world).map(|(e, k)| (e, *k)).collect();
-    for (e, kit) in kits {
-        let mut keep = if kit.host { n.host_weapons.clone() } else { n.infected_weapons.clone() };
+    let kit_list: Vec<(Entity, bool)> = kits
+        .iter()
+        .map(|(e, k)| (e, k.host))
+        .chain(picked.iter().map(|(e, _)| (*e, true)))
+        .collect();
+    for (e, host) in kit_list {
+        let mut keep = if host { n.host_weapons.clone() } else { n.infected_weapons.clone() };
         if keep.is_empty() {
             keep.push(super::super::inventory::KNIFE);
         }
-        let ids: Vec<&'static str> = world
-            .get::<crate::weapon::Inventory>(e)
-            .map(|i| {
-                i.weapons
-                    .iter()
-                    .filter_map(|w| world.get::<crate::weapon::Weapon>(*w).map(|w| w.id))
-                    .collect()
-            })
+        let ids: Vec<&'static str> = inventories
+            .get(e)
+            .map(|i| i.weapons.iter().filter_map(|w| weapons.get(*w).ok().map(|w| w.id)).collect())
             .unwrap_or_default();
         if ids.is_empty() {
             continue;
         }
-        for id in &keep {
-            objectives::give_weapon(world, e, id);
-        }
-        for id in ids.into_iter().filter(|id| !keep.contains(id)) {
-            objectives::take_weapon(world, e, id);
-        }
-        world.entity_mut(e).remove::<CaInfectedKit>();
+        commands.queue(move |world: &mut World| {
+            for id in &keep {
+                objectives::give_weapon(world, e, id);
+            }
+            for id in ids.into_iter().filter(|id| !keep.contains(id)) {
+                objectives::take_weapon(world, e, id);
+            }
+            world.entity_mut(e).remove::<CaInfectedKit>();
+        });
     }
     // The heal after standing still: `heal` of the maximum hit points
     // every period, the wait restarted by a move, a hit or firing.
-    let still: Vec<(Entity, CaStill, Vec3, Health, bool)> = world
-        .query::<(Entity, &CaStill, &Transform, &Health, &crate::core::Intent)>()
-        .iter(world)
-        .filter(|(_, _, _, h, _)| h.current > 0.0)
-        .map(|(e, s, t, h, i)| (e, *s, t.translation, h.clone(), i.fire))
-        .collect();
-    for (e, mut s, at, health, firing) in still {
-        if at.distance(s.at) > 1e-3 || health.current < s.health - 1e-6 || firing {
+    let mut healing = sets.p1();
+    // `s` after this tick for a player at `at` with `health` (its new
+    // health back).
+    let heal = |s: &mut CaStill, at: Vec3, health: &Health, firing: bool, calloused: bool| -> f32 {
+        let mut current = health.current;
+        if at.distance(s.at) > 1e-3 || current < s.health - 1e-6 || firing {
             s.at = at;
             s.since = now;
             s.next_heal = now + n.heal_wait as f64;
         } else if now + 1e-9 >= s.since + n.heal_wait as f64 && now + 1e-9 >= s.next_heal {
             // Calloused (gear_perks.md 15): an infected with an
             // infected-mercenary item heals at `HPRecoverRate` 2.
-            let rate = if world.get::<super::super::gear::CaLoadout>(e).is_some_and(|l| l.infected_item) {
-                super::super::gear::CALLOUSED_RATE
-            } else {
-                1.0
-            };
-            if let Some(mut h) = world.get_mut::<Health>(e) {
-                h.current = (h.current + rate * n.heal * h.max).min(h.max);
-            }
+            let rate = if calloused { super::super::gear::CALLOUSED_RATE } else { 1.0 };
+            current = (current + rate * n.heal * health.max).min(health.max);
             s.next_heal = now + n.heal_period as f64;
         }
-        s.health = world.get::<Health>(e).map_or(health.current, |h| h.current);
-        world.entity_mut(e).insert(s);
+        s.health = current;
+        current
+    };
+    for (still, t, mut health, intent, loadout) in &mut healing {
+        let Some(mut still) = still else { continue };
+        if health.current <= 0.0 {
+            continue;
+        }
+        let mut s = *still;
+        let now_health = heal(&mut s, t.translation, &health, intent.fire, loadout.is_some_and(|l| l.infected_item));
+        if now_health != health.current {
+            health.current = now_health;
+        }
+        *still = s;
     }
-    test_win(world);
+    for (e, still) in &picked {
+        let Ok((_, t, mut health, intent, loadout)) = healing.get_mut(*e) else { continue };
+        if health.current <= 0.0 {
+            continue;
+        }
+        let mut s = *still;
+        let now_health = heal(&mut s, t.translation, &health, intent.fire, loadout.is_some_and(|l| l.infected_item));
+        if now_health != health.current {
+            health.current = now_health;
+        }
+        if let Ok(mut ec) = commands.get_entity(*e) {
+            ec.try_insert(s);
+        }
+    }
+    // The win tests, the hosts counted as infected.
+    if m.winner.is_some() {
+        return;
+    }
+    let roster = sets.p0();
+    let team_of = |e: Entity, t: u8| if picked.iter().any(|(x, _)| *x == e) { BRAVO } else { t };
+    let (humans, infected) = (roster.alive_as(ALPHA, team_of), roster.alive_as(BRAVO, team_of));
+    if humans == 0 {
+        m.win(BRAVO);
+    } else if state.picked && infected == 0 {
+        m.win(ALPHA);
+    }
 }
 
 /// No human alive: the infected win; after the selection, no infected

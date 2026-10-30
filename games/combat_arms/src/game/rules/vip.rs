@@ -26,6 +26,7 @@ use bevy::prelude::*;
 use super::{
     super::missions, CaMode, CaRuleSettings, CaStats, ScoreOrder, VIP_ELIMINATION,
     flow::players,
+    objectives::Roster,
     scoring::{personal, stats},
     state::{Death, DeathKind, enemy},
     tdm,
@@ -48,10 +49,7 @@ pub const MODE: CaMode = CaMode {
         description: "VIP Elimination: Team Death Match where a death is worth the victim's VIP rank's points, first team \
                       to G points wins",
         on_death,
-        hooks: super::Hooks {
-            update,
-            ..super::NO_HOOKS
-        },
+        hooks: super::NO_HOOKS,
         ..tdm::MODE.rules
     },
     order: ScoreOrder::MissionPoints,
@@ -105,13 +103,14 @@ fn on_death(world: &mut World, d: &Death) {
     }
 }
 
-/// A team that gained a player is ranked again.
-fn update(world: &mut World) {
-    let known = world.get_resource_or_init::<CaVipTeams>().clone();
+/// A team that gained a player is ranked again (the mode's per-tick
+/// system, `rules::mode_updates`; the ranking, world work, queued).
+pub(super) fn update(roster: Roster, known: Option<Res<CaVipTeams>>, mut commands: Commands) {
+    let known = known.map(|k| k.clone()).unwrap_or_default();
+    let players = roster.players();
     for (i, team) in [super::state::ALPHA, super::state::BRAVO].into_iter().enumerate() {
-        let now: Vec<Entity> = players(world).into_iter().filter(|(_, t)| *t == team).map(|(e, _)| e).collect();
-        if now.iter().any(|e| !known.0[i].contains(e)) {
-            rank_team(world, team);
+        if players.iter().any(|(e, t)| *t == team && !known.0[i].contains(e)) {
+            commands.queue(move |world: &mut World| rank_team(world, team));
         }
     }
 }

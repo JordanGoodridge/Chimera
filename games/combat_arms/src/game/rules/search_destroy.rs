@@ -102,7 +102,6 @@ pub const MODE: CaMode = CaMode {
 /// S&D's hooks (Go4CA's too).
 pub const HOOKS: Hooks = Hooks {
     setup,
-    update,
     round_over: bomb::credit_planter,
     round_end: bomb::remove_all,
     holds_joiner: bomb::ticking,
@@ -138,23 +137,33 @@ pub fn handed_out(world: &World) -> Vec<&'static str> {
     ids
 }
 
-/// The bombs handed out (not drawn: the player keeps the primary in
-/// hand), then plants, defuses and the fuse.
-fn update(world: &mut World) {
-    let due: Vec<Entity> = world.query_filtered::<Entity, With<CaBombDue>>().iter(world).collect();
-    let ids = handed_out(world);
-    for e in due {
-        let ready = world
-            .get::<crate::weapon::Inventory>(e)
-            .is_some_and(|i| !i.weapons.is_empty());
-        if ready {
-            for id in &ids {
-                objectives::give_weapon(world, e, id);
-            }
-            world.entity_mut(e).remove::<CaBombDue>();
+/// The modes playing S&D's per-tick systems (`hand_out`, `bombs`):
+/// S&D, Go4CA's and the clans'.
+pub const RUNS_IN: &[&str] = &[
+    super::SEARCH_DESTROY,
+    super::GO4CA_CUP,
+    super::CLAN_SEARCH_DESTROY,
+];
+
+/// The bombs handed out once a due player's loadout is there (not
+/// drawn: the player keeps the primary in hand); building weapons is
+/// world work, queued (`rules::mode_updates`, before `bombs`).
+pub(super) fn hand_out(due: Query<(Entity, Option<&crate::weapon::Inventory>), With<CaBombDue>>, mut commands: Commands) {
+    for (e, inv) in &due {
+        if inv.is_some_and(|i| !i.weapons.is_empty()) {
+            commands.queue(move |world: &mut World| {
+                for id in handed_out(world) {
+                    objectives::give_weapon(world, e, id);
+                }
+                world.entity_mut(e).remove::<CaBombDue>();
+            });
         }
     }
-    bomb::update(world, FAMILY);
+}
+
+/// Plants, defuses and the fuse on S&D's sites.
+pub(super) fn bombs(mut bombs: bomb::Bombs) {
+    bombs.tick(FAMILY);
 }
 
 fn on_death(world: &mut World, d: &Death) {
