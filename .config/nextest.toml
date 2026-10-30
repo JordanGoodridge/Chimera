@@ -96,9 +96,9 @@ inherits = "default"
 [profile.bench.junit]
 path = "target/testbench/junit.xml"
 
-# The fast tier at 12 test processes: the default's 8 is conservative for
-# heavy memory, but the heavy group caps itself at 5. Opt-in, for the
-# benchmark's fast-nextest scenario; the default stays 8 until measured.
+# The fast tier at the default 8 test processes: 12 was measured at 89 s
+# before the melee/projectile merge, then peaked at 39 GB after it (swap).
+# Kept as a named profile for the testbench; the default stays 8.
 [profile.fast]
 inherits = "bench"
-test-threads = 12
+test-threads = 8
