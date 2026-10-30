@@ -10,6 +10,7 @@
 #   .\scripts\build-bench.ps1 leaf-affected   # edit source/formats, affected selection
 #   .\scripts\build-bench.ps1 bottom-full     # edit chimera/core, whole workspace
 #   .\scripts\build-bench.ps1 bottom-affected # edit chimera/core, affected selection
+#   .\scripts\build-bench.ps1 test-file-affected # edit one test file, affected selection
 #   .\scripts\build-bench.ps1 fast-tier       # run the fast tier (no build expected)
 #   .\scripts\build-bench.ps1 fast-tier-nextest
 #   .\scripts\build-bench.ps1 run-leaf        # cargo run after an app edit
@@ -21,8 +22,8 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [ValidateSet('cold', 'seeded', 'noop', 'leaf-full', 'leaf-direct', 'leaf-affected',
-        'bottom-full', 'bottom-affected', 'fast-tier', 'fast-tier-nextest',
-        'run-leaf')]
+        'bottom-full', 'bottom-affected', 'test-file-affected',
+        'fast-tier', 'fast-tier-nextest', 'run-leaf')]
     [string]$Scenario,
     [string]$Label = 'run',
     [string]$Out = '',
@@ -120,6 +121,18 @@ switch ($Scenario) {
             [IO.File]::AppendAllText($path, "`n// bench: bottom-affected`n")
             $selected = Get-AffectedArgs 'chimera/core/src/lib.rs'
             Invoke-Cargo (@('test') + $selected + @('--features', 'dev', '--no-run'))
+        } finally {
+            [IO.File]::WriteAllText($path, $original)
+        }
+    }
+    'test-file-affected' {
+        $rel = 'chimera/client/tests/it/metrics.rs'
+        $path = Join-Path $root $rel
+        $original = [IO.File]::ReadAllText($path)
+        try {
+            [IO.File]::AppendAllText($path, "`n// bench: test-file-affected`n")
+            $selected = Get-AffectedArgs $rel
+            Invoke-Cargo (@('test') + $selected + @('--features', 'dev', '--no-fail-fast', '--', '--skip', 'heavy::'))
         } finally {
             [IO.File]::WriteAllText($path, $original)
         }
