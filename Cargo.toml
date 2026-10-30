@@ -278,8 +278,11 @@ trace = ["cs_source_app/trace"]
 tracy = ["cs_source_app/tracy"]
 
 # Our own code: a little optimization so the game is playable in debug.
+# Match tests' line tables so switching between run/build and test reuses
+# dependency artifacts. Use `--profile devfull` to inspect local variables.
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
 
 # Dependencies (Bevy, parsers): fully optimized, compiled once and cached.
 [profile.dev.package."*"]
@@ -305,10 +308,16 @@ debug = false
 # Measured (docs/performance.md, "Test cycle"): rebuilding every test
 # binary after a change to chimera_core 197-237 s instead of 383-427 s, a
 # full test build's artifacts a third the size (23 GB instead of ~68), a
-# test binary 478 MB instead of ~1 GB. `cargo run`/`build` (dev) keep full
-# debug info, so they no longer share the dependencies' build with tests.
+# test binary 478 MB instead of ~1 GB. Dev uses the same setting so
+# run/build and test can share dependencies with matching features.
 [profile.test]
 debug = "line-tables-only"
+
+# Opt-in full debugger information, in target/devfull rather than disturbing
+# the warm default dev/test artifacts. Build-time units still omit debuginfo.
+[profile.devfull]
+inherits = "dev"
+debug = 2
 
 [profile.release]
 codegen-units = 1
