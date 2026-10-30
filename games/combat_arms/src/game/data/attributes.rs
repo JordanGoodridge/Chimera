@@ -1115,7 +1115,24 @@ pub struct BodyLook {
     /// `InfectedOveridable`: its infection override (`Overidable_Model#`
     /// index; -1 none).
     pub infected: i32,
+    /// `ColorSkin{m}_UpperSkin#`, `_LowerSkin#`, `_AdditionalSkins#` and
+    /// `_HandsSkin#` for model colours m = 0..4 (characters.md Corrections
+    /// (2026-10-30) 1).
+    pub colour_skins: Vec<ColourSkins>,
 }
+
+/// One model colour's skin lists (empty: the base list stays).
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ColourSkins {
+    pub upper: Vec<String>,
+    pub lower: Vec<String>,
+    pub additional: Vec<String>,
+    pub hands: Vec<String>,
+}
+
+/// At most this many model colour lists (0..4).
+pub const MODEL_COLOURS: usize = 5;
 
 /// `Overidable_Model<N>`: an infection override's look (characters.md 2:
 /// it replaces render styles, armour, hit points and hands; its face).
@@ -1154,6 +1171,14 @@ impl BodyLook {
             skeleton: s.int("Skeleton", 0),
             gear: s.int("GearID", -1),
             infected: s.int("InfectedOveridable", -1),
+            colour_skins: (0..MODEL_COLOURS)
+                .map(|m| ColourSkins {
+                    upper: list(&format!("ColorSkin{m}_UpperSkin")),
+                    lower: list(&format!("ColorSkin{m}_LowerSkin")),
+                    additional: list(&format!("ColorSkin{m}_AdditionalSkins")),
+                    hands: list(&format!("ColorSkin{m}_HandsSkin")),
+                })
+                .collect(),
         }
     }
 }

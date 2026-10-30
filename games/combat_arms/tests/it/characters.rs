@@ -1921,3 +1921,55 @@ fn c13_missing_crouch_name_falls_back_to_the_legs() {
     run(&mut d, &Inputs { forward: true, right: true, ..rifle() }, 3);
     assert_eq!(at(&d).2, "LCFR");
 }
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-30): additional skins, model colour, cut-outs.
+
+/// 58. A body record with `AdditionalSkins0` a and `AdditionalSkins1` b
+/// at camouflage index 3: slot 5 a, slot 6 b (not affected by c).
+#[test]
+fn t58_additional_skins() {
+    let data = builtin();
+    let mut r = data.model.first().unwrap().clone();
+    r.additional_skins = vec!["a.dtx".into(), "b.dtx".into()];
+    assert_eq!(data.additional_skin(&r, 5), Some("a.dtx"));
+    assert_eq!(data.additional_skin(&r, 6), Some("b.dtx"));
+    assert_eq!(data.additional_skin(&r, 7), None);
+}
+
+/// 59. Model colour m = 1 with `ColorSkin1_UpperSkin0..` and no
+/// `ColorSkin1_LowerSkin#`: slot 0 from the colour list (index c), slot 1
+/// from `LowerSkin{c}`; m = -1: the base lists.
+#[test]
+fn t59_model_colour() {
+    use combat_arms::game::data::attributes::ColourSkins;
+    let data = builtin();
+    let mut r = data.model.first().unwrap().clone();
+    r.upper_skins = vec!["u0.dtx".into(), "u1.dtx".into()];
+    r.lower_skins = vec!["l0.dtx".into(), "l1.dtx".into()];
+    r.colour_skins = vec![
+        ColourSkins::default(),
+        ColourSkins {
+            upper: vec!["red0.dtx".into(), "red1.dtx".into()],
+            ..default()
+        },
+    ];
+    assert_eq!(data.skins_in(&r, 1, 1), (Some("red1.dtx"), Some("l1.dtx")));
+    assert_eq!(data.skins_in(&r, 1, -1), (Some("u1.dtx"), Some("l1.dtx")));
+    assert_eq!(data.skins_in(&r, 1, 0), (Some("u1.dtx"), Some("l1.dtx")), "an empty colour: the base");
+    assert_eq!(data.skins(&r, 1), (Some("u1.dtx"), Some("l1.dtx")), "ours: no model colour");
+}
+
+/// 60. The ghillie leaves (`RS\MARKTRANSPARENT.LTB`): alpha 158/255 isn't
+/// drawn, 161/255 is, opaque, at the texture's colour (unlit).
+#[test]
+fn t60_leaves_cut_out() {
+    use chimera_world::map::{MapAlpha, MapMesh};
+    use combat_arms::game::render_style;
+    let leaves = render_style::style("RS\\MARKTRANSPARENT.LTB");
+    assert!(!leaves.keeps(158) && leaves.keeps(161));
+    let mut m = MapMesh::default();
+    render_style::apply(&mut m, leaves);
+    assert!(matches!(m.alpha, MapAlpha::Mask(_)), "not blended: {:?}", m.alpha);
+    assert!(m.unlit);
+}

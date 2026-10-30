@@ -486,7 +486,10 @@ fixed-function rules and the stock `default`, `env_alpha_mask`,
 `itemedge`, `envmap` styles. (3) slot 0 is the colour map, slot 1 only an
 environment or rim map on generated coordinates, unused under
 single-texture styles. (4) open: not on this box (models_ltb.md Open
-question 8).
+question 8). **Partly done (2026-10-30):** the lens and mark styles are
+cut-outs (`render_style::Style::Cutout`); not yet: sprite skins'
+animation (a skin shows its first frame) and slot 1's reflection and rim
+maps (Chimera's model material has no generated second texture).
 
 `cargo test -p combat_arms --features dev,ui --test it
 heavy::weapon_skins -- --nocapture` lists every install weapon's pieces
@@ -538,7 +541,11 @@ replace upper, lower, additional and hands lists one by one. (3)
 alpha-tested at 160/255, unlit (characters.md Corrections 2, models_ltb.md
 render styles). (4) `pv_char`, `pv_char_b`, `env_alpha_mask`,
 `edgeamp01` in models_ltb.md; the second slot is a reflection picture.
-(5) still open (needs the Windows PC's install).
+(5) still open (needs the Windows PC's install). **Done (2026-10-30):**
+the mark and leaves cut-out (data/render_styles.toml), the colour lists
+read (`ColourSkins`, `CharacterData::skins_in`; every player's colour is
+-1, no cosmetic items: the hands' list isn't used); tests characters
+t58-t60.
 
 ## Dot-sight reticles: open questions for a spec session (2026-10-29)
 

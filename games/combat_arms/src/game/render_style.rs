@@ -12,7 +12,10 @@
 //! Known shortcuts: the files aren't read (their format is in
 //! models_ltb.md now); the table is our summary of them, so a style
 //! not in it draws opaque, as the default style, and the environment and
-//! rim maps of slot 1 (`envmap`, `itemedge`, `pv_char`...) aren't drawn.
+//! rim maps of slot 1 (`envmap`, `itemedge`, `pv_char`...) aren't drawn
+//! (Chimera's model material has no reflection- or normal-generated
+//! second texture yet); a model skin that is a sprite (`.spr`) shows its
+//! first frame (`world::textures`), not its frames on the model's clock.
 
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -120,15 +123,21 @@ mod tests {
     #[test]
     fn stock_body_styles() {
         assert_eq!(style("RS\\default.ltb"), Style::Opaque);
-        assert_eq!(style("RS\\MARKTRANSPARENT.LTB"), Style::Blend);
-        assert_eq!(style("rs/marktransparent.ltb"), Style::Blend);
+        let mark = Style::Cutout { reference: 160, strict: false, unlit: true, two_sided: false };
+        assert_eq!(style("RS\\MARKTRANSPARENT.LTB"), mark);
+        assert_eq!(style("rs/marktransparent.ltb"), mark);
         assert_eq!(style("RS\\nothing_like_it.ltb"), Style::Opaque);
         let list = ["RS\\default.ltb".to_string(), "RS\\GLOW.LTB".into(), "RS\\MARKTRANSPARENT.LTB".into()];
-        assert_eq!(of_list(&list, 2), Style::Blend);
+        assert_eq!(of_list(&list, 2), mark);
         assert_eq!(of_list(&list, 3), Style::Opaque);
         assert_eq!(of_list(&list, -1), Style::Opaque);
         let mut m = MapMesh::default();
         apply(&mut m, Style::Blend);
         assert_eq!(m.alpha, MapAlpha::Blend);
+        // models_ltb.md R1: alpha 159 discarded, 160 drawn, unlit.
+        assert!(!mark.keeps(159) && mark.keeps(160));
+        let mut m = MapMesh::default();
+        apply(&mut m, mark);
+        assert!(matches!(m.alpha, MapAlpha::Mask(c) if 159.0 / 255.0 < c && c < 160.0 / 255.0) && m.unlit);
     }
 }

@@ -18,6 +18,28 @@ use serde::{Deserialize, Serialize};
 
 use super::super::data::CaDataInner;
 
+/// The model colour every player has (characters.md Corrections
+/// (2026-10-30) 1: the colour of the equipped cosmetic character or vest
+/// item; we have no cosmetic items, so none).
+pub const NO_MODEL_COLOUR: i32 = -1;
+
+/// The install's colour lists as skins (entries that aren't textures are
+/// empty slots).
+fn colour_lists(lists: &[crate::game::data::attributes::ColourSkins]) -> Vec<crate::game::data::attributes::ColourSkins> {
+    let dtx = |l: &[String]| -> Vec<String> {
+        l.iter().map(|s| if super::super::data::is_skin_file(s) { s.clone() } else { String::new() }).collect()
+    };
+    lists
+        .iter()
+        .map(|c| crate::game::data::attributes::ColourSkins {
+            upper: dtx(&c.upper),
+            lower: dtx(&c.lower),
+            additional: dtx(&c.additional),
+            hands: dtx(&c.hands),
+        })
+        .collect()
+}
+
 /// A body record (`Model#`).
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -56,6 +78,11 @@ pub struct ModelRecord {
     /// infection` id; -1 none). Only the install's models file gives it.
     #[serde(default = "no_override")]
     pub infected: i32,
+    /// The model colour lists by colour m (characters.md Corrections
+    /// (2026-10-30) 1; `skins_in`). Only the install's models file gives
+    /// them.
+    #[serde(default)]
+    pub colour_skins: Vec<crate::game::data::attributes::ColourSkins>,
 }
 
 fn no_override() -> i32 {
@@ -419,6 +446,7 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
         }
         m.footprint_volume = r.footprint_volume;
         m.infected = r.infected;
+        m.colour_skins = colour_lists(&r.colour_skins);
     }
     // The install's other bodies (named mercenaries and specialists,
     // cosmetics, NPCs: characters.md 1 counts 431 records), each `Model#`
@@ -450,6 +478,7 @@ fn merge_install_pieces(data: &mut CharacterData, ca: &CaDataInner) {
             render_styles: r.render_styles.clone(),
             footprint_volume: r.footprint_volume,
             infected: r.infected,
+            colour_skins: colour_lists(&r.colour_skins),
         });
     }
     data.infection = models
@@ -580,7 +609,9 @@ impl CharacterData {
     /// `AdditionalSkins{slot - 5}`); None past its list or empty.
     pub fn additional_skin<'a>(&self, record: &'a ModelRecord, slot: i32) -> Option<&'a str> {
         let k = usize::try_from(slot.checked_sub(5)?).ok()?;
-        record.additional_skins.get(k).map(String::as_str).filter(|s| !s.is_empty())
+        let colour = usize::try_from(NO_MODEL_COLOUR).ok().and_then(|m| record.colour_skins.get(m));
+        let list = colour.map(|c| &c.additional).filter(|l| !l.is_empty()).unwrap_or(&record.additional_skins);
+        list.get(k).map(String::as_str).filter(|s| !s.is_empty())
     }
 
     /// The player bodies a gun game's infected rung may draw
@@ -646,13 +677,25 @@ impl CharacterData {
     }
 
     /// The body's upper and leg skins for camouflage index `c` (index 0
-    /// past the list).
+    /// past the list), with no model colour (ours: every player's is -1).
     pub fn skins<'a>(&self, record: &'a ModelRecord, c: i32) -> (Option<&'a str>, Option<&'a str>) {
+        self.skins_in(record, c, NO_MODEL_COLOUR)
+    }
+
+    /// `skins` in model colour `m` (characters.md Corrections (2026-10-30)
+    /// 1): each of the colour's upper and lower lists that has an entry
+    /// replaces its base list, on its own; -1 or a colour without lists:
+    /// the base lists.
+    pub fn skins_in<'a>(&self, record: &'a ModelRecord, c: i32, m: i32) -> (Option<&'a str>, Option<&'a str>) {
+        let colour = usize::try_from(m).ok().and_then(|m| record.colour_skins.get(m));
+        let list = |base: &'a [String], own: Option<&'a Vec<String>>| own.filter(|l| !l.is_empty()).map_or(base, Vec::as_slice);
+        let upper = list(&record.upper_skins, colour.map(|c| &c.upper));
+        let lower = list(&record.lower_skins, colour.map(|c| &c.lower));
         let pick = |list: &'a [String]| {
             let i = usize::try_from(c).ok().filter(|&i| i < list.len()).unwrap_or(0);
             list.get(i).map(String::as_str)
         };
-        (pick(&record.upper_skins), pick(&record.lower_skins))
+        (pick(upper), pick(lower))
     }
 
     /// The team mark on a body's slot 2 as a client sees it: a teammate's
