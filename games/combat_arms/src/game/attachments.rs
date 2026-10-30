@@ -12,7 +12,8 @@
 //!   its accepted list (names, each with a variant index: the part model
 //!   and the magazine bonus column), its default part per slot
 //!   (`DefaultScopeAttach` and friends), whether the default sight is drawn,
-//!   and its fire and silenced sound radii. The hook puts `CaAttachSlots`
+//!   its fire and silenced sound radii, its record's per-slot lobby state
+//!   (`slot_options`) and where part models sit (`PartOffsets`). The hook puts `CaAttachSlots`
 //!   (that and the weapon's stock numbers), an empty `CaFitted` and
 //!   `CaMods` on the weapon.
 //! - **Fitting** ("Fitting: when and where", `fit_given`): the server, the
@@ -68,7 +69,11 @@
 //!   `muzzle_light` (what others hear and see), `hearing_radius` (Q6),
 //!   the sight's style for the HUD's range readout and gauge
 //!   (`gauge_image`; ui::hud draws them), `part_models` (socket and
-//!   variant per socket slot).
+//!   variant per socket slot; the part models drawn on the view model,
+//!   `view_model::parts`, and the held model,
+//!   `characters::models::load_held_weapon`, from the records'
+//!   `AttachModel#`/`AttachHHModel#` fields and the weapon's
+//!   `PartOffsets`).
 //!
 //! Over the network the fitted set is a predicted weapon part (`CaFitted`,
 //! `weapon::NetPart`): the server fits, the client takes the five IDs with
@@ -100,7 +105,7 @@
 //! - The parts' muzzle effects, tracers and fire sounds are `effects`'
 //!   (effects_sounds.md). Not done: flash hiders (no stock record names
 //!   one), zoom sounds (their files aren't in a spec), the overlay
-//!   picture (Chimera's placeholder overlay), the part models themselves (`part_models` says where), dot-sight mode (`Type` 2, Q7:
+//!   picture (Chimera's placeholder overlay), dot-sight mode (`Type` 2, Q7:
 //!   no record has it), `VectorsPerRoundPer`, `InstDamagePer` (no
 //!   secondary attacks), the client ammo ceiling `MaxAmountPlus` (Q3:
 //!   invisible), gear mods (`Kinds` 5..7), set items (their animation rates are applied: `gear`) and the gunsmith
@@ -261,6 +266,21 @@ pub struct ModRecord {
     pub integrated: i32,
     /// `Socket`: where its model goes on the gun (none: no model).
     pub socket: Option<String>,
+    /// `AttachModel0..9`: its first-person model per variant (an install
+    /// path; empty: none), `AttachSkin<variant>_<texture index>` its
+    /// skins, `AttachRenderStyle#` its pieces' render styles,
+    /// `AttachScale` its scale (none: 1).
+    pub attach_models: Vec<String>,
+    pub attach_skins: Vec<Vec<String>>,
+    pub attach_render_styles: Vec<String>,
+    pub attach_scale: Option<[f32; 3]>,
+    /// The third-person part: `HHModelSocket`, `AttachHHModel#`,
+    /// `AttachHHSkin#_#`, `HHRenderStyle#`, `AttachHHModelScale`.
+    pub hh_socket: Option<String>,
+    pub attach_hh_models: Vec<String>,
+    pub attach_hh_skins: Vec<Vec<String>>,
+    pub hh_render_styles: Vec<String>,
+    pub attach_hh_scale: Option<[f32; 3]>,
     /// `SilencerLevel`, `FlashHiderLevel` (1..9).
     pub silencer_level: i32,
     pub flash_hider_level: i32,
@@ -337,6 +357,19 @@ impl ModRecord {
     pub fn weapon_part(&self) -> bool {
         let Some(slot) = self.slot() else { return false };
         self.integrated != 0 && (slot >= SOCKET_SLOTS || self.kind.is_some_and(|t| (0..=MAGAZINE_TYPE).contains(&t)))
+    }
+
+    /// Its first-person model for variant `c` and that variant's skins
+    /// (None: no model there).
+    pub fn view_model(&self, c: usize) -> Option<(&str, &[String])> {
+        let m = self.attach_models.get(c).filter(|m| !m.is_empty())?;
+        Some((m, self.attach_skins.get(c).map_or(&[][..], Vec::as_slice)))
+    }
+
+    /// Its third-person model for variant `c` and its skins.
+    pub fn held_model(&self, c: usize) -> Option<(&str, &[String])> {
+        let m = self.attach_hh_models.get(c).filter(|m| !m.is_empty())?;
+        Some((m, self.attach_hh_skins.get(c).map_or(&[][..], Vec::as_slice)))
     }
 
     /// Column `c` of a per-variant list (0 outside 0..9 or missing).
@@ -541,6 +574,52 @@ pub struct AttachParams {
     /// `SilencedFireRadius1..10`, units.
     #[serde(default)]
     pub silenced_radius: Vec<i32>,
+    /// The modification record's per-slot lobby state, slot order
+    /// (`MuzzleOPtion`, `SightOption`, `MagazineOption`, `BulletOption`,
+    /// `MechSightOption`): 0 no part goes there, 1 free, 2 taken by a
+    /// built-in part, -1 unset; empty: not known. Fitting doesn't read it
+    /// (gameplay checks the list); a rung's draw does (`rungs`).
+    #[serde(default)]
+    pub slot_options: Vec<i32>,
+    /// Where its parts' models sit at their sockets.
+    #[serde(default)]
+    pub part_offsets: PartOffsets,
+}
+
+/// A part model's place at its socket, in the socket's frame (units;
+/// the rotation as the data gives it, radians: yaw, pitch, roll).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PartOffset {
+    pub pos: [f32; 3],
+    pub rot: [f32; 3],
+}
+
+/// The weapon's offsets for its parts' models ("View model and world
+/// model"): `MuzzlePVPosOff`/`RotOff` and `ScopePVPosOff`/`RotOff` (first
+/// person), `MuzzleHHPosOff`/`RotOff` and `ScopeHHPosOff`/`RotOff` (third
+/// person).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PartOffsets {
+    pub muzzle_pv: PartOffset,
+    pub scope_pv: PartOffset,
+    pub muzzle_hh: PartOffset,
+    pub scope_hh: PartOffset,
+}
+
+impl PartOffsets {
+    /// Slot `slot`'s offset, first person (`pv`) or third: the muzzle's
+    /// for the muzzle slot, the scope's for the sight (none for others).
+    pub fn of(&self, slot: usize, pv: bool) -> PartOffset {
+        match (slot, pv) {
+            (MUZZLE, true) => self.muzzle_pv,
+            (SIGHT, true) => self.scope_pv,
+            (MUZZLE, false) => self.muzzle_hh,
+            (SIGHT, false) => self.scope_hh,
+            _ => PartOffset::default(),
+        }
+    }
 }
 
 impl Default for AttachParams {
@@ -551,6 +630,8 @@ impl Default for AttachParams {
             default_sight_visible: true,
             fire_sound_radius: fire_radius(),
             silenced_radius: Vec::new(),
+            slot_options: Vec::new(),
+            part_offsets: PartOffsets::default(),
         }
     }
 }
@@ -660,6 +741,8 @@ pub enum ObserverSound {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PartModel {
     pub slot: usize,
+    /// The part's record (`Name`).
+    pub name: String,
     pub socket: String,
     /// `AttachModel<variant>`.
     pub variant: usize,
@@ -949,6 +1032,7 @@ impl CaMods {
                 let socket = p.record.socket.clone().filter(|s| !s.is_empty())?;
                 Some(PartModel {
                     slot,
+                    name: p.record.name.clone(),
                     socket,
                     variant: p.variant?,
                     visible: !(slot == SIGHT && p.default && !self.default_sight_visible),

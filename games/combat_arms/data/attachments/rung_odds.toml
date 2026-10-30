@@ -1,0 +1,15 @@
+# The gun game's odds for a Combat Arms rung's fitted parts
+# (game::rungs::RungOdds; docs/backlog.md, user 2026-10-29): each slot
+# the gun takes parts for keeps its stock part (its default, or nothing)
+# unless a draw at the slot's chance gives one of the parts it accepts
+# there. Sights most often, then silencers, power parts (magazines,
+# bullets) least; over the five slots about three in four stay stock.
+# A gun gets at most `max_parts` non-stock parts (slots drawn in the
+# order of their chance, highest first). A definition tunes them in
+# its `[rules]`: rung_extras = { attachments = { sight = 0.5, max_parts = 1 } }.
+sight = 0.40       # red dots, holosights, scopes (slot 1)
+muzzle = 0.30      # silencers (slot 0)
+mech_sight = 0.20  # mechanical sights (slot 4: spread recovery)
+magazine = 0.10    # magazines (slot 2: clip size, reload)
+bullet = 0.10      # bullets (slot 3: range, damage, stun)
+max_parts = 2

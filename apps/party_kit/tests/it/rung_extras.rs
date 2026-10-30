@@ -42,8 +42,14 @@ const M4: usize = 7;
 /// The gun game with `[rules]` lines `extra` added (as `kit:variant`),
 /// started on seed `seed`.
 fn party_with(extra: &str, seed: u64) -> Sim {
+    party_with_app(extra, seed, |_| {})
+}
+
+/// `party_with`, `setup` run on the app before the start.
+fn party_with_app(extra: &str, seed: u64, setup: impl FnOnce(&mut App)) -> Sim {
     let mut sim = Sim::new(CaSim, (GreyboxMapPlugin, PartyPartsPlugin));
     sim.app.insert_resource(RungSeed(seed));
+    setup(&mut sim.app);
     let text = sim.app.world().resource::<Minigames>().text(DEFAULT_MINIGAME).unwrap().to_string();
     let text = text
         .replace(&format!("id = \"{DEFAULT_MINIGAME}\""), "id = \"originals:variant\"")
@@ -118,7 +124,9 @@ fn kill(sim: &mut Sim, p: Entity, by: Entity) {
 
 #[test]
 fn a_combat_arms_rung_gives_everyone_on_it_the_same_parts_character_and_melee() {
-    let mut sim = party_with("", 3);
+    // The odds tuned so the M4A1 always gets a sight (the stock odds
+    // often keep every slot stock).
+    let mut sim = party_with("rung_extras = { attachments = { sight = 1.0 } }", 3);
     let l = ladder_of(&sim);
     let x = l.extras(M4).expect("a Combat Arms rung draws").clone();
     let gun = l.rungs[M4];
@@ -126,7 +134,7 @@ fn a_combat_arms_rung_gives_everyone_on_it_the_same_parts_character_and_melee() 
     let model: i32 = x.value(rungs::MODEL).expect("a character").parse().unwrap();
     let knife = x.melee.clone().expect("a melee weapon");
     let parts = rung_parts(&sim, M4);
-    assert!(!parts.is_empty(), "seed 3 fits some of the M4A1's parts: {x:?}");
+    assert!(!parts.is_empty(), "the tuned odds fit a sight to the M4A1: {x:?}");
     let (a, b) = two_on(&mut sim, M4);
     for p in [a, b] {
         assert_eq!(testkit::active_id(sim.app.world(), p), Some(gun));
@@ -387,4 +395,22 @@ fn a_css_rungs_player_wears_its_models_body() {
     for p in [a, b] {
         assert_eq!(sim.app.world().get::<BodyModel>(p).map(|m| m.0), Some(want), "class {class}");
     }
+}
+
+/// The rung line names a rung's parts by their display names (the
+/// install's string table, `rungs::CaPartNames`, which the front end
+/// puts there), shortened; without them, readable record names.
+#[test]
+fn the_rung_line_names_the_parts_by_display_name() {
+    let tuned = "rung_extras = { attachments = { sight = 1.0, muzzle = 0.0, magazine = 0.0, bullet = 0.0, mech_sight = 0.0 } }";
+    let sim = party_with(tuned, 3);
+    let parts = ladder_of(&sim).extras(M4).and_then(|x| x.value(rungs::PARTS)).unwrap_or_default().to_string();
+    assert!(!parts.is_empty() && !parts.contains(','), "one sight: {parts}");
+    let plain = ladder_of(&sim).extras(M4).and_then(|x| x.label.clone()).unwrap();
+    assert_eq!(plain, rungs::readable(&parts), "no install strings: the record name made readable");
+    assert!(!plain.contains('_'));
+    let named = party_with_app(tuned, 3, |app| {
+        app.insert_resource(rungs::CaPartNames::new([(parts.clone(), "Test Reflex Sight II (AR) ".to_string())]));
+    });
+    assert_eq!(ladder_of(&named).extras(M4).and_then(|x| x.label.clone()).as_deref(), Some("Test Reflex Sight II"));
 }

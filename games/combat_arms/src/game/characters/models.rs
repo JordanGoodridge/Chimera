@@ -313,22 +313,99 @@ pub fn add_character_models(map: &mut MapData, ca: &CaDataInner, file: &dyn Fn(&
 /// kit's (its `[models] world` in its look's skins and render styles, on
 /// the default skeleton's `RightHand` socket), with its own textures:
 /// for a weapon the map's kit doesn't carry (an install weapon, loaded
-/// when first held: `held_on_demand`). Err when its data names none or it
-/// doesn't read.
+/// when first held: `held_on_demand`). A key `id+Part+Part`
+/// (`view_model::parts::view_key`, `characters::WantHeld`): with those
+/// parts' third-person models on it (`held_part`). Err when its data
+/// names none or it doesn't read.
 pub fn load_held_weapon(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Result<(MapHeldModel, Vec<crate::map::MapTexture>), String> {
     let ca = CaData::install();
+    // A weapon with drawn parts (`characters::held_key`): its model with
+    // theirs.
+    let (base, names) = super::super::view_model::parts::split_key(id);
     let w = ca
         .weapon_set()
         .weapons
         .iter()
-        .find(|w| w.id == id)
-        .ok_or_else(|| format!("{id}: no such weapon"))?;
-    let path = w.models.world.as_deref().ok_or_else(|| format!("{id}: no third-person model in its data"))?;
+        .find(|w| w.id == base)
+        .ok_or_else(|| format!("{base}: no such weapon"))?;
     let data = ca.characters();
     let hand = data.skeleton(0).socket("RightHand").ok_or("the skeleton has no RightHand socket")?;
     let mut own = MapData::default();
-    let h = held(path, id, &data.weapon(Some(id)), hand, &mut own, file).map_err(|e| format!("{id} third-person model: {e}"))?;
+    let path = w.models.world.as_deref().ok_or_else(|| format!("{base}: no third-person model in its data"))?;
+    let (mut h, sockets) = held_with_sockets(path, id, &data.weapon(Some(base)), hand, &mut own, file)
+        .map_err(|e| format!("{base} third-person model: {e}"))?;
+    if !names.is_empty() {
+        let params = w
+            .hook::<super::super::attachments::AttachParams>(super::super::attachments::ATTACHMENTS)
+            .unwrap_or_default();
+        for name in names {
+            if let Err(e) = held_part(&mut h, &sockets, ca.attachments(), &params, name, &mut own, file) {
+                warn!("Combat Arms: {base} third-person part: {e}");
+            }
+        }
+    }
     Ok((h, own.textures))
+}
+
+/// Part `name`'s third-person model (attachments.md "View model and world
+/// model": `AttachHHModel`c with its skins, `HHRenderStyle#` and
+/// `AttachHHModelScale`, at the gun's `HHModelSocket`, moved by the
+/// weapon's `MuzzleHHPosOff`/`ScopeHHPosOff` and their rotations) added to
+/// held model `h`, whose sockets (posed, in its frame) are `sockets`.
+/// A muzzle part turns as on the view model (`view_model::parts::turn_ahead`).
+fn held_part(
+    h: &mut MapHeldModel,
+    sockets: &[(String, Mat4)],
+    table: &super::super::attachments::CaModTable,
+    params: &super::super::attachments::AttachParams,
+    name: &str,
+    map: &mut MapData,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<(), String> {
+    use super::super::{attachments::MUZZLE, view_model::parts};
+    let record = table.get(table.find(name).ok_or_else(|| format!("{name}: no such part"))?).ok_or("no record")?;
+    let slot = record.slot().ok_or_else(|| format!("{name}: not a weapon part"))?;
+    let variant = params
+        .variant_of(&record.name)
+        .and_then(|v| usize::try_from(v).ok())
+        .ok_or_else(|| format!("{name}: not in the weapon's list"))?;
+    let (path, skins) = record.held_model(variant).ok_or_else(|| format!("{name}: no third-person model for variant {variant}"))?;
+    let socket_name = record.hh_socket.as_deref().unwrap_or_default();
+    let socket = sockets
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(socket_name))
+        .map(|(_, m)| *m)
+        .ok_or_else(|| format!("{name}: the gun has no `{socket_name}` socket"))?;
+    let loaded = model::load_own(path, file)?;
+    let mut m = model::convert(&loaded, 1.0, &|lod| {
+        let i = lod.used_textures().first().copied().unwrap_or(-1);
+        usize::try_from(i).ok().and_then(|i| skins.get(i)).cloned().unwrap_or_default()
+    });
+    let styles: Vec<i32> = model::drawn_lods(&loaded.model).iter().map(|l| l.render_style).collect();
+    super::super::world::textures(&mut m.meshes, map, file);
+    let scale = Mat4::from_scale(Vec3::from(record.attach_hh_scale.unwrap_or([1.0; 3])));
+    let offset = parts::offset_matrix(&params.part_offsets.of(slot, false));
+    let turn = if slot == MUZZLE {
+        let gun: Vec<Vec3> = h.model.meshes.iter().flat_map(|m| m.positions.iter()).map(|p| Vec3::from(*p)).collect();
+        let points: Vec<Vec3> = m.meshes.iter().flat_map(|m| m.positions.iter()).map(|p| Vec3::from(*p)).collect();
+        parts::turn_ahead(socket, &gun, offset * scale, &points)
+    } else {
+        Mat4::IDENTITY
+    };
+    let to = socket * offset * turn * scale;
+    for (mut mesh, style) in m.meshes.into_iter().zip(styles) {
+        render_style::apply(&mut mesh, render_style::of_list(&record.hh_render_styles, style));
+        for p in &mut mesh.positions {
+            *p = to.transform_point3(Vec3::from(*p)).to_array();
+        }
+        for n in &mut mesh.normals {
+            *n = to.transform_vector3(Vec3::from(*n)).normalize_or_zero().to_array();
+        }
+        mesh.joints.clear();
+        mesh.joint_weights.clear();
+        h.model.meshes.push(mesh);
+    }
+    Ok(())
 }
 
 use super::super::special::{PROJECTILE, ProjectileParams};
@@ -824,6 +901,19 @@ fn held(
     map: &mut MapData,
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<MapHeldModel, String> {
+    held_with_sockets(path, key, look, socket, map, file).map(|(h, _)| h)
+}
+
+/// `held`, with the model's sockets as drawn (in its `Hand` pose, in the
+/// held model's frame: the hand socket's), by name.
+fn held_with_sockets(
+    path: &str,
+    key: &str,
+    look: &records::WeaponLook,
+    socket: &records::SocketRecord,
+    map: &mut MapData,
+    file: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<(MapHeldModel, Vec<(String, Mat4)>), String> {
     let loaded = model::load(path, file)?;
     let styles: Vec<Style> = model::drawn_lods(&loaded.model)
         .into_iter()
@@ -844,6 +934,16 @@ fn held(
     m.rig = None;
     // The socket in the parent node's space, right-handed.
     let at = socket_local(socket.rotation, socket.offset);
+    let globals = model::posed_globals(&loaded.model, model::rest_entry(&loaded, HELD_POSE));
+    let sockets = loaded
+        .model
+        .sockets
+        .iter()
+        .map(|s| {
+            let g = globals.get(s.node as usize).copied().unwrap_or(Mat4::IDENTITY);
+            (s.name.clone(), at * g * socket_local(s.rotation, s.position))
+        })
+        .collect();
     for mesh in &mut m.meshes {
         for p in &mut mesh.positions {
             *p = at.transform_point3(Vec3::from(*p)).to_array();
@@ -854,14 +954,17 @@ fn held(
         mesh.joints.clear();
         mesh.joint_weights.clear();
     }
-    Ok(MapHeldModel {
-        key: key.to_string(),
-        model: m,
-        bone: socket.parent.clone(),
-        muzzle: None,
-        merged: Vec::new(),
-        own: None,
-    })
+    Ok((
+        MapHeldModel {
+            key: key.to_string(),
+            model: m,
+            bone: socket.parent.clone(),
+            muzzle: None,
+            merged: Vec::new(),
+            own: None,
+        },
+        sockets,
+    ))
 }
 
 #[cfg(test)]

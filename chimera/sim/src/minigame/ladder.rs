@@ -42,7 +42,9 @@
 //! does a rung of a game without a hook. `rung_extras = false`
 //! turns them all off; a table turns a hook's options off by key
 //! (`rung_extras = { attachments = false }`; every key is on by default;
-//! a key no hook reads is warned about at the start).
+//! a key no hook reads is warned about at the start), or tunes one with
+//! a table of its own, which only its hook reads (`RungOptions::table`:
+//! `attachments = { sight = 0.4 }`; on).
 //! **Rung characters** (`RungExtras::character`, `RungCharacter`): a
 //! game's draw may make a rung a special character's, tied to its one
 //! weapon (Combat Arms' infected and their hands): on that rung a player
@@ -74,7 +76,8 @@
 //! refill_ammo = true               # a rung's gun never runs dry, its grenade comes
 //!                                  # back once thrown (default: false)
 //! rung_extras = true               # the games' per-rung draws (default: on); or by
-//!                                  # option: { attachments = false, character = true }
+//!                                  # option: { attachments = false, character = true },
+//!                                  # or tuned: { attachments = { sight = 0.4 } }
 //! win = { kind = "ladder_end" }    # the only one so far
 //! ```
 //!
@@ -194,12 +197,21 @@ pub enum JoinRung {
     First,
 }
 
-/// `rung_extras`: all on or off, or by option key.
+/// `rung_extras`: all on or off, or by option key (on or off, or a
+/// table: on, tuned).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 enum ExtrasParam {
     All(bool),
-    Keys(BTreeMap<String, bool>),
+    Keys(BTreeMap<String, ExtrasKey>),
+}
+
+/// One option key's value.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum ExtrasKey {
+    On(bool),
+    Tuned(toml::Table),
 }
 
 impl Default for ExtrasParam {
@@ -210,12 +222,15 @@ impl Default for ExtrasParam {
 
 /// Which rung extras a definition wants (`rung_extras`): every option
 /// key a hook reads is on unless turned off, none when all are off.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct RungOptions {
     /// `rung_extras = false`.
     pub off: bool,
-    /// Each key turned on or off.
+    /// Each key turned on or off (a tuned one: on).
     pub keys: BTreeMap<String, bool>,
+    /// The tuned keys' tables (`{ attachments = { ... } }`), which only
+    /// the hook that reads the key reads.
+    pub tables: BTreeMap<String, toml::Table>,
 }
 
 impl RungOptions {
@@ -224,16 +239,32 @@ impl RungOptions {
         !self.off && self.keys.get(key).copied().unwrap_or(true)
     }
 
+    /// Option `key`'s table, when the definition tunes it.
+    pub fn table(&self, key: &str) -> Option<&toml::Table> {
+        self.tables.get(key)
+    }
+
     fn of(p: &ExtrasParam) -> Self {
         match p {
             ExtrasParam::All(on) => Self {
                 off: !on,
-                keys: BTreeMap::new(),
+                ..Self::default()
             },
-            ExtrasParam::Keys(keys) => Self {
-                off: false,
-                keys: keys.clone(),
-            },
+            ExtrasParam::Keys(keys) => {
+                let mut out = Self::default();
+                for (k, v) in keys {
+                    match v {
+                        ExtrasKey::On(on) => {
+                            out.keys.insert(k.clone(), *on);
+                        }
+                        ExtrasKey::Tuned(t) => {
+                            out.keys.insert(k.clone(), true);
+                            out.tables.insert(k.clone(), t.clone());
+                        }
+                    }
+                }
+                out
+            }
         }
     }
 }

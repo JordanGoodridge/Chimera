@@ -89,8 +89,15 @@
 //!   accepted list from the modification file's `Weapon#` record **of the
 //!   same index** (attachments.md Q13: by position; a differing `Name` is
 //!   logged; no record: an empty list, logged, Q2), its `Default*Attach`
-//!   parts, `DefaultScopeVisible`, `FireSndRadius` and
-//!   `SilencedFireRadius1..10` (`merge_weapon_docs_with_mods`).
+//!   parts, `DefaultScopeVisible`, `FireSndRadius`,
+//!   `SilencedFireRadius1..10`, the record's slot options
+//!   (`MuzzleOPtion`..`MechSightOption`) and the part offsets
+//!   (`MuzzlePVPosOff`/`RotOff` and the scope's and third person's:
+//!   `part_offsets`) (`merge_weapon_docs_with_mods`). The audit
+//!   (`heavy::rung_attachments`): of the install's 1942 pool guns, 1835
+//!   records carry the weapon's own name, the other 107 a spelling of it
+//!   or a shared list, two swapped (the `loaded` R870 and AT-22), which
+//!   the game links by position too.
 //! Without an install or key, or when a document fails to parse (logged
 //! with its name and line), the built-in data is used unchanged.
 //! `weapon_set` and `movement::movement_data` are the merged data;
@@ -859,6 +866,23 @@ fn doc_id(doc: &Table) -> Option<&str> {
     doc.get("id")?.as_str()
 }
 
+/// The weapon's offsets for its parts' models
+/// (`attachments::PartOffsets`).
+fn part_offsets(w: &WeaponRecord) -> Value {
+    let one = |[pos, rot]: [[f64; 3]; 2]| {
+        let mut t = Table::new();
+        t.insert("pos".into(), floats(pos));
+        t.insert("rot".into(), floats(rot));
+        Value::Table(t)
+    };
+    let mut t = Table::new();
+    t.insert("muzzle_pv".into(), one(w.muzzle_pv_off));
+    t.insert("scope_pv".into(), one(w.scope_pv_off));
+    t.insert("muzzle_hh".into(), one(w.muzzle_hh_off));
+    t.insert("scope_hh".into(), one(w.scope_hh_off));
+    Value::Table(t)
+}
+
 /// What an install weapon (the weapons file's record `w`, index `index`)
 /// sets in a document's `combat_arms:attachments` table: its defaults,
 /// sound radii and, with the modification file, the accepted list of its
@@ -881,6 +905,7 @@ fn attachment_values(w: &WeaponRecord, index: usize, mods: Option<&ModFile>) -> 
         set(&["hooks", ATTACH, "defaults"], Value::Table(defaults)),
         set(&["hooks", ATTACH, "default_sight_visible"], w.default_scope_visible),
         set(&["hooks", ATTACH, "fire_sound_radius"], i64::from(w.fire_snd_radius)),
+        set(&["hooks", ATTACH, "part_offsets"], part_offsets(w)),
         set(
             &["hooks", ATTACH, "silenced_radius"],
             Value::Array(w.silenced_fire_radius.iter().map(|r| Value::Integer((*r).into())).collect()),
@@ -895,6 +920,10 @@ fn attachment_values(w: &WeaponRecord, index: usize, mods: Option<&ModFile>) -> 
                         r.name, w.name
                     );
                 }
+                out.push(set(
+                    &["hooks", ATTACH, "slot_options"],
+                    Value::Array(r.options.iter().map(|o| Value::Integer((*o).into())).collect()),
+                ));
                 r.accepts
                     .iter()
                     .map(|(name, variant)| {

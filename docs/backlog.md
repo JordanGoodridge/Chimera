@@ -53,7 +53,7 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
-- **Rung attachments may not fit their gun, or not show (user, 2026-10-29).**
+- **Rung attachments may not fit their gun, or not show (user, 2026-10-29): fixed, confirm in a playtest.**
   In the Escape-menu screenshots, the FMG-9's rung listed a holosight and
   the Luger P08's a silencer, but neither shows on the gun, and the user
   doubts they fit. Check, with the real install:
@@ -74,7 +74,29 @@ the user's go-ahead: no Actions runs unless asked.
   magazines) least (about 10%). At most two non-stock parts per gun. The
   odds live in the ladder rules as data. Fitted parts can add to a gun's
   power score once the power curve exists.
-- **The rung line lists raw attachment ids.** With rung extras on, the
+  Done: *the lists* are right (position linking holds: of the pool's
+  1942 guns 1835 records carry the gun's name, 105 a spelling of it or
+  a shared list, 2 swapped, which the game links by position too), and
+  Gold/Red parts are listed for every gun of a family; but each gun's
+  record closes slots its list names (`SightOption`/`MagazineOption`/
+  `MuzzleOPtion` 0, or 2 for a built-in part: the FMG-9 takes no sight
+  or magazine, the Luger P08 no silencer, sight or magazine; 1053 guns
+  list sights for a closed slot), and the draw ignored that. The draw
+  now takes only parts a slot accepts and its record leaves open
+  (`rungs::slot_candidates`), at the odds of
+  `data/attachments/rung_odds.toml` (sight 0.40, silencer 0.30,
+  mechanical sight 0.20, magazine and bullet 0.10, at most two; about
+  78% of slots stock), tunable per definition (`rung_extras = {
+  attachments = { sight = 0.5 } }`). *Shown:* parts weren't drawn at
+  all; now silencers and sights are drawn on the view model and the
+  held model (`view_model::parts`, `models::load_held_weapon`); the
+  muzzle parts' frame is an open question
+  (docs/plans/active/combat-arms.md "Attachment models").
+- **The rung line lists raw attachment ids: fixed, confirm in a
+  playtest.** Done: the install's names (the item file's `Option#`
+  records, `ui::install::part_names`) without the class suffix ("S1
+  Suppressor I"), readable record names without the install's strings
+  (a dedicated server), capped at 48 characters. With rung extras on, the
   gun game panel's top line reads like "Rung 1/12: FMG-9
   (Silencer_A_SMG_Gold, DotSight_Holosight_SMG_Gold, ...)". It runs
   across the whole screen and shows record ids. Show the attachments'

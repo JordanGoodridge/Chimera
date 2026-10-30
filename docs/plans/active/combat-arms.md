@@ -581,6 +581,39 @@ answers (the install has the data named in each):
    data) beside M8's "the body becomes the model record's infection
    override": which wins, and what model 10 is for.
 
+## Attachment models: open questions for a spec session (2026-10-29)
+
+Fitted parts are now drawn on the view model (`view_model::parts`, a
+`<weapon>+<part>` view model made on demand) and the held model
+(`characters::models::load_held_weapon`) as attachments.md "View model
+and world model" says: `AttachModel`c / `AttachHHModel`c with their
+skins (`AttachSkin`c`_`i by texture index), render styles and scale, at
+the part's `Socket` / `HHModelSocket`, moved by the weapon's
+`MuzzlePVPosOff`/`ScopePVPosOff` (and `HH`) in the socket's frame. Sights
+sit right on the rail; muzzle parts did not, so ours turns them. Open:
+1. **The socket frame of a muzzle part.** Read literally (the model in
+   the socket's frame, the offset in it too), the install's rifle
+   silencers (`PV_silencerA` on the M4A1, MP5A4, AK-47, FMG-9, offset x
+   -2.1 to -2.3) land 4.3 to 5.5 u behind the `Flash` socket, inside the
+   gun (the model runs along its own -x, the socket's +x points out of
+   the barrel); the pistols' (offset z -0.7) and the M24's (x +1.0) fit
+   as read. Turned half a turn about the socket's y they straddle the
+   muzzle (-0.3 to +0.9 u). Ours (`parts::turn_ahead`): of the model and
+   its half turns about x, y and z, the one reaching farthest ahead of
+   the muzzle without leaving it. What does the game do: another
+   socket frame, a fixed turn for parts, the offset's axes (right, up,
+   forward as named, or the socket's x, y, z)?
+2. **`MuzzlePVRotOff` / `ScopePVRotOff` and the `HH` ones:** units and
+   order (ours: radians, yaw about up, pitch about right, roll about
+   forward); every stock first-person value is zero, third-person ones
+   are not (`ScopeHHRotOff` (0, -3.14, -1.65) on the Luger P08).
+3. **The muzzle flash with a silencer:** does it move to the part's
+   end (a socket on the part model?) or stay at the gun's `Flash`?
+4. **A sight's lens:** the red-dot models carry a `clouds.dtx` piece in
+   `RS\TRANSPARENT.LTB` (style index 1); how is it blended (ours: the
+   render-style table's reading, drawn opaque red)?
+5. **A part model's own animations and sockets** (none played or used).
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the

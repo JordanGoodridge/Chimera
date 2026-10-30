@@ -227,6 +227,9 @@ pub struct InstallUi {
     pub legend: Vec<crate::game::radar::legend::IconList>,
     /// Display names of the install's weapons by our id (`weapon_names`).
     pub weapon_names: Vec<(String, String)>,
+    /// Display names of the install's attachments by record `Name`
+    /// (`part_names`).
+    pub part_names: Vec<(String, String)>,
     /// The weapons' kill icons by id (`kill_icons`; `kill_art` reads it).
     pub kill_icons: Arc<HashMap<String, String>>,
 }
@@ -509,6 +512,7 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
     let hud_layout = hud_layout(mount);
     let fonts = font_list(mount);
     let weapon_names = strings.as_ref().map(|t| weapon_names(mount, t)).unwrap_or_default();
+    let part_names = strings.as_ref().map(|t| part_names(mount, t)).unwrap_or_default();
     let mut names: Vec<String> = [&hud, &menu, &indicator, &result, &team_list, &no_team_list, &loading, &kill_cam]
         .into_iter()
         .flatten()
@@ -578,6 +582,7 @@ pub fn load(mount: &Mount, extra_art: &[String]) -> Option<InstallUi> {
         art,
         legend,
         weapon_names,
+        part_names,
         kill_icons: Arc::default(),
     })
 }
@@ -610,6 +615,45 @@ pub fn weapon_names_from(
         out.push((format!("combat_arms:{}", crate::game::data::slug(&name)), text));
     }
     out
+}
+
+/// Each attachment's display name by its record `Name` (the
+/// modification file's `Mod#`): the shop item file's `Option#` records
+/// whose `itemid` is that record's index, their `itemname` in `strings`
+/// (an unresolved one skipped).
+pub fn part_names_from(
+    mods: &lithtech_formats::attributes::Document,
+    items: &lithtech_formats::attributes::Document,
+    strings: &Strings,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for item in items.records("Option") {
+        let id = item.int("itemid", -1);
+        let key = item.fixed_string("itemname", "");
+        if id < 0 || key.is_empty() {
+            continue;
+        }
+        let Some(m) = mods.section(&format!("Mod{id}")) else { continue };
+        let name = m.fixed_string("Name", "");
+        let text = strings.resolve(&key);
+        let text = text.trim();
+        if name.is_empty() || text.is_empty() || text.starts_with('$') {
+            continue;
+        }
+        out.push((name, text.to_string()));
+    }
+    out
+}
+
+/// `part_names_from` the install's two files; none when either can't be
+/// read.
+pub fn part_names(mount: &Mount, strings: &Strings) -> Vec<(String, String)> {
+    use lithtech_formats::attributes::Document;
+    let read = |f: &str| mount.read(f).ok().and_then(|b| Document::parse(&b).ok());
+    match (read(crate::game::data::attributes::MOD_FILE), read(ITEMS_FILE)) {
+        (Some(m), Some(i)) => part_names_from(&m, &i, strings),
+        _ => Vec::new(),
+    }
 }
 
 /// `weapon_names_from` the install's two files; none when either can't
