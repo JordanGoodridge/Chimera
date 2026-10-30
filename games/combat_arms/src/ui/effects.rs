@@ -8,8 +8,11 @@
 //! - Tracers (4): a strip `Width` wide from tail to head, each end turned
 //!   about the strip's axis to face the camera from its own place (a
 //!   mesh rebuilt every frame: `strip_corners`), the record's texture and colour, alpha from `InitialAlpha` to
-//!   `FinalAlpha`, not additive, drawn without depth test (Quirk 1:
-//!   `OnTop`).
+//!   `FinalAlpha`, not additive, depth tested: a wall hides them. A
+//!   deliberate deviation from the spec (Quirk 1: tracers ignore depth),
+//!   decided by the user on 2026-10-30 (through walls looked like a bug):
+//!   `cl_tracer_through_walls 1` (archived, default 0) restores the
+//!   original look (`OnTop`: no depth test).
 //! - Casings (8): the FireFX's casing model and skin (`guns_sc`) at
 //!   `ShellScale` × the growth, else a small brass box.
 //! - The first-person muzzle flash (3): the muzzle part's or weapon's
@@ -88,6 +91,7 @@ impl Plugin for CaEffectsDrawPlugin {
     fn build(&self, app: &mut App) {
         let mount = crate::game::data::CaData::of(app).mount();
         app.add_plugins(MaterialPlugin::<OnTopMaterial>::default())
+            .init_resource::<TracerSettings>()
             .insert_resource(FxImages::new(mount))
             .add_systems(
                 Update,
@@ -96,27 +100,72 @@ impl Plugin for CaEffectsDrawPlugin {
                     .after(crate::game::effects::CaEffectsSet),
             )
             .add_systems(PostUpdate, camera_motion.before(bevy::transform::TransformSystems::Propagate));
+        if app.world().get_resource::<crate::console::Console>().is_some() {
+            crate::console::resource_cvar::<TracerSettings, u8>(
+                app,
+                "cl_tracer_through_walls",
+                "0: tracers are hidden by walls (default); 1: drawn through walls, as the original game does.",
+                |s| &mut s.through_walls,
+            );
+            app.world_mut().resource_mut::<crate::console::Console>().archive("cl_tracer_through_walls");
+        }
     }
 }
 
-/// A material drawn over everything (no depth test): tracers.
+/// Whether tracers show through walls (`cl_tracer_through_walls`; the
+/// original game does, we default to depth tested).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct TracerSettings {
+    pub through_walls: u8,
+}
+
+/// A tracer's material: depth tested, or (`through_walls`) drawn over
+/// everything.
 pub type OnTopMaterial = ExtendedMaterial<StandardMaterial, OnTop>;
 
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
-pub struct OnTop {}
+#[bind_group_data(OnTopKey)]
+pub struct OnTop {
+    pub through_walls: bool,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OnTopKey {
+    through_walls: bool,
+}
+
+impl From<&OnTop> for OnTopKey {
+    fn from(m: &OnTop) -> Self {
+        Self {
+            through_walls: m.through_walls,
+        }
+    }
+}
 
 impl MaterialExtension for OnTop {
     fn specialize(
         _pipeline: &MaterialExtensionPipeline,
         descriptor: &mut RenderPipelineDescriptor,
         _layout: &MeshVertexBufferLayoutRef,
-        _key: MaterialExtensionKey<Self>,
+        key: MaterialExtensionKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
         if let Some(depth) = descriptor.depth_stencil.as_mut() {
-            depth.depth_compare = Some(CompareFunction::Always);
-            depth.depth_write_enabled = Some(false);
+            OnTop::apply_depth(depth, key.bind_group_data.through_walls);
         }
         Ok(())
+    }
+}
+
+impl OnTop {
+    /// The depth state of a tracer: writes nothing; through walls (Quirk
+    /// 1) it always passes, else Bevy's compare stays. Tests check it, as
+    /// the pipeline can't be built without a GPU.
+    pub fn apply_depth(depth: &mut bevy::render::render_resource::DepthStencilState, through_walls: bool) {
+        if through_walls {
+            depth.depth_compare = Some(CompareFunction::Always);
+        }
+        depth.depth_write_enabled = Some(false);
     }
 }
 
@@ -295,6 +344,7 @@ fn strip_mesh(corners: [Vec3; 4]) -> Mesh {
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn tracers(
     list: Res<CaTracers>,
+    settings: Res<TracerSettings>,
     camera: Option<Single<&GlobalTransform, With<FirstPersonCamera>>>,
     mut drawn: Query<(&TracerQuad, &Mesh3d, &MeshMaterial3d<OnTopMaterial>, &mut Visibility)>,
     server: Res<AssetServer>,
@@ -325,6 +375,10 @@ fn tracers(
                     m.insert_attribute(Mesh::ATTRIBUTE_POSITION, corners.to_vec());
                 }
                 if let Some(mut m) = materials.get_mut(&mat) {
+                    let through = settings.through_walls != 0;
+                    if m.extension.through_walls != through {
+                        m.extension.through_walls = through;
+                    }
                     m.base.base_color = color;
                     if m.base.base_color_texture != tex {
                         m.base.base_color_texture = tex;
@@ -346,7 +400,9 @@ fn tracers(
                             cull_mode: None,
                             ..default()
                         },
-                        extension: OnTop {},
+                        extension: OnTop {
+                            through_walls: settings.through_walls != 0,
+                        },
                     })),
                     Transform::default(),
                     bevy::light::NotShadowCaster,
@@ -364,6 +420,31 @@ fn tracers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tracer is hidden by walls unless `cl_tracer_through_walls` is on
+    /// (Quirk 1, the original look); the effect groups' particles
+    /// (`ParticleDrawMaterial`) always are.
+    #[test]
+    fn tracers_are_depth_tested_unless_through_walls_is_on() {
+        use bevy::render::render_resource::{CompareFunction as Cmp, DepthStencilState, TextureFormat};
+        let tested = || DepthStencilState {
+            format: TextureFormat::Depth32Float,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(Cmp::GreaterEqual),
+            stencil: default(),
+            bias: default(),
+        };
+        assert_eq!(TracerSettings::default().through_walls, 0, "off by default");
+        let mut tracer = tested();
+        OnTop::apply_depth(&mut tracer, false);
+        assert_eq!(tracer.depth_compare, Some(Cmp::GreaterEqual), "a wall hides it");
+        assert_eq!(tracer.depth_write_enabled, Some(false));
+        OnTop::apply_depth(&mut tracer, true);
+        assert_eq!(tracer.depth_compare, Some(Cmp::Always), "the original look");
+        let mut particle = tested();
+        chimera_present::render::particles::ParticleDrawMaterial::apply_depth(&mut particle);
+        assert_eq!(particle.depth_compare, Some(Cmp::GreaterEqual), "particles are hidden by walls");
+    }
 
     #[test]
     fn strip_contains_the_shot_axis_faces_the_eye_and_keeps_its_width() {
