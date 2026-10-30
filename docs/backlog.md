@@ -53,6 +53,14 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **A vertical seam through the frame on de_dust2.** A 2026-10-30 capture
+  (Lucker Party, outside the arch toward B tunnels) shows a hard vertical
+  line down the middle of the frame. Left of it the ground is a
+  different surface from the right, and a wall is cut off along the same
+  line. Suspects: areaportal or PVS clipping (views clipped through
+  openings), or the camera batching change (19418530). Reproduce with
+  `setpos` and `setang` at that spot and compare `CHIMERA_GPU_PREPROCESS=1`,
+  `CHIMERA_SKIP_OUTPUTS=0` and the vis debug views.
 - **Rung attachments may not fit their gun, or not show (user, 2026-10-29).**
   In the Escape-menu screenshots, the FMG-9's rung listed a holosight and
   the Luger P08's a silencer, but neither shows on the gun, and the user
