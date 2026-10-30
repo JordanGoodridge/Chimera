@@ -25,6 +25,11 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## Roadmap after the gun game settles (user, 2026-10-29)
 
+- **Order (user, 2026-10-30):** the asset service's first milestone (M1:
+  per-file packer, local cache mount, recording what a load opens), then
+  the ECS cleanup, then the main menu. No PR test runner or CI for now;
+  AGENTS.md asks contributors to test before merging (a guideline). A
+  friend's test VM may come later.
 - **Console namespaces (user idea, 2026-10-30).** With several games in
   one app, flat command and setting names (`sv_cheats`, `cl_hitmarker`)
   collide. Proposed:
