@@ -62,6 +62,9 @@ cargo test -p chimera_world --features dev   # one crate's own tests (also
 cargo test -p cs_source --features dev,ui   # CS:S with its front end (menus, HUD)
 cargo test -p source_formats   # one workspace crate's tests (seconds)
 cargo test -p repo_checks      # architecture and docs checks (seconds)
+                             # Windows: scripts/affected-tests.ps1 -Staged
+                             # or -Files <repo-relative paths> for local edits;
+                             # -Base upstream/main considers committed changes only
 cargo run --features dev -- --help    # screenshot, spawn, look, movement options
 cargo run --features dev,tools --bin mapsweep   # debugging tools need `tools`
 cargo run --features dev --bin cs_source_server -- +map de_dust2   # dedicated server
