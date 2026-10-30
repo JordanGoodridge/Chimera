@@ -25,6 +25,23 @@ the user's go-ahead: no Actions runs unless asked.
 
 ## Roadmap after the gun game settles (user, 2026-10-29)
 
+- **First: ECS cleanup where new games plug in (2026-10-29).** For
+  extensibility more than speed. Counts today: ~350 functions taking the
+  whole world (`&mut World`), ~720 queries built inside them, 78
+  callback registries of `fn(&mut World, ..)`, 26 observers, ~40
+  process-wide statics (architecture-review.md section 4, E2).
+  1. A read-only audit classifies each one: fine as it is (map loads,
+     spawning, network apply); better as observers or messages (rung,
+     death and swap reactions, rules hooks); better as normal systems
+     with declared queries (per-tick game logic).
+  2. Convert the seams new games use: rung and identity reactions
+     (see the rung hook item), the weapon and rules hooks, and the
+     statics shared between client and server. The schedule ratchets
+     and the listen-server test guard each step.
+  3. A `repo_checks` rule: whole-world access only on an allowed list,
+     with how to fix it in the failure message. DESIGN.md states the
+     preferences: components, observers and messages first.
+  4. Speed: convert hot spots only when profsum shows them.
 - **Next two games: Half-Life 2: Deathmatch, then Team Fortress 2.** Not
   full remakes: take what Ultimate Gun Game needs from each, meaning the
   character controller, HUD, weapons, player models and maps. Both are
