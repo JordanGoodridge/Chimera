@@ -14,6 +14,7 @@
 mod common;
 
 mod aim_points;
+mod attached_fx;
 mod attachments;
 mod attribute_data;
 mod bot_objectives;
@@ -75,6 +76,7 @@ mod world_objects_play;
 
 // Slow ones (the user's install): the fast tier skips `heavy::`.
 mod heavy {
+    mod attached_fx;
     mod attributes;
     mod body_skins;
     mod rung_attachments;

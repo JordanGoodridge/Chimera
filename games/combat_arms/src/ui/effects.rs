@@ -18,6 +18,7 @@
 //!   flash place, in the view-model pass; a missing group shows nothing
 //!   (grade C and Red silencers). Its light and every effect group's
 //!   `DynaLight` are point lights without shadows (`lights`).
+//! - The view model's attached effects (view_models.md 3): `attached_fx`.
 //! - Effect groups' particles are Chimera's pool's (drawn by the map).
 //! - The textures load through the asset server (`FxImages`,
 //!   `textures::DtxLoader`), off the main thread: the first time a
@@ -90,7 +91,7 @@ impl Plugin for CaEffectsDrawPlugin {
             .insert_resource(FxImages::new(mount))
             .add_systems(
                 Update,
-                (decals, tracers, casings, muzzle_flash, lights)
+                (decals, tracers, casings, muzzle_flash, super::attached_fx::attached_effects, lights)
                     .after(crate::map::DriveAnimation)
                     .after(crate::game::effects::CaEffectsSet),
             )

@@ -91,7 +91,8 @@
 //! has one), keeps the pieces (`Pieces`: the `HiddenPiece` list by the
 //! total, the `ProjectilePiece` by shots, reloads and the draw) and the
 //! attached effects (`PVAttachFX`: hidden at creation, shown with the
-//! model, `HIDE_PVATTACHFX` / `SHOW_PVATTACHFX` keys); dry fire never plays
+//! model, `HIDE_PVATTACHFX` / `SHOW_PVATTACHFX` keys; the weapon's
+//! `PVAttachFXName#` groups played and drawn by `attached`); dry fire never plays
 //! and is silent (C6); a flash hider's part takes the weapon's
 //! `PVFlashHiderFXName`h (`effects::pv_muzzle`; none: no flash); the
 //! sway's footing is the 150 u ray (`sway::can_step`) and a spectated
@@ -112,8 +113,8 @@
 //! - The tracker counts exact frame time (the spec's test arithmetic), not
 //!   whole milliseconds of a millisecond clock; the pose between samples
 //!   is `model`'s resampling (`VIEW_SAMPLE_FPS`, nlerp between samples).
-//! - The pieces' and attached effects' states aren't drawn (no piece
-//!   hiding or effect groups on the view model yet); no player-view
+//! - The pieces' states aren't drawn (no piece hiding on the view model
+//!   yet; the attached effects are, `attached`); no player-view
 //!   attachments (no character record has any); the hands' file-name
 //!   reset at the local character's creation isn't there (every draw
 //!   builds fresh hands); the weapons' `PVFlashHiderFXName#` aren't read
@@ -132,6 +133,7 @@
 //!   (no character data yet); the hands' render styles aren't read
 //!   (their default style).
 
+pub mod attached;
 pub mod hands;
 pub mod machine;
 pub mod on_demand;
@@ -211,6 +213,10 @@ pub struct CaViewParams {
     /// `FlashHiderLevel` h takes it; a missing one: no flash). No stock
     /// weapon has any.
     pub flash_hider_fx: Vec<String>,
+    /// `PVAttachFXName0..`: the attached effect groups (3; `attached`),
+    /// and `PVAttachFXAlwaysShow`.
+    pub attach_fx: Vec<String>,
+    pub attach_fx_always: bool,
 }
 
 impl Default for CaViewParams {
@@ -224,6 +230,8 @@ impl Default for CaViewParams {
             under_water_flash: false,
             shells: false,
             flash_hider_fx: Vec::new(),
+            attach_fx: Vec::new(),
+            attach_fx_always: false,
         }
     }
 }
@@ -332,6 +340,7 @@ impl Plugin for CaViewModelPlugin {
                 drive
                     .in_set(crate::map::DriveAnimation)
                     .before(crate::weapon::view_anim::drive),
+                attached::track.in_set(crate::map::DriveAnimation).after(drive),
             ),
         );
         register_fov_cvar(app);
@@ -575,7 +584,7 @@ type WeaponParts<'a> = (
 /// without the gear's rates of its own (`gear::CaGearRates`: the vest's
 /// and the sets', the ones its reload and draw times use).
 fn setup_of(parts: &WeaponParts, vest: (f32, f32)) -> Setup {
-    let (w, magazine, trigger, shells, throwable, (_, _, mods, item, hitscan, gear)) = parts;
+    let (w, magazine, trigger, shells, throwable, (_, params, mods, item, hitscan, gear)) = parts;
     let (fire, reload, select) = mods.map_or((0.0, 0.0, 0.0), |m| m.rates());
     let (gear_fire, model_reload, model_select) = gear.map_or((0.0, vest.0, vest.1), |g| (g.fire, g.reload, g.select));
     let fire = fire + gear_fire;
@@ -589,6 +598,8 @@ fn setup_of(parts: &WeaponParts, vest: (f32, f32)) -> Setup {
             reload: animation_rate(1.0 + model_reload + reload),
             draw: animation_rate(1.0 + item.map_or(0.0, |i| i.select_rate) + model_select + select),
         },
+        attach_fx: params.map_or(0, |p| p.attach_fx.len()),
+        attach_fx_always: params.is_some_and(|p| p.attach_fx_always),
         ..Setup::default()
     }
 }

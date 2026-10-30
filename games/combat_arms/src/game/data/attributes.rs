@@ -347,6 +347,8 @@ pub struct WeaponRecord {
     /// when missing: none).
     pub silenced_fire_snd: [String; 10],
     pub dry_fire_snd: String,
+    /// `Alt_FireSnd` (empty when missing).
+    pub alt_fire_snd: String,
     pub reload_snd: [String; 3],
     pub select_snd: String,
     pub deselect_snd: String,
@@ -403,6 +405,11 @@ pub struct WeaponRecord {
     pub scope_pv_off: [[f64; 3]; 2],
     pub muzzle_hh_off: [[f64; 3]; 2],
     pub scope_hh_off: [[f64; 3]; 2],
+    /// `PVAttachFXName0..`: the view model's attached effect groups
+    /// (view_models.md 3; the chainsaw's idle, the time bombs' lights),
+    /// and `PVAttachFXAlwaysShow` (keys can't hide them).
+    pub pv_attach_fx: Vec<String>,
+    pub pv_attach_fx_always: bool,
 }
 
 impl WeaponRecord {
@@ -518,6 +525,7 @@ impl WeaponRecord {
             fire_snd: s.string("FireSnd").map(text).unwrap_or_default(),
             silenced_fire_snd: std::array::from_fn(|k| numbered(s, "SilencedFireSnd", k + 1)),
             dry_fire_snd: s.string("DryFireSnd").map(text).unwrap_or_default(),
+            alt_fire_snd: s.string("Alt_FireSnd").map(text).unwrap_or_default(),
             reload_snd: std::array::from_fn(|k| numbered(s, "ReloadSnd", k + 1)),
             select_snd: s.string("SelectSnd").map(text).unwrap_or_default(),
             deselect_snd: s.string("DeselectSnd").map(text).unwrap_or_default(),
@@ -552,6 +560,8 @@ impl WeaponRecord {
             scope_pv_off: offsets("ScopePV"),
             muzzle_hh_off: offsets("MuzzleHH"),
             scope_hh_off: offsets("ScopeHH"),
+            pv_attach_fx: s.string_list("PVAttachFXName").iter().map(|v| text(v)).collect(),
+            pv_attach_fx_always: s.bool("PVAttachFXAlwaysShow", false) || i("PVAttachFXAlwaysShow", 0) != 0,
         }
     }
 

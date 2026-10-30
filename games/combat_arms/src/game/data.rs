@@ -42,6 +42,8 @@
 //!   `ReloadSnd1..3`, `SelectSnd`, `DeselectSnd`, `MiscSound1..5` with
 //!   `FireSndRadius`, `ReloadSndRadius` and `SelectSndRadius`, the muzzle
 //!   groups `PVMuzzleFXName`, `HHMuzzleFXName` and the flash-hider groups,
+//!   the view model's attached groups `PVAttachFXName#` with
+//!   `PVAttachFXAlwaysShow`,
 //!   and the default ammo's `ImpactFXName`, `FireFXName` and
 //!   `TracerFXName` (a missing field: the spec's default, no sound or
 //!   effect; an empty impact or tracer name: `BulletFmj`, `Standard`;
@@ -766,6 +768,11 @@ fn effects_patch(doc: &mut Table, w: &WeaponRecord, ammo: Option<&AmmoRecord>) {
     let Value::Table(view) = hooks.entry(VIEW).or_insert_with(|| Value::Table(Table::new())) else { return };
     view.insert("muzzle_fx".into(), Value::String(w.pv_muzzle_fx.clone()));
     view.insert("flash_hider_fx".into(), string_array(&w.pv_flash_hider_fx, 1, false));
+    view.insert(
+        "attach_fx".into(),
+        Value::Array(w.pv_attach_fx.iter().map(|g| Value::String(g.clone())).collect()),
+    );
+    view.insert("attach_fx_always".into(), Value::Boolean(w.pv_attach_fx_always));
 }
 
 /// `Guntype` of the thrown weapons.

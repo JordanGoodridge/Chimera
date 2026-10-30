@@ -58,6 +58,7 @@
 //! tags stay code-drawn (as the spec has them), the objectives' lines
 //! ours.
 
+pub mod attached_fx;
 pub mod chat;
 pub mod desk;
 pub mod draw;
