@@ -174,6 +174,29 @@ impl NetSim {
             .next()
     }
 
+    /// Step until the server has turned every client's character (its
+    /// spawn facing, `core::ViewSet`: the server spawns it a few ticks
+    /// after the client sees it) and the client has taken that look (the
+    /// last command the server ran acks it, `NetCmd::look_ack`). Until
+    /// then the turn overwrites the client's own look when it arrives and
+    /// the server keeps its look over the commands', so a test that
+    /// scripts a client's look right after joining waits for this first.
+    /// Panics after `max` ticks.
+    pub fn until_looks_taken(&mut self, max: u64) {
+        let ok = self.until(max, |s| {
+            (0..s.clients.len()).all(|i| {
+                let Some(e) = s.character_of(i) else { return false };
+                let world = s.server.app.world();
+                let Some(turn) = world.get::<crate::core::ViewSet>(e) else { return false };
+                world
+                    .get::<net::server::CommandBuffer>(e)
+                    .and_then(|b| b.last.as_ref())
+                    .is_some_and(|c| c.look_ack == turn.count)
+            })
+        });
+        assert!(ok, "clients didn't take the server's look within {max} ticks");
+    }
+
     /// The server's character for client `i`.
     pub fn character_of(&mut self, i: usize) -> Option<Entity> {
         let id = self.client_id(i);

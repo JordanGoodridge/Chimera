@@ -99,6 +99,11 @@ fn a_protected_player_shows_and_takes_no_hit_from_either_games_guns() {
         sim.ticks(3);
         assert_eq!(fire_at(&mut sim, a, b), (0, 0.0), "{gun}: protected");
         sim.app.world_mut().entity_mut(b).remove::<(SpawnProtected, chimera_core::core::God)>();
+        // Let the first burst's view kick return: Combat Arms' rounds leave
+        // along the look plus the kick, so straight after it they fly over
+        // the shoulders, and whether they clip the body then depends on
+        // which way the target faces (its spawn facing).
+        sim.seconds(1.0);
         let (hits, lost) = fire_at(&mut sim, a, b);
         assert!(hits > 0 && lost > 0.0, "{gun}: after it ({hits} hits, {lost} lost)");
         sim.app.world_mut().get_mut::<Health>(b).unwrap().current = full;
