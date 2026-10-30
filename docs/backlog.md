@@ -77,6 +77,20 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Spawn facing toward open space (user idea, 2026-10-30).** Today the gun
+  game spawns face one of eight fixed directions (`minigame::spawns`), so
+  a player can face a wall, and views can line up with map edges (the
+  de_dust2 seam).
+  - At each spawn the server casts about 32 horizontal rays from eye
+    height, capped at about 30 m, and smooths each direction's distance
+    with its neighbours.
+  - The player faces the most open direction, plus about ±10° at random,
+    pitch level or slightly down. Optional tiebreak: toward the middle of
+    the walkable area.
+  - Done per spawn, not precomputed: it costs microseconds. The server
+    picks the facing and sends it.
+  - Test: a spawn beside a wall faces away from it, and the facing varies
+    within its open sector.
 - **Melee finale on by default, longer for longer games (user, 2026-10-30).**
   Both gun games (Lucker Party's `gun_game_dust2` and Ultimate Gun Game's
   automatic definition) end on melee by default. A longer ladder gets
