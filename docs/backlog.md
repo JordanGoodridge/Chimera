@@ -746,6 +746,8 @@ the user's go-ahead: no Actions runs unless asked.
   6. Special weapons' own scopes (XM25 Scope, L115 scope on specials,
      `LGB_scope`): needs a spec session. How a special weapon zooms isn't
      specified (data.rs "Known shortcuts").
+     **Answered (2026-10-30):** exactly like a gun, through its scope
+     part's zoom levels (weapon_classes.md Corrections (2026-10-30) 2).
 
   Stale in `game/data.rs`'s "Known shortcuts": "sounds and sound radii"
   aren't all unmapped (`MiscSound1..5`, `PlayAutoThrowSound`,
