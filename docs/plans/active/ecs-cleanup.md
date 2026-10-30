@@ -4,8 +4,8 @@ Status: the audit (roadmap item 1) done 2026-10-29 on main at
 a5e70668, read-only. Section 4's step 1 (guards) done 2026-10-29:
 `checks/tests/it/ecs.rs` and `determinism.rs` over every simulation
 crate, DESIGN.md "ECS style" (what landed: step 1 below). Steps 2
-(single-slot hooks keyed by game), 3 (the weapon seam) and 10 done
-2026-10-30. Next: step 4.
+(single-slot hooks keyed by game), 3 (the weapon seam), 6 (the minigame
+runtime's per-tick work) and 10 done 2026-10-30. Next: step 4.
 The roadmap item's other parts (docs/backlog.md, "First: ECS cleanup
 where new games plug in") follow section 4's order. Goal (user, 2026-10-29): outcomes, not a rewrite. The
 next games (Half-Life 2: Deathmatch, Team Fortress 2, later Call of
@@ -671,6 +671,29 @@ what must pass, beyond each crate's fast tier. The guards:
   `rotation.rs`, `net_gun_game.rs`; `chimera/sim/tests/it/minigame.rs`.
 - Effect: the runtime that every minigame of every game runs on uses
   declared queries.
+- **Done 2026-10-30.** `join`, `respawn_dead`, `end_protection` and
+  `hold_the_end` are normal systems with declared queries in the same
+  chained tuple (`runtime::plugin`), same places. `join` stayed a system,
+  not an observer: the joining moment is several (a team given, a
+  connection's end, a spectator's return, the minigame's start, a hold
+  lifted), and its `Without<InMinigame>` query is an archetype filter, so
+  as cheap as an observer; it finds the joiners (in the query's order, as
+  before) and queues their taking in (the mode's team, the rules'
+  `joined`, the spawn: world work) on `Commands`, applied at the sync
+  point the chain puts before the mode's update. `respawn_dead` finds the
+  players dead for the definition's delay (not while held or the match
+  is over) and queues, in join order, the mode's say (`respawn_due`,
+  whose `may_respawn` takes the world) and the respawns, applied before
+  `hold_the_dead`. `end_protection` removes through `Commands`, applied
+  at the sync point before `results::record` (exclusive), so before the
+  tick's damage (O1). `hold_the_end` writes the intents and `FreezeTime`
+  in place (seen by the rest of the tick as before), `EndFreeze` through
+  `Commands` (only it and `minigame::restart` read it, later).
+  Tests (`chimera/sim/tests/it/minigame.rs`):
+  `a_shot_on_the_protections_last_tick_ends_it_before_that_ticks_damage`,
+  `a_joiner_is_taken_in_and_spawned_in_its_first_tick`,
+  `the_dead_respawn_on_the_tick_they_are_due`. `ecs.rs`: `chimera_sim`
+  ratchet 13 to 9.
 
 ### Step 7: the HUD's status as a component (M)
 

@@ -46,6 +46,14 @@
 //!   `died` hook in any phase.
 //! - `take_weapon`: a weapon out of a character's hands and inventory, for
 //!   the rules' swaps.
+//! - The per-tick work (`plugin`, in `SimSet::Rules`, chained: `join`, the
+//!   mode's update, `step_phases`, `respawn_dead`, the dead held,
+//!   `end_protection`, `results::record`, `hold_the_end`) is normal
+//!   systems with declared queries; the world work they find (a joiner
+//!   taken in, a respawn) is queued on `Commands` and applied at the sync
+//!   point before the next system of the chain, so the order and the
+//!   tick are as before. `end_protection`'s removals apply before the
+//!   tick's damage.
 
 use avian3d::prelude::ColliderDisabled;
 use bevy::{ecs::message::MessageCursor, prelude::*};
@@ -370,24 +378,36 @@ pub fn take_weapon(world: &mut World, owner: Entity, weapon: Entity) {
     }
 }
 
+/// A character the minigame may take in (`join`): in the game, not yet in
+/// the minigame.
+type Joining = (With<Intent>, With<Health>, Without<InMinigame>, Without<Connecting>, Without<Spectating>, Without<Npc>);
+
 /// New characters into the minigame: a team as the mode makes them, at
-/// once into play unless the match is over.
-fn join(world: &mut World) {
-    if super::held(world) {
+/// once into play unless the match is over. The joiners are found by the
+/// declared query; taking them in (the mode's team, the rules' `joined`,
+/// the spawn) is world work, queued and applied at the sync point before
+/// the phases step (`plugin`'s chain), in the query's order.
+fn join(joining: Query<(Entity, &Team), Joining>, hold: Option<Res<super::MatchHold>>, mut commands: Commands) {
+    if hold.is_some() {
         return;
     }
-    type Joining = (With<Intent>, With<Health>, Without<InMinigame>, Without<Connecting>, Without<Spectating>, Without<Npc>);
-    let new: Vec<(Entity, u8)> =
-        cached_query::<(Entity, &Team), Joining, _>(world, |q, world| q.iter(world).map(|(e, t)| (e, t.0)).collect());
+    let new: Vec<(Entity, u8)> = joining.iter().map(|(e, t)| (e, t.0)).filter(|(_, t)| *t != 255).collect();
+    if new.is_empty() {
+        return;
+    }
+    commands.queue(move |world: &mut World| take_in(world, &new));
+}
+
+/// `join`'s world part: each of `new` (with its team then) into the
+/// minigame, in order.
+fn take_in(world: &mut World, new: &[(Entity, u8)]) {
     let over = world.resource::<Match>().phase == Phase::MatchOver;
-    for (e, team) in new {
-        if team == 255 {
-            continue;
-        }
+    for &(e, team) in new {
+        let Ok(mut ent) = world.get_entity_mut(e) else { continue };
         if !plays(team) {
-            world.entity_mut(e).insert(Team(ALPHA));
+            ent.insert(Team(ALPHA));
         }
-        world.entity_mut(e).insert(InMinigame);
+        ent.insert(InMinigame);
         mode::assign_team(world, e, false);
         if let Some(rules) = world.get_resource::<ActiveMinigame>().map(|a| a.rules) {
             (rules.joined)(world, e);
@@ -433,53 +453,76 @@ pub fn respawn_due(world: &World, e: Entity) -> Option<f64> {
     Some(dead.since + def.spawn.respawn.delay as f64)
 }
 
-/// The dead back after the definition's delay.
-fn respawn_dead(world: &mut World) {
-    if current_mode(world).is_none() {
+/// The players (`players`' filter) that are dead.
+type DeadPlaying = (With<Intent>, With<Health>, With<InMinigame>, Without<Connecting>, Without<Spectating>, Without<Npc>);
+
+/// The dead back after the definition's delay: the declared query finds
+/// the players dead that long (not while held or the match is over); the
+/// mode's say (`respawn_due`, whose `may_respawn` reads the world) and the
+/// spawn are world work, queued and applied at the sync point after this
+/// system (`plugin`'s chain), in join order as `players` gives them.
+fn respawn_dead(
+    dead: Query<(Entity, &Team, &Dead, Option<&JoinOrder>), DeadPlaying>,
+    clock: Res<SimClock>,
+    active: Option<Res<ActiveMinigame>>,
+    game: Option<Res<Match>>,
+    hold: Option<Res<super::MatchHold>>,
+    mut commands: Commands,
+) {
+    let Some(active) = active else { return };
+    if hold.is_some() || game.is_none_or(|m| m.phase == Phase::MatchOver) {
         return;
     }
-    let now = world.resource::<SimClock>().now;
-    let due: Vec<Entity> = players(world)
-        .into_iter()
-        .filter(|(e, _)| respawn_due(world, *e).is_some_and(|at| now + 1e-9 >= at))
-        .map(|(e, _)| e)
+    let (now, delay) = (clock.now, active.def.spawn.respawn.delay as f64);
+    let mut due: Vec<(u64, Entity)> = dead
+        .iter()
+        .filter(|(_, t, d, _)| plays(t.0) && now + 1e-9 >= d.since + delay)
+        .map(|(e, _, _, o)| (o.map_or(u64::MAX, |o| o.0), e))
         .collect();
-    for e in due {
-        respawn(world, e);
+    if due.is_empty() {
+        return;
     }
+    due.sort();
+    commands.queue(move |world: &mut World| {
+        if current_mode(world).is_none() {
+            return;
+        }
+        let due: Vec<Entity> =
+            due.into_iter().map(|(_, e)| e).filter(|e| respawn_due(world, *e).is_some_and(|at| now + 1e-9 >= at)).collect();
+        for e in due {
+            respawn(world, e);
+        }
+    });
 }
 
 /// Protection ends with its windows or (`fire_ends`) the first attack:
 /// the fire key held (a gun, a knife's swing, a grenade's pin), or any
 /// weapon's round, swing or throw (a knife's secondary stab); `God` goes
-/// with the damage window.
-fn end_protection(world: &mut World, mut cursor: Local<MessageCursor<crate::weapon::WeaponEvent>>) {
-    use crate::weapon::{WeaponEvent, WeaponEventKind as K};
-    let now = world.resource::<SimClock>().now;
-    let attacked: Vec<Entity> = match world.get_resource::<Messages<WeaponEvent>>() {
+/// with the damage window. The removals apply at the sync point after
+/// this system (`plugin`'s chain), before the tick's damage.
+fn end_protection(
+    mut cursor: Local<MessageCursor<crate::weapon::WeaponEvent>>,
+    events: Option<Res<Messages<crate::weapon::WeaponEvent>>>,
+    clock: Res<SimClock>,
+    protected: Query<(Entity, &SpawnProtected, &Protected, &Intent, Has<God>)>,
+    mut commands: Commands,
+) {
+    use crate::weapon::WeaponEventKind as K;
+    let now = clock.now;
+    let attacked: Vec<Entity> = match events {
         Some(events) => cursor
-            .read(events)
+            .read(&events)
             .filter(|e| matches!(e.kind, K::Fired { .. } | K::Swing { .. } | K::Thrown | K::Shot { .. }))
             .map(|e| e.owner)
             .collect(),
         None => Vec::new(),
     };
-    let mut done = Vec::new();
-    let mut damage_over = Vec::new();
-    cached_query::<(Entity, &SpawnProtected, &Protected, &Intent, Has<God>), (), _>(world, |q, world| {
-        for (e, sp, p, i, god) in q.iter(world) {
-            if (p.fire_ends && (i.fire || attacked.contains(&e))) || sp.over(now) {
-                done.push(e);
-            } else if god && now + 1e-9 >= sp.damage_until {
-                damage_over.push(e);
-            }
+    for (e, sp, p, i, god) in &protected {
+        if (p.fire_ends && (i.fire || attacked.contains(&e))) || sp.over(now) {
+            commands.entity(e).remove::<(Protected, SpawnProtected, God)>();
+        } else if god && now + 1e-9 >= sp.damage_until {
+            commands.entity(e).remove::<God>();
         }
-    });
-    for e in done {
-        unprotect(world, e);
-    }
-    for e in damage_over {
-        world.entity_mut(e).remove::<God>();
     }
 }
 
@@ -595,31 +638,46 @@ pub fn end_frozen(i: &Intent) -> Intent {
 /// through the intermission, the match over and a map change's
 /// `MatchHold`, until the next match.
 pub fn end_holds(world: &World) -> bool {
-    super::held(world)
-        || world.get_resource::<Match>().is_some_and(|m| {
-            matches!(m.phase, Phase::RoundOver { .. } | Phase::Intermission { .. } | Phase::MatchOver)
-        })
+    holds_at_end(super::held(world), world.get_resource::<Match>())
+}
+
+/// `end_holds` from the hold and the match.
+fn holds_at_end(held: bool, game: Option<&Match>) -> bool {
+    held || game.is_some_and(|m| matches!(m.phase, Phase::RoundOver { .. } | Phase::Intermission { .. } | Phase::MatchOver))
 }
 
 /// The match's end pauses the game for everyone (players and bots, the
 /// server's rule, so a network client's prediction is held too through
 /// `core::FreezeTime`): every intent kept to its look (`end_frozen`)
 /// while `end_holds`; the freeze lifted when the next match plays.
-fn hold_the_end(world: &mut World) {
-    let ours = world.contains_resource::<EndFreeze>();
-    if end_holds(world) {
-        if !ours {
-            world.insert_resource(EndFreeze);
+/// `FreezeTime` and the intents are written in place (seen by the rest of
+/// the tick); `EndFreeze` through commands.
+fn hold_the_end(
+    hold: Option<Res<super::MatchHold>>,
+    game: Option<Res<Match>>,
+    ours: Option<Res<EndFreeze>>,
+    freeze: Option<ResMut<FreezeTime>>,
+    mut intents: Query<&mut Intent>,
+    mut commands: Commands,
+) {
+    if holds_at_end(hold.is_some(), game.as_deref()) {
+        if ours.is_none() {
+            commands.insert_resource(EndFreeze);
         }
-        if world.get_resource::<FreezeTime>().is_none_or(|f| !f.0) {
-            world.insert_resource(FreezeTime(true));
+        match freeze {
+            Some(mut f) if !f.0 => f.0 = true,
+            Some(_) => {}
+            None => commands.insert_resource(FreezeTime(true)),
         }
-        let mut q = world.query::<&mut Intent>();
-        for mut i in q.iter_mut(world) {
+        for mut i in &mut intents {
             *i = end_frozen(&i);
         }
-    } else if ours {
-        lift_end_freeze(world);
+    } else if ours.is_some() {
+        commands.remove_resource::<EndFreeze>();
+        match freeze {
+            Some(mut f) => f.0 = false,
+            None => commands.insert_resource(FreezeTime(false)),
+        }
     }
 }
 
