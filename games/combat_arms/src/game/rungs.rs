@@ -33,14 +33,19 @@
 //! - `melee`: a Combat Arms melee weapon (every weapon of ours with the
 //!   knife's data, `inventory::KNIFE_HOOK`, in a set the definition allows: knives, the shovel, the
 //!   machete, ...) in place of the kit's knife on the rung (Chimera's
-//!   `runtime::KitMelee`). The knife finale's rung draws nothing: it
-//!   keeps its knife.
+//!   `runtime::KitMelee`). The knife finale's rung draws none of these: it
+//!   keeps its knife, or is the infected's.
 //!
-//! - `infected`: one rung becomes the infected's (game_modes.md M8's
-//!   infected, tied to their hands; Chimera's `ladder::RungCharacter`):
-//!   of the Combat Arms rungs in the top third (never the last), one
-//!   drawn alike (`infected_turn`), when the data has an infected's
-//!   weapon (a knife-class weapon with the `combat_arms:infected` table,
+//! - `infected`: a melee rung may become the infected's (game_modes.md
+//!   M8's infected, tied to their hands; Chimera's
+//!   `ladder::RungCharacter`): the infected are one choice in the melee
+//!   pool, so only a rung of the ladder's melee band (its last rungs whose
+//!   weapon is a melee weapon: the knife finale's, whichever game's knife
+//!   it is; `RungDraw::melee`) can be theirs, at the odds of
+//!   data/rung_melee.toml (`infected`, 0.25: `InfectedOdds`; tuned by a
+//!   definition's `rung_extras = { infected = { odds = 0.5 } }`, 0: never),
+//!   else it keeps its knife; with the infected's weapon in the data (a
+//!   knife-class weapon with the `combat_arms:infected` table,
 //!   `INFECTED`: the install's Quarantine hands, `data::infected_table`;
 //!   the stock ones, records 191 and 190 of missions.md F4.1, first). A
 //!   rung whose own weapon is such a hand is the infected's too. On it
@@ -49,12 +54,15 @@
 //!   face: `infected_look`); the next rung, up or down, makes them
 //!   themselves again. They keep the gun game's baseline (the rung
 //!   vest's armour and health, `gear::vest_of`; no `movement::CaInfected`,
-//!   so no knock-back from bullets: S14). Becoming one is the
-//!   infection's moment (`INFECTED_HOOK`, `infection_moments`, on every
-//!   machine that shows effects): the infection sound (data/effects.toml
-//!   `infection`, by the body's sex) and the change effect
-//!   (`INFECTION_FX`, M8's `Quarantine_Exp_01`) at the player. A melee
-//!   rung's draw never gives a hand.
+//!   so no knock-back from bullets: S14). Arriving and leaving are
+//!   observers of Chimera's `ladder::OnRung` on every machine (a network
+//!   client's from the replicated rung): `CaRungInfected` on and off
+//!   (`arrive`, `leave`), and becoming one is the infection's moment
+//!   (`infection_moment`, where effects are shown; not for a player a
+//!   machine first sees on the rung, `OnRung::from`): the infection sound
+//!   (data/effects.toml `infection`, by the body's sex) and the change
+//!   effect (`INFECTION_FX`, M8's `Quarantine_Exp_01`) at the player. A
+//!   gun rung's melee draw never gives a hand.
 //!
 //! Each is on by default and turned off in the definition's `[rules]`
 //! (`rung_extras = { attachments = false, character = false, melee =
@@ -80,12 +88,11 @@
 //! radius are ours (the spec names none).
 
 use bevy::prelude::*;
-use bevy_replicon::prelude::*;
+use serde::Deserialize;
 use chimera_sim::minigame::{
     auto::Rng,
-    ladder::{RungCharacter, RungCharacterHook, RungDraw, RungExtras, RungExtrasAppExt, RungExtrasHook, RungOptions},
+    ladder::{OnRung, RungCharacter, RungDraw, RungExtras, RungExtrasAppExt, RungExtrasHook, RungOptions},
 };
-use serde::{Deserialize, Serialize};
 
 use super::{
     GAME,
@@ -95,7 +102,7 @@ use super::{
     effects::{CaFxRequest, FxKind, data::CaFxTables, sounds::CaSound},
     inventory::KNIFE_HOOK,
 };
-use crate::{net::NetAppExt, weapon::data::WeaponCatalog};
+use crate::weapon::data::WeaponCatalog;
 
 /// The option keys (`rung_extras = { <key> = false }`).
 pub const ATTACHMENTS_KEY: &str = "attachments";
@@ -129,21 +136,10 @@ pub const HOOK: RungExtrasHook = RungExtrasHook {
     apply,
 };
 
-/// The infected's moments (Chimera's `ladder::RungCharacterHook`).
-pub const INFECTED_HOOK: RungCharacterHook = RungCharacterHook {
-    game: GAME,
-    enter: |world, e, _| {
-        world.entity_mut(e).insert(CaRungInfected);
-    },
-    leave: |world, e, _| {
-        world.entity_mut(e).remove::<CaRungInfected>();
-    },
-};
-
-/// A player who is a ladder rung's infected (the server's, replicated):
-/// what each machine plays the infection's moment by. Not
+/// A player who is a ladder rung's infected, on every machine (put on
+/// and off by `arrive` and `leave` from Chimera's `ladder::OnRung`). Not
 /// `movement::CaInfected`: no knock-back, no infected rules.
-#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CaRungInfected;
 
 /// Combat Arms' rung extras on the ladder.
@@ -151,11 +147,52 @@ pub struct CaRungsPlugin;
 
 impl Plugin for CaRungsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_rung_extras(HOOK)
-            .add_rung_character(INFECTED_HOOK)
-            .net_part("combat_arms_rungs", |app| {
-                app.replicate::<CaRungInfected>();
-            });
+        app.add_rung_extras(HOOK).add_observer(arrive).add_observer(leave);
+    }
+}
+
+/// Whether rung `on` makes its players the infected.
+pub fn infected_rung(on: &OnRung) -> bool {
+    on.character().is_some_and(|c| c.id == INFECTED_CHARACTER)
+}
+
+/// A player arrived on a rung: the infected's marker on, on theirs.
+fn arrive(on: On<Insert<OnRung>>, rungs: Query<&OnRung>, mut commands: Commands) {
+    if rungs.get(on.event_target()).is_ok_and(infected_rung) {
+        commands.entity(on.event_target()).insert(CaRungInfected);
+    }
+}
+
+/// A player left a rung (or is gone): the infected's marker off.
+fn leave(on: On<Discard<OnRung>>, rungs: Query<&OnRung>, mut commands: Commands) {
+    if rungs.get(on.event_target()).is_ok_and(infected_rung) {
+        commands.entity(on.event_target()).try_remove::<CaRungInfected>();
+    }
+}
+
+/// How often a melee rung is the infected's (data/rung_melee.toml,
+/// `rung_extras = { infected = { odds = .. } }` in a definition).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InfectedOdds(pub f64);
+
+impl InfectedOdds {
+    /// The built-in odds (data/rung_melee.toml).
+    pub const DATA: &str = include_str!("../../data/rung_melee.toml");
+
+    /// The definition's (its `infected` table's `odds`, else the data's;
+    /// 0 with the option off), within 0 and 1.
+    pub fn of(options: &RungOptions) -> InfectedOdds {
+        if !options.on(INFECTED_KEY) {
+            return InfectedOdds(0.0);
+        }
+        let number = |v: &toml::Value| v.as_float().or_else(|| v.as_integer().map(|i| i as f64));
+        let tuned = options.table(INFECTED_KEY).and_then(|t| t.get("odds")).and_then(number);
+        let data = toml::from_str::<toml::Table>(Self::DATA)
+            .unwrap_or_else(|e| panic!("rung_melee.toml: {e}"))
+            .get("infected")
+            .and_then(number)
+            .unwrap_or_else(|| panic!("rung_melee.toml: no `infected` odds"));
+        InfectedOdds(tuned.unwrap_or(data).clamp(0.0, 1.0))
     }
 }
 
@@ -187,38 +224,26 @@ pub fn infected_hands(world: &World, d: &RungDraw) -> Vec<&'static str> {
     if stock.is_empty() { pool } else { stock }
 }
 
-/// Whether rung `d` is the ladder's infected one: of the Combat Arms gun
-/// rungs in the top third, never the last, one chosen alike (each in turn
-/// with one chance in those left, so exactly one when none before it
-/// was), unless an earlier rung already is.
-fn infected_turn(world: &World, d: &RungDraw, rng: &mut Rng) -> bool {
-    if d.drawn.iter().flatten().any(|x| x.character.is_some()) {
-        return false;
-    }
-    let n = d.rungs.len();
-    let catalog = world.get_resource::<WeaponCatalog>();
-    let prefix = format!("{GAME}:");
-    let band: Vec<usize> = (n * 2 / 3..n.saturating_sub(1))
-        .filter(|&i| d.rungs[i].starts_with(&prefix) && !catalog.is_some_and(|c| c.get(d.rungs[i]).is_some_and(|w| w.has_hook(KNIFE_HOOK))))
-        .collect();
-    let Some(j) = band.iter().position(|&i| i == d.rung) else { return false };
-    rng.below(band.len() - j) == 0
-}
-
 /// A Combat Arms rung's draw.
 fn draw(world: &World, d: &RungDraw, rng: &mut Rng) -> Option<RungExtras> {
     let mut x = RungExtras::default();
     x.values.push((WEAPON.into(), d.weapon.into()));
-    // The infected's rung: its own weapon a hand, or the one drawn.
+    // The infected's rung: its own weapon a hand, or (a melee rung) one
+    // drawn at the infected's odds.
     let own = world.get_resource::<WeaponCatalog>().is_some_and(|c| is_infected_weapon(c, d.weapon));
     let hands = if own {
         Some(d.weapon)
-    } else if d.options.on(INFECTED_KEY) {
-        let pool = infected_hands(world, d);
-        (!pool.is_empty() && infected_turn(world, d, rng)).then(|| pool[rng.below(pool.len())])
+    } else if d.melee {
+        let odds = InfectedOdds::of(d.options).0;
+        let pool = if odds > 0.0 { infected_hands(world, d) } else { Vec::new() };
+        (!pool.is_empty() && rng.unit() < odds).then(|| pool[rng.below(pool.len())])
     } else {
         None
     };
+    // Any other melee rung keeps its own weapon: nothing drawn.
+    if d.melee && hands.is_none() {
+        return None;
+    }
     if let Some(hands) = hands {
         x.values.push((INFECTED_VALUE.into(), "1".into()));
         if let Some(m) = draw_infected_body(world, rng) {
@@ -534,39 +559,40 @@ fn apply(world: &mut World, e: Entity, extras: Option<&RungExtras>) {
     }
 }
 
-/// The infection's moment on this machine (each frame where effects are
-/// shown): a player who just became a rung's infected (`CaRungInfected`
-/// added to a character already here: not one a client first sees) gets
-/// the infection sound (data/effects.toml `infection`, the female list
-/// for a female body) and the change effect (`INFECTION_FX`) where it
-/// stands.
-#[allow(clippy::type_complexity)]
-pub fn infection_moments(
-    infected: Query<(&GlobalTransform, Option<Ref<Selection>>), Added<CaRungInfected>>,
-    tables: Res<CaFxTables>,
+/// The infection's moment (an observer where effects are shown): a
+/// player who arrives on the infected's rung from another rung
+/// (`OnRung::from`: not one this machine first sees there) and wasn't the
+/// infected gets the infection sound (data/effects.toml `infection`, the
+/// female list for a female body) and the change effect (`INFECTION_FX`)
+/// where it stands.
+#[allow(clippy::too_many_arguments)]
+pub fn infection_moment(
+    on: On<Insert<OnRung>>,
+    players: Query<(&OnRung, &GlobalTransform, Option<&Selection>, Has<CaRungInfected>)>,
+    tables: Option<Res<CaFxTables>>,
     data: Option<Res<CaData>>,
     mut sounds: MessageWriter<CaSound>,
     mut fx: MessageWriter<CaFxRequest>,
 ) {
-    for (at, look) in &infected {
-        if look.as_ref().is_some_and(|l| l.is_added()) {
-            continue;
-        }
-        let at = at.translation();
-        let female = look
-            .zip(data.as_deref())
-            .and_then(|(l, d)| d.characters().model(l.model).map(|m| m.figure == 1))
-            .unwrap_or(false);
-        let s = &tables.sounds;
-        let files = if female && !s.infection_female.is_empty() { &s.infection_female } else { &s.infection };
-        if let Some(file) = files.first() {
-            sounds.write(CaSound::at(file.clone(), at, s.infection_radius));
-        }
-        fx.write(CaFxRequest {
-            group: INFECTION_FX.into(),
-            at,
-            normal: Vec3::Y,
-            kind: FxKind::Ammo,
-        });
+    let Ok((rung, at, look, was)) = players.get(on.event_target()) else { return };
+    let Some(tables) = tables else { return };
+    if !infected_rung(rung) || rung.from.is_none() || was {
+        return;
     }
+    let at = at.translation();
+    let female = look
+        .zip(data.as_deref())
+        .and_then(|(l, d)| d.characters().model(l.model).map(|m| m.figure == 1))
+        .unwrap_or(false);
+    let s = &tables.sounds;
+    let files = if female && !s.infection_female.is_empty() { &s.infection_female } else { &s.infection };
+    if let Some(file) = files.first() {
+        sounds.write(CaSound::at(file.clone(), at, s.infection_radius));
+    }
+    fx.write(CaFxRequest {
+        group: INFECTION_FX.into(),
+        at,
+        normal: Vec3::Y,
+        kind: FxKind::Ammo,
+    });
 }

@@ -254,7 +254,7 @@ fn another_seed_draws_other_extras() {
 fn each_option_off_is_todays_behaviour() {
     // All off: the M9, one's own look, the gun's own parts.
     let mut sim = party_with("rung_extras = false", 3);
-    assert!(ladder_of(&sim).extras.is_empty());
+    assert!(ladder_of(&sim).extras.iter().all(Option::is_none), "none drawn");
     let (a, _) = two_on(&mut sim, M4);
     assert_eq!(melee(&sim, a), Some(CA_KNIFE));
     assert!(sim.app.world().get::<CaRungLook>(a).is_none());

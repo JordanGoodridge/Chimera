@@ -1,0 +1,7 @@
+# The gun game's melee rungs (game::rungs::InfectedOdds; docs/backlog.md,
+# user 2026-10-29): a rung of the ladder's melee band (its last rungs
+# whose weapon is a melee weapon, the knife finale's) is the infected's
+# (their hands alone, an infected body) at these odds, else it keeps its
+# knife. A definition tunes them in its `[rules]`:
+# rung_extras = { infected = { odds = 0.5 } } (0: never).
+infected = 0.25

@@ -466,7 +466,7 @@ that):
   (specialists and mercenaries too; without the install the stock six;
   a body no stock group has loads when first worn), and a melee weapon
   of its own (knives, the shovel, the machete, ...); the knife finale
-  keeps its knife. CS:S's rungs (`cs_source::game::rungs`) each draw one
+  keeps its knife unless a game makes it its character's (below). CS:S's rungs (`cs_source::game::rungs`) each draw one
   of its eight player models (four T, four CT; a `PlayerClass`, which a
   free-for-all player's body follows too) for everyone on the rung, named
   in the rung's HUD line. Each part turns off by key
@@ -487,17 +487,33 @@ that):
 - **A special character tied to its weapon** (user, 2026-10-29):
   a game's draw may make a rung a character's (`ladder::RungCharacter`):
   on it everyone holds the character's weapon alone (no gun, no kit),
-  the next rung, up or down, makes them themselves again, and the game
-  plays the moments of becoming and leaving it
-  (`ladder::RungCharacterHook`, once each; a respawn on the rung fires
-  neither). Combat Arms' is the infected (Quarantine's zombies, their
-  hands: the install's knife-class weapons with the infected leg set):
-  one rung of its guns in the ladder's top third, never the last
-  (`rung_extras.infected`, default on; a rung whose own weapon is a hand
-  too), an infected body and face, the infection's sound and change
-  effect. Not copied: the infected's large health and their slow-down
-  and knock-back from bullets; they keep the gun game's baseline health
-  and movement, so it stays fair.
+  and the next rung, up or down, makes them themselves again. Combat
+  Arms' is the infected (Quarantine's zombies, their hands: the
+  install's knife-class weapons with the infected leg set), one choice
+  in the melee pool: only a rung of the ladder's melee band (its last
+  rungs whose weapon is a melee weapon, today the knife finale's,
+  whichever game's knife) can be theirs, at Combat Arms' data odds
+  (data/rung_melee.toml, 0.25; `rung_extras = { infected = { odds =
+  0.5 } }`, 0 or `infected = false`: never), else it keeps its knife
+  (a rung whose own weapon is a hand is theirs too); an infected body
+  and face, the infection's sound and change effect. Without the knife
+  finale there is no melee rung, so no infected. Not copied: the
+  infected's large health and their slow-down and knock-back from
+  bullets; they keep the gun game's baseline health and movement, so it
+  stays fair.
+- **Arriving on a rung is a component, games react with observers**
+  (user, 2026-10-29): arming puts `ladder::OnRung { index, extras, from }`
+  on the player, replacing it only when the rung or its extras change
+  (never for a respawn on the same rung); games react to every rung with
+  observers, `On<Insert<OnRung>>` (arrived) and `On<Discard<OnRung>>`
+  (left, the old value readable), not a callback registry. It isn't
+  replicated: a network client puts the same on from the replicated
+  `Rung` and the server's rung extras (`ladder::follow_rungs`), so its
+  observers fire there too and nothing fires twice. `from` (none: the
+  first rung this machine knew the player on) tells an arrival from a
+  sighting: Combat Arms' infection moment plays for arrivals only. What
+  a rung puts on a player that replicates anyway (a look, fitted parts)
+  stays the host's `RungExtrasHook::apply`.
 
 ### Automatic gun games (variety)
 

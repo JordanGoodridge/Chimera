@@ -297,6 +297,7 @@ impl Plugin for CaEffectsPlugin {
         .add_message::<RemoteShot>()
         .add_message::<crate::map::GameSound>()
         .add_message::<crate::map::PlaySound>()
+        .add_observer(crate::game::rungs::infection_moment)
         .add_systems(
             Update,
             (
@@ -308,7 +309,6 @@ impl Plugin for CaEffectsPlugin {
                 crate::game::grenades::callout::hear,
                 grenade_effects,
                 bomb::bomb_effects,
-                crate::game::rungs::infection_moments,
                 footsteps,
                 voice::voices,
                 step_effects,
