@@ -2190,6 +2190,14 @@ rebuild a rustflags change costs comes with a new slot anyway;
 
 ### Sharing dev and test artifacts (2026-10-30)
 
+For Windows test-run selection, see the repeated
+[affected-test measurements](plans/active/test-selection-verification.md):
+median 211.55 s for the full fast tier versus 15.48 s for a client-test
+scope, including selection overhead. Use `scripts/affected-tests.ps1
+-Files chimera/client/tests/it/metrics.rs` for that scope, or `-Staged`
+for staged changes. This speeds up narrow test runs, not compilation;
+the report includes the failures and limitations.
+
 The dev and test profiles both use `debug = "line-tables-only"`. Ordinary
 `cargo build`/`run` and `cargo test` can reuse dependency artifacts when
 their features and other compiler settings match. Backtraces retain file

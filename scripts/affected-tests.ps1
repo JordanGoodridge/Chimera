@@ -1,24 +1,20 @@
-# The Windows equivalent of .githooks/pre-commit's test selection: ask
-# repo_checks' `affected` which packages a change can affect, then build
-# or run only those (plus repo_checks, whose checks always run).
-#
-#   .\scripts\affected-tests.ps1 -Staged              # what is staged
-#   .\scripts\affected-tests.ps1 -Base upstream/main  # this branch
-#   .\scripts\affected-tests.ps1 -Files source/formats/src/lib.rs
-#   .\scripts\affected-tests.ps1 -Staged -BuildOnly   # pre-commit's build half
-#   .\scripts\affected-tests.ps1 -Staged -Direct      # only the changed crates
-#   .\scripts\affected-tests.ps1 -Staged -Nextest     # cargo nextest run
-#
-# `--features dev` is accepted because `affected` always includes
-# repo_checks, which has an empty `dev` feature for exactly this.
-[CmdletBinding(DefaultParameterSetName = 'Base')]
+# Windows entry point for repo_checks' affected-test selection, also used by
+# .githooks/pre-commit. Runs the affected packages' fast tests and repo_checks.
+# Examples (paths for -Files are relative to the repository root):
+#   .\scripts\affected-tests.ps1 -Files chimera/client/tests/it/metrics.rs
+#   .\scripts\affected-tests.ps1 -Staged
+#   .\scripts\affected-tests.ps1 -Base upstream/main
+#   .\scripts\affected-tests.ps1 -Staged -BuildOnly
+# -Base considers committed changes only. Use -Files or -Staged for local edits.
+# Unlike tools/agent-env.sh this does not configure cgroups or a jobserver.
+[CmdletBinding(DefaultParameterSetName = 'Files')]
 param(
-    [Parameter(ParameterSetName = 'Base')]
-    [string]$Base = 'upstream/main',
     [Parameter(ParameterSetName = 'Files', Mandatory = $true)]
     [string[]]$Files,
     [Parameter(ParameterSetName = 'Staged', Mandatory = $true)]
     [switch]$Staged,
+    [Parameter(ParameterSetName = 'Base', Mandatory = $true)]
+    [string]$Base,
     [switch]$BuildOnly,
     [switch]$Nextest,
     [switch]$Direct,
@@ -29,40 +25,50 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
 if (-not (Test-Path $cargo)) { $cargo = 'cargo' }
-$env:PATH = (Split-Path -Parent $cargo) + ';' + $env:PATH
+$originalPath = $env:PATH
 
-$select = @('run', '-q', '-p', 'repo_checks', '--bin', 'affected', '--', '--format', 'cargo', '--remote', $Remote)
-if ($Staged) {
-    $select += '--staged'
-} elseif ($Files) {
-    $select += '--files'
-    $select += $Files
-} else {
-    $select += '--base'
-    $select += $Base
-}
-if ($Direct) { $select += '--direct' }
-
-$eap = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
+Push-Location $root
 try {
-    $lines = & $cargo @select
+    if ($BuildOnly -and $Nextest) { throw 'Choose either -BuildOnly or -Nextest' }
+    if ([IO.Path]::IsPathRooted($cargo)) {
+        $env:PATH = (Split-Path -Parent $cargo) + ';' + $env:PATH
+    }
+    $format = if ($Nextest) { 'nextest' } else { 'cargo' }
+    $select = @('run', '-q', '-p', 'repo_checks', '--bin', 'affected', '--', '--format', $format, '--remote', $Remote)
+    if ($Nextest) { $select += '--skip-heavy' }
+    if ($Direct) { $select += '--direct' }
+    if ($Staged) {
+        $select += '--staged'
+    } elseif ($PSCmdlet.ParameterSetName -eq 'Base') {
+        $select += @('--base', $Base)
+    } else {
+        $select += @('--files') + $Files
+    }
+
+    # Windows PowerShell treats native stderr as errors under Stop; Cargo
+    # writes normal progress there. Check native exit codes explicitly.
+    $ErrorActionPreference = 'Continue'
+    $selected = @(& $cargo @select)
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($code -ne 0) { throw "affected selection failed (exit $code)" }
+    $selected = @($selected | Where-Object { $_ -and $_.Trim().Length -gt 0 })
+    if ($selected.Count -eq 0) { throw 'affected selected nothing' }
+
+    Write-Host "affected: $($selected -join ' ')"
+    $testArgs = @('test') + $selected + @('--features', 'dev')
+    if ($Nextest) {
+        $testArgs = @('nextest', 'run') + $selected + @('--features', 'dev', '--no-fail-fast')
+    } elseif ($BuildOnly) {
+        $testArgs += '--no-run'
+    } else {
+        $testArgs += @('--no-fail-fast', '--', '--skip', 'heavy::')
+    }
+    $ErrorActionPreference = 'Continue'
+    & $cargo @testArgs
     $code = $LASTEXITCODE
 } finally {
-    $ErrorActionPreference = $eap
+    $env:PATH = $originalPath
+    Pop-Location
 }
-if ($code -ne 0) { throw "affected failed (exit $code)" }
-$selected = @($lines | Where-Object { $_ -and $_.Trim().Length -gt 0 })
-if ($selected.Count -eq 0) { throw 'affected selected nothing' }
-
-Write-Host "affected: $($selected -join ' ')"
-$testArgs = @('test') + $selected + @('--features', 'dev')
-if ($Nextest) {
-    $testArgs = @('nextest', 'run') + $selected + @('--features', 'dev', '-E', 'not test(/^heavy::/)')
-} elseif ($BuildOnly) {
-    $testArgs += '--no-run'
-} else {
-    $testArgs += @('--no-fail-fast', '--', '--skip', 'heavy::')
-}
-& $cargo @testArgs
-exit $LASTEXITCODE
+exit $code
