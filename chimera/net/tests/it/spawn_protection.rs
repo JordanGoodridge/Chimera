@@ -132,3 +132,47 @@ fn clients_keep_the_servers_protection_windows_and_show_no_hit_inside_them() {
     sim.ticks(20);
     assert!(sim.server.app.world().get::<Health>(b).unwrap().current < before, "and lands");
 }
+
+/// A spawn's facing (`minigame::spawns`, toward open space) reaches the
+/// clients: every client's copy of a respawned player looks where the
+/// server put it, and the player's own client too.
+#[test]
+fn clients_see_the_servers_spawn_facing() {
+    let def = DEF.replace("points = \"map\"", "points = \"random_hidden\"\nmin_distance = 5.0");
+    let mut sim = NetSim::new(
+        SimBasePlugins,
+        LinkConditions {
+            latency: Duration::from_millis(20),
+            jitter: Duration::ZERO,
+            loss: 0.0,
+        },
+        12,
+        2,
+        move |app| {
+            app.add_plugins((GreyboxMapPlugin, MinigamePlugin, MinigameNetPlugin)).insert_resource(Loadout {
+                movement: placeholder::ID,
+            });
+            testkit::add_weapons(app);
+            app.add_minigames(&[("kit_gun_game.toml", def.as_str())]).expect("the definition reads");
+        },
+    );
+    minigame::start(sim.server.app.world_mut(), "kit:gun_game").expect("it starts");
+    sim.until_joined(900);
+    sim.ticks(40);
+    let b = sim.character_of(1).expect("client 1's player");
+    let b_on_0 = {
+        let id = sim.client_id(1);
+        NetSim::owned_by(&mut sim.clients[0], Some(id)).expect("client 0's copy of it")
+    };
+    let (yaw, pitch) = {
+        let i = sim.server.app.world().get::<Intent>(b).unwrap();
+        (i.yaw, i.pitch)
+    };
+    assert!((pitch + 2f32.to_radians()).abs() < 0.02, "server pitch {pitch}");
+    let same = |a: f32, b: f32| ((a - b + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI).abs() < 0.05;
+    let seen = sim.clients[0].app.world().get::<Intent>(b_on_0).unwrap().yaw;
+    assert!(same(seen, yaw), "client 0 sees yaw {seen}, server {yaw}");
+    let own = sim.local_player(1).unwrap();
+    let mine = sim.clients[1].app.world().get::<Intent>(own).unwrap().yaw;
+    assert!(same(mine, yaw), "its own client has yaw {mine}, server {yaw}");
+}

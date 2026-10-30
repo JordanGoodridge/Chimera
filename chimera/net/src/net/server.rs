@@ -868,11 +868,16 @@ fn receive_commands(
 /// client sends, so no client moves faster than the tick allows. Without
 /// one (lost, late) the last repeats, and the client gets corrected.
 fn apply_commands(
-    mut q: Query<(&mut CommandBuffer, &mut Intent, Option<&mut crate::weapon::lagcomp::ViewTick>)>,
+    mut q: Query<(
+        &mut CommandBuffer,
+        &mut Intent,
+        Option<&mut crate::weapon::lagcomp::ViewTick>,
+        Option<&crate::core::ViewSet>,
+    )>,
     clock: Res<SimClock>,
 ) {
     let tick = clock.tick;
-    for (mut b, mut intent, view) in &mut q {
+    for (mut b, mut intent, view, turned) in &mut q {
         // Commands for ticks gone by never run.
         let stale: Vec<u64> = b.queued.range(..tick).map(|(t, _)| *t).collect();
         for t in stale {
@@ -889,7 +894,13 @@ fn apply_commands(
         };
         b.applied = tick;
         if let Some(c) = cmd {
+            let look = (intent.yaw, intent.pitch);
             c.apply(&mut intent);
+            // A look the server turned (a spawn facing) stands until the
+            // client has taken it.
+            if turned.is_some_and(|v| v.count != c.look_ack) {
+                (intent.yaw, intent.pitch) = look;
+            }
             // Where it saw others: its shots are traced there.
             if let Some(mut view) = view {
                 let v = crate::weapon::lagcomp::ViewTick(c.view(tick));
@@ -953,6 +964,7 @@ fn capture_own_states(world: &mut World) {
                 .and_then(|s| s.ground)
                 .and_then(|g| world.get::<crate::map::MapBrushEntity>(g))
                 .map(|m| m.0 as u32);
+            let look = world.get::<crate::core::ViewSet>(e).map(|v| (v.count, v.yaw, v.pitch));
             let mut out = world.get_mut::<OwnStateOut>(e).expect("queried");
             out.state = Some(OwnState {
                 tick: clock.tick,
@@ -967,6 +979,7 @@ fn capture_own_states(world: &mut World) {
                 frozen_until,
                 parts,
                 view,
+                look,
                 rebased,
                 ..default()
             });

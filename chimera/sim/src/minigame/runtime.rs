@@ -162,7 +162,7 @@ fn event(world: &mut World, event: FlowEvent) {
 pub fn respawn(world: &mut World, e: Entity) {
     let Some(active) = world.get_resource::<ActiveMinigame>().copied() else { return };
     let def = active.def;
-    let at = spawn_point_in(world, e, def.spawn.points, def.spawn.min_distance);
+    let at = spawn_point_in(world, e, def.spawn.points, def.spawn.min_distance, def.spawn.facing);
     if !crate::spawning::revive(world, e, at) {
         return;
     }
@@ -218,11 +218,19 @@ pub fn respawn(world: &mut World, e: Entity) {
 /// Where `e` comes back, as `points` picks among the map's spawn points
 /// (None: none, it stays where it is).
 pub fn spawn_point(world: &mut World, e: Entity, points: Points) -> Option<Transform> {
-    spawn_point_in(world, e, points, SpawnDef::default().min_distance)
+    let d = SpawnDef::default();
+    spawn_point_in(world, e, points, d.min_distance, d.facing)
 }
 
-/// `spawn_point` with `random_hidden`'s least distance from an enemy (m).
-pub fn spawn_point_in(world: &mut World, e: Entity, points: Points, min_distance: f32) -> Option<Transform> {
+/// `spawn_point` with `random_hidden`'s least distance from an enemy (m)
+/// and the way it faces.
+pub fn spawn_point_in(
+    world: &mut World,
+    e: Entity,
+    points: Points,
+    min_distance: f32,
+    facing: super::def::Facing,
+) -> Option<Transform> {
     let mut all: Vec<(Entity, Transform, Option<Team>)> = world
         .query_filtered::<(Entity, &Transform, &SpawnPoint), Without<Intent>>()
         .iter(world)
@@ -244,7 +252,7 @@ pub fn spawn_point_in(world: &mut World, e: Entity, points: Points, min_distance
             .all(|o| (o.xz() - t.translation.xz()).length() > SPAWN_CLEARANCE || (o.y - t.translation.y).abs() > 2.0)
     };
     let points = match points {
-        Points::RandomHidden => match super::spawns::pick(world, e, min_distance) {
+        Points::RandomHidden => match super::spawns::pick(world, e, min_distance, facing) {
             Some(at) => return Some(at),
             None => Points::FarFromEnemies,
         },

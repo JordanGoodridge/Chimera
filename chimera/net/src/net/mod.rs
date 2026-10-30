@@ -260,7 +260,7 @@ pub const PROTOCOL_ID: u64 = 0x4C55_434B_4552_5059;
 /// This build's network version. A server refuses clients of another
 /// version. Bump the suffix when the protocol changes in a way the
 /// replicon protocol hash can't see (a field added to a message).
-pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net36");
+pub const NET_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "/net37");
 
 /// The owner id of the listen server's own player (`NetCharacter::owner`).
 /// Remote clients' ids are never 0.
@@ -506,6 +506,10 @@ pub struct NetCmd {
     /// `cl_lagcompensation 0`): the server traces its shots against others
     /// where they were then (`weapon::lagcomp`).
     pub view_tick: f64,
+    /// The count of the server's last look turn the client has taken
+    /// (`core::ViewSet`, `OwnState::look`); the server keeps its own look
+    /// over this command's until it matches.
+    pub look_ack: u8,
 }
 
 /// `NetCmd::buttons` bits (Chimera's own buttons; a game's named actions
@@ -555,6 +559,7 @@ impl NetCmd {
             select: i.select,
             actions: i.actions,
             view_tick: 0.0,
+            look_ack: 0,
         }
     }
 
@@ -695,6 +700,10 @@ pub struct OwnState {
     /// The map camera the player views through (`core::MapView`: origin,
     /// rotation), if any.
     pub view: Option<([f32; 3], [f32; 4])>,
+    /// The server's last turn of the player's look (`core::ViewSet`: count,
+    /// yaw, pitch): a client that hasn't taken that count turns to it and
+    /// echoes the count (`NetCmd::look_ack`).
+    pub look: Option<(u8, f32, f32)>,
     /// The times the server changed the player's predicted state outside
     /// its commands (`core::Rebased`: a rules' weapon swap). When it
     /// changes, the client takes the state as a restart, as for `alive`.
@@ -1712,6 +1721,7 @@ mod tests {
             select: Some(200),
             actions: 0b101,
             view_tick: f64::NAN,
+            look_ack: 0,
         }
         .apply(&mut i);
         assert_eq!(i.move_axis, Vec2::new(1.0, 0.0));

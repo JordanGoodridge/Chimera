@@ -200,6 +200,9 @@ pub struct SpawnDef {
     /// by default.
     #[serde(default = "default_min_distance")]
     pub min_distance: f32,
+    /// Which way `random_hidden` spawns face (`Facing`).
+    #[serde(default)]
+    pub facing: Facing,
     /// Weapons given every life before the rules' own.
     #[serde(default)]
     pub kit: Kit,
@@ -244,6 +247,44 @@ impl Kit {
     }
 }
 
+/// Which way a `random_hidden` spawn faces: toward open space. The server
+/// casts `rays` horizontal rays from eye height around the spot against
+/// the static world, caps each at `range` m, smooths the distances over
+/// `smooth` neighbouring rays, and faces the most open direction (among
+/// those within `tie` of the best, the one toward the middle of the
+/// walkable area), plus a random +-`jitter` degrees.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Facing {
+    /// Rays around the spot; 0 turns the feature off (the old eight
+    /// fixed facings are then used).
+    pub rays: u32,
+    /// Longest ray (m).
+    pub range: f32,
+    /// Taps of the smoothing window over neighbouring rays (1: none).
+    pub smooth: u32,
+    /// The random turn either way (degrees).
+    pub jitter: f32,
+    /// Pitch (degrees; negative looks down).
+    pub pitch: f32,
+    /// Directions within this fraction of the best distance tie; the tie
+    /// goes toward the walkable area's centroid (0: no tiebreak).
+    pub tie: f32,
+}
+
+impl Default for Facing {
+    fn default() -> Self {
+        Self {
+            rays: 32,
+            range: 30.0,
+            smooth: 5,
+            jitter: 10.0,
+            pitch: -2.0,
+            tie: 0.1,
+        }
+    }
+}
+
 fn default_min_distance() -> f32 {
     20.32
 }
@@ -254,6 +295,7 @@ impl Default for SpawnDef {
             respawn: Respawn::default(),
             points: Points::default(),
             min_distance: default_min_distance(),
+            facing: Facing::default(),
             kit: Kit::default(),
         }
     }

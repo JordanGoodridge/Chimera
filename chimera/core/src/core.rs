@@ -336,6 +336,30 @@ pub fn rebase(world: &mut World, e: Entity) {
     }
 }
 
+/// Where the server turned a character's look (a spawn facing): counts the
+/// turns (`count`, from 1) and keeps the last one. A network client takes
+/// the look (`OwnState::look`) and echoes the count in its commands
+/// (`NetCmd::look_ack`); until it does, the server keeps this look instead
+/// of the command's own (which still has the old one). `set_view` makes one.
+#[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
+pub struct ViewSet {
+    pub count: u8,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+/// Turn `e`'s look to `yaw`, `pitch` (radians) as the server: its `Intent`
+/// now, its client's view when it hears (`ViewSet`).
+pub fn set_view(world: &mut World, e: Entity, yaw: f32, pitch: f32) {
+    let Ok(mut ent) = world.get_entity_mut(e) else { return };
+    if let Some(mut i) = ent.get_mut::<Intent>() {
+        i.yaw = yaw;
+        i.pitch = pitch;
+    }
+    let count = ent.get::<ViewSet>().map_or(0, |v| v.count).wrapping_add(1).max(1);
+    ent.insert(ViewSet { count, yaw, pitch });
+}
+
 /// A character's own dice seed, for rolls that should repeat run to run
 /// (bots' route noise and choices, buying, bullet spread). Entity ids
 /// won't do: every spawn shifts them, resources included (since Bevy
