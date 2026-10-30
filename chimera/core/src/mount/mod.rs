@@ -14,10 +14,14 @@
 //! (old and new formats), the app's `appmanifest_<id>.acf` (fully
 //! installed; its build id for the mount doctor) and the files the game
 //! needs; `GameInfo::steam` names the games it looks for;
-//! `LocalConfig::game_path` goes through it).
+//! `LocalConfig::game_path` goes through it); a game's mount with the asset
+//! store under or instead of its install, and the vfs access log
+//! (`served.rs`).
 
 pub mod config;
 pub mod install;
+pub mod served;
 
+pub use chimera_assets as assets;
 pub use chimera_vfs::{Entry, FileSource, LooseDir, Mount, normalize};
 pub use source_formats::keyvalues;

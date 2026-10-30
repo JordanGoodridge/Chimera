@@ -1725,6 +1725,34 @@ file only: never in the repo, tests, logs or commit messages (`cargo test
 without them those tests pass with a note. Extraction goes to `~/.local/share/chimera/dump/<game>/` (or `--out`) and
 refuses any folder inside the repository.
 
+### Which files a run reads (`CHIMERA_VFS_LOG`) and the asset store
+
+`CHIMERA_VFS_LOG=<file>` records every file any run reads through a game's
+mount (the game, a test, a tool, a dedicated server): one line per file
+and process, `<game>\t<path>\t<size>\t<sha256>`, appended (several test
+processes may share one log; `sort -u` it to count). Files a load only
+checks for (`contains`) are listed too. It is how the asset store's sets
+are recorded (docs/plans/active/asset-service.md, M1):
+
+```
+CHIMERA_VFS_LOG=/tmp/dust2.log cargo test -p cs_source --features dev --test it heavy::map_de_dust2
+cut -f1 /tmp/dust2.log | sort | uniq -c                  # files per game
+awk -F'\t' '{s+=$3} END {print s/1e6 " MB"}' /tmp/dust2.log   # bytes read
+cargo run --features dev,tools --bin chimera_pack -- pack cs_source --set de_dust2 --from /tmp/dust2.log
+cargo run -p chimera_assets --bin chimera_assets -- status   # verify; gc [--dry-run]
+CHIMERA_ASSET_USE_INSTALL=0 cargo test -p cs_source --features dev --test it heavy::map_de_dust2
+```
+
+`chimera_pack` reads the logged files through the game's own mount of its
+install (Combat Arms' decrypted with this host's keys, never written) into
+the store (`~/.cache/chimera/assets`: `records/<ab>/<id>.zst`,
+`manifests/<game>/<build>.txt`); the last line runs with the install
+hidden, from those records alone (a missing one fails with `asset miss
+<game>: <path>`). AGENTS.md, "Game files from the asset store", has the
+settings. The heavy tests `heavy::served` (cs_source, combat_arms) record,
+pack and reload de_dust2 and WAREHOUSE in a scratch store and print the
+sizes and times.
+
 ### Sweeping every cached map (mapsweep)
 
 `mapsweep` loads every map in Chimera's content cache

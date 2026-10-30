@@ -4,7 +4,8 @@
 //! (`[games.combat_arms.keys.<scheme>]` in chimera.local.toml, hex `key`
 //! and `iv`; never in the repo; the scheme picks the cipher: V1 Twofish,
 //! V2 AES). Without a key, a keyed archive's files list but fail to read
-//! with `PermissionDenied`.
+//! with `PermissionDenied`. `open` layers the asset store under or instead
+//! of the install (`mount::served`).
 
 use std::{io, path::Path};
 
@@ -26,8 +27,15 @@ pub fn keys() -> Result<RezKeys, String> {
     Ok(keys)
 }
 
-/// Mount a Combat Arms install (the folder holding `Game/`).
+/// Mount Combat Arms: its install (`open_install`) and/or the asset store
+/// (decrypted records: no keys needed), as the local config's `[assets]`
+/// says (`mount::served`).
 pub fn open(install: &Path) -> io::Result<Mount> {
+    crate::mount::served::open(super::GAME, install, open_install)
+}
+
+/// Mount a Combat Arms install (the folder holding `Game/`).
+pub fn open_install(install: &Path) -> io::Result<Mount> {
     let game = install.join("Game");
     if !game.is_dir() {
         return Err(io::Error::new(

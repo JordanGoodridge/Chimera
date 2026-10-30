@@ -1,6 +1,6 @@
 # Plan: assets served by the host (ownership-checked)
 
-Status: planned 2026-10-30, nothing built. Decided: the hybrid model
+Status: M1 built 2026-10-30 (section 9, "M1 results"); M2 next. Decided: the hybrid model
 (docs/DESIGN.md, "Assets, code and legal"; backlog roadmap, "Smaller
 installs: a hybrid", 2026-10-29). Directions from the user, 2026-10-30:
 
@@ -450,7 +450,7 @@ the game server sent; ownership is always the player's own account.
 Each lands with tests (docs/OBSERVABILITY.md section 1) and its docs in
 the same commit.
 
-- **M1: per-file packer, local cache mount, set recording (no
+- **M1 (done): per-file packer, local cache mount, set recording (no
   network).** `CHIMERA_VFS_LOG` and the `Recording` wrapper; records and
   manifests (`chimera_pack`), the `CachedFiles` source and
   `mount_served`; sets for `base`, maps, weapons, players,
@@ -460,6 +460,52 @@ the same commit.
   only their sets with no install mounted, zero misses, the same
   `MapData` as from the install; the section 2 numbers re-measured with
   the vfs log. *Contributor:* nothing yet.
+- **M1 results (done 2026-10-30).** Built: `chimera_assets` (chimera/assets:
+  `Store`, `Manifest`, `CachedFiles`, `Recording`/`Recorder`, `pack`,
+  `AssetsConfig`; its CLI `chimera_assets status | verify | gc
+  [--dry-run]`), `chimera_core::mount::served` (each game's
+  `mount::open` goes through it: the store under the install, or alone
+  with `[assets] use_install = false` / `CHIMERA_ASSET_USE_INSTALL=0`, or
+  alone when no install is found; `CHIMERA_VFS_LOG` wraps every layer),
+  `[assets]` in chimera.local.toml (`store`, `use_install`, `builds`;
+  `CHIMERA_ASSET_STORE` over it), the user-wide store
+  (`~/.cache/chimera/assets`, `%LOCALAPPDATA%\chimera\assets`), and
+  `chimera_pack pack <game> [--set <name> --from <log>]` (the root
+  package, `--features tools`). Store layout: `records/<ab>/<id>.zst`
+  (zstd level 3), `manifests/<game>/<build>.txt` (a sorted line format,
+  sets inside; build from the install's Steam app manifest). Tests:
+  `chimera_assets`' own (packing deterministic across thread counts and
+  deduplicated, manifest round trip, `CachedFiles` reads and refuses a
+  corrupt or wrong record, the recorder's log, settings), and heavy
+  `heavy::served` in cs_source and combat_arms (record a load, pack it
+  into a scratch store, load again from the store alone: the same
+  meshes and texels). Differences from the text above: sets so far are
+  per map (`de_dust2`, `warehouse`, recorded from the heavy tests), not
+  yet `base`/weapons/players/`heavy-tests`; no size cap (`gc` drops
+  unreferenced records); a store layered under an install mounts the
+  newest build (or `[assets] builds`), not the install's own; Combat
+  Arms' `ATTRIBUTES.rez`, opened as its own archive, is read through the
+  game mount when served (same paths) and recorded either way; its
+  music (`ui::music`, loose files in `Game/BGM`) isn't served yet.
+  Measured 2026-10-30 on this box (load average 15-20 from other
+  agents, so times are upper bounds):
+
+  | | CS:S de_dust2 | Combat Arms WAREHOUSE + JUNK_FLEA |
+  |---|---|---|
+  | set recorded from | `heavy::map_de_dust2` (66 tests) | `heavy::map_load::warehouse_loads_within_budget` |
+  | files read (vfs log) | 2,530, 228.1 MB | 753, 298.5 MB (decrypted) |
+  | records (dedup) | 2,510 | 746 |
+  | stored | 142.7 MB (63%) | 96.4 MB (32%) |
+  | `chimera_pack`, 4 threads | 1.24 s; again 0.13 s (nothing new) | 0.25-0.67 s, decryption included |
+  | tests with the install hidden | all 66 pass, 2,530 files read, 0 misses | passes: same 281 meshes, 548 textures, 70 held models |
+  | map load, install vs store | 1.7-2.3 s vs 1.9-4.1 s (`heavy::served`) | first load 3.6-8.8 s vs 3.6-4.5 s (`map_load`, 3 runs each) |
+  | dedicated server `+map de_dust2`, install vs store | 1.72 s vs 2.32 s (lean load, the same 2 warnings, no miss) | |
+
+  Reading from the store costs about what reading the install does (zstd
+  instead of VPK seeks or decryption); the spread is the box's load.
+  The hidden runs had no install, no Steam folder and an empty local
+  config (no keys): `CHIMERA_CONFIG=<empty file> CHIMERA_STEAM_ROOT=<empty
+  folder> CHIMERA_ASSET_USE_INSTALL=0`.
 - **M2: the dev server (section 5).** The HTTP service (store, signed
   manifests, `/r/<id>`, batch fetch), Steam OpenID sign-in and the
   owned-games check, the allowlist, dev tokens, access log and revoke;

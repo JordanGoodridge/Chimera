@@ -1,7 +1,8 @@
 //! Machine-local settings from `chimera.local.toml` (gitignored; its old
 //! name `mashup.local.toml`, `OLD_FILE_NAME`, is read when there is no new
-//! one): install paths (optional: `install` finds them otherwise) and
-//! Combat Arms keys. See `chimera.local.example.toml`.
+//! one): install paths (optional: `install` finds them otherwise),
+//! Combat Arms keys and `[assets]` (the record store, `mount::served`). See
+//! `chimera.local.example.toml`.
 
 use std::{
     collections::BTreeMap,
@@ -21,6 +22,10 @@ pub const OLD_FILE_NAME: &str = "mashup.local.toml";
 pub struct LocalConfig {
     #[serde(default)]
     pub games: BTreeMap<String, GameConfig>,
+    /// `[assets]`: the record store and whether installs are used
+    /// (`chimera_assets::AssetsConfig`; `mount::served`).
+    #[serde(default)]
+    pub assets: chimera_assets::AssetsConfig,
     /// The file it was read from.
     #[serde(skip)]
     pub file: Option<PathBuf>,
@@ -93,8 +98,17 @@ impl LocalConfig {
 
     /// `game_path`, then Steam's for a game with a Steam app
     /// (`install::resolve`, which also says how it was found).
+    /// With `[assets] use_install = false` (or `CHIMERA_ASSET_USE_INSTALL=0`)
+    /// a game the asset store serves never looks for its install: its path
+    /// is the store's stand-in (`mount::served`), and so it is when no
+    /// install is found but the store serves the game.
     pub fn game_path_in(&self, game: &str, steam: Option<&super::install::SteamGame>) -> Option<PathBuf> {
-        super::install::resolve(self, game, steam).install.map(|i| i.path)
+        let assets = self.assets.resolve();
+        let served = || assets.serves(game).then(|| assets.stand_in_install(game)).flatten();
+        if !assets.use_install {
+            return served();
+        }
+        super::install::resolve(self, game, steam).install.map(|i| i.path).or_else(served)
     }
 }
 

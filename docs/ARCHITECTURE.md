@@ -43,6 +43,7 @@ chimera_world (chimera/world/)   map: map data, collision, sim-side spawning; mu
 chimera_core          source_formats (source/formats/)   formats as plain data: no Bevy
  (chimera/core/)       core, console, slots, character, metrics, mount, game_registry, gameplay, game_parts, announcer, cues, query_cache
                       chimera_vfs (chimera/vfs/)   the neutral VFS (`FileSource`, `Mount`) under both format crates and `mount`
+                      chimera_assets (chimera/assets/)   the asset store over the VFS: records, manifests and sets, `CachedFiles`, the vfs log; `mount::served` layers it
                       lithtech_formats (lithtech/formats/)   LithTech's formats as plain data (`.rez`, attribute files, worlds, textures, models, animation, effect files)
 ```
 
@@ -56,6 +57,13 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
   layer like a VPK; `dump` reads Combat Arms' archives with it. Keys are
   never in the repo (checked: `no_keys_tracked`): they come from
   `chimera.local.toml` at run time.
+- `chimera_assets` (plain data over `chimera_vfs`, no Bevy) holds the
+  asset store (docs/plans/active/asset-service.md): each game's
+  `mount::open` goes through `chimera_core::mount::served`, which puts
+  the store's `CachedFiles` under the install or instead of it
+  (`[assets]`) and records reads for `CHIMERA_VFS_LOG`; `chimera_pack`
+  (the root package, `--features tools`) fills the store from an
+  install.
 
 - `source_formats` turns bytes and text into Rust values (glam vectors,
   Source units); it never depends on Bevy, avian or `mashup` (checked).

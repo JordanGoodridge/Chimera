@@ -1,0 +1,41 @@
+[package]
+name = "chimera_assets"
+version = "0.1.0"
+description = "Game files as content-addressed records: the store, manifests and sets, the CachedFiles mount layer and the vfs access log"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# No doc tests (none written): skips a rustdoc pass on every test run.
+[lib]
+doctest = false
+
+# Plain data over the VFS (docs/plans/active/asset-service.md, M1): no
+# Bevy, no format, no game (checks/tests/it/architecture.rs checks it), so
+# `cargo test -p chimera_assets` builds in seconds. Chimera's `mount`
+# (chimera_core) layers it into a game's mount; `chimera_pack` (the root
+# package, beside `dump`) fills a store from an install.
+[dependencies]
+chimera_vfs.workspace = true
+# Record ids (SHA-256 of a file's plain bytes).
+sha2.workspace = true
+# Records are stored zstd-compressed (level 3: the plan's section 2).
+zstd = { version = "0.13", default-features = false }
+# `[assets]` in chimera.local.toml (read by chimera_core's `config`).
+serde.workspace = true
+# The user-wide store (`~/.cache/chimera/assets`, `%LOCALAPPDATA%\chimera\assets`).
+dirs.workspace = true
+
+# The store's command line: status, verify, gc (login and fetch come with
+# M2). A tool: not in releases.
+[[bin]]
+name = "chimera_assets"
+path = "src/bin/chimera_assets.rs"
+test = false
+
+# Integration tests as one binary (tests/it/): stores built from our own
+# fixture bytes, never a game's files.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

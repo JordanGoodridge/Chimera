@@ -132,5 +132,6 @@ mod heavy {
     mod net_big_map;
     mod net_capacity;
     mod net_soak;
+    mod served;
     mod weapon_names;
 }

@@ -111,6 +111,29 @@ beyond the hooks: say in the PR what you ran.
   generated `docs/modules.md` or `docs/tech-debt.md` is stale).
 - After changing a dependency: `cargo hakari generate`.
 
+## Game files from the asset store (no install)
+
+Every load goes through Chimera's vfs, and a store of packed game files
+(`chimera_assets`, docs/plans/active/asset-service.md) is one more mount
+layer: under the install by default, or instead of it. On a machine with
+the installs (and, for Combat Arms, the keys), record what a run reads and
+pack it; the store is per user (`~/.cache/chimera/assets`,
+`%LOCALAPPDATA%\chimera\assets`) and shared by every checkout and slot.
+
+```
+CHIMERA_VFS_LOG=/tmp/dust2.log cargo test -p cs_source --features dev --test it heavy::map_de_dust2
+cargo run --features dev,tools --bin chimera_pack -- pack cs_source --set de_dust2 --from /tmp/dust2.log
+cargo run -p chimera_assets --bin chimera_assets -- status    # also: verify, gc [--dry-run]
+CHIMERA_ASSET_USE_INSTALL=0 cargo test -p cs_source --features dev --test it heavy::map_de_dust2
+```
+
+The last line runs with the install hidden, from the store alone (no
+keys needed: Combat Arms' records are stored decrypted). Settings:
+`[assets]` in `chimera.local.toml` (`store`, `use_install`, `builds`;
+`chimera.local.example.toml`), `CHIMERA_ASSET_STORE` and
+`CHIMERA_ASSET_USE_INSTALL` over it. Never copy a store, a manifest or a
+vfs log into the repository. Fetching from the dev server comes with M2.
+
 ## Design principles
 
 - **Parity first, options later.** By default a game plays exactly as the

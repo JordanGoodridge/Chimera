@@ -1,15 +1,22 @@
-//! The CS:S search path: what the game itself would see.
+//! The CS:S search path: what the game itself would see (`open_install`),
+//! with the asset store under or instead of it (`open`, `mount::served`).
 
 use std::{io, path::Path};
 
 use super::vpk::Vpk;
 use crate::mount::{LooseDir, Mount};
 
+/// Mount CS:S: its install (`open_install`) and/or the asset store, as the
+/// local config's `[assets]` says (`mount::served`).
+pub fn open(install: &Path) -> io::Result<Mount> {
+    crate::mount::served::open(super::GAME, install, open_install)
+}
+
 /// Mount a CS:S install (the folder containing `cstrike/` and `hl2/`).
 /// Order follows the game's search path: CS:S content first, then the shared
 /// HL2 content it depends on, then the engine's `platform/` folder; loose
 /// files before archives at each level.
-pub fn open(install: &Path) -> io::Result<Mount> {
+pub fn open_install(install: &Path) -> io::Result<Mount> {
     let cstrike = install.join("cstrike");
     let hl2 = install.join("hl2");
     if !cstrike.is_dir() {

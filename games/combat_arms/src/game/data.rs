@@ -384,6 +384,21 @@ pub fn open_attributes(path: &std::path::Path) -> Result<InstallAttributes, Stri
     }
     let mut mount = crate::mount::Mount::default();
     mount.push(archive);
+    // Its reads are a load's too (`CHIMERA_VFS_LOG`): the asset store
+    // serves them at the same paths (`attributes_from_mount`).
+    if let Some(recorder) = crate::mount::assets::Recorder::from_env() {
+        mount = crate::mount::served::record(mount, super::GAME, &recorder);
+    }
+    attributes_from_mount(&mount)
+}
+
+/// The attribute files read from `mount` (`ATTRIBUTES.rez` alone, or a
+/// game mount served from the asset store, which has its files at the
+/// same paths). `Err` when the weapons file isn't there.
+pub fn attributes_from_mount(mount: &crate::mount::Mount) -> Result<InstallAttributes, String> {
+    if !mount.contains(WEAPONS_FILE) {
+        return Err(format!("no {WEAPONS_FILE} in the mount"));
+    }
     let (attrs, problems) = read_attributes(|name| mount.read(name));
     for p in problems {
         warn!("Combat Arms: the install's {p}; using the built-in data for it");
