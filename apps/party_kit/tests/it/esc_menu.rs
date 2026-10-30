@@ -172,27 +172,29 @@ fn the_host_settings_set_the_servers_cvars_and_the_next_matchs_rules() {
     let settings = host::settings();
     let at = |cvar: &str| settings.iter().position(|s| s.cvar == cvar).unwrap();
     let knife = at("mp_knife_finale");
+    // Minigame's (on) -> On -> Off.
+    act(&mut sim.app, Action::Step { host: true, index: knife, dir: 1 });
     act(&mut sim.app, Action::Step { host: true, index: knife, dir: 1 });
     let w = sim.app.world();
-    assert_eq!(w.resource::<MinigameOverrides>().keys.get("rules.knife_finale").map(String::as_str), Some("true"));
-    assert!(!w.resource::<Ladder>().knife_finale, "not before the next match");
+    assert_eq!(w.resource::<MinigameOverrides>().keys.get("rules.knife_finale").map(String::as_str), Some("false"));
+    assert!(w.resource::<Ladder>().knife_finale, "not before the next match");
     let bots = at("MaxPlayer");
     let before = party_kit::controls::cvar_value(sim.app.world_mut(), "MaxPlayer").unwrap();
     act(&mut sim.app, Action::Step { host: true, index: bots, dir: 1 });
     let after = party_kit::controls::cvar_value(sim.app.world_mut(), "MaxPlayer").unwrap();
     assert_eq!(after.parse::<u32>().unwrap(), before.parse::<u32>().unwrap() + 1, "bots at once");
-    // The next match plays with the knife finale.
+    // The next match plays without the knife finale.
     let id = sim.app.world().resource::<ActiveMinigame>().def.id.clone();
     sim.app.world_mut().resource_mut::<Console>().submit(format!("minigame {id}"));
     sim.ticks(2);
-    assert!(sim.app.world().resource::<Ladder>().knife_finale, "the next match's rules");
+    let l = sim.app.world().resource::<Ladder>();
+    assert!(!l.knife_finale && l.melee_rungs == 0, "the next match's rules: no finale");
     // Back to the minigame's own: the match after plays as written.
-    act(&mut sim.app, Action::Step { host: true, index: knife, dir: 1 });
     act(&mut sim.app, Action::Step { host: true, index: knife, dir: 1 });
     assert!(sim.app.world().resource::<MinigameOverrides>().keys.is_empty());
     sim.app.world_mut().resource_mut::<Console>().submit(format!("minigame {id}"));
     sim.ticks(2);
-    assert!(!sim.app.world().resource::<Ladder>().knife_finale, "the definition's own again");
+    assert!(sim.app.world().resource::<Ladder>().knife_finale, "the definition's own again: the finale");
 }
 
 /// Three clients on a server (no host) with the Escape menu, joined to

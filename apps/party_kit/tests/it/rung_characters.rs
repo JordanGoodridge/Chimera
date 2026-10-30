@@ -61,7 +61,7 @@ fn data() -> CaData {
 const ALWAYS: &str = "knife_finale = true\nrung_extras = { infected = { odds = 1.0 } }";
 
 /// The gun game as `originals:variant` in `app`, `[rules]` lines `extra`
-/// added (`knife_finale = true` in them turns the finale on).
+/// added (the definition's finale is on; without `knife_finale = true` in them it is turned off).
 fn add_variant(app: &mut App, extra: &str) {
     let text = app.world().resource::<Minigames>().text(DEFAULT_MINIGAME).unwrap().to_string();
     let finale = extra.contains("knife_finale = true");
@@ -69,7 +69,7 @@ fn add_variant(app: &mut App, extra: &str) {
     let text = text
         .replace(&format!("id = \"{DEFAULT_MINIGAME}\""), "id = \"originals:variant\"")
         .replace("\nrung_extras = true\n", "\n")
-        .replace("knife_finale = false", if finale { "knife_finale = true" } else { "knife_finale = false" })
+        .replace("knife_finale = true ", if finale { "knife_finale = true " } else { "knife_finale = false" })
         .replace("[rules]\n", &format!("[rules]\n{extra}\n"));
     app.add_minigames(&[("variant.toml", &text)]).unwrap();
 }

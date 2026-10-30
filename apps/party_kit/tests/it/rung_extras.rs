@@ -56,6 +56,7 @@ fn party_with_app(extra: &str, seed: u64, setup: impl FnOnce(&mut App)) -> Sim {
         .replace("\nrung_extras = true\n", "\n")
         .replace("[rules]\n", &format!("[rules]\n{extra}\n"));
     sim.app.add_minigames(&[("variant.toml", &text)]).unwrap();
+    crate::gun_game::no_finale(sim.app.world_mut());
     minigame::start(sim.app.world_mut(), "originals:variant").expect("it starts");
     sim
 }

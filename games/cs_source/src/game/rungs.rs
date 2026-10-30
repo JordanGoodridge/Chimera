@@ -56,6 +56,8 @@ pub const NAMES: [&str; 8] = [
 pub const HOOK: RungExtrasHook = RungExtrasHook {
     game: GAME,
     options: &[CHARACTER_KEY],
+    melee: |_| Vec::new(),
+    characters: |_| Vec::new(),
     draw,
     apply,
 };

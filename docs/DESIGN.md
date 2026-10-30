@@ -449,9 +449,21 @@ that):
   so the announcer's streaks ignore it.
 - **A late joiner starts near the others** (`join_rung`, default
   `lowest`; `average`, rounded down; `first`), never on the last rung.
-- **A knife-only finale** (`knife_finale`, default off): a last rung
-  after the guns where the player holds only a knife (the kit's, or a
-  named one); its kill wins. Ultimate Gun Game keeps its gun ending.
+- **A melee finale** (`knife_finale`; off in the module, on in both gun
+  games, Lucker Party's `gun_game_dust2` and Ultimate Gun Game's
+  automatic definition; Host settings turn it off): after the guns the
+  ladder ends on melee rungs where the player holds only a melee weapon.
+  How many (`melee_rungs`, default `"auto"`, or a number): the band's
+  share of the gun rungs (`melee_share`, 7%), rounded, at least 1: 1 for
+  10 or 20 guns, 2 for 30, so a longer game ends longer. Each
+  melee rung draws its own weapon, from the ladder's seed, from the
+  knives and melee weapons of the games in play (CS:S's knife, Combat
+  Arms' knife-class weapons; never a character's hands), none twice
+  while there are enough; `knife_finale = "<id>"` names the last rung's.
+  The infected's hands (a game's rung character, at its odds) may take a
+  melee rung's place, at most once a ladder, and the last rung is melee
+  either way; the last melee rung's kill wins. The draw is the host's and
+  replicated with the match.
 - **Rung extras, the same for everyone on a rung** (`rung_extras`,
   default on): when a ladder is made (each map, each new ladder) a game
   may draw something for each of its rungs from the match's seeded
@@ -465,8 +477,8 @@ that):
   everyone on the rung from every player body the install has
   (specialists and mercenaries too; without the install the stock six;
   a body no stock group has loads when first worn), and a melee weapon
-  of its own (knives, the shovel, the machete, ...); the knife finale
-  keeps its knife unless a game makes it its character's (below). CS:S's rungs (`cs_source::game::rungs`) each draw one
+  of its own (knives, the shovel, the machete, ...); the melee finale
+  rungs keep their knife unless a game makes it its character's (below). CS:S's rungs (`cs_source::game::rungs`) each draw one
   of its eight player models (four T, four CT; a `PlayerClass`, which a
   free-for-all player's body follows too) for everyone on the rung, named
   in the rung's HUD line. Each part turns off by key
