@@ -53,6 +53,18 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **The infected rung is a melee option, and the hook fires on every rung
+  (user, 2026-10-29).**
+  - *Infected:* not a guaranteed rung in every ladder. It becomes one
+    choice in the melee pool, and melee rungs sit toward or at the end
+    (the power curve's melee finale). How often each kind of rung comes
+    up, the infected hands included, is data in the ladder rules, next
+    to the band sizes. A visual editor for those odds could come later.
+  - *Hook:* generalise `RungCharacterHook { enter, leave }` to fire
+    whenever a player arrives on a rung and when they leave it, for
+    every rung, with the rung's draw available. Games react to what the
+    rung holds: Combat Arms plays the infection moment for the infected
+    hands. A respawn on the same rung doesn't fire it.
 - **A vertical seam through the frame on de_dust2.** A 2026-10-30 capture
   (Lucker Party, outside the arch toward B tunnels) shows a hard vertical
   line down the middle of the frame. Left of it the ground is a
