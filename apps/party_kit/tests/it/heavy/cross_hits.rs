@@ -35,6 +35,10 @@ fn duel_on_dust2(shooter: usize, target: usize) -> Option<(Sim, Entity, Entity)>
     let map = party_kit::load_map("cs_source:de_dust2", 0).unwrap();
     let (pa, pb) = (map.spawns[2].0, map.spawns[0].0);
     let mut sim = Sim::new(CaSim, (MapSimPlugin::new(map), PartyPartsPlugin));
+    // No rung extras or finale: they draw random melee weapons, and the
+    // knife test needs rung 7's own (m9_knife).
+    crate::gun_game::plain_rungs(sim.app.world_mut());
+    crate::gun_game::no_finale(sim.app.world_mut());
     chimera_sim::minigame::start(sim.app.world_mut(), party_kit::DEFAULT_MINIGAME).expect("the gun game starts");
     sim.app.init_resource::<Hits>().add_systems(Update, collect_hits);
     let a = soldier(&mut sim);
