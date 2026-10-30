@@ -610,6 +610,19 @@ answers (the install has the data named in each):
    data) beside M8's "the body becomes the model record's infection
    override": which wins, and what model 10 is for.
 
+**Answered (2026-10-30)** in game_modes.md "Corrections (2026-10-30):
+the infected's look and moment" 1-6 (test cases 109-113): (1) a server
+auto-cast 3D sound (`AutoCast3DSound12`, host 11) for the pre-change
+template, once at a time server-wide, plus a local auto-cast sound on
+the victim's and the killer's clients; (2) the ImpactFX at the floor
+under the player + 0.1 u, up +Y, not attached; (3) the HUD layout's
+`InfectedTex` drawn every frame while infected, no tint or pulse; (4)
+eyes come from the body/face/head `ClientFX#` lists, looping, third
+person only (which face lists which group: Open question 37);
+`PolyTrail` is the trail key; (5) virus/host styles draw like default;
+hands from the override's `HandIndex`, none without one; (6) the
+mission's `Model` is never used.
+
 ## Attachment models: open questions for a spec session (2026-10-29)
 
 Fitted parts are now drawn on the view model (`view_model::parts`, a
