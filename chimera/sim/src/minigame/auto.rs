@@ -446,7 +446,7 @@ pub fn definition(caps: &[Capabilities], opts: &AutoOptions, installed: &dyn Fn(
          time_limit = {time}\nrotate = true\n{rotation}\n\
          [slots]\n{hud}binds = {base}\ntick = {base}\nbots = {base}\n{movement}\
          identity = \"weapon\"\nweapons = {sets}\n\n\
-         [spawn]\nrespawn = {{ delay = \"2s\", protection = \"1.5s\" }}\npoints = \"random_hidden\"\n\
+         [spawn]\nrespawn = {{ delay = \"2s\", protection = \"2s\" }}\npoints = \"random_hidden\"\n\
          min_distance = 20.32\nkit = {kit}\n\n\
          [rules]\nmodule = \"chimera:ladder\"\nladder = {ladder}\nadvance_on = \"kill\"\n\
          demote_on = \"melee_death\"\nrefill_ammo = true\nwin = {{ kind = \"ladder_end\" }}\n",

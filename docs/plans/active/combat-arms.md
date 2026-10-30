@@ -539,6 +539,48 @@ once with `DisableCrosshair`, not while a scope overlay is up). Open:
 4. Size at non-4:3 screens: x and y are scaled independently (A8), so
    the image is stretched; confirm that is what the original shows.
 
+## The infected's look and moment: open questions for a spec session (2026-10-29)
+
+The gun game's infected rung (`combat_arms::game::rungs`, docs/DESIGN.md
+"Gun game rules") turns its players into Quarantine's infected
+(game_modes.md M8) at the gun game's baseline health and movement. What
+it shows comes only from what the specs say; the rest waits for these
+answers (the install has the data named in each):
+1. **The infection sound.** M8 says "an infection sound plays at that
+   spot". Which file, by what rule (the body type's
+   `QuarantineSoundTemplate` `Q_Male` / `Q_Female` and its
+   `infected_male.wav` / `infected_female.wav`? an auto-cast record?),
+   3D or local, with what radii and volume? Ours: those two files by the
+   body's sex, 3D at the player, outer radius 1000 u.
+2. **The change effect.** `Quarantine_Exp_01` (the mission's
+   `PlayerToInfected`) is played once at the player's feet with up +Y.
+   Is it attached to the body (its keys' `UpdatePos` say Fixed), at the
+   floor or the hull centre, and does a host's (`PlayerToHost`) differ?
+3. **The screen effect.** hud_crosshair.md's crosshair item draws an
+   "infected overlay (mode-specific)" first. What is it: its texture (a
+   HUD layout attribute?), rect, colour or tint, alpha and any pulse or
+   fade; is it drawn for the whole infected life, and is there a red
+   tint or vignette at the moment of infection beside it?
+4. **The glowing eyes and their trails.** The effect file has
+   `Eye_Red_Tail_L`, `Eye_Yellow_Tail_L`, `Eye_Tanker_Tail_SH`,
+   `Eye_Assasin_Tail_SH`, `Eye_NewType_Tail`, `Eye_Red_Glow` and
+   `Flash_Eye_*Tail` groups (`PolyTrail` and `Sprite` keys, `UpdatePos`
+   SocketAttach). Which infected body or face plays which group, on what
+   socket (`Eyes`?), started when (at infection, each spawn) and
+   repeated how (3 s groups); seen by everyone or only others? And the
+   `PolyTrail` key's properties and drawing (no spec covers it).
+5. **The override's look.** `Overidable_Model#` gives `RenderStyle0..2`
+   (`RS\TFACTOR_BLEND_VIRUS.ltb` / `..._HOST.ltb`, `RS\GLOW.LTB`,
+   `RS\MARKTRANSPARENT.LTB`), `FaceIndex` and `HandIndex`. How do the
+   virus and host blend styles draw (render_styles.toml has no infection
+   style), which body pieces take which style, and which first-person
+   hands (`Hand#` `HandIndex`) the infected's view model shows. Ours:
+   the body and the override's face only.
+6. **The mission's infected model.** missions.md F4.1's
+   `[InfectedModelSetting] Model` (stock 10, `SPY_FINAL` in the Steam
+   data) beside M8's "the body becomes the model record's infection
+   override": which wins, and what model 10 is for.
+
 ## Finished spec briefs
 
 The briefs of Waves 1-4 (items 1-22: the spec-wave instructions, the

@@ -31,11 +31,13 @@
 //! weapons = ["cs_source", "combat_arms"]   # the weapon sets a definition may name
 //!
 //! [spawn]
-//! respawn = { delay = "2s", protection = "1.5s" }   # protection: both windows; or
+//! respawn = { delay = "2s", protection = "2s" }   # protection: both windows; or
 //! # protection = { damage = "4s", bullets = "3s", fire_ends = true }
-//! #   no damage for `damage`; a bullet stops at the player, doing nothing, for
-//! #   `bullets` (`core::SpawnProtected`); the player's first shot ends both
-//! #   (`fire_ends`, the default); a hit on the player shows nothing meanwhile
+//! #   no damage for `damage`; for `bullets` attacks pass through the player
+//! #   (`core::SpawnProtected`: bullets and swings hit what is behind,
+//! #   projectiles fly through, blasts leave it out), its body drawn
+//! #   see-through; the player's first attack ends both (`fire_ends`, the
+//! #   default); a hit on the player shows nothing meanwhile
 //! points = "far_from_enemies"   # or "map" (in turn), "team" (the player's team's),
 //!                               # "random_hidden" (anywhere walkable, out of enemies' sight)
 //! min_distance = 20.32          # m from a living enemy for "random_hidden" (800 u)
@@ -278,9 +280,9 @@ impl Default for Respawn {
 }
 
 /// Spawn protection (`core::SpawnProtected`; Combat Arms' S6 in shape):
-/// no damage for `damage` s; a bullet stops at the player and does
-/// nothing for `bullets` s; the player's first shot ends both when
-/// `fire_ends`. A plain duration is both windows, ended by firing.
+/// no damage for `damage` s; attacks pass through the player for
+/// `bullets` s; the player's first attack ends both when `fire_ends`. A
+/// plain duration is both windows, ended by firing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Protection {
     pub damage: f32,

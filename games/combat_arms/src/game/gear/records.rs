@@ -342,6 +342,15 @@ fn number(v: &toml::Value) -> Option<f32> {
 }
 
 impl GearData {
+    /// Vest record `model`'s animation rate bonuses (`ReloadAniRate`,
+    /// `SelectAniRate`; an unknown record: model 0's).
+    pub fn vest_rates(&self, model: i32) -> (f32, f32) {
+        self.vests
+            .get(&model)
+            .or(self.vests.get(&0))
+            .map_or((0.0, 0.0), |v| (v.reload_ani_rate, v.select_ani_rate))
+    }
+
     /// Parse a gear document (data/gear.toml's format).
     pub fn parse(text: &str) -> Result<Self, String> {
         let file: File = toml::from_str(text).map_err(|e| e.to_string())?;

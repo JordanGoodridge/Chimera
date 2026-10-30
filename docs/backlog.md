@@ -53,6 +53,33 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Rung attachments may not fit their gun, or not show (user, 2026-10-29).**
+  In the Escape-menu screenshots, the FMG-9's rung listed a holosight and
+  the Luger P08's a silencer, but neither shows on the gun, and the user
+  doubts they fit. Check, with the real install:
+  - *The accepted list:* where each gun's list comes from. The
+    modification file's `Weapon#` record is linked by position
+    (attachments.md Q13), and a mismatched name is only logged. Count the
+    mismatches over the pool; check skin variants (the `_Gold` and `_Red`
+    parts on gold and red guns).
+  - *What the draw takes:* `rungs::draw_parts`, against each slot's
+    rules: requirements, conflicts, the slot's `Kinds`.
+  - *What's drawn on screen:* are fitted parts drawn on the view and held
+    models (copies included)?
+  Fix the draw to take only parts that fit, and draw fitted parts on the
+  models; questions the specs leave open go to a spec session.
+  With it, odds for the draw (user, 2026-10-29). Each slot keeps the
+  gun's stock part most of the time (about 70-80%). Odds per kind:
+  sights and scopes most often, then silencers, power parts (ammo,
+  magazines) least (about 10%). At most two non-stock parts per gun. The
+  odds live in the ladder rules as data. Fitted parts can add to a gun's
+  power score once the power curve exists.
+- **The rung line lists raw attachment ids.** With rung extras on, the
+  gun game panel's top line reads like "Rung 1/12: FMG-9
+  (Silencer_A_SMG_Gold, DotSight_Holosight_SMG_Gold, ...)". It runs
+  across the whole screen and shows record ids. Show the attachments'
+  display names from the install's string table, shortened (or icons),
+  and wrap or cap the line.
 - **A natural power curve for the random ladder (user idea, 2026-10-29).**
   Weak guns first, power rising, then the hard-hitting ones, then
   specials, a grenade, melee last. Proposed design, waiting on the
@@ -83,22 +110,46 @@ the user's go-ahead: no Actions runs unless asked.
     no damage, blood, impact or decal on them. That part is already
     true for damage and effects. Firing already ends the protection
     (`fire_ends`, the default).
-- **CS:S rungs get a character too (user, 2026-10-29).** As for Combat
-  Arms rungs, the ladder maps a CS:S player model to each CS:S rung (from
-  every T and CT model the install has), the same for everyone on it.
-  Extend the rung extras hook (`RungExtrasHook`) with CS:S's.
+  *Fixed, confirm in a playtest (2026-10-29):* the party gun games
+  protect for 2 s; the body draws at alpha 0.5 on every machine
+  (`render::tint::fade_protected`, from the replicated protection) and
+  fades back over 0.2 s; in the bullets window rounds, swings and thrown
+  grenades pass through the player to what is behind (both games'
+  deliveries), blasts leave it out; any attack (fire key, a knife's
+  stab, a throw) ends the protection. Its blob shadow stays as dark.
+- **CS:S rungs get a character too (user, 2026-10-29): fixed, confirm in
+  a playtest.** As for Combat Arms rungs, each CS:S rung draws one of
+  CS:S's eight player models (the stock T and CT ones; no other is
+  loaded), the same for everyone on it (`cs_source::game::rungs`; the
+  `character` option covers both games). Not compared: whether the eight
+  models' hitboxes are identical.
 - **Later: let individual players stand out (user ideas).**
   - Clearer name tags when you aim at someone (their name and more),
     kept unobtrusive.
   - A flaming aura around the current leader.
-- **A rung's character: stats only when intrinsic (user, 2026-10-29).**
-  A drawn Combat Arms character changes armour or movement only if that
-  character has them by default in Combat Arms (its own movement, its
-  own built-in armour). Otherwise players keep a balanced baseline, so
-  Combat Arms players are no harder to kill than CS:S ones. Today a
-  body counts as its vest, so its armour and movement apply. Fix: take
-  only the body's intrinsic values, never a random vest's.
-- **Zombies: a character tied to its weapon (user idea, 2026-10-29).**
+- **A rung's character: stats only when intrinsic (user, 2026-10-29):
+  done, confirm in a playtest.** A drawn Combat Arms body keeps only its
+  body type (`FigureType`: sprint, stamina, variable terms), what is its
+  own; its armour, protection, penalty, sprint and stamina bonuses, hit
+  points and animation rates are the vest's (the body record is the
+  vest, gear_perks.md 3), and every rung body wears the baseline vest
+  (model 0's Normal, `gear::RUNG_VEST`; `characters::CaRungLook` now
+  replicates, so a client derives the same and isn't corrected at a
+  swap). The install's two body types are identical, so in practice
+  every rung body plays as the stock one.
+- **Zombies: a character tied to its weapon (user idea, 2026-10-29):
+  done, confirm in a playtest.** Chimera's `ladder::RungCharacter` and
+  `RungCharacterHook` (enter and leave once each); Combat Arms' infected
+  rung (`combat_arms::game::rungs`, `rung_extras.infected`, default on):
+  one Combat Arms gun rung of the top third, the Quarantine hands alone
+  (191, else any install hand: `combat_arms:infected` weapons), an
+  infected body with its override's face, the infection sound
+  (`infected_male.wav` / `infected_female.wav`, ours: unspecified) and
+  `Quarantine_Exp_01` at the player; baseline health and movement, no
+  knock-back. Not drawn yet (unspecified, open questions in
+  docs/plans/active/combat-arms.md): the screen overlay, the eye
+  trails, the override's virus render styles and hands. The idea as
+  given:
   Some Combat Arms characters can only use certain weapons: the infected
   (zombies) fight with their hands. Make them a special class. A rung
   that gives the infected hands turns the player into the zombie, and a
@@ -1071,9 +1122,9 @@ sections above already list.
   puff, decal, impact sound, hit indicator, name-tag flash or reaction:
   `weapon::impact::hide_protected`) and deals nothing, and the windows
   replicate on each client's clock (`minigame_net::NetProtected`), so
-  there is no blood without damage. Follow-up: an optional visible
-  marker (a tint or icon, a party option, default off; not Combat
-  Arms').
+  there is no blood without damage. The visible marker came after
+  (2026-10-29, the user's): the protected body draws see-through (see
+  "Spawn protection: 2 s, see-through, shot through").
 - **Ladder rules players expect from gun game.** No cost for a suicide,
   a fall, `kill` or one's own grenade (gun game mods take a level, so
   `kill` isn't a free reset); a late joiner starts on the first rung

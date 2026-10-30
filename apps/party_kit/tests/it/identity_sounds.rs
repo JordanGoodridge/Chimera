@@ -57,7 +57,8 @@ fn sim() -> (Sim, Entity, Entity) {
     let b = soldier(&mut sim);
     sim.app.world_mut().entity_mut(a).insert(LocalPlayer);
     sim.app.init_resource::<Heard>().add_systems(Last, hear);
-    sim.seconds(1.5);
+    // Past the spawn protection (2 s).
+    sim.seconds(2.2);
     let w = sim.app.world_mut();
     let parts: Vec<Entity> = w.query_filtered::<Entity, With<GreyboxPart>>().iter(w).collect();
     for e in parts {

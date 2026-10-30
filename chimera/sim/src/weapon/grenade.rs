@@ -10,7 +10,9 @@
 //! bomb); a push on loose bodies, a scorch mark), a flash (blinds
 //! everyone who sees it: `core::Blinded`) or a smoke cloud (`SmokeCloud`,
 //! with a `core::SightBlocker`). Games fill in the numbers and draw the
-//! effects from `Detonated`.
+//! effects from `Detonated`. A spawn-protected character in its bullets
+//! window (`core::SpawnProtected::passes_attacks`) isn't there for them:
+//! projectiles fly through it, blasts and flashes leave it out.
 //!
 //! Units: meters, seconds, damage normalized like `Health`. Pitch-based
 //! throw rules use degrees with the Source convention (positive looks
@@ -1045,6 +1047,10 @@ struct GrenadeWorld<'w, 's> {
     detonated: MessageWriter<'w, Detonated>,
     deafened: MessageWriter<'w, Deafened>,
     push_scale: Option<Res<'w, super::PushScale>>,
+    /// Spawn-protected characters (`core::SpawnProtected`): projectiles
+    /// fly through them, blasts leave them out.
+    protected: Query<'w, 's, (Entity, &'static crate::core::SpawnProtected)>,
+    clock: Option<Res<'w, SimClock>>,
 }
 
 impl GrenadeWorld<'_, '_> {
@@ -1063,6 +1069,19 @@ impl GrenadeWorld<'_, '_> {
             .filter(|b| b.intent.is_some() && b.health.is_some_and(|h| h.current <= 0.0))
             .map(|b| b.entity)
             .collect()
+    }
+
+    /// Whether `e` is spawn-protected in its bullets window: not there
+    /// for projectiles and blasts (`core::SpawnProtected::passes_attacks`).
+    fn passing(&self, e: Entity) -> bool {
+        let now = self.clock.as_ref().map_or(0.0, |c| c.now);
+        self.protected.get(e).is_ok_and(|(_, p)| p.passes_attacks(now))
+    }
+
+    /// Every character `passing` now.
+    fn all_passing(&self) -> Vec<Entity> {
+        let now = self.clock.as_ref().map_or(0.0, |c| c.now);
+        self.protected.iter().filter(|(_, p)| p.passes_attacks(now)).map(|(e, _)| e).collect()
     }
 
     /// A world-only line trace (static bodies that aren't props: the map's
@@ -1134,6 +1153,7 @@ impl GrenadeWorld<'_, '_> {
         self.bodies
             .get(e)
             .is_ok_and(|b| b.intent.is_some() && b.health.is_some_and(|h| h.current > 0.0))
+            && !self.passing(e)
     }
 
     fn in_water(&self, p: Vec3) -> bool {
@@ -1157,7 +1177,9 @@ fn fly(
         return;
     }
     let now = time.elapsed_secs_f64();
-    let dead = world.dead();
+    // The dead and the spawn-protected (`passing`) aren't in its way.
+    let mut dead = world.dead();
+    dead.extend(world.all_passing());
     for (entity, mut p, mut transform) in &mut projectiles {
         let f = p.flight;
         // 1. The periodic check: fuse, water.
@@ -1500,7 +1522,8 @@ fn blast(
     // Characters' origins (the feet, as Source's), for their hearing.
     let mut origins: Vec<(Entity, Vec3)> = Vec::new();
     for t in world.bodies.iter() {
-        if Some(t.entity) == skip {
+        // The spawn-protected aren't there for it (`passing`).
+        if Some(t.entity) == skip || world.passing(t.entity) {
             continue;
         }
         let alive = t.health.is_some_and(|h| h.current > 0.0);

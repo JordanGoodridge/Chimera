@@ -646,6 +646,16 @@ hit_refire = 0.5
 miss_refire = 0.4
 miss_refire_other = 0.5
 force = 0.0
+
+[melee.secondary]
+range = 1.5
+hull = 0.5
+facing_cos = 0.7
+damage = 65.0
+hit_refire = 1.1
+miss_refire = 1.0
+miss_refire_other = 1.0
+force = 0.0
 "#;
 
 fn knife_sim(def: &str) -> Sim {
@@ -726,12 +736,12 @@ fn spawn_protection_has_a_damage_and_a_bullets_window_and_the_first_shot_ends_it
     let now = sim.app.world().resource::<SimClock>().now;
     let p = *sim.app.world().get::<SpawnProtected>(b).expect("protected");
     assert!((p.damage_until - now - 1.0).abs() < 0.1 && (p.bullets_until - now - 0.5).abs() < 0.1, "{p:?}");
-    assert!(p.stops_bullets(now) && p.hides_hits(now));
+    assert!(p.passes_attacks(now) && p.hides_hits(now));
     sim.seconds(0.6);
     let w = sim.app.world();
     assert!(w.get::<God>(b).is_some(), "damage still blocked after the bullets window");
     let now = w.resource::<SimClock>().now;
-    assert!(!w.get::<SpawnProtected>(b).unwrap().stops_bullets(now) && w.get::<SpawnProtected>(b).unwrap().hides_hits(now));
+    assert!(!w.get::<SpawnProtected>(b).unwrap().passes_attacks(now) && w.get::<SpawnProtected>(b).unwrap().hides_hits(now));
     sim.seconds(0.5);
     let w = sim.app.world();
     assert!(w.get::<God>(b).is_none() && w.get::<SpawnProtected>(b).is_none() && w.get::<Protected>(b).is_none(), "over");
@@ -743,6 +753,35 @@ fn spawn_protection_has_a_damage_and_a_bullets_window_and_the_first_shot_ends_it
     sim.ticks(2);
     let w = sim.app.world();
     assert!(w.get::<SpawnProtected>(a).is_none() && w.get::<God>(a).is_none(), "the first shot ends it");
+}
+
+/// Any attack ends spawn protection (`fire_ends`), not only the fire key:
+/// a knife's secondary stab (`end_protection` hears its swing).
+#[test]
+fn a_knife_stab_ends_spawn_protection_too() {
+    use chimera_core::core::SpawnProtected;
+    let def = DEF
+        .replace("points = \"map\"", "points = \"map\"\nkit = [\"kit:knife\"]")
+        .replace("protection = \"0.5s\"", "protection = \"6s\"");
+    let mut sim = knife_sim(&def);
+    minigame::start(sim.app.world_mut(), "kit:gun_game").expect("it starts");
+    let a = player(&mut sim);
+    let _b = player(&mut sim);
+    sim.seconds(1.0);
+    let knife = {
+        let w = sim.app.world();
+        let inv = w.get::<chimera_sim::weapon::Inventory>(a).unwrap();
+        inv.weapons.iter().copied().find(|e| w.get::<chimera_sim::weapon::Weapon>(*e).unwrap().id == "kit:knife").unwrap()
+    };
+    sim.app.world_mut().get_mut::<chimera_sim::weapon::Inventory>(a).unwrap().wanted = Some(knife);
+    sim.seconds(1.0);
+    assert_eq!(testkit::active_id(sim.app.world(), a), Some("kit:knife"));
+    assert!(sim.app.world().get::<SpawnProtected>(a).is_some(), "still protected");
+    sim.intent(a).secondary = true;
+    sim.ticks(3);
+    sim.intent(a).secondary = false;
+    let w = sim.app.world();
+    assert!(w.get::<SpawnProtected>(a).is_none() && w.get::<God>(a).is_none(), "the stab ends it");
 }
 
 /// The match's moments for a music director (`moments::MinigameMoments`):

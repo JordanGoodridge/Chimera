@@ -14,13 +14,22 @@
 //! material, a looked node its own meshes, not the merged chunks (`merge`);
 //! characters (`RenderLook` on the character, from the logic's player looks)
 //! draw their body and held model faded, added or tinted
-//! (`apply_character_looks`, on their `probe_lit` materials). Baked brush
+//! (`apply_character_looks`, on their `probe_lit` materials), faded further by
+//! `BodyOpacity`: a spawn-protected character (`core::SpawnProtected`) draws
+//! half see-through on every machine and fades back over 0.2 s when its
+//! protection ends (`fade_protected`). Baked brush
 //! entities' render modes and rendercolor are drawn from load
 //! (`MapMesh::render`, `render_color`, `flat_color`). On brush entities
 //! (`RenderLook::surface_blend`, `surface_factor`) mode 1 draws the flat
 //! rendercolor, not the texture, and mode 4 cuts out at the texture's alpha
 //! (`ALPHA_TEST_REFERENCE`, renderamt ignored) instead of blending; characters
 //! still blend in both.
+//!
+//! Known shortcuts (docs/tech-debt.md): a see-through (spawn-protected) body's
+//! blob shadow (`render::shadows`) stays as dark as an opaque one's (every blob
+//! shares one material), and a blended body draws without sorting its own
+//! triangles (its far side may show through its near side). Why it's OK for
+//! now: the body reads as half there at a glance, which is what the look is for.
 
 use bevy::prelude::*;
 
@@ -132,19 +141,81 @@ pub struct UnlookedModel {
     applied: RenderLook,
 }
 
-/// Characters' looks (`RenderLook` on the character): the body and the
-/// model it holds (each `probe_lit::ProbeLit` among its descendants, with
-/// its own material instances) take the colour and fade or add by the
-/// alpha; restored when plain again.
+/// How opaque a character's body draws (1: as its look says), times its
+/// `RenderLook`'s alpha (`apply_character_looks`); spawn protection's
+/// see-through (`fade_protected`).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct BodyOpacity(pub f32);
+
+/// A spawn-protected body's opacity (`core::SpawnProtected`, user
+/// 2026-10-29: others see their shots won't land).
+pub const PROTECTED_OPACITY: f32 = 0.5;
+/// Seconds a body takes to come back to opaque when its protection ends.
+pub const UNPROTECT_FADE_SECONDS: f32 = 0.2;
+
+/// Spawn-protected characters (`core::SpawnProtected`, on every machine:
+/// a network client's from `NetProtected`) draw see-through
+/// (`PROTECTED_OPACITY`) while either window runs, at once when it
+/// starts, fading back to opaque over `UNPROTECT_FADE_SECONDS` when it
+/// ends (`BodyOpacity`).
+#[allow(clippy::type_complexity)]
+pub fn fade_protected(
+    characters: Query<
+        (Entity, Option<&crate::core::SpawnProtected>, Option<&mut BodyOpacity>),
+        Or<(With<crate::core::SpawnProtected>, With<BodyOpacity>)>,
+    >,
+    clock: Option<Res<crate::core::SimClock>>,
+    time: Res<Time>,
+    mut commands: Commands,
+) {
+    let now = clock.map_or(0.0, |c| c.now);
+    let step = time.delta_secs() * (1.0 - PROTECTED_OPACITY) / UNPROTECT_FADE_SECONDS;
+    for (e, protected, opacity) in characters {
+        let target = if protected.is_some_and(|p| !p.over(now)) { PROTECTED_OPACITY } else { 1.0 };
+        match opacity {
+            Some(mut o) => {
+                let next = if target < o.0 { target } else { (o.0 + step).min(target) };
+                if next != o.0 {
+                    o.0 = next;
+                }
+            }
+            None => {
+                commands.entity(e).insert(BodyOpacity(target));
+            }
+        }
+    }
+}
+
+/// A character's look as drawn: its `RenderLook` (none: plain) faded by
+/// its `BodyOpacity` (a normal render mode becomes a blended one).
+pub fn drawn_look(look: Option<&RenderLook>, opacity: Option<&BodyOpacity>) -> RenderLook {
+    let mut l = look.copied().unwrap_or_default();
+    if let Some(o) = opacity.filter(|o| o.0 < 1.0) {
+        if l.mode == crate::map::RENDER_NORMAL {
+            l.mode = crate::map::RENDER_TRANS_ALPHA;
+            l.alpha = 255;
+        }
+        l.alpha = (l.alpha as f32 * o.0.clamp(0.0, 1.0)).round() as u8;
+    }
+    l
+}
+
+/// Characters' looks (`RenderLook` on the character, faded by its
+/// `BodyOpacity`: `drawn_look`): the body and the model it holds (each
+/// `probe_lit::ProbeLit` among its descendants, with its own material
+/// instances) take the colour and fade or add by the alpha; restored when
+/// plain again.
+#[allow(clippy::type_complexity)]
 pub fn apply_character_looks(
-    characters: Query<(Entity, &RenderLook)>,
+    characters: Query<(Entity, Option<&RenderLook>, Option<&BodyOpacity>), Or<(With<RenderLook>, With<BodyOpacity>)>>,
     children: Query<&Children>,
     models: Query<(&crate::render::probe_lit::ProbeLit, Option<&UnlookedModel>)>,
     materials: Option<ResMut<Assets<PropMaterial>>>,
     mut commands: Commands,
 ) {
     let Some(mut materials) = materials else { return };
-    for (character, look) in &characters {
+    for (character, look, opacity) in &characters {
+        let look = &drawn_look(look, opacity);
         for model in children.iter_descendants(character) {
             let Ok((lit, unlooked)) = models.get(model) else {
                 continue;

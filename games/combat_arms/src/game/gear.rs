@@ -22,9 +22,19 @@
 //!   (`validate`: unknown items dropped, perks that don't fit the slots
 //!   refused, at most 3 mods a slot), keeps it (`CaClientLoadout`) and
 //!   sends each player's to every client (`CaLoadout`, replicated).
+//! - A ladder rung's character (`characters::CaRungLook`, replicated)
+//!   keeps only what is intrinsic to its body, its body type (the
+//!   record's `FigureType`, section 2: sprint, stamina and variable
+//!   terms; `body_figure`); its vest (armour pool, protection piece,
+//!   penalty, sprint and stamina bonuses, hit points, animation rates:
+//!   section 3, the body record itself) is `RUNG_VEST`, the reference
+//!   character's (`vest_of`, `gear_view`), so a drawn specialist or
+//!   mercenary is no harder to kill and no faster than anyone else. The
+//!   install's two body types have the same numbers, so every rung body
+//!   plays as the stock one there.
 //! - Every side derives the rest from the replicated look and loadout,
 //!   so a client predicts its own player with the same numbers
-//!   (`derive`): `CaCharacter` (the figure and every worn item's
+//!   (`derive`): `CaCharacter` (the body type's figure and every worn item's
 //!   penalty, sprint and stamina terms, set speed and stamina, Fighting
 //!   Chance's 1.03) and `CaGearEffects` (sets, Fighting Chance).
 //! - The animation rates (`CaGearRates`, `weapon_rates`): the vest's
@@ -69,7 +79,7 @@
 //!   install's). Set speed and stamina fold into the worn items' terms
 //!   (the penalty clamp comes after the set's speed rather than before).
 //! - The face piece (`Face#` `GearId`) is none: no stock face has one.
-//!   Infection overrides (`Overidable_Model#`) aren't read; gear mods
+//!   Infection overrides' gear (`Overidable_Model#`) isn't read; gear mods
 //!   are dropped while infected.
 //! - Mass isn't used (every stock body is 2000). Health: a vest's
 //!   `MaxHitPoints` sets the player's maximum at spawn.
@@ -90,7 +100,7 @@ use serde::{Deserialize, Serialize};
 
 use self::records::{GearData, GearMod, ModSlot, SetDef, SetEffect};
 use super::{
-    characters::records::Selection,
+    characters::{CaRungLook, records::Selection},
     data::CaData,
     movement::{CaCharacter, Figure, Gear as WornGear, MovementData},
     rules::CaMatchView,
@@ -387,13 +397,10 @@ pub struct CaGearRates {
 
 impl CaGearRates {
     /// The rates a weapon `weapon` held by a player of `look` (None: the
-    /// default body) with set bonuses `effects` gets.
-    pub fn of(data: &GearData, look: Option<&Selection>, effects: Option<&CaGearEffects>, weapon: &str) -> Self {
-        let vests = &data.vests;
-        let (reload, select) = vests
-            .get(&look.map_or(0, |l| l.model))
-            .or(vests.get(&0))
-            .map_or((0.0, 0.0), |v| (v.reload_ani_rate, v.select_ani_rate));
+    /// default body; `rung`: a rung's character, the baseline vest's,
+    /// `vest_of`) with set bonuses `effects` gets.
+    pub fn of(data: &GearData, look: Option<&Selection>, rung: bool, effects: Option<&CaGearEffects>, weapon: &str) -> Self {
+        let (reload, select) = data.vest_rates(look.map_or(0, |l| vest_of(l, rung)));
         let (f, r, s) = effects.map_or((0.0, 0.0, 0.0), |e| e.set.weapon_rates(data, weapon));
         CaGearRates {
             fire: f,
@@ -407,14 +414,14 @@ impl CaGearRates {
 /// tick, before the attachments apply them.
 pub fn weapon_rates(
     data: Option<Res<CaGearData>>,
-    owners: Query<(Option<&Selection>, Option<&CaGearEffects>)>,
+    owners: Query<(Option<&Selection>, Has<CaRungLook>, Option<&CaGearEffects>)>,
     mut weapons: Query<(&Weapon, &mut CaGearRates)>,
 ) {
     let Some(data) = data else { return };
     for (w, mut rates) in &mut weapons {
         let owner = w.owner.filter(|o| *o != Entity::PLACEHOLDER).and_then(|o| owners.get(o).ok());
-        let want = owner.map_or_else(CaGearRates::default, |(look, effects)| {
-            CaGearRates::of(&data.0, look, effects, w.id)
+        let want = owner.map_or_else(CaGearRates::default, |(look, rung, effects)| {
+            CaGearRates::of(&data.0, look, rung, effects, w.id)
         });
         if *rates != want {
             *rates = want;
@@ -496,6 +503,41 @@ pub fn max_total(n: u32, clip: u32, fighting_chance: bool, magazines: f32) -> u3
 
 // ---------------------------------------------------------------------------
 // Resolving a look and a loadout
+
+/// The vest every ladder rung's character wears (docs/DESIGN.md "Gun game
+/// rules"): a fresh selection's, model 0's `Normal` (section 18: the
+/// reference character, what the party's players wear without gear), so
+/// a drawn body is no harder to kill and moves no differently than
+/// anyone else.
+pub const RUNG_VEST: i32 = 0;
+
+/// The vest record `look`'s gear reads: its model (section 3: the body
+/// record is the vest; a mercenary is a full-body vest), or `RUNG_VEST`
+/// for a ladder rung's character (`rung`: `characters::CaRungLook`),
+/// whose drawn body keeps only what is its own, its body type
+/// (`body_figure`).
+pub fn vest_of(look: &Selection, rung: bool) -> i32 {
+    if rung { RUNG_VEST } else { look.model }
+}
+
+/// The body type `look`'s body has (section 2: its record's
+/// `FigureType`; the install's `FigureType#`, `MovementData::figures`):
+/// what is intrinsic to a body, kept on a rung too.
+pub fn body_figure<'a>(data: &GearData, movement: &'a MovementData, look: &Selection) -> &'a Figure {
+    let figure = data.vests.get(&look.model).or(data.vests.get(&0)).map_or(0, |v| v.figure);
+    movement.figure_of(figure)
+}
+
+/// What `look` resolves with: the look its vest is read from (`vest_of`)
+/// and its body type (`body_figure`).
+pub fn gear_view<'a>(data: &GearData, movement: &'a MovementData, look: &Selection, rung: bool) -> (Selection, &'a Figure) {
+    let figure = body_figure(data, movement, look);
+    let vest = Selection {
+        model: vest_of(look, rung),
+        ..*look
+    };
+    (vest, figure)
+}
 
 /// What a selection and loadout come to.
 #[derive(Clone, Debug)]
@@ -696,6 +738,8 @@ pub fn rebuild_armour(old: &Armor, resolved: &Resolved) -> (Armor, ArmorPieces) 
 #[derive(Component, Clone, Debug, PartialEq)]
 pub struct CaGearKey {
     look: Selection,
+    /// A rung's character (`vest_of`).
+    rung: bool,
     loadout: CaLoadout,
     effects: CaGearEffects,
     infected: bool,
@@ -863,13 +907,14 @@ fn derive(
             Option<&CaGearEffects>,
             Has<super::movement::CaInfected>,
             Has<CaCharacter>,
+            Has<CaRungLook>,
         ),
         (With<Intent>, With<MovementState>),
     >,
     mut commands: Commands,
 ) {
     let quarantine = mode_key(&view) == QUARANTINE;
-    for (e, look, loadout, key, effects, infected, has_character) in &characters {
+    for (e, look, loadout, key, effects, infected, has_character, rung) in &characters {
         let empty = CaLoadout::default();
         let loadout = loadout.unwrap_or(&empty);
         let want = CaGearEffects {
@@ -878,6 +923,7 @@ fn derive(
         };
         let now = CaGearKey {
             look: *look,
+            rung,
             loadout: loadout.clone(),
             effects: want.clone(),
             infected,
@@ -892,7 +938,8 @@ fn derive(
         // A character that already had its own figure and gear when it
         // was first seen keeps it (the tests', the rules').
         if key.is_some() || !has_character {
-            let resolved = resolve(&data.0, &movement.character.figure, *quirks, look, loadout, &want, infected);
+            let (vest, figure) = gear_view(&data.0, &movement, look, rung);
+            let resolved = resolve(&data.0, figure, *quirks, &vest, loadout, &want, infected);
             entity.insert(resolved.character);
         }
         entity.insert(now);
@@ -927,7 +974,8 @@ fn armour(
             continue;
         }
         commands.entity(e).insert(CaGearBuilt(key.clone()));
-        let resolved = resolve(&data.0, &movement.character.figure, *quirks, look, &key.loadout, effects, key.infected);
+        let (vest, figure) = gear_view(&data.0, &movement, look, key.rung);
+        let resolved = resolve(&data.0, figure, *quirks, &vest, &key.loadout, effects, key.infected);
         match built {
             // First seen: an untouched default armour becomes the gear's.
             None => {
@@ -1020,7 +1068,8 @@ pub fn spawn_gear(world: &mut World, e: Entity) {
         world.entity_mut(e).insert(default_armour());
         return;
     };
-    let resolved = resolve(&data, &movement.character.figure, quirks, &look, &loadout, &effects, infected);
+    let (vest, figure) = gear_view(&data, movement, &look, world.get::<CaRungLook>(e).is_some());
+    let resolved = resolve(&data, figure, quirks, &vest, &loadout, &effects, infected);
     let mut ent = world.entity_mut(e);
     ent.insert(spawn_armour(&resolved));
     if let Some(mut h) = ent.get_mut::<Health>()
@@ -1042,5 +1091,6 @@ pub fn max_armour(world: &World, e: Entity) -> f32 {
     let (Some(data), Some(movement)) = (world.get_resource::<CaGearData>(), world.get_resource::<MovementData>()) else {
         return 100.0;
     };
-    resolve(&data.0, &movement.character.figure, quirks, look, &loadout, &effects, infected).max_armor
+    let (vest, figure) = gear_view(&data.0, movement, look, world.get::<CaRungLook>(e).is_some());
+    resolve(&data.0, figure, quirks, &vest, &loadout, &effects, infected).max_armor
 }

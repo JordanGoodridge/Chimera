@@ -334,18 +334,23 @@ numbers (pinned by `parity_pin_*` tests in each game).
   and nobody carries armour their HUD doesn't show. (Combat Arms puts on
   its default gear at a switch, not a loadout's.)
 
-- **Spawn protection shows nothing** (`core::SpawnProtected`, a
-  minigame's: `protection = { damage, bullets, fire_ends }`, as Combat
-  Arms' 4 s and 3 s; the gun games keep one 1.5 s for both, ended by
-  the first shot): no damage lands in the damage
-  window (`core::God`), a bullet stops at the player in the bullets
-  window, and while either runs a hit on the player is told with no hit
+- **Spawn protection: see-through, shot through** (`core::SpawnProtected`,
+  a minigame's: `protection = { damage, bullets, fire_ends }`, in shape
+  Combat Arms' 4 s and 3 s; the party gun games keep one 2 s for both,
+  ended by the player's first attack: user, 2026-10-29): no damage lands
+  in the damage window (`core::God`); in the bullets window the player
+  isn't there for attacks: rounds and swings pass through to what is
+  behind (the wall's decal, the next player's hit), thrown projectiles fly
+  through, blasts and flashes leave it out, in every game's delivery. A
+  hit that still reaches it (the damage window alone) is told with no hit
   (`weapon::impact::hide_protected`): no game draws blood, a puff, a
   decal or an impact sound, nor a hit indicator, name-tag flash or the
-  victim's reaction, for any gun. The windows replicate on each client's
-  clock (`chimera_net::minigame_net::NetProtected`), so the server and
-  every client agree: no blood without damage. Like Combat Arms, nothing
-  marks a protected player (a visible marker would be a party option).
+  victim's reaction. The windows replicate on each client's clock
+  (`chimera_net::minigame_net::NetProtected`), so the server and every
+  client agree, and on every machine the protected body draws half
+  see-through (`chimera_present`'s `render::tint::fade_protected`),
+  fading back over 0.2 s when the protection ends: unlike Combat Arms,
+  whose protection has no look, the party shows that shots won't land.
 
 ### Announcers
 
@@ -461,10 +466,38 @@ that):
   (specialists and mercenaries too; without the install the stock six;
   a body no stock group has loads when first worn), and a melee weapon
   of its own (knives, the shovel, the machete, ...); the knife finale
-  keeps its knife, CS:S's rungs draw nothing. Each part turns off by key
+  keeps its knife. CS:S's rungs (`cs_source::game::rungs`) each draw one
+  of its eight player models (four T, four CT; a `PlayerClass`, which a
+  free-for-all player's body follows too) for everyone on the rung, named
+  in the rung's HUD line. Each part turns off by key
   (`rung_extras = { attachments = false, character = false, melee =
-  false }`), all with `rung_extras = false`. The apps seed them anew at
-  each launch (Ultimate Gun Game with its launch seed).
+  false, infected = false }`), all with `rung_extras = false`. The apps
+  seed them anew at each launch (Ultimate Gun Game with its launch seed).
+- **A rung's character changes looks, not the odds** (user,
+  2026-10-29): a drawn Combat Arms body keeps only what is intrinsic to
+  it, its body type (`FigureType`: sprint, stamina, the variable terms);
+  armour, protection, speed penalty, sprint and stamina bonuses, hit
+  points and animation rates are a Combat Arms vest's (the body record
+  is the vest, gear_perks.md 3), and on a rung every body wears the
+  baseline vest, model 0's Normal, what the party's players wear without
+  gear (`gear::RUNG_VEST`). So Combat Arms players are no harder to kill
+  than CS:S ones whatever body a rung draws. The install's two body types
+  have the same numbers, so every rung body plays as the stock one; a
+  body type of its own would apply.
+- **A special character tied to its weapon** (user, 2026-10-29):
+  a game's draw may make a rung a character's (`ladder::RungCharacter`):
+  on it everyone holds the character's weapon alone (no gun, no kit),
+  the next rung, up or down, makes them themselves again, and the game
+  plays the moments of becoming and leaving it
+  (`ladder::RungCharacterHook`, once each; a respawn on the rung fires
+  neither). Combat Arms' is the infected (Quarantine's zombies, their
+  hands: the install's knife-class weapons with the infected leg set):
+  one rung of its guns in the ladder's top third, never the last
+  (`rung_extras.infected`, default on; a rung whose own weapon is a hand
+  too), an infected body and face, the infection's sound and change
+  effect. Not copied: the infected's large health and their slow-down
+  and knock-back from bullets; they keep the gun game's baseline health
+  and movement, so it stays fair.
 
 ### Automatic gun games (variety)
 

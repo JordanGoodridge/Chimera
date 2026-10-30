@@ -425,6 +425,8 @@ pub struct CsGunsPlugin;
 impl Plugin for CsGunsPlugin {
     fn build(&self, app: &mut App) {
         register_hooks(app);
+        // A CS:S rung's player model (`rungs`).
+        app.add_plugins(super::rungs::CsRungsPlugin);
         // Its surfaces by class, for impacts across games (`map::impact`).
         crate::map::impact::SurfaceClassesAppExt::register_surface_classes(app, super::impacts::SURFACES);
         if let Err(e) = app.add_weapon_set(cs_weapons()) {
