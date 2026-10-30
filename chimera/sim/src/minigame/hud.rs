@@ -1,8 +1,8 @@
 //! What a playing minigame tells the local player's HUD (D2, L2): data, not
 //! drawing. `MinigameHud` is rebuilt every frame by `update` from the
 //! active minigame: its name (`{map}` in it: the map played, `shown_name`), the status lines its rules module gives the
-//! local player (`RulesModule::status`: the ladder's rung, the next gun,
-//! the leader), the match's phase and time, and brief notices made of the
+//! local player (`MinigameStatus`, a component the rules' system writes:
+//! the ladder's rung, the next gun, the leader), the match's phase and time, and brief notices made of the
 //! match's `MinigameEvent`s (the module's `notice` for its own events,
 //! `match_won` for every minigame; no HUD draws them now: each says a
 //! moment the callout below says big, and drawn too they were a second
@@ -118,6 +118,13 @@ impl HudLine {
         self
     }
 }
+
+/// A player's status lines from the rules in play (the ladder's rung, the
+/// next gun, the leader), written by the rules' own system
+/// (`ladder::write_status`) when a line changes, on the host and on each
+/// client alike; `update` reads the viewer's.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+pub struct MinigameStatus(pub Vec<HudLine>);
 
 /// What the minigame shows the local player this frame.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
@@ -253,7 +260,7 @@ pub fn update(world: &mut World, mut cursor: Local<MessageCursor<MinigameEvent>>
     hud.lines.clear();
     hud.results = world.get_resource::<super::results::MatchResults>().cloned();
     if let Some(v) = viewer {
-        hud.lines.extend((active.rules.status)(world, v));
+        hud.lines.extend(world.get::<MinigameStatus>(v).map(|s| s.0.clone()).unwrap_or_default());
         hud.lines.extend(phase_line(world));
         let mut callouts = Vec::new();
         for event in &events {

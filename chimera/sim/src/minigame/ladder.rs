@@ -160,7 +160,6 @@ pub const RULES: RulesModule = RulesModule {
     no_kit,
     joined,
     arming,
-    status,
     notice,
     callout,
 };
@@ -1429,28 +1428,36 @@ pub fn standing(world: &World, e: Entity) -> Option<String> {
     Some(format!(", rung {}/{} ({})", rung + 1, ladder.rungs.len(), ladder.rungs.get(rung).unwrap_or(&"?")))
 }
 
-/// The HUD's lines for `viewer`: their rung and gun, the next one, who
-/// leads (the highest rung, then the most kills; "tied" when level).
-fn status(world: &mut World, viewer: Entity) -> Vec<HudLine> {
-    let Some(ladder) = world.get_resource::<Ladder>().cloned() else { return Vec::new() };
+/// Whether the ladder is the rules playing (the host's and a client's
+/// alike: `ActiveMinigame`).
+fn ladder_plays(active: Option<Res<ActiveMinigame>>) -> bool {
+    active.is_some_and(|a| a.rules.mode.id == LADDER)
+}
+
+/// Each player's HUD lines (`super::hud::MinigameStatus`): their rung and gun,
+/// the next one, who leads (the highest rung, then the most kills;
+/// "tied" when level). Written only when a line changes; every game's
+/// HUD reads them through `hud::update`. Runs on the host and on a
+/// client (its own copy from the replicated rungs and scores), before
+/// `hud::update`.
+pub(super) fn write_status(
+    ladder: Option<Res<Ladder>>,
+    catalog: Option<Res<WeaponCatalog>>,
+    climbers: Climbers,
+    local: Query<Entity, With<crate::core::LocalPlayer>>,
+    mut status: Query<&mut super::hud::MinigameStatus>,
+    rungs: Query<&Rung>,
+    mut commands: Commands,
+) {
+    let Some(ladder) = ladder else { return };
     let total = ladder.rungs.len();
-    let rung = world.get::<Rung>(viewer).map_or(0, |r| r.0).min(total.saturating_sub(1));
-    let mut lines = Vec::new();
-    let catalog = world.get_resource::<WeaponCatalog>();
-    let (now, next) = (ladder.weapon_at(rung, catalog), ladder.weapon_at(rung + 1, catalog));
-    if let Some(w) = &now {
-        // The rung's label (its fitted parts) after the weapon.
-        let label = ladder.extras(rung).and_then(|x| x.label.as_deref()).map(|l| format!(" ({})", l.replace(['{', '}'], "")));
-        lines.push(HudLine::new(format!("Rung {}/{total}: {{weapon}}{}", rung + 1, label.unwrap_or_default())).weapon(w));
-    }
-    match next {
-        Some(w) => lines.push(HudLine::new("Next: {weapon}").weapon(w)),
-        None => lines.push(HudLine::new("Last rung: a kill wins")),
-    }
     let mut best: Option<((usize, i32), Entity)> = None;
     let mut tied = false;
-    for (e, _) in runtime::players(world) {
-        let key = (world.get::<Rung>(e).map_or(0, |r| r.0), world.get::<Score>(e).map_or(0, |s| s.kills));
+    for (e, t, r, s) in &climbers {
+        if !crate::mode::plays(t.0) {
+            continue;
+        }
+        let key = (r.map_or(0, |r| r.0), s.map_or(0, |s| s.kills));
         match best {
             Some((b, _)) if key == b => tied = true,
             Some((b, _)) if key < b => {}
@@ -1460,16 +1467,51 @@ fn status(world: &mut World, viewer: Entity) -> Vec<HudLine> {
             }
         }
     }
-    if let Some(((r, _), who)) = best {
-        lines.push(if tied {
-            HudLine::new("Tied for the lead")
-        } else if who == viewer {
-            HudLine::new("You lead")
-        } else {
-            HudLine::new(format!("Leader: {{player}}, rung {}/{total}", r + 1)).player(who)
-        });
+    let catalog = catalog.as_deref();
+    let viewers = climbers.iter().map(|(e, ..)| e).chain(local.iter());
+    for viewer in viewers {
+        let rung = rungs.get(viewer).map_or(0, |r| r.0).min(total.saturating_sub(1));
+        let mut lines = Vec::new();
+        let (now, next) = (ladder.weapon_at(rung, catalog), ladder.weapon_at(rung + 1, catalog));
+        if let Some(w) = &now {
+            // The rung's label (its fitted parts) after the weapon.
+            let label = ladder.extras(rung).and_then(|x| x.label.as_deref()).map(|l| format!(" ({})", l.replace(['{', '}'], "")));
+            lines.push(HudLine::new(format!("Rung {}/{total}: {{weapon}}{}", rung + 1, label.unwrap_or_default())).weapon(w));
+        }
+        match next {
+            Some(w) => lines.push(HudLine::new("Next: {weapon}").weapon(w)),
+            None => lines.push(HudLine::new("Last rung: a kill wins")),
+        }
+        if let Some(((r, _), who)) = best {
+            lines.push(if tied {
+                HudLine::new("Tied for the lead")
+            } else if who == viewer {
+                HudLine::new("You lead")
+            } else {
+                HudLine::new(format!("Leader: {{player}}, rung {}/{total}", r + 1)).player(who)
+            });
+        }
+        match status.get_mut(viewer) {
+            Ok(mut s) => {
+                s.set_if_neq(super::hud::MinigameStatus(lines));
+            }
+            Err(_) => {
+                commands.entity(viewer).insert(super::hud::MinigameStatus(lines));
+            }
+        }
     }
-    lines
+}
+
+/// The status lines go when the ladder is not the rules playing.
+pub(super) fn clear_status(status: Query<Entity, With<super::hud::MinigameStatus>>, mut commands: Commands) {
+    for e in &status {
+        commands.entity(e).remove::<super::hud::MinigameStatus>();
+    }
+}
+
+/// The two status systems, for the plugin.
+pub(super) fn status_systems() -> ScheduleConfigs<ScheduleSystem> {
+    (write_status.run_if(ladder_plays), clear_status.run_if(not(ladder_plays))).before(super::hud::update)
 }
 
 /// The viewer's own rung changes (`rung_up`, `rung_down`, `suicide_down`).

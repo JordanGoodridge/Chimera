@@ -288,6 +288,43 @@ fn the_hud_data_shows_the_rung_the_leader_and_the_events() {
     assert!(!sim.app.world().resource::<MinigameHud>().playing());
 }
 
+/// Each player's status lines are a component the ladder writes when they
+/// change: the start (tied), a rung up (you lead, the other is told the
+/// leader), the other's catching up (tied), the last rung, the minigame's end.
+#[test]
+fn each_players_status_lines_follow_the_ladder_in_a_component() {
+    use chimera_sim::minigame::hud::MinigameStatus;
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    settle(&mut sim);
+    let lines = |sim: &Sim, p: Entity| -> Vec<String> {
+        sim.app.world().get::<MinigameStatus>(p).map(|s| s.0.iter().map(|l| l.text.clone()).collect()).unwrap_or_default()
+    };
+    let tied = vec!["Rung 1/3: {weapon}", "Next: {weapon}", "Tied for the lead"];
+    assert_eq!(lines(&sim, a), tied);
+    assert_eq!(lines(&sim, b), tied);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    assert_eq!(lines(&sim, a), vec!["Rung 2/3: {weapon}", "Next: {weapon}", "You lead"]);
+    assert_eq!(lines(&sim, b), vec!["Rung 1/3: {weapon}", "Next: {weapon}", "Leader: {player}, rung 2/3"]);
+    let leader = sim.app.world().get::<MinigameStatus>(b).unwrap().0[2].player;
+    assert_eq!(leader, Some(a));
+    settle(&mut sim);
+    kill(&mut sim, a, b, DamageKind::Bullet);
+    sim.ticks(2);
+    assert_eq!(lines(&sim, a)[2], "Tied for the lead");
+    assert_eq!(lines(&sim, b), vec!["Rung 2/3: {weapon}", "Next: {weapon}", "Tied for the lead"]);
+    // The last rung says so; the status goes with the minigame.
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    sim.ticks(2);
+    assert_eq!(lines(&sim, a)[..2], ["Rung 3/3: {weapon}", "Last rung: a kill wins"]);
+    sim.app.world_mut().remove_resource::<chimera_sim::minigame::ActiveMinigame>();
+    sim.ticks(2);
+    assert!(sim.app.world().get::<MinigameStatus>(a).is_none());
+}
+
 /// Loose weapons lying in the world.
 fn loose(sim: &mut Sim) -> usize {
     let w = sim.app.world_mut();

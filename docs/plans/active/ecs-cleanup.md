@@ -6,7 +6,7 @@ a5e70668, read-only. Section 4's step 1 (guards) done 2026-10-29:
 crate, DESIGN.md "ECS style" (what landed: step 1 below). Steps 2
 (single-slot hooks keyed by game), 3 (the weapon seam), 4 (a mode's
 per-tick hooks as systems), 6 (the minigame runtime's per-tick work)
-and 10 done 2026-10-30. Next: step 5.
+7 (the HUD's status as a component) and 10 done 2026-10-30. Next: step 5.
 The roadmap item's other parts (docs/backlog.md, "First: ECS cleanup
 where new games plug in") follow section 4's order. Goal (user, 2026-10-29): outcomes, not a rewrite. The
 next games (Half-Life 2: Deathmatch, Team Fortress 2, later Call of
@@ -164,7 +164,7 @@ registries) a single-slot hook resource that must follow the gameplay
 | `mode::ModeGame` | mode.rs:263 | `chosen` | per step | A | |
 | `minigame::RulesModule` | chimera/sim/src/minigame.rs:121 | `start`, `loadout`, `no_kit` | start, each life | A | |
 | | minigame.rs:138, :142 | `joined`, `arming` | per join, per life | B | step 8 |
-| | minigame.rs:145 | `status` | **every frame** (`minigame/hud.rs:224`) | C | a per-frame `&mut World` to make HUD lines; step 7 |
+| | | `status` | gone | | now `hud::MinigameStatus`, a component `ladder::write_status` writes when a line changes (step 7, done) |
 | | minigame.rs:147, :150 | `notice`, `callout` | per event | A | pure `&World` functions |
 | `minigame::Modifier` | minigame.rs:155 | `apply` | start | A | |
 | `ladder::RungExtrasHook` | chimera/sim/src/minigame/ladder.rs:392 | `draw` | per ladder | A | seeded draw, host only |
@@ -253,7 +253,7 @@ raw queries in the function itself.
 | chimera/net/src/net/server_docs.rs | `receive_requests` 337, `send_uploads` 363 (q1), `receive_chunks` 433 | A | |
 | chimera/net/src/net/{upnp,vote}.rs | `keep_mapping` upnp:161, `run_votes` vote:688, `show_news` vote:753 | A | |
 | chimera/net/src/net/weapon_params.rs | `send_params` 67 (q1), `receive_params` 118 | A | |
-| chimera/sim/src/minigame/hud.rs | `update` 224 (Update) | C | calls `RulesModule::status` per viewer per frame; step 7 |
+| chimera/sim/src/minigame/hud.rs | `update` 224 (Update) | C | still exclusive (notices, callouts, moments); reads `MinigameStatus` (step 7, done) |
 | chimera/sim/src/minigame/results.rs | `record` 148 | B | reacts to the match's end; step 9 |
 | chimera/sim/src/minigame/runtime.rs | `join` 367 (q1 kept), `respawn_dead` 429, `end_protection` 448 (kept), `hold_the_end` 600 (q1) | C (`join` B) | step 6 |
 | | `step_phases` 394, `handle_deaths` 488 | A | the flow's driver and its death step: they call the mode's hooks in order; keep |
@@ -750,6 +750,13 @@ what must pass, beyond each crate's fast tier. The guards:
   ratchet 13 to 9.
 
 ### Step 7: the HUD's status as a component (M)
+
+Done 2026-10-30: `hud::MinigameStatus` (a component on each player) is
+written by `ladder::write_status` (Update, before `hud::update`, on the
+host and on each client from replicated rungs and scores) with
+`set_if_neq`; `hud::update` reads the viewer's. `RulesModule::status` is
+gone. Test: `each_players_status_lines_follow_the_ladder_in_a_component`;
+`net_gun_game.rs` compares the clients' panels with the server's component.
 
 - `RulesModule::status` (`fn(&mut World, Entity) -> Vec<HudLine>`,
   called per viewer per frame by `minigame/hud.rs:224`) becomes a

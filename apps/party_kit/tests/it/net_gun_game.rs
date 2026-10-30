@@ -169,9 +169,8 @@ fn panel(sim: &NetSim, i: usize) -> (Vec<String>, String) {
 /// What the server's rules tell player `who` (a server entity), as HUD text
 /// (`{weapon}` and `{player}` left in).
 fn server_status(sim: &mut NetSim, who: Entity) -> Vec<String> {
-    let w = sim.server.app.world_mut();
-    let status = w.resource::<minigame::ActiveMinigame>().rules.status;
-    status(w, who).into_iter().map(|l| l.text).collect()
+    let w = sim.server.app.world();
+    w.get::<minigame::hud::MinigameStatus>(who).map(|s| s.0.iter().map(|l| l.text.clone()).collect()).unwrap_or_default()
 }
 
 /// The first line of the server's status for `who` without its `{...}`

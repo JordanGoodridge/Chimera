@@ -143,9 +143,6 @@ pub struct RulesModule {
     /// old ones are taken, before the kit and `loadout`): the module's
     /// arming of it (the ladder's rung extras: `ladder::arm`).
     pub arming: fn(&mut World, Entity),
-    /// The lines the HUD shows the viewer of the match's standing
-    /// (`hud::MinigameHud`).
-    pub status: fn(&mut World, Entity) -> Vec<hud::HudLine>,
     /// A notice for the viewer from one of the module's events.
     pub notice: fn(&World, Entity, &MinigameEvent) -> Option<hud::HudLine>,
     /// A big callout for the viewer from one of the module's events
@@ -486,7 +483,7 @@ impl Plugin for MinigamePlugin {
             .init_resource::<moments::MinigameMoments>()
             .init_resource::<wins::MatchWins>()
             .init_resource::<ladder::LaddersMade>()
-            .add_systems(Update, hud::update)
+            .add_systems(Update, (hud::update, ladder::status_systems()))
             .add_minigame_rules(ladder::RULES);
         // A map loaded while a minigame is the rules: counted
         // (`core::MapLoads`: a network client waits on the count after a
