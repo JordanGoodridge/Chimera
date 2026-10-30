@@ -66,7 +66,7 @@ use crate::core::Team;
 /// What a map load brings in (docs/plans/active/architecture-review.md,
 /// F1): everything by default, less for a dedicated server or a test that
 /// never draws the map.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapLoadOptions {
     /// Source's `mat_hdr_level` (0 LDR; games without HDR data ignore it).
     pub hdr_level: u8,
@@ -80,6 +80,9 @@ pub struct MapLoadOptions {
     /// map: all of it by default; a map of another game than the
     /// gameplay's loads little or none (`MapSources::load_with`).
     pub kit: KitLoad,
+    /// Where the loader reports its stages (`loading::LoadReporter`): the
+    /// loading screen of the app that asked reads the same handle.
+    pub progress: super::loading::LoadReporter,
 }
 
 /// How much of a map game's kit (`GameKit`) a loader reads from the
@@ -138,7 +141,7 @@ impl KitLoad {
 
 impl Default for MapLoadOptions {
     fn default() -> Self {
-        Self { hdr_level: 0, textures: true, kit: KitLoad::All }
+        Self { hdr_level: 0, textures: true, kit: KitLoad::All, progress: default() }
     }
 }
 
@@ -328,7 +331,7 @@ impl MapSources {
         // A map of another game than the gameplay's is the world only (its
         // kit is replaced by `dress`): the loader reads none of the kit
         // but the kept models.
-        let mut options = *options;
+        let mut options = options.clone();
         if self.gameplay.is_some_and(|g| !g.game.eq_ignore_ascii_case(loader.game)) {
             options.kit = if self.players { KitLoad::Players(self.kept) } else { KitLoad::Only(self.kept) };
         }

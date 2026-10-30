@@ -101,7 +101,7 @@ impl Plugin for CsSourceUiPlugin {
 #[cfg(test)]
 mod tests {
     use crate::{
-        client::binds::{self, cfg_binds, default_binds, defaults_from},
+        client::binds::{self, cfg_binds, defaults_from},
         game::{DEFAULT_BINDS, INFO},
     };
 
@@ -178,12 +178,13 @@ bind "PAUSE" "pause"
         assert_eq!(cfg_binds(SAMPLE_CONFIG_DEFAULT), owned(DEFAULT_BINDS));
         // Only with CS:S installed (CHIMERA_CONFIG or a Steam library): the
         // install's file says the same.
-        if binds::read_install_defaults(Some(&INFO)) {
-            assert_eq!(default_binds(), defaults_from(&owned(DEFAULT_BINDS)));
+        let mut d = binds::BindDefaults::default();
+        if d.read_install(Some(&INFO)) {
+            assert_eq!(d.default_binds(), defaults_from(&owned(DEFAULT_BINDS)));
         }
         // A config from before the defaults followed the file gets those
         // added since (CS:S's `OLD_DEFAULT_BINDS`), on free keys.
-        let added = binds::added_defaults();
+        let added = d.added_defaults();
         assert!(added.contains(&("f1".into(), "autobuy".into())), "{added:?}");
         assert!(added.contains(&("f11".into(), "chimera_inspector".into())), "{added:?}");
         assert!(!added.iter().any(|(k, _)| k == "w" || k == "alt"), "{added:?}");

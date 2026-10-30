@@ -367,10 +367,11 @@ pub fn shown_name(
 pub struct AppHooks {
     /// The build's commit (`git describe`), for bench files.
     pub build: &'static str,
-    /// Map `id` (`game:name`) at a `mat_hdr_level`.
-    pub load_map: fn(&str, u8) -> Result<crate::map::MapData, String>,
+    /// Map `id` (`game:name`) with `options` (`hdr_level`: the
+    /// `mat_hdr_level`; `progress`: where it reports its stages).
+    pub load_map: fn(&str, &crate::map::MapLoadOptions) -> Result<crate::map::MapData, String>,
     /// Map `id` from a copy of its file (a server's map downloaded).
-    pub load_map_file: fn(&str, &std::path::Path, u8) -> Result<crate::map::MapData, String>,
+    pub load_map_file: fn(&str, &std::path::Path, &crate::map::MapLoadOptions) -> Result<crate::map::MapData, String>,
     /// The bytes of map `id`'s file, for the network's map offer.
     pub map_file_bytes: fn(&str) -> Option<Vec<u8>>,
     /// Take the greybox out (a map loads in its place).
@@ -452,6 +453,7 @@ impl Plugin for ShellSetupPlugin {
         }
         app.insert_resource(ClientArgs(self.args.clone()))
             .insert_resource(self.hooks)
+            .init_resource::<crate::map::loading::LoadReporter>()
             .insert_resource(self.args.join_choice());
     }
 }

@@ -56,6 +56,11 @@ pub fn load_map_with(id: &str, options: &MapLoadOptions) -> Result<MapData, Stri
 /// `load_map_level` from a file of the map (a downloaded copy), its
 /// content from the game's install.
 pub fn load_map_file(id: &str, file: &std::path::Path, hdr_level: u8) -> Result<MapData, String> {
+    load_map_file_with(id, file, &MapLoadOptions::hdr(hdr_level))
+}
+
+/// `load_map_file` with `options`.
+pub fn load_map_file_with(id: &str, file: &std::path::Path, options: &MapLoadOptions) -> Result<MapData, String> {
     let (game, name) = id
         .split_once(':')
         .ok_or_else(|| format!("map ID `{id}` should look like game:name"))?;
@@ -65,7 +70,7 @@ pub fn load_map_file(id: &str, file: &std::path::Path, hdr_level: u8) -> Result<
     match game {
         cs_source::GAME => {
             let mount = cs_source::mount::open(&install).map_err(|e| e.to_string())?;
-            cs_source::bsp::load_level_bytes(&mount, name, bytes, hdr_level)
+            cs_source::bsp::load_level_bytes_with(&mount, name, bytes, options)
         }
         other => Err(format!("no map loader for `{other}` yet")),
     }

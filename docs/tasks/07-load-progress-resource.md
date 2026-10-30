@@ -1,5 +1,7 @@
 # Map-load progress as a resource, not a static
 
+**Done 2026-10-30** (ecs-cleanup.md, step 10).
+
 ## Context
 
 `chimera_world::map::loading` keeps load progress in a process-wide
@@ -18,13 +20,13 @@ client in one process share it, as would two apps in one test. Step 10 of
 
 ## Definition of done
 
-- [ ] A resource the loading task writes through a handle it owns (an
+- [x] A resource the loading task writes through a handle it owns (an
       `Arc<Mutex<..>>` or channel created with the load), read by the
       loading dialog; the static is gone.
-- [ ] A unit test in `loading.rs` (chimera_world has no integration tests
+- [x] A unit test in `loading.rs` (chimera_world has no integration tests
       yet): two `App`s
       in one process load at once and each sees only its own progress.
-- [ ] The determinism ratchet for `chimera/world` lowered (1 to 0).
+- [x] The determinism ratchet for `chimera/world` lowered (1 to 0).
 
 ## Constraints
 

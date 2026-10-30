@@ -270,6 +270,8 @@ pub struct GameMenu {
     pub ui: UiText,
     /// The binds now (key -> line).
     pub binds: BTreeMap<String, String>,
+    /// The defaults "Use Defaults" puts back (`set_binds`).
+    pub default_binds: Vec<(String, String)>,
     /// Console commands and cvars that exist (lower case), to tell the
     /// keyboard actions Chimera has from those it lacks.
     pub known: BTreeSet<String>,
@@ -500,8 +502,9 @@ impl GameMenu {
     }
 
     /// The binds now and the commands that exist.
-    pub fn set_binds(&mut self, binds: BTreeMap<String, String>, known: BTreeSet<String>) {
+    pub fn set_binds(&mut self, binds: BTreeMap<String, String>, known: BTreeSet<String>, defaults: Vec<(String, String)>) {
         self.binds = binds;
+        self.default_binds = defaults;
         self.known = known;
     }
 
@@ -1297,7 +1300,7 @@ impl GameMenu {
                 }
             }
             Action::DefaultBinds => {
-                binds::bind_defaults(&mut self.binds, true);
+                binds::bind_defaults(&mut self.binds, true, &self.default_binds);
                 out.lines.push("binddefaults".into());
             }
             Action::Advanced | Action::VideoAdvanced | Action::Gamma => {
