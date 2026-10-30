@@ -19,7 +19,10 @@
 //!   rung extras (`ladder::RungExtras`, drawn by the server) go with the
 //!   match (`NetMinigame::rung_extras`) into the client's ladder (its HUD's
 //!   rung label); what they put on a player (a game's look, fitted parts,
-//!   the melee weapon) replicates as that game's state does.
+//!   the melee weapon) replicates as that game's state does. The client
+//!   then puts each player's `ladder::OnRung` on from them
+//!   (`ladder::follow_rungs`; not replicated), so the games' observers of
+//!   arriving on a rung and leaving it fire there too.
 //! - **Spawn protection** (`NetProtected`): a protected character's two
 //!   windows (`core::SpawnProtected`) as server ticks, which a client
 //!   puts on its copy on its own clock (`apply_protection`), so its
@@ -192,7 +195,7 @@ fn register(app: &mut App) {
         )
         .add_systems(
             PreUpdate,
-            (apply_minigame, apply_protection, receive_news, receive_offer)
+            (apply_minigame, crate::minigame::ladder::follow_rungs, apply_protection, receive_news, receive_offer)
                 .chain()
                 .after(ClientSystems::Receive)
                 .run_if(client()),

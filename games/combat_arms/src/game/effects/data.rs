@@ -134,7 +134,7 @@ pub struct EventSounds {
     /// The Awareness perk's own step sounds (Corrections 2026-10-22, 7).
     pub awareness: Vec<String>,
     /// The infection's sound (game_modes.md M8 names none: ours, the
-    /// infected voice sets' file; `rungs::infection_moments`), the female
+    /// infected voice sets' file; `rungs::infection_moment`), the female
     /// body's, and its outer radius.
     pub infection: Vec<String>,
     pub infection_female: Vec<String>,

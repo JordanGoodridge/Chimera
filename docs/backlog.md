@@ -88,25 +88,25 @@ the user's go-ahead: no Actions runs unless asked.
   each sound plays as the spec says and isn't restarted every tick or
   hit.
 - **The infected rung is a melee option, and the hook fires on every rung
-  (user, 2026-10-29).**
-  - *Infected:* not a guaranteed rung in every ladder. It becomes one
-    choice in the melee pool, and melee rungs sit toward or at the end
-    (the power curve's melee finale). How often each kind of rung comes
-    up, the infected hands included, is data in the ladder rules, next
-    to the band sizes. A visual editor for those odds could come later.
-  - *Hook:* generalise `RungCharacterHook { enter, leave }` to fire
-    whenever a player arrives on a rung and when they leave it, for
-    every rung, with the rung's draw available. Games react to what the
-    rung holds: Combat Arms plays the infection moment for the infected
-    hands. A respawn on the same rung doesn't fire it.
-  - *How (user asked for ECS, 2026-10-29):* replace the callback registry
-    (`RungCharacterHooks` of `fn(&mut World, ..)`, called from inside
-    `ladder::arm`) with a component, e.g. `OnRung { index, extras }`.
-    Arming only inserts or replaces it; games react with Bevy observers
-    on its insert, replace and remove. A respawn on the same rung
-    doesn't replace it, so nothing fires. Network clients set the same
-    component from the replicated ladder, so their observers fire
-    locally. `AsRungCharacter` and `RungCharacterHook` go.
+  (user, 2026-10-29): done, confirm in a playtest.** *Hook:* the callback
+  registry (`RungCharacterHook`, `RungCharacterHooks`, `AsRungCharacter`,
+  `add_rung_character`) is gone; arming puts `ladder::OnRung { index,
+  extras, from }` on the player, replaced only when the rung or its
+  extras change (a respawn on the same rung fires nothing), and games
+  react with observers on every rung (`On<Insert<OnRung>>`,
+  `On<Discard<OnRung>>`). A network client puts the same on from the
+  replicated rung and the server's extras (`ladder::follow_rungs`), so
+  its observers fire locally; `OnRung` isn't replicated. Combat Arms'
+  observers put `CaRungInfected` on and off and play the infection
+  moment (arrivals only, not a player a machine first sees there).
+  *Infected:* no longer guaranteed: it is a choice for the ladder's melee
+  band (its last melee rungs; today the knife finale's), at Combat Arms'
+  data odds (data/rung_melee.toml, 0.25; `rung_extras = { infected = {
+  odds = .. } }`; Host settings "Rung extras: infected odds"). The
+  shipped gun game has the knife finale off, so to see the infected in a
+  playtest turn the knife finale on (Host settings) or set the odds to
+  1. The power curve's bands aren't built: the melee band is simply the
+  ladder's trailing melee rungs.
 - **A vertical seam through the frame on de_dust2.** A 2026-10-30 capture
   (Lucker Party, outside the arch toward B tunnels) shows a hard vertical
   line down the middle of the frame. Left of it the ground is a
@@ -240,10 +240,10 @@ the user's go-ahead: no Actions runs unless asked.
   swap). The install's two body types are identical, so in practice
   every rung body plays as the stock one.
 - **Zombies: a character tied to its weapon (user idea, 2026-10-29):
-  done, confirm in a playtest.** Chimera's `ladder::RungCharacter` and
-  `RungCharacterHook` (enter and leave once each); Combat Arms' infected
-  rung (`combat_arms::game::rungs`, `rung_extras.infected`, default on):
-  one Combat Arms gun rung of the top third, the Quarantine hands alone
+  done, confirm in a playtest.** Chimera's `ladder::RungCharacter`
+  (arriving and leaving: `ladder::OnRung`'s observers); Combat Arms'
+  infected rung (`combat_arms::game::rungs`, `rung_extras.infected`; a
+  melee rung's choice since 2026-10-29, above): the Quarantine hands alone
   (191, else any install hand: `combat_arms:infected` weapons), an
   infected body with its override's face, the infection sound
   (`infected_male.wav` / `infected_female.wav`, ours: unspecified) and

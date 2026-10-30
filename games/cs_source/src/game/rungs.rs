@@ -67,7 +67,8 @@ pub struct RungClass;
 
 /// A CS:S rung's draw.
 fn draw(_world: &World, d: &RungDraw, rng: &mut Rng) -> Option<RungExtras> {
-    if !d.options.on(CHARACTER_KEY) {
+    // No character of its own for a melee rung (it keeps its knife).
+    if d.melee || !d.options.on(CHARACTER_KEY) {
         return None;
     }
     let i = rng.below(NAMES.len());
