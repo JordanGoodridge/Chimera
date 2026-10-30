@@ -575,6 +575,12 @@ chase death cameras nor under a scope overlay; (3) the red dot is only
 the zoom overlay and the attachment model; the HUD's dot-sight-mode image
 is switched off in code; (4) stretched, as ours.
 
+**Checked (2026-10-30):** ours already draws the reticle this way (the
+viewed player's weapon, untinted, blended, no weapon-state test, gated by
+the scope overlay and the death cameras, stretched per axis); tests ui
+hud t102_reticle_gates, t103_reticle_stretch (t101's blend is the UI's
+ordinary alpha blend of the untinted image, `spawn_reticle`).
+
 ## The infected's look and moment: open questions for a spec session (2026-10-29)
 
 The gun game's infected rung (`combat_arms::game::rungs`, docs/DESIGN.md

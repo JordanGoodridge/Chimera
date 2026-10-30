@@ -2274,3 +2274,31 @@ fn t111_infected_overlay() {
     let r = model::infected_rect(Screen::new(1920.0, 1080.0), [0, 0], [1024, 768]);
     assert_eq!((r.min, r.max), (Vec2::ZERO, Vec2::new(1920.0, 1080.0)), "x and y scaled on their own");
 }
+
+// ---------------------------------------------------------------------------
+// hud_crosshair.md Corrections (2026-10-30): the dot-sight reticle.
+
+/// 102. The reticle's gates: drawn during the draw (nothing tests the
+/// weapon's state) and when spectating in first person (not dead in a
+/// death camera); not dead in the chase camera; not under a scope overlay.
+#[test]
+fn t102_reticle_gates() {
+    let v = model::Visibility {
+        ok: true,
+        weapon: true,
+        dot_sight: true,
+        ..Default::default()
+    };
+    assert_eq!(model::draws(v).dot_sight, 2, "drawn (before and after the lines)");
+    assert_eq!(model::draws(model::Visibility { disabled: true, ..v }).dot_sight, 1, "before the DisableCrosshair test");
+    assert_eq!(model::draws(model::Visibility { death_cam: true, ..v }).dot_sight, 0, "dead in the chase camera");
+    assert_eq!(model::draws(model::Visibility { scope_overlay: true, ..v }).dot_sight, 0, "under a scope overlay");
+}
+
+/// 103. At 1920 x 1080 the 129 x 129 rect is stretched: x 840, y 450, w
+/// 241, h 181.
+#[test]
+fn t103_reticle_stretch() {
+    let r = model::dot_sight_rect(Screen::new(1920.0, 1080.0));
+    assert_eq!((r.min.x, r.min.y, r.max.x - r.min.x, r.max.y - r.min.y), (840.0, 450.0, 241.0, 181.0));
+}
