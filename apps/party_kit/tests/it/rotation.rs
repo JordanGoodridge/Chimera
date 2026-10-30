@@ -91,7 +91,7 @@ pub(crate) fn server_loads(world: &mut World) {
         return;
     }
     loaded(world, &map);
-    core::new_game(world);
+    chimera_core::gameplay::new_game(world);
     if world.contains_resource::<ActiveMinigame>() {
         minigame::restart(world);
     }

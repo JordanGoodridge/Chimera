@@ -8,6 +8,10 @@
 //!   `dyn Fn(&World, ..)`, `DeferredWorld`, `EntityWorldMut`) is on
 //!   `ALLOWED_REGISTRIES` with its reason; an entry that no longer exists
 //!   fails too.
+//! - `keyed_hooks_are_not_single_slot_resources`: the hook kinds keyed by
+//!   game (`KEYED_HOOKS`: `chimera_core::gameplay::GameHooks`, plan step
+//!   2) are never inserted or read as a resource of their own, which the
+//!   last plugin added would replace.
 //! - `per_tick_exclusive_systems_ratchet`: per crate, the functions taking
 //!   `&mut World` that an `add_systems` call puts in a schedule other than
 //!   the startup ones and `OnEnter`/`OnExit`/`OnTransition`, outside the
@@ -51,7 +55,8 @@ const ONE_OFF_SCHEDULES: &[&str] = &[
 
 /// Types that store whole-world callbacks, by file and type, with the
 /// reason the job needs the world. "S" rows are single-slot hooks to be
-/// keyed by game (plan step 2 or 3); "B"/"C" fields are to become
+/// keyed by game (plan step 3; step 2's are keyed: `KEYED_HOOKS`);
+/// "B"/"C" fields are to become
 /// events, observers or systems (the step named).
 const ALLOWED_REGISTRIES: &[(&str, &str, &str)] = &[
     (
@@ -96,18 +101,18 @@ const ALLOWED_REGISTRIES: &[(&str, &str, &str)] = &[
     ),
     (
         "chimera/core/src/core.rs",
-        "NewGame",
-        "S: map start; one per app, last plugin wins (plan step 2)",
-    ),
-    (
-        "chimera/core/src/core.rs",
         "PredictedComponent",
         "prediction's save and restore, generic per type",
     ),
     (
         "chimera/core/src/game_log.rs",
         "LogSubjects",
-        "S: names in a log line; one per app (plan step 2)",
+        "names in a log line, keyed by game (`gameplay::GameHooks`)",
+    ),
+    (
+        "chimera/core/src/gameplay.rs",
+        "NewGame",
+        "map start: the rules' fresh game, keyed by game (`gameplay::GameHooks`)",
     ),
     (
         "chimera/core/src/slots.rs",
@@ -122,17 +127,17 @@ const ALLOWED_REGISTRIES: &[(&str, &str, &str)] = &[
     (
         "chimera/net/src/net/parts.rs",
         "BotHooks",
-        "S: the bots' quota and kicks (plan step 2)",
+        "the bots' quota and kicks: spawning, keyed by game (`gameplay::GameHooks`)",
     ),
     (
         "chimera/net/src/net/parts.rs",
         "Holds",
-        "S: freeze ends every server tick (plan step 2)",
+        "the rules' freeze for net capture and prediction, keyed by game (`gameplay::GameHooks`)",
     ),
     (
         "chimera/net/src/net/parts.rs",
         "JoinRules",
-        "S: a join spawns and places the player (plan step 2)",
+        "a join spawns and places the player, keyed by game (`gameplay::GameHooks`)",
     ),
     (
         "chimera/net/src/net/parts.rs",
@@ -700,6 +705,53 @@ fn exclusive_systems(files: &[(String, String, String)]) -> BTreeSet<(String, St
         }
     }
     out
+}
+
+/// Hook kinds keyed by game (`chimera_core::gameplay::GameHooks`, plan
+/// step 2): registered with `game_hook`/`any_game_hook`, never a resource
+/// of their own that the last plugin added would replace.
+const KEYED_HOOKS: &[&str] = &["JoinRules", "Holds", "BotHooks", "NewGame", "LogSubjects"];
+
+#[test]
+fn keyed_hooks_are_not_single_slot_resources() {
+    let mut errors = Vec::new();
+    for krate in crates() {
+        for (path, _, code) in crate_files(&krate) {
+            let squeezed: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+            for hook in KEYED_HOOKS {
+                let as_resource = [
+                    "insert_resource(",
+                    "init_resource::<",
+                    "get_resource::<",
+                    "resource::<",
+                    "resource_mut::<",
+                    "Res<",
+                ]
+                .iter()
+                .any(|call| {
+                    squeezed.match_indices(call).any(|(at, _)| {
+                        let rest = &squeezed[at + call.len()..];
+                        // The type's path (`crate::gameplay::NewGame`): its last segment.
+                        let path = rest
+                            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
+                            .next()
+                            .unwrap_or("");
+                        path.rsplit("::").next() == Some(hook)
+                    })
+                });
+                if as_resource {
+                    errors.push(format!(
+                        "{path}: `{hook}` used as a resource. It is keyed by game: register a \
+                         game's with `app.game_hook(<game id>, {hook} {{ .. }})` \
+                         (`chimera_core::gameplay::GameplayAppExt`) and read the gameplay's with \
+                         `gameplay::active_hook` (the network's `{hook}::active`), so another \
+                         game's plugin doesn't replace it. See docs/DESIGN.md, \"ECS style\"."
+                    ));
+                }
+            }
+        }
+    }
+    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
 #[test]

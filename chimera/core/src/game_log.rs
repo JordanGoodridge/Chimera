@@ -132,8 +132,10 @@ pub struct LogSubject {
     pub unique: String,
 }
 
-/// Names a player for the log; the network layer puts its own.
-#[derive(Resource, Clone, Copy)]
+/// Names a player for the log: the gameplay's rules' entry
+/// (`gameplay::GameHooks`), else the one for every game, which the network
+/// layer puts (`any_game_hook`), else `default_subject`.
+#[derive(Clone, Copy)]
 pub struct LogSubjects(pub fn(&World, Entity) -> Option<LogSubject>);
 
 impl Default for LogSubjects {
@@ -198,7 +200,7 @@ impl Plugin for GameLogPlugin {
         app.add_message::<GameEvent>()
             .add_message::<LogLine>()
             .init_resource::<ServerLog>()
-            .init_resource::<LogSubjects>()
+            .init_resource::<crate::gameplay::GameHooks<LogSubjects>>()
             .add_systems(Last, write_lines);
         app.console_command(
             "log",
@@ -240,7 +242,9 @@ impl Plugin for GameLogPlugin {
 
 /// A player as the log writes it: `"Name<userid><uniqueid><TEAM>"`.
 pub fn subject_text(world: &World, e: Entity) -> String {
-    let resolve = world.get_resource::<LogSubjects>().copied().unwrap_or_default().0;
+    let resolve = crate::gameplay::active_hook::<LogSubjects>(world, |g| g.rules)
+        .unwrap_or_default()
+        .0;
     let s = resolve(world, e).unwrap_or_else(|| LogSubject {
         name: "unknown".into(),
         userid: e.index().index() as u64,

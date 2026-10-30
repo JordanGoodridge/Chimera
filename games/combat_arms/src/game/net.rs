@@ -96,6 +96,7 @@
 //! apps/combat_arms_server.
 
 use bevy::prelude::*;
+use crate::gameplay::GameplayAppExt as _;
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -174,14 +175,21 @@ fn register(app: &mut App) {
         .add_client_message::<CaRespawnRequest>(Channel::Ordered)
         .add_client_message::<CaHireRequest>(Channel::Ordered)
         .add_client_message::<CaOrderRequest>(Channel::Ordered)
-        .insert_resource(JoinRules {
-            enter: enter_game,
-            ..default()
-        })
-        .insert_resource(Holds {
-            freeze_ends: flow::freeze_ends,
-            frozen: flow::frozen_intent,
-        })
+        // Combat Arms' hooks, used while it is the gameplay's.
+        .game_hook(
+            super::GAME,
+            JoinRules {
+                enter: enter_game,
+                ..default()
+            },
+        )
+        .game_hook(
+            super::GAME,
+            Holds {
+                freeze_ends: flow::freeze_ends,
+                frozen: flow::frozen_intent,
+            },
+        )
         // The match's state: while Combat Arms is the gameplay
         // (`gameplay::gameplay_is`).
         .add_systems(

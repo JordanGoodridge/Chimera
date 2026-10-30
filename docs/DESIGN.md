@@ -261,9 +261,12 @@ the game's part), and its data hooks under its own id
 (`ModeAppExt::add_modes(game, ..)`, `WeaponDataAppExt::add_weapon_data`,
 `ViewAnimAppExt::view_anim_rules(game, ..)`, a movement by id,
 `NetAppExt::net_part`). It never inserts a single-slot hook resource
-that another game's plugin would replace: those (`JoinRules`, `Holds`,
-`BotHooks`, `NewGame`, `LogSubjects`) are being keyed by game
-(docs/plans/active/ecs-cleanup.md, step 2).
+that another game's plugin would replace: a hook of a kind the engine
+calls one of (`JoinRules`, `Holds`, `BotHooks`, `NewGame`,
+`LogSubjects`) is registered under the game's id (`app.game_hook(game,
+hooks)`, `gameplay::GameHooks`) and the engine calls the gameplay's
+game's (`gameplay::active_hook`), so a gameplay switch switches them;
+view-model rules are the held weapon's game's.
 `checks/tests/it/ecs.rs` keeps the callback registries on an allowed
 list and ratchets each crate's exclusive systems in per-tick schedules;
 `checks/tests/it/determinism.rs` checks every simulation crate, a new

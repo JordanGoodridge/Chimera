@@ -11,7 +11,7 @@
 //! - Maps: `+map greybox` (the default) or `+map combat_arms:<name>` (a
 //!   bare name works too) from the install (`combat_arms::game::world`);
 //!   `changelevel <map>` (or `map <map>`) loads another in the background
-//!   and moves every player there, a fresh match (`core::new_game`).
+//!   and moves every player there, a fresh match (`gameplay::new_game`).
 //!   Clients load the map from their own install by name (Combat Arms'
 //!   maps have no file hash: `game::world`, Q15), so no `net::maps::
 //!   MapFiles`: nothing to download.
@@ -42,7 +42,7 @@ use bevy::prelude::*;
 use chimera_core::{
     console::{self, Console, ConsoleAppExt},
     core::{self, BuildVersion},
-    gameplay::{Gameplay, GameplayAppExt},
+    gameplay::{self, Gameplay, GameplayAppExt},
 };
 use chimera_net::net::{self, NetPlugin, NetSettings};
 use chimera_world::{
@@ -261,7 +261,7 @@ pub fn change_level(world: &mut World, name: &str) -> Result<Option<String>, Str
 }
 
 /// The map `id` in place of the one playing (None: the greybox), and a
-/// fresh match on it (`core::new_game`).
+/// fresh match on it (`gameplay::new_game`).
 pub fn swap_map(world: &mut World, id: &str, data: Option<MapData>) {
     match data {
         Some(data) => {
@@ -282,7 +282,7 @@ pub fn swap_map(world: &mut World, id: &str, data: Option<MapData>) {
         .get_resource::<Gameplay>()
         .map_or(Duration::from_secs_f64(TICK_INTERVAL), |g| g.tick);
     core::set_tick_length(world, tick);
-    core::new_game(world);
+    gameplay::new_game(world);
 }
 
 fn finish_level_change(world: &mut World) {

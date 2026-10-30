@@ -3,8 +3,9 @@
 Status: the audit (roadmap item 1) done 2026-10-29 on main at
 a5e70668, read-only. Section 4's step 1 (guards) done 2026-10-29:
 `checks/tests/it/ecs.rs` and `determinism.rs` over every simulation
-crate, DESIGN.md "ECS style" (what landed: step 1 below). Step 3
-(the weapon seam) and step 10 done 2026-10-30. Next: step 2.
+crate, DESIGN.md "ECS style" (what landed: step 1 below). Steps 2
+(single-slot hooks keyed by game), 3 (the weapon seam) and 10 done
+2026-10-30. Next: step 4.
 The roadmap item's other parts (docs/backlog.md, "First: ECS cleanup
 where new games plug in") follow section 4's order. Goal (user, 2026-10-29): outcomes, not a rewrite. The
 next games (Half-Life 2: Deathmatch, Team Fortress 2, later Call of
@@ -505,6 +506,52 @@ what must pass, beyond each crate's fast tier. The guards:
   `apps/mashup_demo/tests/it/two_games.rs`.
 - Effect: HL2DM and TF2 register their own join, hold and new-game
   rules without replacing CS:S's. 5 S registries become keyed.
+- **Done 2026-10-30.** `chimera_core::gameplay::GameHooks<T>` (an entry
+  per game id plus an `any` entry), `GameplayAppExt::game_hook`/
+  `any_game_hook`, `gameplay::active_hook` (the entry of the gameplay's
+  slot game, else `any`, else none: the caller's default; without a
+  `Gameplay`, the first game's registered, as `default_gameplay` makes
+  the first game's parts play). The network's `JoinRules::active`,
+  `Holds::active` (rules' slot) and `BotHooks::active` (bots' slot);
+  `predict`'s two systems read `GameHooks<Holds>` with the gameplay.
+  `NewGame` and `new_game` moved from `core` to `gameplay` (core can't
+  use gameplay: `module_layering`); `game_log` and CS:S's `rules` may now
+  use `gameplay` (ARCHITECTURE.md's edges). The network registers its
+  `LogSubjects` as `any`. CS:S and Combat Arms register theirs under
+  their ids; none inserts one as a resource
+  (`ecs.rs::keyed_hooks_are_not_single_slot_resources`). A minigame's
+  rules (`MINIGAME`) register their own: `NewGame` counts the map load
+  (`MinigamePlugin`), `Holds` keeps the look only
+  (`runtime::end_frozen`, in `minigame_net`'s part); its join is the
+  default. Behaviour, checked per app:
+  - Single-game apps (CS:S, Combat Arms, their servers): unchanged (one
+    game's entries, and it is the gameplay).
+  - The mashup demo: unchanged (only Combat Arms' rules and network are
+    in it). With both games' parts (`two_games.rs`), the hooks were the
+    last plugin's (CS:S's: its network part sorts after Combat Arms',
+    and `CsSourceParts` was added second); now Combat Arms' (the
+    gameplay), CS:S's after a switch, in either plugin order
+    (`each_hook_is_the_gameplays_in_either_plugin_order`).
+  - The party (`party_kit`, so Lucker Party and Ultimate Gun Game):
+    before a minigame, Combat Arms' (as before). While one plays (rules
+    `chimera`), the hooks were Combat Arms' (the only game inserting
+    them); now the minigame's: a map load no longer runs Combat Arms'
+    `new_game` (which restarted `mode::Match`, the minigame's match
+    resource too; the party server restarts the minigame itself after
+    it) but still counts `MapLoads` (a joining client waits on it); a
+    client's predicted freeze (the match's end) keeps the look only, as
+    the server's `hold_the_end` does, where Combat Arms' kept firing and
+    weapon use; a joiner comes in by the default `enter_at_spawn`, which
+    is what Combat Arms' `enter_game` did under `ca_mode none` without
+    the lobby. Bots stay Combat Arms' (the bots slot)
+    (`apps/party_kit/tests/it/game_hooks.rs`).
+  - Tests: `chimera_core` gameplay unit test (both orders),
+    `chimera/net/tests/it/game_hooks.rs` (two stand-in games, either
+    order: a network join, a bot kick, the freeze, a new game, the log;
+    a switch switches each; a game with none gets the defaults).
+  - Registries: the five stay plain `fn` data on `ALLOWED_REGISTRIES`
+    (re-reasoned "keyed by game"); no exclusive system changed, so the
+    ratchet counts are the same.
 
 ### Step 3: the weapon seam (S-M)
 

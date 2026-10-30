@@ -1076,7 +1076,7 @@ pub fn resolve(world: &mut World) {
 
 /// Find the mission unless it was found for the playing (map, mode)
 /// already (`flow`'s mission start): a map that started without a fresh
-/// game (`core::NewGame`), as the app's `--map` does, still plays its
+/// game (`gameplay::NewGame`), as the app's `--map` does, still plays its
 /// mission and sends its map messages.
 pub fn ensure_resolved(world: &mut World) {
     let now = Some(playing(world));

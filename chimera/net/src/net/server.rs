@@ -101,7 +101,8 @@ pub(super) fn plugin(app: &mut App) {
                 .map(Some)
         },
     );
-    app.insert_resource(crate::game_log::LogSubjects(log_subject));
+    // Every game's, unless one names its players itself.
+    chimera_core::gameplay::GameplayAppExt::any_game_hook(app, crate::game_log::LogSubjects(log_subject));
     app.add_observer(join)
         .add_observer(left)
         .add_systems(Update, drop_refused.run_if(in_state(ServerState::Running)))
@@ -362,7 +363,7 @@ fn kick_by(world: &mut World, pick: impl Fn(&str, Option<u64>) -> bool, reason: 
     let (bot, name) = bot?;
     // The game's (`BotHooks`): CS:S drops the bomb it carries and lowers
     // `bot_quota`.
-    let hooks = world.get_resource::<super::BotHooks>().copied().unwrap_or_default();
+    let hooks = super::BotHooks::active(world);
     (hooks.kick)(world, bot);
     Some(format!("kicked {name}"))
 }
@@ -479,7 +480,7 @@ pub fn start(world: &mut World) -> Result<(), String> {
     world.insert_resource(RenetServer::new(config));
     world.insert_resource(NetRole::Server);
     // Bots added before serving stay (`bot_quota` counts them).
-    let hooks = world.get_resource::<super::BotHooks>().copied().unwrap_or_default();
+    let hooks = super::BotHooks::active(world);
     (hooks.sync_quota)(world);
     Ok(())
 }
@@ -710,7 +711,7 @@ fn spawn_player(world: &mut World, id: u64, name: &str, choice: Option<&str>) ->
     set_movement(e, movement).apply(world);
     // Out of the game until its client has the map (`receive_loaded`), on
     // the team (or menus) it asked for: the game's join flow.
-    let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
+    let rules = super::JoinRules::active(world);
     (rules.joined)(world, e, choice);
     e
 }
@@ -744,7 +745,7 @@ fn receive_loaded(mut loaded: MessageReader<FromClient<super::Loaded>>, players:
             if let Ok(mut c) = world.get_entity_mut(client) {
                 c.insert(ClientMap(serving));
             }
-            let rules = world.get_resource::<super::JoinRules>().copied().unwrap_or_default();
+            let rules = super::JoinRules::active(world);
             (rules.enter)(world, character);
             // What was shot up before it came.
             super::decals::send(world, client);
@@ -932,7 +933,7 @@ fn capture_own_states(world: &mut World) {
     let frozen = world.get_resource::<FreezeTime>().is_some_and(|f| f.0);
     // The freeze ends on the first tick at its end time (`Holds`; CS:S's
     // `rules::rounds`).
-    let holds = world.get_resource::<super::Holds>().copied().unwrap_or_default();
+    let holds = super::Holds::active(world);
     let frozen_until = match (holds.freeze_ends)(world) {
         Some(until) if frozen => {
             let dt = clock.delta.as_secs_f64().max(1e-6);
