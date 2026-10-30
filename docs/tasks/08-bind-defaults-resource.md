@@ -1,5 +1,7 @@
 # Default binds per game as a resource
 
+**Done 2026-10-30** (ecs-cleanup.md, step 10).
+
 ## Context
 
 `chimera_client::client::binds` keeps the default game's binds in two
@@ -17,11 +19,11 @@ the gameplay can't switch them. Step 10 of
 
 ## Definition of done
 
-- [ ] A resource holding each registered game's defaults (and old
+- [x] A resource holding each registered game's defaults (and old
       defaults); the shell reads the entry of the gameplay's `binds` slot.
-- [ ] The statics are gone; the determinism ratchet reflects it.
-- [ ] A test: two games' defaults registered, the gameplay's are used.
-- [ ] Re-reading on a gameplay switch: implement only if trivial, else
+- [x] The statics are gone; the determinism ratchet reflects it.
+- [x] A test: two games' defaults registered, the gameplay's are used.
+- [x] Re-reading on a gameplay switch: implement only if trivial, else
       leave it as a "Known shortcuts" line in the file's `//!` doc.
 
 ## Constraints

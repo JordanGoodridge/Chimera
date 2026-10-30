@@ -128,7 +128,7 @@ pub fn load_map(id: &str, hdr_level: u8) -> Result<MapData, String> {
 pub fn client_hooks() -> AppHooks {
     AppHooks {
         build: BUILD,
-        load_map,
+        load_map: |id, options| MAP_SOURCES.load_with(id, options),
         load_map_file: |id, _, _| Err(format!("{id}: the mashup loads maps by id only, not from a file")),
         map_file_bytes: |_| None,
         unload_greybox: greybox::unload,

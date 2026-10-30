@@ -100,7 +100,14 @@ pub(in crate::ui) fn map_load_failed(w: &mut World) {
 /// layout from the install, `GameUi::loading`: the frame, the stage line,
 /// the progress bar, Cancel), the menu's entries hidden. The stage and
 /// the bar follow the load (`loading_progress`).
-pub(super) fn loading_frame(commands: &mut Commands, root: Entity, menu: &GameMenu, look: &Look, map: &str) {
+pub(super) fn loading_frame(
+    commands: &mut Commands,
+    root: Entity,
+    menu: &GameMenu,
+    look: &Look,
+    map: &str,
+    progress: Option<crate::map::loading::LoadProgress>,
+) {
     let layout = look.ui.and_then(|u| u.loading.as_ref());
     let at = |name: &str, fallback: (f32, f32, f32, f32)| {
         layout
@@ -115,7 +122,7 @@ pub(super) fn loading_frame(commands: &mut Commands, root: Entity, menu: &GameMe
         f,
         look,
         at("InfoLabel", (20.0, 34.0, 340.0, 24.0)),
-        &loading_text(menu, crate::map::loading::current(), map),
+        &loading_text(menu, progress, map),
         look.font("Default", (16.0, false)),
         look.text(),
         -1,
@@ -135,7 +142,7 @@ pub(super) fn loading_frame(commands: &mut Commands, root: Entity, menu: &GameMe
             ChildOf(f),
         ))
         .id();
-    let fraction = crate::map::loading::current().map_or(0.0, |p| p.fraction);
+    let fraction = progress.map_or(0.0, |p| p.fraction);
     commands.spawn((
         LoadingBar,
         Node {
@@ -375,6 +382,7 @@ pub(super) fn loading_progress(
     settings: Option<Res<crate::net::NetSettings>>,
     role: Option<Res<crate::core::NetRole>>,
     client: Option<Res<bevy_replicon_renet::RenetClient>>,
+    reporter: Option<Res<crate::map::loading::LoadReporter>>,
     time: Res<Time<Real>>,
     mut timeline: ResMut<LoadTimeline>,
     infos: Query<(&LoadingInfo, &Children)>,
@@ -387,7 +395,7 @@ pub(super) fn loading_progress(
         timeline.stages.clear();
         return;
     }
-    let progress = crate::map::loading::current();
+    let progress = reporter.as_ref().and_then(|r| r.current());
     let hosting = settings.as_ref().is_some_and(|s| s.maxplayers > 1)
         && role.as_deref().is_none_or(|r| *r != crate::core::NetRole::Client)
         && join.as_ref().is_none_or(|j| !j.showing());

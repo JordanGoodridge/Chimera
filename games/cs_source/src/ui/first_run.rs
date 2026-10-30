@@ -280,7 +280,7 @@ fn search(w: &mut World) -> Result<String, String> {
 /// The install changed: everything read from it at startup again.
 fn reload(w: &mut World) {
     install::forget_steam();
-    crate::client::console::forget_map_names();
+    crate::client::console::forget_map_names(w);
     super::game_menu::reload_install(w);
 }
 

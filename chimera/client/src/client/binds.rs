@@ -7,7 +7,7 @@
 //! The defaults are the game's data (`game_registry::GameInfo`; nothing
 //! here names a game's keys): the default game's, from its install's file
 //! (`GameInfo::default_binds_cfg`, CS:S's `cfg/config_default.cfg`, read at
-//! start by `read_install_defaults`), else its built-in table
+//! start by `BindDefaults::read_install`), else its built-in table
 //! (`GameInfo::default_binds`); plus Chimera's own, the only engine
 //! defaults, on the keys the game leaves free (`CHIMERA_BINDS`: Alt free
 //! look, V noclip, F9 `bug`, the debug keys F3 `toggle
@@ -44,9 +44,11 @@
 //!
 //! Known shortcuts: a named action is only a held button: it has no
 //! console `+throw` typed-hold (`console::HeldActions` keeps Chimera's
-//! own) and no wheel notch.
+//! own) and no wheel notch. The defaults are read once at start for the
+//! gameplay's `binds` game (`BindDefaults`): a gameplay switch later
+//! doesn't re-read them.
 
-use std::{collections::BTreeMap, sync::RwLock};
+use std::collections::BTreeMap;
 
 use bevy::{
     input::mouse::{AccumulatedMouseScroll, MouseScrollUnit},
@@ -184,13 +186,22 @@ pub const CHIMERA_BINDS: &[(&str, &str)] = &[
     ("f11", "chimera_inspector"),
 ];
 
-/// The default game's binds (`read_install_defaults`, `use_game_defaults`);
-/// empty before (and without a game).
-static GAME_DEFAULTS: RwLock<Vec<(String, String)>> = RwLock::new(Vec::new());
+/// One game's default binds and its old defaults.
+#[derive(Clone, Debug, Default)]
+struct GameBinds {
+    binds: Vec<(String, String)>,
+    old: &'static [(&'static str, &'static str)],
+}
 
-/// The default game's old defaults (`GameInfo::old_default_binds`, set by
-/// `read_install_defaults`); empty without a game.
-static OLD_DEFAULTS: RwLock<&'static [(&'static str, &'static str)]> = RwLock::new(&[]);
+/// The default binds of the games an app read them for (`read_install`,
+/// `use_game`), keyed by game id, and the game whose are used (the
+/// gameplay's `binds` slot, set by the shell at start). Empty before (and
+/// without a game): Chimera's own binds only. Each app has its own.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct BindDefaults {
+    games: BTreeMap<&'static str, GameBinds>,
+    active: Option<&'static str>,
+}
 
 /// Whether a key name is one we know (keyboard, mouse or wheel).
 pub fn known_key(name: &str) -> bool {
@@ -242,70 +253,69 @@ pub fn defaults_from(game: &[(String, String)]) -> Vec<(String, String)> {
     out
 }
 
-/// The binds a fresh config starts with (and "Use Defaults" restores):
-/// the default game's (from its install's file when it was read, else its
-/// built-in table), plus Chimera's own (`CHIMERA_BINDS`).
-pub fn default_binds() -> Vec<(String, String)> {
-    let game = GAME_DEFAULTS.read().map(|d| d.clone()).unwrap_or_default();
-    defaults_from(&game)
-}
+impl BindDefaults {
+    /// Read `game`'s defaults from its install's file
+    /// (`GameInfo::default_binds_cfg`: CS:S's `cfg/config_default.cfg`, in
+    /// the configured, saved or found install) and make them the ones in
+    /// use. Without the file they are the game's built-in table
+    /// (`GameInfo::default_binds`); without a game, none (Chimera's own
+    /// only). Returns whether the file was read.
+    pub fn read_install(&mut self, game: Option<&GameInfo>) -> bool {
+        let Some(game) = game else {
+            self.active = None;
+            return false;
+        };
+        let binds = game
+            .default_binds_text()
+            .map(|t| cfg_binds(&t))
+            .filter(|b| !b.is_empty());
+        let found = binds.is_some();
+        match binds {
+            Some(b) => self.set(game.id, b, game.old_default_binds),
+            None => self.use_game(game),
+        }
+        found
+    }
 
-/// Make `binds` (key, command) the game's defaults.
-pub fn use_game_defaults(binds: &[(&str, &str)]) {
-    let owned = binds.iter().map(|(k, c)| (k.to_string(), c.to_string())).collect();
-    set_game_defaults(owned);
-}
+    /// Make `game`'s built-in table (`GameInfo::default_binds`) the
+    /// defaults in use.
+    pub fn use_game(&mut self, game: &GameInfo) {
+        let owned = game.default_binds.iter().map(|(k, c)| (k.to_string(), c.to_string())).collect();
+        self.set(game.id, owned, game.old_default_binds);
+    }
 
-fn set_game_defaults(binds: Vec<(String, String)>) {
-    if let Ok(mut d) = GAME_DEFAULTS.write() {
-        *d = binds;
+    fn set(&mut self, id: &'static str, binds: Vec<(String, String)>, old: &'static [(&'static str, &'static str)]) {
+        self.games.insert(id, GameBinds { binds, old });
+        self.active = Some(id);
+    }
+
+    fn active(&self) -> Option<&GameBinds> {
+        self.active.and_then(|id| self.games.get(id))
+    }
+
+    /// The binds a fresh config starts with (and "Use Defaults" restores):
+    /// the game's in use (from its install's file when it was read, else
+    /// its built-in table), plus Chimera's own (`CHIMERA_BINDS`).
+    pub fn default_binds(&self) -> Vec<(String, String)> {
+        defaults_from(self.active().map_or(&[], |g| &g.binds))
+    }
+
+    /// Defaults a config written before the game's current ones lacks
+    /// (those not among its `GameInfo::old_default_binds`): `binddefaults
+    /// new` (run after such a config) puts each on its key when the key
+    /// is free and no key runs the command.
+    pub fn added_defaults(&self) -> Vec<(String, String)> {
+        let old = self.active().map_or(&[][..], |g| g.old);
+        self.default_binds()
+            .into_iter()
+            .filter(|(k, c)| !old.contains(&(k.as_str(), c.as_str())))
+            .collect()
     }
 }
 
-/// Read the default game's defaults from its install's file
-/// (`GameInfo::default_binds_cfg`: CS:S's `cfg/config_default.cfg`, in the
-/// configured, saved or found install). Without the file they are the
-/// game's built-in table (`GameInfo::default_binds`); without a game, none
-/// (Chimera's own only). Returns whether the file was read.
-pub fn read_install_defaults(game: Option<&GameInfo>) -> bool {
-    set_old_defaults(game.map_or(&[], |g| g.old_default_binds));
-    let Some(game) = game else {
-        set_game_defaults(Vec::new());
-        return false;
-    };
-    let binds = game
-        .default_binds_text()
-        .map(|t| cfg_binds(&t))
-        .filter(|b| !b.is_empty());
-    let found = binds.is_some();
-    match binds {
-        Some(b) => set_game_defaults(b),
-        None => use_game_defaults(game.default_binds),
-    }
-    found
-}
-
-fn set_old_defaults(old: &'static [(&'static str, &'static str)]) {
-    if let Ok(mut d) = OLD_DEFAULTS.write() {
-        *d = old;
-    }
-}
-
-/// Defaults a config written before the game's current ones lacks (those
-/// not among its `GameInfo::old_default_binds`): `binddefaults new` (run
-/// after such a config) puts each on its key when the key is free and no
-/// key runs the command.
-pub fn added_defaults() -> Vec<(String, String)> {
-    let old = OLD_DEFAULTS.read().map(|d| *d).unwrap_or(&[]);
-    default_binds()
-        .into_iter()
-        .filter(|(k, c)| !old.contains(&(k.as_str(), c.as_str())))
-        .collect()
-}
-
-/// Put the added defaults on free keys (see `added_defaults`).
-pub fn bind_added_defaults(binds: &mut BTreeMap<String, String>) {
-    for (key, command) in added_defaults() {
+/// Put the added defaults on free keys (see `BindDefaults::added_defaults`).
+pub fn bind_added_defaults(binds: &mut BTreeMap<String, String>, added: &[(String, String)]) {
+    for (key, command) in added.iter().cloned() {
         if !binds.contains_key(&key) && keys_for(binds, &command).is_empty() {
             binds.insert(key, command);
         }
@@ -605,11 +615,11 @@ pub fn first_pressed(
 /// Put the default binds in: every one (`all`, after clearing the rest),
 /// or only those whose key is free and whose command no key runs (for a
 /// config written before its keys were binds).
-pub fn bind_defaults(binds: &mut BTreeMap<String, String>, all: bool) {
+pub fn bind_defaults(binds: &mut BTreeMap<String, String>, all: bool, defaults: &[(String, String)]) {
     if all {
         binds.clear();
     }
-    for (key, command) in default_binds() {
+    for (key, command) in defaults.iter().cloned() {
         if all || (!binds.contains_key(&key) && keys_for(binds, &command).is_empty()) {
             binds.insert(key, command);
         }
@@ -655,22 +665,23 @@ pub const CONFIG_MARK: &str = "// binds: all";
 pub const DEFAULTS_MARK: &str = "// bind defaults: cs";
 
 pub fn commands(app: &mut App) {
-    app.console_command(
+    app.init_resource::<BindDefaults>().console_command(
         "binddefaults",
         "binddefaults [missing|new]: put the default binds back (missing: only on free keys for unbound commands; \
          new: only the defaults added lately, likewise).",
         |w, a| {
             let mode = a.first().map(String::as_str);
+            let defaults = w.get_resource::<BindDefaults>().cloned().unwrap_or_default();
             let mut c = w.resource_mut::<Console>();
             let before = c.binds.clone();
             match mode {
                 Some("new") => {
-                    bind_added_defaults(&mut c.binds);
+                    bind_added_defaults(&mut c.binds, &defaults.added_defaults());
                     // Written again with `DEFAULTS_MARK`, so it runs once.
                     c.dirty = true;
                 }
-                Some("missing") => bind_defaults(&mut c.binds, false),
-                _ => bind_defaults(&mut c.binds, true),
+                Some("missing") => bind_defaults(&mut c.binds, false, &defaults.default_binds()),
+                _ => bind_defaults(&mut c.binds, true, &defaults.default_binds()),
             }
             if c.binds != before {
                 c.dirty = true;
@@ -691,8 +702,10 @@ pub fn commands(app: &mut App) {
 /// game front end's tests).
 pub fn test_binds(app: &mut App, game: &GameInfo) {
     app.init_resource::<ButtonInput<MouseButton>>();
-    use_game_defaults(game.default_binds);
-    bind_defaults(&mut app.world_mut().resource_mut::<Console>().binds, true);
+    let mut defaults = BindDefaults::default();
+    defaults.use_game(game);
+    bind_defaults(&mut app.world_mut().resource_mut::<Console>().binds, true, &defaults.default_binds());
+    app.insert_resource(defaults);
 }
 
 #[cfg(test)]
@@ -767,13 +780,15 @@ bind "MOUSE1" "+attack"
         ("f9", "bug"),
     ];
 
-    /// The sample file's binds as the game's defaults (every test that
-    /// reads `default_binds` sets the same, so tests in parallel agree).
+    /// The sample file's binds as a game's defaults.
+    fn sample_resource() -> BindDefaults {
+        let mut d = BindDefaults::default();
+        d.set("sample", cfg_binds(SAMPLE_DEFAULTS_CFG), SAMPLE_OLD);
+        d
+    }
+
     fn sample_defaults() -> Vec<(String, String)> {
-        let read = cfg_binds(SAMPLE_DEFAULTS_CFG);
-        set_game_defaults(read.clone());
-        set_old_defaults(SAMPLE_OLD);
-        read
+        cfg_binds(SAMPLE_DEFAULTS_CFG)
     }
 
     #[test]
@@ -828,9 +843,9 @@ bind "MOUSE1" "+attack"
     fn added_defaults_reach_old_configs_on_free_keys() {
         // A config listing every bind, from before the game's defaults
         // changed.
-        sample_defaults();
+        let d = sample_resource();
         let mut b = binds(&[("w", "+forward"), ("f2", "debugui"), ("mwheelup", "+jump")]);
-        bind_added_defaults(&mut b);
+        bind_added_defaults(&mut b, &d.added_defaults());
         assert_eq!(b.get("f1").map(String::as_str), Some("autobuy"));
         assert_eq!(b.get("f11").map(String::as_str), Some("chimera_inspector"));
         // The key taken, or the command on another key: left alone.
@@ -838,10 +853,10 @@ bind "MOUSE1" "+attack"
         assert!(keys_for(&b, "rebuy").is_empty());
         assert_eq!(b["mwheelup"], "+jump");
         assert_eq!(b.get("f8"), None, "debugui already has a key");
-        let added = added_defaults();
+        let added = d.added_defaults();
         assert!(!added.iter().any(|(k, _)| k == "w"), "old defaults aren't added");
         for a in &added {
-            assert!(default_binds().contains(a), "{a:?} is a default too");
+            assert!(d.default_binds().contains(a), "{a:?} is a default too");
         }
     }
 
@@ -866,24 +881,24 @@ bind "MOUSE1" "+attack"
     #[test]
     fn missing_defaults_fill_only_free_keys_for_unbound_commands() {
         // An old config: only the player's own binds survived unbindall.
-        sample_defaults();
+        let d = sample_resource();
         let mut b = binds(&[("f", "+jump"), ("w", "say hello")]);
-        bind_defaults(&mut b, false);
+        bind_defaults(&mut b, false, &d.default_binds());
         assert_eq!(b.get("space"), None, "+jump already has a key");
         assert_eq!(b["w"], "say hello", "a taken key is kept");
         assert!(keys_for(&b, "+forward").is_empty(), "w was taken, so +forward stays unbound");
         assert_eq!(b["a"], "+moveleft");
-        bind_defaults(&mut b, true);
-        assert_eq!(b.len(), default_binds().len());
+        bind_defaults(&mut b, true, &d.default_binds());
+        assert_eq!(b.len(), d.default_binds().len());
         assert_eq!(b["w"], "+forward");
     }
 
     #[test]
     fn binds_save_to_config_and_load_back() {
-        sample_defaults();
         let mut app = App::new();
         app.add_plugins(crate::console::ConsolePlugin);
         commands(&mut app);
+        app.insert_resource(sample_resource());
         app.world_mut()
             .resource_mut::<Console>()
             .submit("binddefaults; unbind space; bind k +jump; bind [ \"say hi\"");
@@ -898,6 +913,7 @@ bind "MOUSE1" "+attack"
         let mut fresh = App::new();
         fresh.add_plugins(crate::console::ConsolePlugin);
         commands(&mut fresh);
+        fresh.insert_resource(sample_resource());
         let mut c = fresh.world_mut().resource_mut::<Console>();
         c.submit("binddefaults");
         for line in text.lines() {

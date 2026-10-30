@@ -343,9 +343,9 @@ checked at all (step 1 fixes this).
 | `RIGS`, `GROUPS`, `SHARED` | games/combat_arms/src/game/characters/models.rs:87, :162, :470 | D (later) | model caches, never freed |
 | `CACHE` (view models) | games/combat_arms/src/game/view_model/on_demand.rs:64 | D (later) | "never freed" (tech-debt.md) |
 | `UI` (install UI) | games/combat_arms/src/ui/install.rs:702 | D (later) | front end only |
-| `GAME_DEFAULTS`, `OLD_DEFAULTS` | chimera/client/src/client/binds.rs:189, :193 | **D** | one game's default binds per process; a gameplay switch doesn't re-read binds (gameplay.rs's known shortcut); step 10 |
-| `MAP_NAMES`, `CYCLE` | chimera/client/src/client/console.rs:1890, :1923 | **D** | one game's map list per process; step 10 |
-| `PROGRESS` | chimera/world/src/map/loading.rs:16 | **D** | one map load's progress per process: a listen server and its own client, or `NetSim`'s server and clients, share it; step 10 |
+| `GAME_DEFAULTS`, `OLD_DEFAULTS` | chimera/client/src/client/binds.rs:189, :193 | gone | now `binds::BindDefaults`, a resource keyed by game (step 10, done); a gameplay switch still doesn't re-read binds (known shortcut) |
+| `MAP_NAMES`, `CYCLE` | chimera/client/src/client/console.rs:1890, :1923 | gone | now `console::MapLists`, a resource keyed by game (step 10, done) |
+| `PROGRESS` | chimera/world/src/map/loading.rs:16 | gone | now `loading::LoadReporter`, a resource the load also holds through `MapLoadOptions::progress` (step 10, done) |
 
 Totals: A 31 (13 diagnostics and flags, 18 read-only tables or
 interners), D 14 (9 install memos for later, 5 per-app state now).
@@ -648,6 +648,21 @@ what must pass, beyond each crate's fast tier. The guards:
   `party_music.rs`; `games/cs_source/tests/it/net_breakables.rs`.
 
 ### Step 10: per-app statics into resources (S each)
+
+- **Done 2026-10-30.** `loading::LoadReporter` (an `Arc<Mutex<..>>`
+  handle; `start_map_load` inserts a fresh resource per load and hands a
+  clone to the loader as `MapLoadOptions::progress`, so `AppHooks::
+  load_map`/`load_map_file` now take `&MapLoadOptions`, not an HDR level;
+  `MapLoadOptions` is no longer `Copy`). `binds::BindDefaults` (defaults
+  and old defaults keyed by game id, the active one the gameplay's
+  `binds` game, read at start by the console's `autoexec`; the options
+  menu keeps a copy of the list for "Use Defaults"; a gameplay switch
+  still doesn't re-read: the "Known shortcuts" line in `binds.rs`).
+  `console::MapLists` (names and cycle per game id, behind a lock so
+  `&World` callers can fill it; `import` and a changed install forget
+  it). Tests: `loading::tests`, `console::tests::
+  two_apps_keep_their_own_load_progress`, `map_lists_read_each_games_
+  install_once`. `chimera/world` ratchet 1 to 0.
 
 - `map::loading::PROGRESS` (`chimera/world/src/map/loading.rs:16`) into
   a resource the loading task writes through a channel or `Arc` it
