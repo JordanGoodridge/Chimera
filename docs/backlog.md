@@ -42,7 +42,12 @@ the user's go-ahead: no Actions runs unless asked.
      and the listen-server test guard each step.
   3. A `repo_checks` rule: whole-world access only on an allowed list,
      with how to fix it in the failure message. DESIGN.md states the
-     preferences: components, observers and messages first.
+     preferences: components, observers and messages first. **Done
+     2026-10-29, first (the plan's step 1, guards before the
+     conversions):** `checks/tests/it/ecs.rs` (callback registries on an
+     allowed list, a per-crate ratchet of per-tick exclusive systems),
+     `determinism.rs` over every simulation crate, DESIGN.md "ECS
+     style".
   4. Speed: convert hot spots only when profsum shows them.
 - **Next two games: Half-Life 2: Deathmatch, then Team Fortress 2.** Not
   full remakes: take what Ultimate Gun Game needs from each, meaning the

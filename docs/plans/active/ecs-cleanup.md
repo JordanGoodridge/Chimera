@@ -1,9 +1,11 @@
 # Plan: ECS cleanup where new games plug in
 
-Status: step 1 (this audit and plan) done 2026-10-29 on main at
-a5e70668; steps 2-4 of the roadmap item (docs/backlog.md, "First: ECS
-cleanup where new games plug in") follow section 4's order. Read-only:
-no code changed. Goal (user, 2026-10-29): outcomes, not a rewrite. The
+Status: the audit (roadmap item 1) done 2026-10-29 on main at
+a5e70668, read-only. Section 4's step 1 (guards) done 2026-10-29:
+`checks/tests/it/ecs.rs` and `determinism.rs` over every simulation
+crate, DESIGN.md "ECS style" (what landed: step 1 below). Next: step 2.
+The roadmap item's other parts (docs/backlog.md, "First: ECS cleanup
+where new games plug in") follow section 4's order. Goal (user, 2026-10-29): outcomes, not a rewrite. The
 next games (Half-Life 2: Deathmatch, Team Fortress 2, later Call of
 Duty) should plug in through components, observers, messages and
 systems with declared queries, and nothing may get slower.
@@ -467,6 +469,19 @@ what must pass, beyond each crate's fast tier. The guards:
 - DESIGN.md: the "ECS style" text (section 6).
 - Guards: `cargo test -p repo_checks`. Effect: nothing gets worse while
   the steps land, and a new game crate starts in the target style.
+- **Done 2026-10-29.** `ecs.rs`: 40 registry types allowed (section
+  2.1's 33, the four console `Arc<dyn Fn>` types, `HookBuild`,
+  `BuildWeapon`, `ItemPart`), S/B/C rows naming their step. Per-tick
+  exclusive systems found: 110 (section 2.2's 117 less the 7 in `ui`
+  files, which both scans skip); 70 in the 34 files of
+  `ALLOWED_EXCLUSIVE_FILES` don't count; stored: `chimera_client` 1
+  (`put_away_hud_look`), `chimera_sim` 13, `chimera_world` 1, Combat
+  Arms 20, CS:S 5 (`chimera_core`'s `local_userinfo` is in the allowed
+  `console.rs`). Each conversion lowers its crate's number.
+  `determinism.rs` finds the crates (`chimera/*`, `source/*`,
+  `lithtech/*`, `games/*` less `NOT_SIMULATION`); new rows: the two
+  format crates (8 std hash uses each); `games/originals` and
+  `chimera/vfs` are held at 0 without one.
 
 ### Step 2: single-slot hooks keyed by game (S-M; behaviour flag)
 

@@ -1,6 +1,8 @@
 //! The repository's own checks (crate `repo_checks`, checks/): the
 //! architecture tests (checks/tests/it/architecture.rs: layering, the asset, spec
-//! and docs rules), `affected`, the test selection the git hooks run, and
+//! and docs rules; determinism.rs: the simulation crates' ratchets; ecs.rs:
+//! callback registries on an allowed list, per-tick exclusive systems
+//! ratcheted), `affected`, the test selection the git hooks run, and
 //! `docs_index` (`docs_index.rs`), which generates the module and debt lists
 //! from the sources' `//!` docs.
 //!
