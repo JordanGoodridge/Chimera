@@ -112,6 +112,21 @@ the user's go-ahead: no Actions runs unless asked.
   - *Specs:* game_modes.md (Quarantine M8, infected knock-back S14),
     gear_perks.md 15 (infection-mode perks), missions.md F4.1; anything
     the specs lack goes to a spec session.
+- **Hosting from inside the app crashes (user, 2026-10-29): fixed,
+  confirm in a playtest.** `ultimate_gun_game +maxplayers 4` (a listen
+  server) panicked on its first send in bevy_replicon's
+  `collect_changes` (`replication_query.rs`: no read access to a
+  replicated component); Lucker Party's and CS:S's apps host through
+  the same plugins, and all three listen without it now. Since
+  perf-pass3 (abf4fde4), `IdleLightsPlugin` took Bevy's directional
+  light check out of `PostUpdate` in its `finish`, which builds the
+  schedule and initializes its systems; that ran before
+  `NetPlugin::finish` registered the network parts' replicated
+  components, so replicon's query was made without them. The swap now
+  runs in `PreStartup`, once every plugin is in. Tests: party_kit
+  `listen_server` (a listen server with its own player, two bots, two
+  clients and rung swaps), chimera_present
+  `idle_lights::post_update_initializes_after_every_plugins_finish`.
 - **A client without the Combat Arms key, or with another install
   version, builds other weapons than the server: fixed, confirm in a
   playtest.** The ~2,300 install copies come from the attribute file
