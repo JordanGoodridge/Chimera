@@ -16,7 +16,10 @@ use chimera_net::{
     harness::NetSim,
     net::{NetItem, memory::LinkConditions, server::RateLimits},
 };
-use chimera_sim::weapon::{self, Weapon};
+use chimera_core::core::Intent;
+use chimera_net::net::own_items::PredictedItem;
+use chimera_sim::weapon::{self, Inventory, Magazine, Weapon};
+use chimera_world::map::loose::ShownItem;
 use chimera_world::greybox::GreyboxMapPlugin;
 use combat_arms::{
     game::{
@@ -33,12 +36,16 @@ const U: f32 = combat_arms::game::inventory::UNIT;
 const FRAME: f64 = 1.0 / 144.0;
 
 fn net_sim() -> NetSim {
+    net_sim_of(1)
+}
+
+fn net_sim_of(clients: usize) -> NetSim {
     let link = LinkConditions {
         latency: Duration::from_millis(30),
         jitter: Duration::ZERO,
         loss: 0.0,
     };
-    let mut sim = NetSim::new(CaSim, link, 7, 1, |app| {
+    let mut sim = NetSim::new(CaSim, link, 7, clients, |app| {
         app.add_plugins(GreyboxMapPlugin);
     });
     sim.set_frame(TICK_INTERVAL);
@@ -197,4 +204,86 @@ fn net_projectiles_drawn_smoothly() {
     }
     eprintln!("{}", report.join("\n"));
     assert!(bad.is_empty(), "choppy:\n{}", bad.join("\n"));
+}
+
+/// The shooter's own projectile (`net::own_items`): a client firing a LAW,
+/// the M32 or a crossbow draws its round from the frame its predicted
+/// weapon fires (the clip drops), flying smoothly; the server's copy, when
+/// it comes, isn't drawn beside it on that client (one of the model at a
+/// time), the other client draws the server's; when it goes off (or the
+/// bolt sticks and the server's copy rests there) the prediction is gone.
+#[test]
+fn net_own_projectile_drawn_from_the_shot() {
+    for id in ["combat_arms:law", "combat_arms:m32", "combat_arms:assassin_bowgun_nor"] {
+        let mut sim = net_sim_of(2);
+        let shooter = sim.character_of(0).unwrap();
+        weapon::give(sim.server.app.world_mut(), shooter, id).unwrap();
+        sim.ticks(400);
+        let me = sim.local_player(0).unwrap();
+        let w = sim.clients[0].app.world();
+        let held = w.get::<Inventory>(me).unwrap().active.unwrap();
+        assert_eq!(w.get::<Weapon>(held).unwrap().id, id, "drawn on the client");
+        let clip = |sim: &NetSim| sim.clients[0].app.world().get::<Magazine>(held).unwrap().clip;
+        let before = clip(&sim);
+        assert!(before > 0);
+        {
+            let mut i = sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap();
+            i.fire = true;
+            i.pitch = -0.2;
+        }
+        // Frame by frame: the prediction on the frame the clip drops.
+        let mut fired_at = None;
+        let mut drawn: Vec<Vec3> = Vec::new();
+        let mut copy_seen = false;
+        let mut other_saw = false;
+        let mut speed: f32 = 0.0;
+        for frame in 0..600 {
+            sim.step();
+            if frame == 2 {
+                sim.clients[0].app.world_mut().get_mut::<Intent>(me).unwrap().fire = false;
+            }
+            if fired_at.is_none() && clip(&sim) < before {
+                fired_at = Some(frame);
+            }
+            let w = sim.clients[0].app.world_mut();
+            let predicted: Vec<(Vec3, f32)> = w
+                .query::<(&Transform, &PredictedItem)>()
+                .iter(w)
+                .map(|(t, p)| (t.translation, p.velocity.length()))
+                .collect();
+            let model_shown = w.query_filtered::<(), (With<NetItem>, With<ShownItem>)>().iter(w).count();
+            copy_seen |= w.query::<&NetItem>().iter(w).count() > 0;
+            if fired_at == Some(frame) {
+                assert_eq!(predicted.len(), 1, "{id}: drawn on the fire frame");
+            }
+            assert!(predicted.len() + model_shown <= 1, "{id}: one drawn at a time");
+            if let Some((at, v)) = predicted.first() {
+                drawn.push(*at);
+                speed = speed.max(*v);
+            }
+            let w = sim.clients[1].app.world_mut();
+            other_saw |= w.query_filtered::<(), (With<NetItem>, With<ShownItem>)>().iter(w).count() > 0;
+            if fired_at.is_some() && frame > fired_at.unwrap() + 20 && predicted.is_empty() {
+                break;
+            }
+        }
+        assert!(fired_at.is_some(), "{id}: fired");
+        assert!(copy_seen, "{id}: the server's copy came");
+        assert!(other_saw, "{id}: the other client drew the server's");
+        assert!(drawn.len() > 10, "{id}: predicted for {} frames", drawn.len());
+        let worst = drawn.windows(2).map(|p| p[0].distance(p[1])).fold(0.0f32, f32::max);
+        assert!(
+            worst <= speed * FRAME as f32 * 1.25 + 1e-3,
+            "{id}: smooth (worst step {worst} m, {} m a frame at most)",
+            speed * FRAME as f32
+        );
+        let objs = {
+            let w = sim.server.app.world_mut();
+            w.query::<&CaObject>().iter(w).map(|o| o.at()).collect::<Vec<_>>()
+        };
+        let w = sim.clients[0].app.world_mut();
+        let left: Vec<String> = w.query::<&PredictedItem>().iter(w).map(|p| format!("{p:?}")).collect();
+        let copies: Vec<String> = w.query::<(&NetItem, &Transform)>().iter(w).map(|p| format!("{p:?}")).collect();
+        assert!(left.is_empty(), "{id}: gone after the blast: {left:?}; copies {copies:?}; server {objs:?}");
+    }
 }

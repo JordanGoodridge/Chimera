@@ -118,9 +118,9 @@ use super::{
     rules::state::{CaMatch, Phase},
 };
 use crate::{
-    core::{Damage, DamageKind, Died, Health, NetRole, Predict, SimClock, SimSet, Team},
+    core::{Damage, DamageKind, Died, Health, LocalPlayer, NetRole, Predict, SimClock, SimSet, Team},
     map::loose::ShownItem,
-    net::NetItem,
+    net::{NetCharacter, NetItem, own_items::PredictedItem},
     weapon::{
         CarriedAppExt, NetPart, Weapon, WeaponEvent, WeaponEventKind, WeaponFrame, WeaponState,
         data::{WeaponData, WeaponDataAppExt},
@@ -453,8 +453,61 @@ impl Plugin for CaSpecialPlugin {
         )
         // A death marks the owner's devices; seen by the next frame.
         .add_systems(FixedUpdate, on_death.after(crate::core::apply_damage).run_if(crate::core::authoritative))
-        // On a network server the clients draw the objects from `NetItem`s.
-        .add_systems(FixedLast, net_items.run_if(resource_equals(NetRole::Server)));
+        // On a network server the clients draw the objects from `NetItem`s;
+        // a client draws its own projectiles from the shot (`predict_shots`).
+        .add_systems(FixedLast, net_items.run_if(resource_equals(NetRole::Server)))
+        .add_systems(
+            FixedUpdate,
+            predict_shots
+                .after(WeaponFrame)
+                .in_set(SimSet::Weapons)
+                .run_if(resource_equals(NetRole::Client)),
+        );
+    }
+}
+
+/// A network client's own impact projectiles and bolts, drawn from the
+/// shot (Chimera's `net::own_items`): the first time its predicted
+/// weapon frame fires one, the same direction from the shared seed as
+/// the server's (`fire`), at the record's speed, on the server's 20 Hz
+/// steps (`SERVER_FRAME`) under the object gravity with its quarter term
+/// (`grenades::flight_step`).
+fn predict_shots(
+    mut events: MessageReader<WeaponEvent>,
+    local: Query<(), With<LocalPlayer>>,
+    projectiles: Query<&CaProjectileData>,
+    bolts: Query<(&CaBoltData, &Weapon)>,
+    mut commands: Commands,
+) {
+    for e in events.read() {
+        let WeaponEventKind::Fired {
+            origin,
+            yaw,
+            pitch,
+            seed,
+            ..
+        } = e.kind
+        else {
+            continue;
+        };
+        if e.replay || !local.contains(e.owner) {
+            continue;
+        }
+        let step = super::grenades::SERVER_FRAME as f32;
+        let predicted = if let Ok(d) = projectiles.get(e.weapon) {
+            let p = &d.params;
+            let dir = cone_dir(p.perturb, p.dynamic_perturb, yaw, pitch, seed, PROJECTILE);
+            let gravity = if p.gravity { -super::grenades::OBJECT_GRAVITY * d.unit } else { 0.0 };
+            PredictedItem::new(p.shown_key(), origin, dir * p.speed * d.unit, step)
+                .with_gravity(gravity, super::grenades::GRAVITY_INTEGRATION_FACTOR)
+        } else if let Ok((d, w)) = bolts.get(e.weapon) {
+            let p = &d.params;
+            let dir = cone_dir(p.perturb, p.dynamic_perturb, yaw, pitch, seed, BOLT);
+            PredictedItem::new(w.id, origin, dir * p.speed * d.unit, step)
+        } else {
+            continue;
+        };
+        commands.spawn(predicted.with_shooter(e.owner).bundle());
     }
 }
 
@@ -623,14 +676,16 @@ pub(super) fn apply_heals(mut heals: ResMut<CaHeals>, mut health: Query<&mut Hea
 /// `NetItem` (the weapon's `ShownItem` key and the pose), replicated from
 /// the first one on.
 fn net_items(
-    mut q: Query<(Entity, &Transform, &ShownItem, Option<&mut NetItem>), With<CaObject>>,
+    mut q: Query<(Entity, &Transform, &ShownItem, &CaObject, Option<&mut NetItem>)>,
+    characters: Query<&NetCharacter>,
     mut commands: Commands,
 ) {
-    for (e, t, item, have) in &mut q {
+    for (e, t, item, o, have) in &mut q {
         let now = NetItem {
             model: item.0.clone(),
             origin: t.translation.to_array(),
             rotation: t.rotation.to_array(),
+            owner: o.owner.and_then(|w| characters.get(w).ok()).and_then(|c| c.owner),
         }
         .quantized();
         match have {

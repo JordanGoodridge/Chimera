@@ -72,6 +72,25 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **The grenade launcher's projectile is choppy on a client, "maybe all
+  projectiles" (user, 2026-10-29): fixed, confirm in a playtest.** Not
+  the client's interpolation (every `NetItem` was already drawn between
+  snapshots): Combat Arms' objects (rockets, launcher shells, flame puffs,
+  crossbow bolts, thrown devices) moved only on the server's 20 Hz
+  frames and their `Transform`, which the `NetItem` carries, hopped with
+  them, so a client's snapshots (at its update rate, held at the ticks
+  between) drew stops and jumps: worst frame step 1.6-1.7x the speed
+  with 8-13 still frames per flight at 30 updates/s, 2.9-3.5x and 23-38
+  still frames at 66, uneven at 20 (a bolt 7-8x); the listen server's
+  host saw the 20 Hz hops too. Now drawn between frames as Combat Arms'
+  grenades already were (`special::sync_objects`): every kind 1.0-1.1x,
+  none still, at 20/30/66 (`net_projectiles`). Combat Arms' grenades and
+  CS:S's (which fly every tick) were smooth before and after
+  (`grenades_in_flight_drawn_smoothly`). And the shooter's own rockets,
+  shells, flame puffs and bolts now leave the muzzle on the fire frame:
+  his client flies its own copy from the shot until the server's rests
+  or goes (`net::own_items`, net36). Thrown grenades stay the server's
+  (Source predicts the throw only).
 - **Tracers seen through walls (user, 2026-10-29): done, decided by the
   user 2026-10-30.** Found: CS:S's tracers (and impacts, flashes, every
   effect group's particles) were already depth tested
