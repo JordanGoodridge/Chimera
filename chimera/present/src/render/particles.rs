@@ -55,6 +55,17 @@ impl From<&ParticleDrawMaterial> for ParticleDrawKey {
     }
 }
 
+impl ParticleDrawMaterial {
+    /// Particles (CS:S's tracers and impact effects, Combat Arms' effect
+    /// groups) are depth tested and write no depth: Bevy's compare is
+    /// kept, so a wall hides them (`ParticleMaterial::no_depth` isn't
+    /// supported). A test checks it, as the pipeline can't be built
+    /// without a GPU.
+    pub fn apply_depth(depth: &mut bevy::render::render_resource::DepthStencilState) {
+        depth.depth_write_enabled = Some(false);
+    }
+}
+
 impl Material for ParticleDrawMaterial {
     fn fragment_shader() -> ShaderRef {
         "embedded://chimera_present/render/particle.wesl".into()
@@ -74,6 +85,9 @@ impl Material for ParticleDrawMaterial {
         key: bevy::pbr::MaterialPipelineKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
         descriptor.primitive.cull_mode = None;
+        if let Some(depth) = descriptor.depth_stencil.as_mut() {
+            Self::apply_depth(depth);
+        }
         if key.bind_group_data.additive
             && let Some(fragment) = descriptor.fragment.as_mut()
         {
