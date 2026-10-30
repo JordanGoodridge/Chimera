@@ -67,7 +67,9 @@
 //!
 //! - Automatic gun games (`auto`): a ladder and a map pool made from the
 //!   parts every composed game lends (`chimera_core::game_parts`), checked
-//!   against the app (`auto::report`), as a definition's text.
+//!   against the app (`auto::report`), as a definition's text; its
+//!   rungs follow the power curve (`power`: bands by class, shares of the
+//!   ladder, a power score from each gun's data; `ladder_power` prints it).
 //!
 //! Known shortcuts: one round per match; the map pool's first map is the
 //! app's to load (no map vote); `character` is informational
@@ -90,6 +92,7 @@ pub mod moments;
 pub mod overrides;
 pub mod results;
 pub mod rotation;
+pub mod power;
 pub mod runtime;
 pub mod spawns;
 pub mod wins;
@@ -489,6 +492,7 @@ impl Plugin for MinigamePlugin {
             app.add_plugins(crate::identity::IdentityPlugin);
         }
         runtime::plugin(app);
+        power::plugin(app);
         app.console_command(
             "minigames",
             "List the minigames (id: name, players, maps, rules module), the one playing marked *.",

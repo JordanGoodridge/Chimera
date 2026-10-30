@@ -36,6 +36,8 @@ kit = { cs_source = ["cs_source:weapon_knife"], combat_arms = ["combat_arms:m9_k
 
 [rules]
 module = "chimera:ladder"
+# Written by hand; `ladder = "auto"` (with `rungs = 13`) would draw it on
+# the power curve at each match's start (chimera_sim::minigame::power).
 ladder = [
     "cs_source:weapon_glock",
     "combat_arms:beretta_m92fs",
@@ -53,7 +55,7 @@ demote_on = "melee_death"
 demote_on_suicide = true   # a suicide, a fall or `kill` costs a rung (the default)
 join_rung = "lowest"       # a late joiner starts on the others' lowest rung (the default)
 knife_finale = true        # the ladder ends on knife-only melee rungs (the module default: off)
-melee_rungs = "auto"       # how many: "auto" (7% of the guns, at least 1; melee_share) or a number
+melee_rungs = "auto"       # how many: "auto" (7% of the ladder, at least 1; melee_share) or a number
                            # (each draws its own knife or melee weapon of the installed games)
 refill_ammo = true   # the ladder gives each gun once: 200 rounds of M60 run out
 # Each Combat Arms rung's fitted parts, character and melee weapon, the

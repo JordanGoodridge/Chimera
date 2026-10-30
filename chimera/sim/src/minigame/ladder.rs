@@ -20,14 +20,20 @@
 //! ladder ends with melee rungs, knife-only: after the last gun the
 //! player holds only the rung's melee weapon, and the last one's kill
 //! wins (off by default in the module; both gun games turn it on). There
-//! are `melee_rungs` of them (`"auto"`, the default: the band's share
-//! of the gun rungs, `melee_share`, 7% by default, rounded, at least 1,
-//! `auto_melee_rungs`; or a number), each drawn
+//! are `melee_rungs` of them (`"auto"`, the default: the power curve's
+//! melee band, `melee_share` of the whole ladder, 7% by default
+//! (`data/power_curve.toml`, `power::melee_rungs_for`: 1 for 10 or 20
+//! guns, 2 for 30), at least 1, `auto_melee_rungs`; a drawn ladder's own
+//! band; or a number), each drawn
 //! from the ladder's seed (`finale`) from the melee weapons of the
 //! catalogue the definition allows, none twice while the pool has enough
 //! and never a rung character's hands (`RungExtrasHook::characters`);
-//! `knife_finale = "<id>"` names the last rung's. The host's draw is
-//! replicated with the match (`NetMinigame::rungs`).
+//! `knife_finale = "<id>"` names the last rung's. With `ladder = "auto"`
+//! the guns are drawn too, at each match's start, on the power curve
+//! (`drawn_ladder`: `auto::ladder` over the composed games' guns the
+//! definition allows, `rungs` in all, `power_curve` tuning the curve), so
+//! a hand-written definition can opt in. The host's draw is replicated
+//! with the match (`NetMinigame::rungs`, `melee_rungs`).
 //! Combat Arms' own Arms Race (`games/combat_arms`, its rules) is not
 //! this module and keeps its spec's rules (no cost for a suicide).
 //!
@@ -84,7 +90,10 @@
 //! ```toml
 //! [rules]
 //! module = "chimera:ladder"
-//! ladder = ["cs_source:weapon_glock", "combat_arms:m4a1"]   # the rungs, in order
+//! ladder = ["cs_source:weapon_glock", "combat_arms:m4a1"]   # the rungs, in order, or
+//!                                  # "auto": drawn on the power curve at each match's start
+//! rungs = 13                       # with "auto": rungs in all, melee too (default 13)
+//! power_curve = { shares = { peak = 0.3 } }   # with "auto": over data/power_curve.toml
 //! advance_on = "kill"              # the only one so far
 //! demote_on = "melee_death"        # or "none" (the default)
 //! demote_on_suicide = true         # a suicide, fall or `kill` costs a rung (default)
@@ -92,7 +101,8 @@
 //! knife_finale = false             # true (drawn knives) or a weapon id (the last
 //!                                  # rung's): knife-only last rungs (default: false)
 //! melee_rungs = "auto"             # how many: "auto" (a share of the ladder) or a number
-//! melee_share = 0.07               # the share "auto" takes (default 0.07, at least 1 rung)
+//! melee_share = 0.07               # the share of the ladder "auto" takes (default: the
+//!                                  # power curve's melee share, 0.07; at least 1 rung)
 //! refill_ammo = true               # a rung's gun never runs dry, its grenade comes
 //!                                  # back once thrown (default: false)
 //! rung_extras = true               # the games' per-rung draws (default: on); or by
@@ -181,7 +191,13 @@ pub static MODE: Mode = Mode {
 struct Params {
     #[allow(dead_code)]
     module: String,
-    ladder: Vec<String>,
+    ladder: LadderParam,
+    /// With `ladder = "auto"`: rungs in all, the melee ones too.
+    #[serde(default = "auto_rungs")]
+    rungs: usize,
+    /// With `ladder = "auto"`: the power curve over the shipped one.
+    #[serde(default)]
+    power_curve: Option<toml::Table>,
     #[serde(default)]
     advance_on: Advance,
     #[serde(default)]
@@ -204,6 +220,23 @@ struct Params {
     rung_extras: ExtrasParam,
 }
 
+/// `ladder`: the rungs' weapons, or `"auto"`: drawn on the power curve
+/// when the match starts (`auto::ladder` over the composed games' guns
+/// the definition allows).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum LadderParam {
+    List(Vec<String>),
+    Auto(String),
+}
+
+/// A drawn ladder's rungs by default (`rungs`).
+pub const AUTO_RUNGS: usize = 13;
+
+fn auto_rungs() -> usize {
+    AUTO_RUNGS
+}
+
 /// `melee_rungs`: how many trailing melee rungs the finale has.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
@@ -220,18 +253,17 @@ impl Default for MeleeRungs {
     }
 }
 
-/// The melee band's default share of the ladder (`melee_share`).
-pub const MELEE_SHARE: f64 = 0.07;
-
 /// The melee rungs a ladder of `guns` gun rungs gets by default: the
-/// band's `share` of them, rounded, at least 1 (7%: 1 for 10 or 20, 2 for
-/// 30).
+/// melee band's `share` of the whole ladder, as the power curve splits it
+/// (`power::melee_rungs_for`: 7%, 1 for 10 or 20 guns, 2 for 30).
 pub fn auto_melee_rungs(guns: usize, share: f64) -> usize {
-    ((guns as f64 * share).round() as usize).max(1)
+    super::power::melee_rungs_for(guns, share)
 }
 
+/// The melee band's share of the ladder: the power curve's
+/// (`data/power_curve.toml`), the one number for both.
 fn melee_share() -> f64 {
-    MELEE_SHARE
+    super::power::PowerCurve::shipped().melee_share()
 }
 
 fn yes() -> bool {
@@ -627,16 +659,29 @@ fn params(def: &MinigameDef) -> Result<Params, String> {
 
 fn check(def: &MinigameDef, catalog: &WeaponCatalog) -> Result<(), String> {
     let p = params(def)?;
-    if p.ladder.is_empty() {
-        return Err("[rules] ladder: no rungs".into());
-    }
-    for id in &p.ladder {
-        super::weapon(def, catalog, id)?;
-    }
+    let guns = match &p.ladder {
+        LadderParam::List(ids) => {
+            if ids.is_empty() {
+                return Err("[rules] ladder: no rungs".into());
+            }
+            for id in ids {
+                super::weapon(def, catalog, id)?;
+            }
+            ids.len()
+        }
+        LadderParam::Auto(a) if a == "auto" => {
+            if p.rungs < 2 {
+                return Err("[rules] rungs: at least 2 for a drawn ladder".into());
+            }
+            curve(&p)?;
+            p.rungs
+        }
+        LadderParam::Auto(a) => return Err(format!("[rules] ladder: `{a}` is not a list of weapons or \"auto\"")),
+    };
     // The games' hooks name more melee weapons than the catalogue's data
     // does (Combat Arms' knives), so an empty pool is no error here: the
     // match starts without a finale (and says so).
-    match finale(def, catalog, &[], &p, &mut Rng::new(0)) {
+    match finale(def, catalog, &[], &p, auto_melee_rungs(guns, p.melee_share.clamp(0.0, 1.0)), &mut Rng::new(0)) {
         Err(e) if e == NO_MELEE => Ok(()),
         r => r.map(|_| ()),
     }
@@ -671,16 +716,26 @@ pub fn is_melee(catalog: &WeaponCatalog, hooks: &[RungExtrasHook], id: &str) -> 
 
 const NO_MELEE: &str = "[rules] knife_finale: the games have no melee weapon for it";
 
+/// The definition's power curve (`power_curve` over the shipped one).
+fn curve(p: &Params) -> Result<super::power::PowerCurve, String> {
+    match &p.power_curve {
+        None => Ok(super::power::PowerCurve::shipped()),
+        Some(t) => super::power::PowerCurve::tuned(t).map_err(|e| format!("[rules] {e}")),
+    }
+}
+
 /// The knife finale's melee rungs' weapons, in order (none: off): as many
-/// as `melee_rungs` says for `guns` gun rungs (`"auto"`, the default:
-/// `auto_melee_rungs`), each drawn on `rng` from the melee pool, none
-/// twice while the pool has enough; a named weapon (`knife_finale =
-/// "<id>"`) is the last rung's.
+/// as `melee_rungs` says (`"auto"`, the default: `auto`, the melee band's
+/// count: `auto_melee_rungs` of a written ladder's guns, a drawn ladder's
+/// own), each drawn on `rng` from the melee pool, none twice while the
+/// pool has enough; a named weapon (`knife_finale = "<id>"`) is the last
+/// rung's.
 fn finale(
     def: &MinigameDef,
     catalog: &WeaponCatalog,
     hooks: &[RungExtrasHook],
     p: &Params,
+    auto: usize,
     rng: &mut Rng,
 ) -> Result<Vec<&'static str>, String> {
     let named = match &p.knife_finale {
@@ -697,7 +752,7 @@ fn finale(
     let want = match &p.melee_rungs {
         MeleeRungs::Count(0) => return Err("[rules] melee_rungs: at least 1 (or \"auto\")".into()),
         MeleeRungs::Count(n) => *n,
-        MeleeRungs::Auto(a) if a == "auto" => auto_melee_rungs(p.ladder.len(), p.melee_share.clamp(0.0, 1.0)),
+        MeleeRungs::Auto(a) if a == "auto" => auto.max(1),
         MeleeRungs::Auto(a) => return Err(format!("[rules] melee_rungs: `{a}` is not a number or \"auto\"")),
     };
     let mut pool = melee_pool(def, catalog, hooks);
@@ -726,17 +781,28 @@ fn start(world: &mut World, def: &MinigameDef) {
     let Ok(p) = params(def) else { return };
     let catalog = world.get_resource::<WeaponCatalog>().cloned().unwrap_or_default();
     let hooks = world.get_resource::<RungExtrasHooks>().cloned().unwrap_or_default();
-    let mut rungs: Vec<&'static str> =
-        p.ladder.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
-    // The melee rungs' weapons are the host's draw (from this ladder's
-    // seed); a network client takes the server's rungs once they are in
-    // (`minigame_net`), the first ones of the pool until then.
+    // The melee rungs' weapons (and a drawn ladder's guns) are the host's
+    // draw (from this ladder's seed); a network client takes the server's
+    // rungs once they are in (`minigame_net`), its own draw from seed 0
+    // until then.
     let client = world.get_resource::<crate::core::NetRole>() == Some(&crate::core::NetRole::Client);
+    let (mut rungs, auto) = match &p.ladder {
+        LadderParam::List(ids) => {
+            let rungs: Vec<&'static str> = ids.iter().filter_map(|id| super::weapon(def, &catalog, id).ok()).collect();
+            let auto = auto_melee_rungs(rungs.len(), p.melee_share.clamp(0.0, 1.0));
+            (rungs, auto)
+        }
+        LadderParam::Auto(_) => {
+            let seed = if client { 0 } else { ladder_rng(world, def, 0x4155_544F).next() };
+            let drawn = drawn_ladder(world, def, &p, seed);
+            (drawn.rungs, drawn.melee)
+        }
+    };
     let mut rng = ladder_rng(world, def, 0x4D45_4C45_4521);
     if client {
         rng = Rng::new(0);
     }
-    let melee = finale(def, &catalog, &hooks.0, &p, &mut rng).unwrap_or_else(|e| {
+    let melee = finale(def, &catalog, &hooks.0, &p, auto, &mut rng).unwrap_or_else(|e| {
         warn!("{}: {e}; no finale", def.id);
         Vec::new()
     });
@@ -756,6 +822,29 @@ fn start(world: &mut World, def: &MinigameDef) {
         extras,
         options,
     });
+}
+
+/// `ladder = "auto"`: a ladder of `rungs` drawn on the definition's power
+/// curve from `seed` (`auto::ladder`) over the composed games' guns and
+/// grenades the definition allows.
+fn drawn_ladder(world: &World, def: &MinigameDef, p: &Params, seed: u64) -> super::auto::Drawn {
+    use super::{auto, power};
+    let curve = curve(p).unwrap_or_else(|_| power::PowerCurve::shipped());
+    let mut caps = auto::report(world);
+    for c in &mut caps {
+        c.guns.retain(|g| def.allows_weapon(g.id));
+        c.grenades.retain(|g| def.allows_weapon(g));
+    }
+    let empty = WeaponCatalog::default();
+    let catalog = world.get_resource::<WeaponCatalog>().unwrap_or(&empty);
+    let readers = world.get_resource::<power::PowerReaders>().cloned().unwrap_or_default();
+    let powers = auto::powers(&caps, catalog, &readers, &curve);
+    let refs: Vec<&auto::Capabilities> = caps.iter().collect();
+    let drawn = auto::ladder(&refs, &powers, &curve, p.rungs, seed);
+    if drawn.rungs.is_empty() {
+        warn!("{}: [rules] ladder = \"auto\": no game lends guns the definition allows", def.id);
+    }
+    drawn
 }
 
 /// The generator of the ladder about to be made: the app's seed, the
@@ -852,17 +941,30 @@ pub fn melee_band(rungs: &[&str], catalog: &WeaponCatalog, hooks: &[RungExtrasHo
 }
 
 /// A network client takes the server's rungs (the melee rungs' draw is
-/// the host's): `ids` in place of the ladder's own when the lengths agree;
-/// an id this catalogue lacks stays the client's.
-pub fn take_rungs(world: &mut World, ids: &[String]) {
+/// the host's, and a drawn ladder's guns, `ladder = "auto"`) and its
+/// count of melee rungs: `ids` in place of the ladder's own; when the
+/// lengths agree an id this catalogue lacks stays the client's, else
+/// (a drawn ladder of another length) every id must be in it.
+pub fn take_rungs(world: &mut World, ids: &[String], melee_rungs: usize) {
     let Some(catalog) = world.get_resource::<WeaponCatalog>().cloned() else { return };
     let Some(mut ladder) = world.get_resource_mut::<Ladder>() else { return };
-    if ids.len() != ladder.rungs.len() || ladder.rungs.iter().zip(ids).all(|(a, b)| a == b) {
+    if ids.is_empty() || melee_rungs > ids.len() {
         return;
     }
-    let taken: Vec<&'static str> =
-        ids.iter().zip(&ladder.rungs).map(|(b, a)| catalog.get(b).map_or(*a, |w| w.id.as_str())).collect();
-    ladder.rungs = taken;
+    let same = ids.len() == ladder.rungs.len() && ladder.rungs.iter().zip(ids).all(|(a, b)| a == b);
+    if !same {
+        let taken: Option<Vec<&'static str>> = if ids.len() == ladder.rungs.len() {
+            Some(ids.iter().zip(&ladder.rungs).map(|(b, a)| catalog.get(b).map_or(*a, |w| w.id.as_str())).collect())
+        } else {
+            ids.iter().map(|b| catalog.get(b).map(|w| w.id.as_str())).collect()
+        };
+        let Some(taken) = taken else { return };
+        ladder.rungs = taken;
+    }
+    if ladder.melee_rungs != melee_rungs {
+        ladder.melee_rungs = melee_rungs;
+        ladder.knife_finale = melee_rungs > 0;
+    }
 }
 
 /// `e` armed for `rung` (the host's, before its weapons are given): the

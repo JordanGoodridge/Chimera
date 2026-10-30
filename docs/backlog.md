@@ -144,7 +144,7 @@ the user's go-ahead: no Actions runs unless asked.
   `gun_game_dust2` and Ultimate Gun Game's automatic definition) end on
   melee by default (`knife_finale = true`; Host settings "Knife finale"
   turn it off). The number of melee rungs is `melee_rungs`, `"auto"` by
-  default (7% of the gun rungs, `melee_share`, rounded, at least 1) or a number, also a
+  default (7% of the whole ladder, `melee_share`, the power curve's melee band, at least 1) or a number, also a
   Host setting ("Melee rungs"). Each melee rung draws its own weapon from
   the installed games' knives and melee weapons (CS:S's knife, Combat
   Arms' knife-class weapons), none twice while there are enough; the
@@ -205,8 +205,8 @@ the user's go-ahead: no Actions runs unless asked.
   odds = .. } }`; Host settings "Rung extras: infected odds"). The
   shipped gun game has the knife finale off, so to see the infected in a
   playtest turn the knife finale on (Host settings) or set the odds to
-  1. The power curve's bands aren't built: the melee band is simply the
-  ladder's trailing melee rungs.
+  1. The melee band is the ladder's trailing melee rungs (the power
+  curve's melee band, `minigame::power`).
 - **A vertical seam through the frame on de_dust2.** A 2026-10-30 capture
   (Lucker Party, outside the arch toward B tunnels) shows a hard vertical
   line down the middle of the frame. Left of it the ground is a
@@ -282,7 +282,8 @@ the user's go-ahead: no Actions runs unless asked.
   across the whole screen and shows record ids. Show the attachments'
   display names from the install's string table, shortened (or icons),
   and wrap or cap the line.
-- **A natural power curve for the random ladder (user idea, 2026-10-29).**
+- **A natural power curve for the random ladder (user idea, 2026-10-29):
+  fixed, confirm in a playtest.**
   Weak guns first, power rising, then the hard-hitting ones, then
   specials, a grenade, melee last. Proposed design, waiting on the
   user's three choices:
@@ -313,6 +314,27 @@ the user's go-ahead: no Actions runs unless asked.
     peak rifles and carbines 28%; heavy LMGs, marksman rifles, snipers and
     heavy pistols 15%; specials 8%; grenade 7%; melee 7% (user: melee
     rarer, about 1 on 10-20 rungs and 2 on 30; at least 1).
+  - *Done (2026-10-30):* `chimera_sim::minigame::power` with its data,
+    chimera/sim/data/power_curve.toml: the bands, the shares (jitter 3%,
+    a rung on a boundary takes the band above: 10 rungs 1/2/3/2/1/0/1,
+    20 3/4/6/3/1/2/1, 30 4/6/9/4/3/2/2 before jitter), the class map
+    (new classes `carbine`, `marksman`, `heavy_pistol`, `launcher`,
+    `flamethrower`; Combat Arms' launchers and flamethrower, CS:S's Desert
+    Eagle, SG550 and G3SG1 moved; a pistol hitting 50+ is a heavy
+    pistol), and the score (DESIGN.md "Gun game rules": time to kill at
+    10/15/20 m from damage, falloff, pellets, interval, latency, spread
+    as a hit rate; CS:S's accuracy and Combat Arms' damage bands, cone,
+    fire rate, projectile and flame read by each game's
+    `add_power_reader`). `ladder_power` prints every gun's score and
+    band. Ultimate Gun Game's ladder (`auto::ladder`) is drawn on it,
+    `RUNGS` 13 in all with the melee band as `melee_rungs`; one melee
+    share for both (`melee_rungs = "auto"` on a written ladder is the
+    band's count, `power::melee_rungs_for`). A written definition opts
+    in with `ladder = "auto"` (`rungs`, `power_curve`), drawn on the
+    host at each match's start and replicated with its melee count
+    (net38); Lucker Party's `gun_game_dust2` keeps its written ladder.
+    Not done: Host settings for the shares; fitted parts adding to the
+    score.
 - **Spawn protection: 2 s, see-through, shot through (user, 2026-10-29).**
   - The party gun games' protection becomes 2 s (from 1.5 s); retime the
     tests that assume 1.5 s.

@@ -15,7 +15,9 @@
 //! penalty), `cs_source:recoil` (`Recoil`, view punch per shot),
 //! `cs_source:hit_slowdown` (`hit_reaction::HitSlowdown`, measured M18),
 //! `cs_source:alternate_hands` (the Elites), `cs_source:grenade`
-//! (`grenades::throwable`) and `cs_source:c4` (`objectives::c4_part`).
+//! (`grenades::throwable`) and `cs_source:c4` (`objectives::c4_part`);
+//! the gun game's power curve reads the accuracy's numbers as a spread
+//! (`power_accuracy`).
 //! `CsGunsPlugin` is the weapons alone (data, hooks, accuracy, recoil,
 //! penetration materials: what a mashup offers in another game's slots);
 //! `CsWeaponsPlugin` is CS:S's game, with the shop, rules and effects.
@@ -253,8 +255,27 @@ pub fn alternate_hands(id: &str) -> bool {
     data(id).is_some_and(|d| d.has_hook(ALTERNATE_HANDS))
 }
 
+/// A shot's spread for the gun game's power curve
+/// (`chimera_sim::minigame::power`): the first shot's `Spread` plus the
+/// standing inaccuracy, the follow-ups' plus the firing penalty of four
+/// times the curve's `firing` shots (0.25: one shot's); a gun with an
+/// alternate mode (a scope) takes the tighter of the two, as a player at
+/// range would.
+fn power_accuracy(
+    p: &chimera_sim::minigame::power::HookParams,
+    at: &chimera_sim::minigame::power::ReadAt,
+    s: &mut chimera_sim::minigame::power::GunStats,
+) {
+    let Ok(a) = p.clone().try_into::<AccuracyParams>() else { return };
+    let tighter = |f: &dyn Fn(AccuracyKeys) -> f32| a.alt.map_or(f(a.keys()), |alt| f(a.keys()).min(f(alt)));
+    s.spread = tighter(&|k| k.spread + k.stand);
+    s.follow = Some(tighter(&|k| k.spread + k.stand + k.fire * 4.0 * at.firing));
+}
+
 /// Register the behaviour CS:S's weapon data names.
 pub fn register_hooks(app: &mut App) {
+    use chimera_sim::minigame::power::PowerAppExt;
+    app.add_power_reader(ACCURACY, power_accuracy);
     app.register_weapon_hook::<AccuracyParams>(ACCURACY, |e, _, p| {
         let acc = Inaccuracy::new(p.keys(), p.alt, (p.recovery_crouch, p.recovery_stand));
         if let Some(mut scan) = e.get_mut::<Hitscan>() {

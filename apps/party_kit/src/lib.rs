@@ -329,11 +329,11 @@ fn even_footsteps(app: &mut App) {
 pub fn bot_gun_type_of(class: chimera_core::game_parts::GunClass) -> Option<&'static str> {
     use chimera_core::game_parts::GunClass::*;
     match class {
-        Pistol => Some("Pistol"),
-        Smg | Rifle => Some("Default"),
+        Pistol | HeavyPistol => Some("Pistol"),
+        Smg | Carbine | Rifle => Some("Default"),
         Shotgun => Some("SG"),
-        Heavy => Some("MG"),
-        Sniper => Some("SR"),
+        Heavy | Launcher | Flamethrower => Some("MG"),
+        Marksman | Sniper => Some("SR"),
         Grenade => None,
     }
 }
