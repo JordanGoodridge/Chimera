@@ -629,6 +629,14 @@ person only (which face lists which group: Open question 37);
 `PolyTrail` is the trail key; (5) virus/host styles draw like default;
 hands from the override's `HandIndex`, none without one; (6) the
 mission's `Model` is never used.
+**Partly done (2026-10-30):** (2) the rung's change effect at the floor
++ 0.1 u (`rungs::infection_point`); (1) its sound one at a time
+(`rungs::InfectionSound`, per machine) and drawn uniformly from the list
+(still our files, not the auto-cast records; no local auto-cast sound);
+(3) the `InfectedTex` overlay for the local player while infected
+(Quarantine's or a rung's: `ui::hud` `draw_infected`); tests rung_character
+t109, t110, ui hud t111. Left: (4) the eyes' `ClientFX#` groups, (5) the
+override's styles and hands, Quarantine's own change effect and sounds.
 
 ## Attachment models: open questions for a spec session (2026-10-29)
 

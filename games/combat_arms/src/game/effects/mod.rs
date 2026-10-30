@@ -305,6 +305,7 @@ impl Plugin for CaEffectsPlugin {
         .add_message::<crate::map::PlaySound>()
         .add_message::<crate::map::SoundControl>()
         .add_message::<crate::game::view_model::attached::CaLoopSound>()
+        .init_resource::<crate::game::rungs::InfectionSound>()
         .add_observer(crate::game::rungs::infection_moment)
         .add_systems(
             Update,

@@ -112,3 +112,30 @@ fn a_body_type_of_its_own_is_kept_on_a_rung() {
     let bc = b.0.app.world().get::<CaCharacter>(b.1).unwrap();
     assert_eq!(format!("{:?}", c.gear), format!("{:?}", bc.gear), "the baseline vest's worn terms");
 }
+
+// ---------------------------------------------------------------------------
+// game_modes.md Corrections (2026-10-30) 1 and 2: the infection's moment.
+
+/// 109. The change effect's point: the floor straight below + 0.1 u (a
+/// player 40 u above a floor at y 0 -> y 0.1 u; on a ledge's edge over a
+/// floor 30 u lower, that lower floor + 0.1 u).
+#[test]
+fn t109_infection_point() {
+    use combat_arms::game::{inventory::UNIT, rungs::infection_point};
+    let at = infection_point(Vec3::new(1.0, 40.0 * UNIT, 2.0), Some(40.0 * UNIT));
+    assert!((at - Vec3::new(1.0, 0.1 * UNIT, 2.0)).length() < 1e-6, "{at}");
+    let at = infection_point(Vec3::new(0.0, 70.0 * UNIT, 0.0), Some(70.0 * UNIT));
+    assert!((at.y - 0.1 * UNIT).abs() < 1e-6);
+    assert_eq!(infection_point(Vec3::ONE, None), Vec3::ONE, "nothing below: where it stands");
+}
+
+/// 110. One infection sound at a time: another while one still plays
+/// makes no sound; after it ends, the next plays.
+#[test]
+fn t110_one_infection_sound_at_a_time() {
+    use combat_arms::game::rungs::InfectionSound;
+    let mut s = InfectionSound::default();
+    assert!(s.try_start(0.0, 1.5));
+    assert!(!s.try_start(1.0, 1.5), "the first still plays");
+    assert!(s.try_start(1.5, 1.5));
+}

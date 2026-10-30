@@ -2252,3 +2252,25 @@ fn t102_minigame_state_on_the_hud() {
     sim.ticks(1);
     assert_eq!(hud(&sim).minigame, None);
 }
+
+// ---------------------------------------------------------------------------
+// game_modes.md Corrections (2026-10-30) 3: the infected's screen.
+
+/// 111. The local player infected (a rung's here), even zoomed with a
+/// scope overlay: the `InfectedTex` rect is drawn every frame, over the
+/// whole 1024 x 768 layout at 1920 x 1080 without the install's numbers;
+/// changed back: gone the next frame.
+#[test]
+fn t111_infected_overlay() {
+    let (mut sim, me) = setup(&[RIFLE]);
+    assert_eq!(hud(&sim).infected, None);
+    sim.app.world_mut().entity_mut(me).insert(combat_arms::game::rungs::CaRungInfected);
+    sim.ticks(1);
+    let r = hud(&sim).infected.expect("drawn while infected");
+    assert_eq!((r.min, r.max), (Vec2::ZERO, Vec2::new(1024.0, 768.0)), "1024 x 768 at the reference size");
+    sim.app.world_mut().entity_mut(me).remove::<combat_arms::game::rungs::CaRungInfected>();
+    sim.ticks(1);
+    assert_eq!(hud(&sim).infected, None, "gone the next frame");
+    let r = model::infected_rect(Screen::new(1920.0, 1080.0), [0, 0], [1024, 768]);
+    assert_eq!((r.min, r.max), (Vec2::ZERO, Vec2::new(1920.0, 1080.0)), "x and y scaled on their own");
+}
