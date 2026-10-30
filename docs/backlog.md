@@ -65,6 +65,14 @@ the user's go-ahead: no Actions runs unless asked.
     every rung, with the rung's draw available. Games react to what the
     rung holds: Combat Arms plays the infection moment for the infected
     hands. A respawn on the same rung doesn't fire it.
+  - *How (user asked for ECS, 2026-10-29):* replace the callback registry
+    (`RungCharacterHooks` of `fn(&mut World, ..)`, called from inside
+    `ladder::arm`) with a component, e.g. `OnRung { index, extras }`.
+    Arming only inserts or replaces it; games react with Bevy observers
+    on its insert, replace and remove. A respawn on the same rung
+    doesn't replace it, so nothing fires. Network clients set the same
+    component from the replicated ladder, so their observers fire
+    locally. `AsRungCharacter` and `RungCharacterHook` go.
 - **A vertical seam through the frame on de_dust2.** A 2026-10-30 capture
   (Lucker Party, outside the arch toward B tunnels) shows a hard vertical
   line down the middle of the frame. Left of it the ground is a
