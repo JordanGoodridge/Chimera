@@ -1,5 +1,8 @@
 # Minigame runtime's per-tick work as normal systems
 
+**Done 2026-10-30** (docs/plans/active/ecs-cleanup.md, step 6: what
+landed; `join` stayed a system, the reason there).
+
 ## Context
 
 Every minigame runs on `chimera_sim::minigame::runtime`. Its per-tick
@@ -17,13 +20,13 @@ Every minigame runs on `chimera_sim::minigame::runtime`. Its per-tick
 
 ## Definition of done
 
-- [ ] The three are systems with declared queries (or a one-shot system
+- [x] The three are systems with declared queries (or a one-shot system
       only for the part that must spawn); `join` is an observer of the
       joining moment (`On<Add<Team>>` already numbers players).
-- [ ] Spawn protection still ends on the first attack in the same tick and
+- [x] Spawn protection still ends on the first attack in the same tick and
       before that tick's damage (a test fires on the protection's last
       tick).
-- [ ] Guards and schedule ratchets pass; exclusive ratchet lowered.
+- [x] Guards and schedule ratchets pass; exclusive ratchet lowered.
 
 ## Constraints
 

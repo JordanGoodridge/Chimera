@@ -1426,10 +1426,11 @@ ticks 1.8x, its render world ~15%; frame times on the box sat at the
   names (`Arc`) and look the aim and hit nodes up once per rig.
 - Combat Arms' exclusive systems that build `world.query` states every
   call (perks `supplies` and `perk_tick`, `roster::keep_quota` and
-  `arm`, `objects::gather`, `grenades::server_frames`, the minigame
-  runtime's `respawn_dead`, `end_protection`, `join`,
+  `arm`, `objects::gather`, `grenades::server_frames`,
   `weapon::give_starting_weapons`: 0.02-0.05 ms each a tick traced):
-  keep them in a `Local` as `bots::brain::SnapQueries` does.
+  keep them in a `Local` as `bots::brain::SnapQueries` does. (The
+  minigame runtime's `respawn_dead`, `end_protection` and `join`, also
+  on this list then, are normal systems since ecs-cleanup step 6.)
 - The predicted schedules with both games' guns (`run_predicted`, 0.65
   vs 0.30 ms a tick): Select has 13 systems (CS:S 1), Weapons 17 (8).
 - The render world: 65k triangles drawn vs 31k (Combat Arms' soldiers),
