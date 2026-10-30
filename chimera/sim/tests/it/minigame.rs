@@ -864,3 +864,89 @@ fn the_ladders_tick_refills_each_tick_after_the_join_and_before_the_step() {
         assert_eq!(left > 0, refills, "refill_ammo {refills}: {left} left");
     }
 }
+
+/// `a` hit by `b` for `amount`, a bullet's.
+fn hit(sim: &mut Sim, a: Entity, b: Entity, amount: f32) {
+    let at = sim.position(a);
+    sim.app.world_mut().write_message(Damage {
+        target: a,
+        attacker: Some(b),
+        amount,
+        point: at,
+        dir: Vec3::NEG_Z,
+        hitgroup: Hitgroup::Chest,
+        kind: DamageKind::Bullet,
+        weapon: None,
+        force: Vec3::ZERO,
+    });
+}
+
+fn health(sim: &Sim, e: Entity) -> f32 {
+    sim.app.world().get::<chimera_core::core::Health>(e).unwrap().current
+}
+
+/// The runtime's per-tick order (ecs-cleanup step 6, order flag O1):
+/// `end_protection` ends the protection on the protection's last tick
+/// when the player fires, before that same tick's damage, which lands.
+/// Without the shot the protection blocks it.
+#[test]
+fn a_shot_on_the_protections_last_tick_ends_it_before_that_ticks_damage() {
+    use chimera_core::core::SpawnProtected;
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    sim.ticks(3);
+    let before = health(&sim, a);
+    hit(&mut sim, a, b, 1.0);
+    sim.ticks(1);
+    assert_eq!(health(&sim, a), before, "protected: no damage");
+    // On to the protection's last tick: the next one, after which its
+    // windows are over.
+    loop {
+        let w = sim.app.world();
+        let c = w.resource::<SimClock>();
+        let dt = c.delta.as_secs_f64();
+        let until = w.get::<SpawnProtected>(a).expect("still protected").damage_until;
+        assert!(c.now + dt + 1e-9 < until, "the next tick still protected");
+        if c.now + 2.0 * dt + 1e-9 >= until {
+            break;
+        }
+        sim.ticks(1);
+    }
+    sim.intent(a).fire = true;
+    hit(&mut sim, a, b, 1.0);
+    sim.ticks(1);
+    let w = sim.app.world();
+    assert!(w.get::<SpawnProtected>(a).is_none() && w.get::<God>(a).is_none(), "the shot ended it");
+    assert!(health(&sim, a) < before, "the same tick's hit landed");
+}
+
+/// A joiner is taken in, spawned and protected in the tick it appears
+/// (`join`'s world part applies before the phases step).
+#[test]
+fn a_joiner_is_taken_in_and_spawned_in_its_first_tick() {
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    sim.ticks(1);
+    let w = sim.app.world();
+    assert!(w.get::<InMinigame>(a).is_some() && w.get::<Protected>(a).is_some(), "in and protected");
+    assert!(!w.get::<chimera_sim::weapon::Inventory>(a).unwrap().weapons.is_empty(), "armed");
+}
+
+/// The dead come back on the first tick at or after their death plus the
+/// delay (`respawn_dead`), not a tick later.
+#[test]
+fn the_dead_respawn_on_the_tick_they_are_due() {
+    let mut sim = started(DEF);
+    let a = player(&mut sim);
+    let b = player(&mut sim);
+    settle(&mut sim);
+    kill(&mut sim, b, a, DamageKind::Bullet);
+    let since = sim.app.world().get::<Dead>(b).expect("dead").since;
+    while sim.app.world().get::<Dead>(b).is_some() {
+        sim.ticks(1);
+    }
+    let c = sim.app.world().resource::<SimClock>();
+    let (now, dt) = (c.now, c.delta.as_secs_f64());
+    assert!(now + 1e-9 >= since + 1.0 && now - dt + 1e-9 < since + 1.0, "back at {now}, due {}", since + 1.0);
+}

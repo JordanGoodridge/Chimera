@@ -300,7 +300,7 @@ const ALLOWED_EXCLUSIVE_FILES: &[(&str, &str)] = &[
 /// when you remove one; never raise one.
 const EXCLUSIVE_BASELINE: &[(&str, usize)] = &[
     ("chimera/client", 1),
-    ("chimera/sim", 11),
+    ("chimera/sim", 7),
     ("chimera/world", 1),
     ("games/combat_arms", 20),
     ("games/cs_source", 4),
