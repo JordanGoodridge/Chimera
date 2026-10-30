@@ -140,7 +140,10 @@ pub fn attach_loose(
 /// An item drawn with a held model's meshes (its `MapHeldModel` key) and
 /// no physics body: something that moves itself (a thrown grenade).
 /// Spawners give it a `Transform`; `render::loose` adds the meshes.
-#[derive(Component, Clone, Debug, PartialEq)]
+/// Reflected: a live game's projectiles in flight are a remote query
+/// (`world.query` with it and `Transform`, docs/OBSERVABILITY.md 3).
+#[derive(Component, Reflect, Clone, Debug, PartialEq)]
+#[reflect(Component)]
 pub struct ShownItem(pub String);
 
 /// A `ShownItem` whose model rests on its transform's origin (its

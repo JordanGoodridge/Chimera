@@ -81,6 +81,29 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **The grenade launcher's projectile is choppy on a client, "maybe all
+  projectiles" (user, 2026-10-29): fixed, confirm in a playtest.** Not
+  the client's interpolation (every `NetItem` was already drawn between
+  snapshots): Combat Arms' objects (rockets, launcher shells, flame puffs,
+  crossbow bolts, thrown devices) moved only on the server's 20 Hz
+  frames and their `Transform`, which the `NetItem` carries, hopped with
+  them, so a client's snapshots (at its update rate, held at the ticks
+  between) drew stops and jumps: worst frame step 1.6-1.7x the speed
+  with 8-13 still frames per flight at 30 updates/s, 2.9-3.5x and 23-38
+  still frames at 66, uneven at 20 (a bolt 7-8x); the listen server's
+  host saw the 20 Hz hops too. Now drawn between frames as Combat Arms'
+  grenades already were (`special::sync_objects`): every kind 1.0-1.1x,
+  none still, at 20/30/66 (`net_projectiles`). Combat Arms' grenades and
+  CS:S's (which fly every tick) were smooth before and after
+  (`grenades_in_flight_drawn_smoothly`). An option, off by default
+  (parity: the original's client makes no copy of its own projectile,
+  special_weapons.md "Projectile looks and sounds in flight"):
+  `cl_predict_projectiles 1` makes the shooter's own rockets, shells,
+  flame puffs and bolts leave the muzzle on the fire frame, his client
+  flying its own copy from the shot until the server's rests or goes
+  (`net::own_items`, net36); the user decides whether it becomes the
+  default. Thrown grenades stay the server's (Source predicts the throw
+  only).
 - **Spawn facing toward open space (user idea, 2026-10-30).** Today the gun
   game spawns face one of eight fixed directions (`minigame::spawns`), so
   a player can face a wall, and views can line up with map edges (the

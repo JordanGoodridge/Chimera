@@ -153,6 +153,7 @@ must pose hitboxes per tick from simulation values, not from the drawn
 | Bots | server only (they are just replicated characters) |
 | Logic entities (I/O, triggers, movers, breakables, fire) | server only; movers' transforms and visible state replicated |
 | Physics props, dropped weapons, grenades in flight | server only, interpolated (the throw itself is predicted: pin, release, redraw) |
+| Own impact projectiles and bolts (Combat Arms' rockets, launcher shells, flame puffs, crossbow bolts) | server's, interpolated (the original makes no client copy); with `cl_predict_projectiles 1` (off by default) the shooter's client draws its own from the shot (`net::own_items::PredictedItem`, the same flight from the shared seed) until the server's copy rests or goes (2026-10-29) |
 | Gibs, shells, particles, ragdolls, decals | client only, from replicated events or deaths (CS:S ragdolls are client-side) |
 | Sounds | own predicted ones locally; the rest from server events or replicated state (ambient loops from logic state) |
 
@@ -1757,6 +1758,13 @@ doesn't know the set the manifest offers.
 trigger's closing part, `Trigger::postfire`); Combat Arms' pushed timing
 (`CaTimingValues`, codec `combat_arms:timing`) gains the post-fire,
 latency, spin, flame and knife lengths and a stock post-fire.
+
+### net36 (2026-10-29)
+
+`NetItem` gains `owner` (the client id of the player who threw or fired
+it): with `cl_predict_projectiles 1` that player's client hides the
+server's copy while it draws its own prediction of the projectile
+(`net::own_items`).
 
 ## Server-pushed weapon parameters
 
