@@ -10,7 +10,8 @@
 //!   resolved dependencies changed, `lock_affected`, as if their code
 //!   had);
 //! - documentation (`Change::Docs`): Markdown anywhere, licences, docs/,
-//!   specs/, scripts/, dist/ and the analysis scripts under tools/: only
+//!   specs/, scripts/, dist/, the analysis and setup scripts under tools/
+//!   and .claude/settings.json: only
 //!   this crate's checks (CLAUDE.md's links, one-line docs entries, the
 //!   spec rule);
 //! - a package (`Change::Package`): a file of a workspace member outside
@@ -474,6 +475,11 @@ fn is_docs(path: &str) -> bool {
             "tools/post-push-tests.sh",
             // A profiling script (runs built binaries; no crate reads it).
             "tools/perf-profile.sh",
+            // A clone's setup and readiness checks (AGENTS.md, "Setup").
+            "tools/setup",
+            "tools/doctor",
+            // Claude Code's project permissions (AGENTS.md, "Hard rules").
+            ".claude/settings.json",
         ]
         .contains(&path)
 }
@@ -1018,6 +1024,8 @@ mod tests {
         assert_eq!(classify(&ws, "docs/ARCHITECTURE.md", true), Change::Docs);
         assert_eq!(classify(&ws, "chimera/core/README.md", true), Change::Docs);
         assert_eq!(classify(&ws, "specs/cs_source/ropes.md", true), Change::Docs);
+        assert_eq!(classify(&ws, "tools/doctor", true), Change::Docs);
+        assert_eq!(classify(&ws, ".claude/settings.json", true), Change::Docs);
         assert_eq!(
             classify(&ws, "games/cs_source/src/rules.rs", true),
             Change::Package("cs_source".into())
