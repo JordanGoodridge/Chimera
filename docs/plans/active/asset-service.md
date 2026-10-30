@@ -563,3 +563,13 @@ the same commit.
   only new files upload. A signed manifest per game build ends a
   publish. No web UI or FTP; an admin page (access logs, revocation)
   may come later.
+- **Internal phase without Steam (user, 2026-10-30).** Until the server is
+  opened up, testers use internal accounts: the server admin runs
+  `chimera_pack user add <name>`, which prints a revocable token for the
+  tester's `chimera.local.toml` (`user revoke` takes it back). Neither
+  Steam sign-in nor the ownership check runs for these accounts; the
+  server stays private on Tailscale and ownership rests on the testers'
+  word. Steam sign-in and the ownership check plug in at the same seam
+  (an `Authenticator` per account kind) and must be on before any public
+  exposure. So M2 starts with internal accounts; Steam sign-in moves to
+  the milestone that opens the server.
