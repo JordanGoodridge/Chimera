@@ -1951,3 +1951,65 @@ fn a_held_player_holding_fire_shows_and_sounds_nothing() {
     assert!(sim.position(me).distance(spot) > 0.1, "walks when free");
     assert!(!heard(&mut sim).is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-30) 3: how a tracer strip is drawn.
+
+/// 73. The M4A1's AR02 (`Width` 15) seen from the side is 7.5 u across
+/// in the world, whatever the zoom (a world width: no floor or cap).
+#[test]
+fn t73_tracer_width() {
+    let look = effects::tracer_look(t(), &wfx("combat_arms:m4a1"), None).unwrap();
+    close(rules::tracer_across(look.width), 7.5, 1e-6, "AR02 across");
+    // Seen from the side, its middle 1000 u ahead: the corners 7.5 u apart.
+    let cam = Transform::IDENTITY;
+    let (a, b) = (Vec3::new(-300.0, 0.0, -1000.0), Vec3::new(300.0, 0.0, -1000.0));
+    let [ta, _, _, tb] = rules::tracer_corners(a, b, &cam, look.width).unwrap();
+    close((ta - tb).length(), 7.5, 1e-4, "world width");
+    close((ta - tb).x, 0.0, 1e-4, "across the strip");
+}
+
+/// 74. One width direction for both ends: Δ = (−10, 10) → n = (0.7071,
+/// 0.7071, 0); corners at each end ± 3.75·n (AR02). Our camera space looks
+/// along −Z (x right, y up as the spec's), so the spec's z 50 is −50.
+#[test]
+fn t74_tracer_facing() {
+    let (a, b) = (Vec3::new(10.0, -10.0, -50.0), Vec3::new(0.0, 0.0, -1050.0));
+    let n = rules::tracer_side(a, b).unwrap();
+    assert!((n - Vec3::new(0.7071, 0.7071, 0.0)).length() < 1e-4, "{n}");
+    let [ah, bh, bl, al] = rules::tracer_corners(a, b, &Transform::IDENTITY, 15.0).unwrap();
+    for (c, want) in [(ah, a + 3.75 * n), (bh, b + 3.75 * n), (bl, b - 3.75 * n), (al, a - 3.75 * n)] {
+        assert!((c - want).length() < 1e-4, "{c} vs {want}");
+    }
+    // A turned and moved camera: the same strip in its frame, the same n.
+    let cam = Transform::from_xyz(100.0, 20.0, -5.0).with_rotation(Quat::from_rotation_y(0.7) * Quat::from_rotation_x(-0.2));
+    let [ah2, bh2, ..] = rules::tracer_corners(cam * a, cam * b, &cam, 15.0).unwrap();
+    assert!((ah2 - cam * ah).length() < 1e-3 && (bh2 - cam * bh).length() < 1e-3);
+    // Pointing straight at the eye: not seen.
+    assert!(rules::tracer_side(Vec3::new(0.0, 0.0, -10.0), Vec3::new(0.0, 0.0, -500.0)).is_none());
+}
+
+/// 76. A zoomed sniper's own tracer is made, its tail at the data flash
+/// point F (camera + `Pos` + `MuzzlePos` in camera axes, as unzoomed); the
+/// record's colour and alpha play no part in it (the draw is the texture's).
+#[test]
+fn t76_scoped_own_tracer() {
+    use combat_arms::game::{view_model::CaViewModel, weapons::CaZoom};
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let w = arm(&mut sim, me, "combat_arms:l96a1");
+    sim.intent(me).pitch = 0.0;
+    sim.intent(me).secondary = true;
+    sim.ticks(1);
+    sim.intent(me).secondary = false;
+    sim.seconds(0.5);
+    let z = sim.app.world().get::<CaZoom>(w).unwrap();
+    assert!(z.level > 0 && z.transition.is_none(), "zoomed in");
+    let f = sim.app.world().get::<CaViewModel>(me).unwrap().flash_point;
+    fire_once(&mut sim, me);
+    let list = &sim.app.world().resource::<CaTracers>().0;
+    assert_eq!(list.len(), 1, "SR01: every shot, scoped too");
+    let from = list[0].path.from * UNIT;
+    assert!((from - f).length() < 0.02, "tail at F: {from} vs {f}");
+}
