@@ -1,0 +1,13 @@
+# Text files are stored and checked out with LF on every platform.
+#
+# Without this, Git for Windows' default `core.autocrlf=true` checks text out
+# with CRLF, and `include_str!` of the repository's own data (minigames/*.toml,
+# tests/data/*.toml, tools/testmap/*.vmf, specs) then holds CRLF where the code
+# and tests expect LF. The fast tier failed seven tests on a plain Windows
+# clone for that reason: their `.replace("...\n...", "...")` calls silently
+# matched nothing, so the rule lines they add never reached the minigame text
+# and the ammo table they remove stayed in the document.
+#
+# An existing clone keeps its CRLF files until it is checked out again:
+#   git rm -r --cached . && git reset --hard
+* text=auto eol=lf
