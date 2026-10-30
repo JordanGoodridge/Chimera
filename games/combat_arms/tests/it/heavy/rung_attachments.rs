@@ -219,7 +219,9 @@ fn a_fitted_silencer_and_sight_draw_on_the_view_model() {
         assert!(on.iter().all(|m| m.joint_weights.iter().all(|w| w[0] == 1.0)));
     }
     // The silencer reaches ahead of the muzzle (away from the gun's
-    // middle, in the `Flash` socket's frame), its back end at it.
+    // middle, in the `Flash` socket's frame), its back end at it: the
+    // part in the socket's own frame, its model in its first animation's
+    // pose, no turn of ours (attachments.md Corrections (2026-10-30) 1, 5).
     let fl = socket("Flash");
     let inv = (v.root.to_matrix() * globals[fl.bone] * fl.local.to_matrix()).inverse();
     let gun: Vec<Vec3> = b.model.meshes.iter().flat_map(|m| m.positions.iter()).map(|p| inv.transform_point3(Vec3::from(*p))).collect();
@@ -273,4 +275,5 @@ fn fitted_parts_draw_on_the_held_model() {
     // It sticks out past one end of the gun along its long axis.
     assert!(shi[axis] > ghi[axis] || slo[axis] < glo[axis], "the silencer reaches past the gun's end");
 }
+
 

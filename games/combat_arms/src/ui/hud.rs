@@ -15,7 +15,9 @@
 //! panels are the game's HUD layout's, bound by name: `install`; the
 //! kill feed, the mode's score panel, the action message and the action
 //! gauge too: `bound`, `BoundHud`; the hit overlay, the direction
-//! indicator and the gauge sight are the HUD layout attributes' images),
+//! indicator, the gauge sight and the infected's screen, `InfectedTex`
+//! while the local player is infected (game_modes.md Corrections
+//! (2026-10-30) 3), are the HUD layout attributes' images),
 //! telling the shell's fallback HUD (`client::hud::GameDraws`) to leave
 //! out its crosshair, health and ammo, hit marker and kill feed, and the
 //! shell's minigame callout (`client::callouts`): a playing minigame's
@@ -341,6 +343,10 @@ pub struct CaHud {
     pub action: Option<ActionView>,
     /// Heartbeats played so far (D2).
     pub heartbeats: u32,
+    /// The infected's screen texture's rect while the local player is
+    /// infected (game_modes.md Corrections (2026-10-30) 3: the HUD
+    /// layout's `InfectedTex` at `InfectedPos`, `InfectedSize`).
+    pub infected: Option<PxRect>,
 }
 
 /// The action message as shown (D9): its string-table id and its text.
@@ -925,6 +931,8 @@ struct HudInputs<'w, 's> {
     death: Option<Res<'w, crate::game::death_cam::CaDeathCam>>,
     /// The weapons this app loaded.
     catalog: Res<'w, crate::weapon::data::WeaponCatalog>,
+    /// The infected (a Quarantine round's, a ladder rung's).
+    infected: Query<'w, 's, (), Or<(With<crate::game::movement::CaInfected>, With<crate::game::rungs::CaRungInfected>)>>,
 }
 
 /// How far over another game's body's head (its hitboxes' top) its name
@@ -956,6 +964,15 @@ fn update(
         action: hud.action.clone(),
         ..default()
     };
+
+    // The infected's screen, drawn first by the crosshair element, before
+    // its other tests (game_modes.md Corrections (2026-10-30) 3).
+    if options.crosshair_on && local.is_some_and(|l| world.infected.contains(l.0)) {
+        let point = |key: &str, default: [i32; 2]| {
+            ui.install.as_ref().and_then(|i| i.hud_point(key)).unwrap_or(default)
+        };
+        next.infected = Some(model::infected_rect(screen, point("InfectedPos", [0, 0]), point("InfectedSize", [1024, 768])));
+    }
 
     // The crosshair (A).
     let active = player.and_then(|p| p.1).and_then(|i| i.active);
@@ -1311,6 +1328,7 @@ impl Plugin for CaHudPlugin {
                 Update,
                 (
                     draw_crosshair,
+                    draw_infected,
                     draw_damage,
                     draw_status,
                     draw_weapon,
@@ -1368,6 +1386,8 @@ fn screen_size(window: Query<&Window, With<PrimaryWindow>>, mut screen: ResMut<H
 struct CrosshairRoot;
 #[derive(Component)]
 struct DamageRoot;
+#[derive(Component)]
+struct InfectedRoot;
 #[derive(Component)]
 struct StatusRoot;
 #[derive(Component)]
@@ -1485,6 +1505,7 @@ fn spawn(mut commands: Commands) {
     commands.spawn((ActionRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
     commands.spawn((CrosshairRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
     commands.spawn((DamageRoot, layer(HUD_Z - 1), HudRoot(crate::game::GAME)));
+    commands.spawn((InfectedRoot, layer(HUD_Z - 3), HudRoot(crate::game::GAME)));
     commands.spawn((StatusRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
     commands.spawn((WeaponRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
     commands.spawn((FeedRoot, layer(HUD_Z), HudRoot(crate::game::GAME)));
@@ -1759,6 +1780,29 @@ fn draw_crosshair(
                 }
             }
         }
+    });
+}
+
+/// The infected's screen texture over its rect, white, alpha-blended
+/// (game_modes.md Corrections (2026-10-30) 3); nothing without the
+/// install's texture.
+fn draw_infected(
+    hud: Res<CaHud>,
+    art: Option<Res<draw::CaArt>>,
+    bound: Res<BoundHud>,
+    root: Single<Entity, With<InfectedRoot>>,
+    mut last: Local<Option<(Option<PxRect>, bool)>>,
+    mut commands: Commands,
+) {
+    let loaded = art.as_ref().is_some_and(|a| !a.0.is_empty());
+    if !rebuild(&mut last, (hud.infected, loaded), *root, &mut commands) {
+        return;
+    }
+    let Some(r) = hud.infected else { return };
+    let Some((image, size)) = art.as_deref().and_then(|art| art.get(bound.texture("infectedtex")?).cloned()) else { return };
+    commands.entity(*root).with_children(|p| {
+        let full = Rect::new(0.0, 0.0, size.x as f32, size.y as f32);
+        draw::image_part(p, &image, [r.min.x, r.min.y, r.max.x, r.max.y], full, [255; 4]);
     });
 }
 

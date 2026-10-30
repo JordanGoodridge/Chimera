@@ -612,9 +612,9 @@ fn t16_leaving_sprint() {
     key(&mut sim, p, 3);
     sim.seconds(1.0);
     let t = leave_sprint(&mut sim, p, |s| !swings(s, p).is_empty());
-    // The case counts the swing from the pre-fire's end; as answered
-    // (8.2, case 37) it starts at the update after: up to a tick later.
-    assert!(close(t, 0.167 + 0.001 + 0.155, 3.0 + SWING_START), "knife: first hit at {t}");
+    // No pre-fire (Corrections (2026-10-30) 1): the swing starts on the
+    // update after the one that sets "firing".
+    assert!(close(t, 0.167 + 0.155, 3.0 + SWING_START), "knife: first hit at {t}");
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,12 +1115,13 @@ fn first_knife_hit(hz: f64) -> f64 {
     t
 }
 
-/// 37. The weapon logic on the frame clock: the press seen at u0, the
-/// pre-fire at u1, the swing from u2; the hit on the first update with
-/// 155 ms of the swing played: 200 ms at 60 fps, 180 ms at 100 fps.
+/// 37 and 50 (Corrections 2026-10-30, 1). The weapon logic on the frame
+/// clock: the press seen at u0, the swing from u1 (no pre-fire); the hit
+/// on the first update with 155 ms of the swing played: 183.3 ms at 60
+/// fps, 170 ms at 100 fps.
 #[test]
-fn t37_weapon_logic_on_the_frame_clock() {
-    for (hz, want) in [(60.0, 0.200), (100.0, 0.180)] {
+fn t37_t50_weapon_logic_on_the_frame_clock() {
+    for (hz, want) in [(60.0, 0.1833), (100.0, 0.170)] {
         let t = first_knife_hit(hz);
         assert!((t - want).abs() < 1e-3, "{hz} fps: first hit at {t}, want {want}");
     }
@@ -1515,4 +1516,46 @@ fn c2_no_pickup_into_an_unselected_class() {
     let dropped = items(&mut sim);
     assert_eq!(dropped.len(), 1);
     assert_eq!(dropped[0].1.weapon, mine, "the M67 is dropped");
+}
+
+/// 51 (Corrections 2026-10-30, 2). A character model with select bonus
+/// 0.25 draws the M9 (450 ms) in 360 ms; the same for an M67 (400 ms ->
+/// 320 ms): the bonus reaches weapons without parts too.
+#[test]
+fn t51_select_bonus_on_a_knife_and_a_grenade() {
+    use combat_arms::game::gear::{CaGearData, records::GearData};
+    let mut g = GearData::built_in();
+    for v in g.vests.values_mut() {
+        v.select_ani_rate = 0.25;
+    }
+    let mut sim = Sim::with(CaSim, move |app| {
+        app.add_plugins(GreyboxMapPlugin);
+        app.insert_resource(CaGearData(std::sync::Arc::new(g.clone())));
+    });
+    sim.set_tick_interval(F);
+    let p = player(&mut sim, greybox::SPAWNS[0]);
+    for (id, want) in [("combat_arms:m9_knife", 0.36), ("combat_arms:m67", 0.32), ("combat_arms:m4a1", 0.96)] {
+        let w = chimera_sim::weapon::give(sim.app.world_mut(), p, id).unwrap();
+        sim.ticks(2);
+        let got = sim.app.world().get::<Weapon>(w).unwrap().draw_time;
+        assert!((got - want).abs() < 1e-4, "{id}: draw {got}, want {want}");
+    }
+}
+
+/// special_weapons.md 46: the chainsaw's secondary at 15 updates a second,
+/// the swing starting on an update: keys 334 and 386 pass in one advance,
+/// as do 540 and 591, so 5 hits a swing, not 7.
+#[test]
+fn t46_hit_keys_in_one_advance_make_one_hit() {
+    let mut sim = sim_with(&["combat_arms:chainsaw"]);
+    sim.set_tick_interval(1.0 / 15.0);
+    let p = player(&mut sim, greybox::SPAWNS[0]);
+    sim.seconds(2.0);
+    let before = swings(&sim, p).len();
+    sim.intent(p).secondary = true;
+    sim.ticks(1);
+    sim.intent(p).secondary = false;
+    sim.seconds(1.5);
+    let n = swings(&sim, p).len() - before;
+    assert_eq!(n, 5, "hits in one swing");
 }

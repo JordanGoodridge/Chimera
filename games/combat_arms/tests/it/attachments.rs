@@ -1360,3 +1360,61 @@ fn c1_the_fitted_set_decides_the_swap() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-30): placing part models.
+
+/// 41. A socket at (10, 2, 30) whose local axes are x (0, 0, 1), y (0, 1,
+/// 0), z (-1, 0, 0) (yaw +90 degrees), `MuzzlePVPosOff` (-2.2, 0, 0) and no
+/// rotation offset -> the part's origin at (10, 2, 27.8), its axes the
+/// socket's. In our right-handed frame (z mirrored) the same socket is at
+/// (10, 2, -30) with x along -z.
+#[test]
+fn t41_part_frame() {
+    use combat_arms::game::{attachments::PartOffset, view_model::parts};
+    let socket = Mat4::from_rotation_translation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2), Vec3::new(10.0, 2.0, -30.0));
+    assert!((socket.transform_vector3(Vec3::X) - Vec3::new(0.0, 0.0, -1.0)).length() < 1e-5);
+    let off = PartOffset { pos: [-2.2, 0.0, 0.0], rot: [0.0; 3] };
+    let m = parts::first_person_frame(socket, &off);
+    let at = m.transform_point3(Vec3::ZERO);
+    assert!((at - Vec3::new(10.0, 2.0, -27.8)).length() < 1e-4, "{at}");
+    for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+        assert!((m.transform_vector3(axis) - socket.transform_vector3(axis)).length() < 1e-5, "no turn");
+    }
+}
+
+/// 42. Socket yaw 0.3, pitch 0.2, roll 0 and `ScopePVRotOff` (0.1, 0, 0)
+/// -> yaw 0.4, pitch 0.2, roll 0 (angles added, rebuilt yaw-pitch-roll);
+/// the same numbers as `ScopeHHRotOff` -> the socket's rotation times
+/// rotation(pitch 0, yaw 0.1, roll 0). The game's angles in our mirrored
+/// frame: yaw and pitch negated.
+#[test]
+fn t42_rotation_offsets() {
+    use combat_arms::game::{attachments::PartOffset, view_model::parts};
+    let game = |yaw: f32, pitch: f32, roll: f32| Quat::from_euler(EulerRot::YXZ, -yaw, -pitch, roll);
+    let socket = game(0.3, 0.2, 0.0);
+    let got = parts::added_angles(socket, [0.1, 0.0, 0.0]);
+    assert!(got.angle_between(game(0.4, 0.2, 0.0)) < 1e-5, "first person: angles added");
+    let off = PartOffset { pos: [0.0; 3], rot: [0.1, 0.0, 0.0] };
+    let third = Mat4::from_quat(socket) * parts::offset_matrix(&off);
+    let want = socket * game(0.1, 0.0, 0.0);
+    assert!(Quat::from_mat4(&third).angle_between(want) < 1e-5, "third person: composed after");
+    // The two differ when the socket is pitched.
+    assert!(got.angle_between(want) > 1e-3);
+}
+
+/// 43. The lens (`RS\TRANSPARENT.LTB`): a texel of alpha 150/255 isn't
+/// drawn, 170/255 is, opaque, from both sides.
+#[test]
+fn t43_lens_cut_out() {
+    use chimera_world::map::{MapAlpha, MapMesh};
+    use combat_arms::game::render_style::{self, Style};
+    let lens = render_style::style("RS\\TRANSPARENT.LTB");
+    assert!(matches!(lens, Style::Cutout { .. }), "{lens:?}");
+    assert!(!lens.keeps(150) && lens.keeps(170) && !lens.keeps(160) && lens.keeps(161));
+    let mut m = MapMesh::default();
+    render_style::apply(&mut m, lens);
+    let MapAlpha::Mask(cut) = m.alpha else { panic!("{:?}", m.alpha) };
+    assert!(150.0 / 255.0 < cut && cut < 170.0 / 255.0);
+    assert!(m.double_sided && !m.unlit, "two-sided, lit");
+}

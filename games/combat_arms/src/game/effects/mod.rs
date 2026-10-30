@@ -23,8 +23,13 @@
 //!   (`rules::flyby`, played at the nearest point of the line, also for
 //!   shots that hit nothing); your hits
 //!   on characters queue a ding (`rules::DingQueue`, played next frame);
-//!   dry fire and knife swings their sounds (a knife hit's fire sound on
-//!   the player's fire channel, as a gun's: it replaces the last). A round whose gun is gone
+//!   dry fire makes none; each melee hit key (special_weapons.md 5.1)
+//!   first its impact (one of four slots, R 153; a miss is a sky impact:
+//!   silent), then its fire sound, on a miss too: yours `Alt_FireSnd`
+//!   for a secondary swing (`fire_sound_of`), others' always `FireSnd`
+//!   (Quirk 10). Fire sounds go on the shooter's fire voice
+//!   (`fire_voice`: one per attacker and weapon, both buttons sharing it,
+//!   a new one replacing the last; silenced shots take none). A round whose gun is gone
 //!   when it is drawn (the gun game swaps it on the kill's tick) is drawn
 //!   as that gun (`KnownWeapons`: by entity until its despawn's frame is
 //!   drawn, by weapon ID for others' rounds a client hears after their gun
@@ -300,6 +305,7 @@ impl Plugin for CaEffectsPlugin {
         .add_message::<crate::map::PlaySound>()
         .add_message::<crate::map::SoundControl>()
         .add_message::<crate::game::view_model::attached::CaLoopSound>()
+        .init_resource::<crate::game::rungs::InfectionSound>()
         .add_observer(crate::game::rungs::infection_moment)
         .add_systems(
             Update,
@@ -574,10 +580,28 @@ fn forget_weapons(mut gone: RemovedComponents<Weapon>, mut known: ResMut<KnownWe
     }
 }
 
+/// The fire voice of an event's shooter and weapon: one per attacker and
+/// weapon, shared by both buttons (a new fire or alt-fire sound stops
+/// the last; another weapon's or player's doesn't: effects_sounds.md
+/// Corrections (2026-10-30) 2). The weapon entity is the voice's source
+/// (the shooter's when the gun is gone: others' rounds after a swap).
+pub fn fire_voice(e: &WeaponEvent) -> Entity {
+    if e.weapon == Entity::PLACEHOLDER { e.owner } else { e.weapon }
+}
+
 /// The fire sound of a weapon for its own shooter (`own`) or others: the
 /// file and radius (u); None: nothing (a silenced part with no level).
 pub fn fire_sound<'a>(fx: &'a CaWeaponFx, mods: Option<&CaMods>, own: bool) -> Option<(&'a str, f32)> {
-    let plain = (fx.fire_sound.as_str(), mods.map_or(fx.fire_radius, |m| m.fire_sound_radius as f32));
+    fire_sound_of(fx, mods, own, false)
+}
+
+/// `fire_sound` for a shot or swing started with the secondary button
+/// when `alt` (the attacker's own client only: others pass false, Quirk
+/// 10): `Alt_FireSnd` when the weapon names one, a silenced file still
+/// winning (effects_sounds.md Corrections (2026-10-30) 2).
+pub fn fire_sound_of<'a>(fx: &'a CaWeaponFx, mods: Option<&CaMods>, own: bool, alt: bool) -> Option<(&'a str, f32)> {
+    let file = if alt && !fx.alt_fire_sound.is_empty() { &fx.alt_fire_sound } else { &fx.fire_sound };
+    let plain = (file.as_str(), mods.map_or(fx.fire_radius, |m| m.fire_sound_radius as f32));
     let Some(m) = mods else {
         return (!plain.0.is_empty()).then_some(plain);
     };
@@ -890,7 +914,7 @@ fn shot_effects(
                     // Others' shots sound at their weapon (Open question 18).
                     let mut s = if mine { CaSound::local(file) } else { CaSound::at(file, fire, radius) };
                     if !silenced {
-                        s = s.from_source(e.owner, CHANNEL_FIRE);
+                        s = s.from_source(fire_voice(e), CHANNEL_FIRE);
                     }
                     sounds.write(s);
                 }
@@ -1042,26 +1066,37 @@ fn shot_effects(
                 }
                 emit_impact(&out, at, n, Some(e.weapon), &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
             }
-            WeaponEventKind::Swing { at, .. } => {
-                if let Some((file, radius)) = fire_sound(wfx, mods, true) {
+            WeaponEventKind::Swing { at, secondary, .. } => {
+                // special_weapons.md 5.1: each hit key's impact (from the
+                // attacker's own ray, before that hit's fire sound), then
+                // its fire sound, on a miss too (a miss is a sky impact:
+                // silent).
+                if let Some((point, n, hit)) = at.as_ref().filter(|_| draws) {
+                    let (has_health, is_character, ..) = characters.get(*hit).unwrap_or((false, false, None, None));
+                    // A character: its head surface on a head hit, else its body's.
+                    let ty = if has_health && is_character {
+                        if heads.contains(hit) { 4 } else { 6 }
+                    } else {
+                        grid.at(*point)
+                    };
+                    if let Some(record) = tables.impact(&wfx.impact) {
+                        let seen = cam.is_some_and(|c| c.gates(*point, *point, !mine).impact_seen);
+                        let rolls = [state.rolls.next(), state.rolls.next()];
+                        let mut out = impact(record, tables.surface(ty), AmmoKind::Melee, seen, false, false, &settings, rolls);
+                        if in_liquid(volumes.iter(), *point + *n * UNIT) {
+                            submerge(&mut out, record, tables.surface(ty), AmmoKind::Melee, seen);
+                        }
+                        emit_impact(&out, *point, *n, Some(e.weapon), &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
+                    }
+                }
+                // Yours: `Alt_FireSnd` for a secondary swing; others always
+                // hear `FireSnd` (Quirk 10). One fire voice per player and
+                // weapon: a hit's fire sound replaces the last.
+                if let Some((file, radius)) = fire_sound_of(wfx, mods, mine, mine && *secondary) {
                     let origin = characters.get(e.owner).ok().and_then(|c| c.3).map_or(Vec3::ZERO, |t| t.translation);
-                    // One fire voice per player, as a gun's: a hit's fire sound
-                    // replaces the last (the chainsaw's 2.9 s file at seven hits
-                    // a swing piled up; Open question in the combat-arms plan).
                     let s = if mine { CaSound::local(file) } else { CaSound::at(file, origin, radius) };
-                    sounds.write(s.from_source(e.owner, CHANNEL_FIRE));
+                    sounds.write(s.from_source(fire_voice(e), CHANNEL_FIRE));
                 }
-                let Some((point, n, hit)) = at.as_ref().filter(|_| draws) else { continue };
-                let (has_health, is_character, ..) = characters.get(*hit).unwrap_or((false, false, None, None));
-                let ty = if has_health && is_character { 6 } else { grid.at(*point) };
-                let Some(record) = tables.impact(&wfx.impact) else { continue };
-                let seen = cam.is_some_and(|c| c.gates(*point, *point, !mine).impact_seen);
-                let rolls = [state.rolls.next(), state.rolls.next()];
-                let mut out = impact(record, tables.surface(ty), AmmoKind::Melee, seen, false, false, &settings, rolls);
-                if in_liquid(volumes.iter(), *point + *n * UNIT) {
-                    submerge(&mut out, record, tables.surface(ty), AmmoKind::Melee, seen);
-                }
-                emit_impact(&out, *point, *n, Some(e.weapon), &mut sounds, &mut fx, &mut marks, &mut state.rolls, record);
             }
             // Dry fire never plays and makes no sound (Open question 25,
             // view_models.md C6).

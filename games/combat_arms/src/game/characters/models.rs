@@ -352,7 +352,9 @@ pub fn load_held_weapon(id: &str, file: &dyn Fn(&str) -> Option<Vec<u8>>) -> Res
 /// `AttachHHModelScale`, at the gun's `HHModelSocket`, moved by the
 /// weapon's `MuzzleHHPosOff`/`ScopeHHPosOff` and their rotations) added to
 /// held model `h`, whose sockets (posed, in its frame) are `sockets`.
-/// A muzzle part turns as on the view model (`view_model::parts::turn_ahead`).
+/// The offset is composed after the socket's rotation (attachments.md
+/// Corrections (2026-10-30) 2); the part model is in its first
+/// animation's pose (Corrections 5), with no turn of ours.
 fn held_part(
     h: &mut MapHeldModel,
     sockets: &[(String, Mat4)],
@@ -362,7 +364,7 @@ fn held_part(
     map: &mut MapData,
     file: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<(), String> {
-    use super::super::{attachments::MUZZLE, view_model::parts};
+    use super::super::view_model::parts;
     let record = table.get(table.find(name).ok_or_else(|| format!("{name}: no such part"))?).ok_or("no record")?;
     let slot = record.slot().ok_or_else(|| format!("{name}: not a weapon part"))?;
     let variant = params
@@ -381,18 +383,14 @@ fn held_part(
         let i = lod.used_textures().first().copied().unwrap_or(-1);
         usize::try_from(i).ok().and_then(|i| skins.get(i)).cloned().unwrap_or_default()
     });
+    if let Some(entry) = loaded.list.entries.first() {
+        model::pose_meshes(&loaded.model, entry, &mut m.meshes, 1.0);
+    }
     let styles: Vec<i32> = model::drawn_lods(&loaded.model).iter().map(|l| l.render_style).collect();
     super::super::world::textures(&mut m.meshes, map, file);
     let scale = Mat4::from_scale(Vec3::from(record.attach_hh_scale.unwrap_or([1.0; 3])));
     let offset = parts::offset_matrix(&params.part_offsets.of(slot, false));
-    let turn = if slot == MUZZLE {
-        let gun: Vec<Vec3> = h.model.meshes.iter().flat_map(|m| m.positions.iter()).map(|p| Vec3::from(*p)).collect();
-        let points: Vec<Vec3> = m.meshes.iter().flat_map(|m| m.positions.iter()).map(|p| Vec3::from(*p)).collect();
-        parts::turn_ahead(socket, &gun, offset * scale, &points)
-    } else {
-        Mat4::IDENTITY
-    };
-    let to = socket * offset * turn * scale;
+    let to = socket * offset * scale;
     for (mut mesh, style) in m.meshes.into_iter().zip(styles) {
         render_style::apply(&mut mesh, render_style::of_list(&record.hh_render_styles, style));
         for p in &mut mesh.positions {

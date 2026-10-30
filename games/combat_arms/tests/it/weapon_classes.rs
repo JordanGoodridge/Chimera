@@ -1209,11 +1209,12 @@ fn t27_pistol_semi_auto() {
         }
         let fired: Vec<f64> = rounds(&sim, w, t0).iter().map(|t| t - t0).collect();
         assert_eq!(fired.len(), 1 + second.is_some() as usize, "{presses:?}: {fired:?}");
-        // The chain: 3 updates after the press (Corrections 3), and
-        // everything after it as much later.
-        close(fired[0], 0.03, 1e-6, "the first round");
+        // The chain: 2 updates after the press (no pre-fire for pistols:
+        // Corrections (2026-10-30) 1), and everything after it as much
+        // later.
+        close(fired[0], 0.02, 1e-6, "the first round");
         if let Some(s) = second {
-            close(fired[1], s + 0.03, 0.0101, &format!("{presses:?}"));
+            close(fired[1], s + 0.02, 0.0101, &format!("{presses:?}"));
         }
     }
 }

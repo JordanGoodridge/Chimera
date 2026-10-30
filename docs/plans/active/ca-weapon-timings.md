@@ -183,7 +183,9 @@ the pre-fire's update, 32 have a pre-fire of non-zero length (question
    every draw. The view model plays those at the vest's rates as before.
    **Answered (2026-10-30):** the model's and sets' select bonus applies
    to every draw, knives, grenades and specials included (inventory.md
-   Corrections (2026-10-30) 2).
+   Corrections (2026-10-30) 2). **Done (2026-10-30):** every weapon's
+   draw takes the item's and gear's select terms (`inventory::DrawStock`,
+   `attachments::apply_draw`; test inventory t51).
 5. A pre-fire of non-zero length on a gun that doesn't spin (32 copies):
    weapon_firing.md says the first round waits for the pre-fire to end;
    we count it as one update (latency 3), as for a 0 ms one. Taking its
@@ -191,6 +193,8 @@ the pre-fire's update, 32 have a pre-fire of non-zero length (question
    without the reversal): left until a spec case or a playtest shows it.
    **Answered (2026-10-30):** the first round waits for the whole
    pre-fire (weapon_classes.md Corrections (2026-10-30) 1, case 44).
+   **Done (2026-10-30):** the latency counts it at the simulation's tick
+   (`timing::prefire_latency`; test weapon_timings t43_t44).
 6. Pistols' pre-fire: view_models.md 7 and C2 say pistols and knives
    never play `prefire`; weapon_firing.md and weapon_classes.md case 40
    count it for pistols (M92FS: round on update 3). The data keeps the
@@ -200,7 +204,10 @@ the pre-fire's update, 32 have a pre-fire of non-zero length (question
    **Answered (2026-10-30):** view_models.md is right: secondary and
    melee classes never play `prefire` (M92FS round on update 2), knives
    swing with no pre-fire (weapon_classes.md, weapon_firing.md and
-   inventory.md Corrections (2026-10-30)).
+   inventory.md Corrections (2026-10-30)). **Done (2026-10-30):** the
+   M92FS's latency 2, the knife's swing on the update after the press is
+   armed (tests inventory t37_t50, weapon_corrections t64, weapon_classes
+   t27).
 7. Our documents keep their spec numbers and no post-fire: the M92FS's
    150 ms (weapon_classes.md 4) isn't in beretta_m92fs.toml yet, so ours
    doesn't hold a reload after a shot. Adding `trigger.postfire = 0.15`

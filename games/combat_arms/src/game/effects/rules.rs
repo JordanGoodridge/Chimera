@@ -2,7 +2,7 @@
 //! small state (section numbers are the spec's), in the game's units
 //! (world units, seconds) so the systems in `effects` and the tests share
 //! them: sound gain, low-pass and radii (10), visibility gates (2), the
-//! tracer cadence and motion (4), the decal list (6), casings (8), the
+//! tracer cadence, motion and strip shape (4), the decal list (6), casings (8), the
 //! fly-by test, footstep cadences, the server's hurt limit and the
 //! hit-confirm queue (11), the camera jitter's falloff (9) and sound
 //! slot draws.
@@ -245,6 +245,36 @@ impl TracerPath {
         let tail = (self.velocity * t).min(self.distance);
         Some((tail, (tail + self.length).min(self.distance)))
     }
+}
+
+/// A tracer's width across in world units: `Width`/2 (half-width
+/// `Width`/4 at each end; Corrections (2026-10-30) 3). No floor, cap or
+/// zoom compensation.
+pub fn tracer_across(width: f32) -> f32 {
+    width / 2.0
+}
+
+/// A tracer strip's width direction in camera space (x right, y up; depth
+/// ignored) for its two ends `a`, `b` in camera space: perpendicular to
+/// their screen-plane difference Δ, n = (Δy, −Δx, 0)/|Δ|, the same for
+/// both ends (Corrections (2026-10-30) 3). None when the strip points
+/// straight at the eye (Δ = 0: not seen).
+pub fn tracer_side(a: Vec3, b: Vec3) -> Option<Vec3> {
+    let d = Vec2::new(b.x - a.x, b.y - a.y);
+    let len = d.length();
+    (len > 1e-6).then(|| Vec3::new(d.y, -d.x, 0.0) / len)
+}
+
+/// A tracer's four corners (world) from tail `a` to head `b` (world) as
+/// seen by a camera at `camera` (its world transform: camera space has
+/// x right, y up): each end ± (w/2)·n with w = `tracer_across(width)` and
+/// n of `tracer_side`, mapped back to the world. Order: tail +n, head +n,
+/// head −n, tail −n. None: seen end-on.
+pub fn tracer_corners(a: Vec3, b: Vec3, camera: &Transform, width: f32) -> Option<[Vec3; 4]> {
+    let inv = camera.compute_affine().inverse();
+    let n = tracer_side(inv.transform_point3(a), inv.transform_point3(b))?;
+    let side = camera.rotation * n * (tracer_across(width) / 2.0);
+    Some([a + side, b + side, b - side, a - side])
 }
 
 // ---------------------------------------------------------------------------

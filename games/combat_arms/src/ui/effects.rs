@@ -5,14 +5,17 @@
 //! - Decals (6): flat quads of the surface's bullet-hole sprite, 64·k u
 //!   wide, spun about the normal, grey `MarkColorRatio`, lit by the scene,
 //!   alpha α(t) (`rules::mark_alpha`).
-//! - Tracers (4): a strip `Width` wide from tail to head, each end turned
-//!   about the strip's axis to face the camera from its own place (a
-//!   mesh rebuilt every frame: `strip_corners`), the record's texture and colour, alpha from `InitialAlpha` to
-//!   `FinalAlpha`, not additive, depth tested: a wall hides them. A
-//!   deliberate deviation from the spec (Quirk 1: tracers ignore depth),
-//!   decided by the user on 2026-10-30 (through walls looked like a bug):
-//!   `cl_tracer_through_walls 1` (archived, default 0) restores the
-//!   original look (`OnTop`: no depth test).
+//! - Tracers (4, Corrections (2026-10-30) 3): a strip `Width`/2 u across
+//!   from tail to head with one width direction for the whole strip,
+//!   parallel to the screen and perpendicular to the strip in camera space
+//!   (`rules::tracer_corners`, a mesh rebuilt every frame; seen end-on:
+//!   not drawn), the record's texture alone (`Color` and the alpha fade
+//!   show nothing), alpha blended, not additive, depth tested and not
+//!   written: a wall hides them, they never hide each other. Your own
+//!   starts at the data flash point (`CaViewModel::flash_point`, also
+//!   while scoped). `cl_tracer_through_walls 1` (archived, default 0)
+//!   draws them over everything (`OnTop`: no depth test; the spec's
+//!   earlier reading, kept as an option).
 //! - Casings (8): the FireFX's casing model and skin (`guns_sc`) at
 //!   `ShellScale` × the growth, else a small brass box.
 //! - The first-person muzzle flash (3): the muzzle part's or weapon's
@@ -43,12 +46,8 @@
 //! game's `MarksClip` 0) and lie 0.2 cm off the surface (their point is
 //! the impact's, 1 u back along the ray: 0.5 u off a wall hit at 60°, Open
 //! question 19); several jitters add up (`CaFx::jitter_at`, Open question
-//! 24); the spec doesn't say how the tracer strip is oriented, so it is
-//! turned about its axis toward the eye at each end (our choice, the usual
-//! line-strip tracer; Open question in the backlog), its width is the
-//! record's in world units at any zoom, and your own starts at the view
-//! model's flash point, which stays at the same offset from the camera
-//! when zoomed.
+//! 24); tracers blend by the texture's alpha (the spec's assumption,
+//! its Open question 30).
 
 use std::collections::HashMap;
 
@@ -104,7 +103,7 @@ impl Plugin for CaEffectsDrawPlugin {
             crate::console::resource_cvar::<TracerSettings, u8>(
                 app,
                 "cl_tracer_through_walls",
-                "0: tracers are hidden by walls (default); 1: drawn through walls, as the original game does.",
+                "0: tracers are hidden by walls (default, as the original game); 1: drawn through walls.",
                 |s| &mut s.through_walls,
             );
             app.world_mut().resource_mut::<crate::console::Console>().archive("cl_tracer_through_walls");
@@ -113,7 +112,7 @@ impl Plugin for CaEffectsDrawPlugin {
 }
 
 /// Whether tracers show through walls (`cl_tracer_through_walls`; the
-/// original game does, we default to depth tested).
+/// game depth-tests them, Corrections (2026-10-30) 3).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
 pub struct TracerSettings {
     pub through_walls: u8,
@@ -158,8 +157,8 @@ impl MaterialExtension for OnTop {
 }
 
 impl OnTop {
-    /// The depth state of a tracer: writes nothing; through walls (Quirk
-    /// 1) it always passes, else Bevy's compare stays. Tests check it, as
+    /// The depth state of a tracer: writes nothing; through walls (the
+    /// option) it always passes, else Bevy's compare stays. Tests check it, as
     /// the pipeline can't be built without a GPU.
     pub fn apply_depth(depth: &mut bevy::render::render_resource::DepthStencilState, through_walls: bool) {
         if through_walls {
@@ -312,24 +311,6 @@ fn decals(
 #[derive(Component)]
 struct TracerQuad(usize);
 
-/// The four corners (metres) of a tracer's strip from `a` (tail) to `b`
-/// (head): `width` wide, each end turned about the strip's axis to face
-/// `eye` from its own place (a line-strip tracer; one facing for the whole
-/// strip would lie flat when the eye is near one end, as for your own
-/// shots). Order: tail left, head left, head right, tail right.
-fn strip_corners(a: Vec3, b: Vec3, eye: Vec3, width: f32) -> [Vec3; 4] {
-    let along = (b - a).normalize_or(Vec3::Z);
-    let side = |at: Vec3| {
-        along
-            .cross(eye - at)
-            .try_normalize()
-            .unwrap_or_else(|| along.any_orthonormal_vector())
-            * (width / 2.0)
-    };
-    let (sa, sb) = (side(a), side(b));
-    [a + sa, b + sb, b - sb, a - sa]
-}
-
 /// A tracer's mesh: a strip, u along it (0 tail, 1 head), v across.
 fn strip_mesh(corners: [Vec3; 4]) -> Mesh {
     use bevy::asset::RenderAssetUsages;
@@ -353,7 +334,7 @@ fn tracers(
     mut meshes: ResMut<Assets<Mesh>>,
     mut commands: Commands,
 ) {
-    let eye = camera.map_or(Vec3::ZERO, |c| c.translation());
+    let camera = camera.map_or(Transform::IDENTITY, |c| c.compute_transform());
     let mut slots: HashMap<usize, (Handle<Mesh>, Handle<OnTopMaterial>, Mut<Visibility>)> =
         drawn.iter_mut().map(|(d, g, m, v)| (d.0, (g.0.clone(), m.0.clone(), v))).collect();
     for (i, tr) in list.0.iter().enumerate() {
@@ -362,11 +343,10 @@ fn tracers(
             (tr.path.from + tr.path.dir * tail) * UNIT,
             (tr.path.from + tr.path.dir * head) * UNIT,
         );
-        let corners = strip_corners(a, b, eye, tr.look.width * UNIT);
-        let life = tr.path.life().max(1e-4);
-        let alpha = tr.look.initial_alpha + (tr.look.final_alpha - tr.look.initial_alpha) * (tr.age / life).min(1.0);
-        let [r, g, bl] = tr.look.color.map(|c| c / 255.0);
-        let color = Color::srgba(r, g, bl, alpha);
+        // Seen end-on: nothing to draw (Corrections (2026-10-30) 3).
+        let Some(corners) = rules::tracer_corners(a, b, &camera, tr.look.width * UNIT) else { continue };
+        // The texture alone: `Color` and the alpha fade show nothing.
+        let color = Color::WHITE;
         let tex = fx_images.get(&tr.look.texture, &server);
         match slots.remove(&i) {
             Some((mesh, mat, mut v)) => {
@@ -379,7 +359,6 @@ fn tracers(
                     if m.extension.through_walls != through {
                         m.extension.through_walls = through;
                     }
-                    m.base.base_color = color;
                     if m.base.base_color_texture != tex {
                         m.base.base_color_texture = tex;
                     }
@@ -422,7 +401,7 @@ mod tests {
     use super::*;
 
     /// A tracer is hidden by walls unless `cl_tracer_through_walls` is on
-    /// (Quirk 1, the original look); the effect groups' particles
+    /// (test case 75); the effect groups' particles
     /// (`ParticleDrawMaterial`) always are.
     #[test]
     fn tracers_are_depth_tested_unless_through_walls_is_on() {
@@ -440,30 +419,10 @@ mod tests {
         assert_eq!(tracer.depth_compare, Some(Cmp::GreaterEqual), "a wall hides it");
         assert_eq!(tracer.depth_write_enabled, Some(false));
         OnTop::apply_depth(&mut tracer, true);
-        assert_eq!(tracer.depth_compare, Some(Cmp::Always), "the original look");
+        assert_eq!(tracer.depth_compare, Some(Cmp::Always), "the option");
         let mut particle = tested();
         chimera_present::render::particles::ParticleDrawMaterial::apply_depth(&mut particle);
         assert_eq!(particle.depth_compare, Some(Cmp::GreaterEqual), "particles are hidden by walls");
-    }
-
-    #[test]
-    fn strip_contains_the_shot_axis_faces_the_eye_and_keeps_its_width() {
-        let (a, b) = (Vec3::new(0.0, 1.5, 0.0), Vec3::new(0.0, 1.5, -10.0));
-        // Eyes: beside the strip, above it, and next to its tail (own shot).
-        for eye in [Vec3::new(5.0, 1.5, -5.0), Vec3::new(0.0, 9.0, -5.0), Vec3::new(0.2, 1.4, 0.5)] {
-            let [tl, hl, hr, tr] = strip_corners(a, b, eye, 0.4);
-            let along = (b - a).normalize();
-            for (l, r, at) in [(tl, tr, a), (hl, hr, b)] {
-                // Centred on the axis, constant width, across the axis.
-                assert!(((l + r) / 2.0 - at).length() < 1e-5);
-                assert!(((l - r).length() - 0.4).abs() < 1e-5);
-                assert!((l - r).dot(along).abs() < 1e-5);
-                // The strip's plane at this end contains the axis and
-                // faces the eye: the width edge is across the eye's line.
-                let to_eye = (eye - at).normalize();
-                assert!((l - r).dot(to_eye).abs() < 1e-4, "width edge turned to the eye");
-            }
-        }
     }
 }
 

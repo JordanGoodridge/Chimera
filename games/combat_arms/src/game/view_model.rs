@@ -474,8 +474,10 @@ fn skin_of(skins: &[String]) -> impl Fn(&lithtech_formats::ltb::Lod) -> String +
 }
 
 /// A fitted part's model `path` (`parts`), skinned with `skins` by
-/// texture index, converted (meshes in metres at its bind pose), its
-/// textures added to `map`; with each mesh's render-style index.
+/// texture index, converted (meshes in metres, in the pose of its first
+/// animation at t = 0: a part is left on its default animation,
+/// attachments.md Corrections (2026-10-30) 5), its textures added to
+/// `map`; with each mesh's render-style index.
 pub fn load_part(
     path: &str,
     skins: &[String],
@@ -484,6 +486,9 @@ pub fn load_part(
 ) -> Result<(Vec<crate::map::MapMesh>, Vec<i32>), String> {
     let loaded = model::load_own(path, file)?;
     let mut m = model::convert(&loaded, VIEW_SCALE, &skin_of(skins));
+    if let Some(entry) = loaded.list.entries.first() {
+        model::pose_meshes(&loaded.model, entry, &mut m.meshes, VIEW_SCALE);
+    }
     let styles = model::drawn_lods(&loaded.model).iter().map(|l| l.render_style).collect();
     super::world::textures(&mut m.meshes, map, file);
     for mesh in m.meshes.iter_mut().filter(|m| m.texture.is_none()) {

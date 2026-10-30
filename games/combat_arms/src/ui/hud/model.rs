@@ -504,6 +504,15 @@ pub fn draws(v: Visibility) -> Draws {
     d
 }
 
+/// The infected's screen texture's rect (game_modes.md Corrections
+/// (2026-10-30) 3): `pos` and `size` in 1024 x 768 units, x and y scaled
+/// on their own (as A8).
+pub fn infected_rect(screen: Screen, pos: [i32; 2], size: [i32; 2]) -> PxRect {
+    let (xr, yr) = (screen.xr(), screen.yr());
+    let (x, y) = (pos[0] as f32 * xr, pos[1] as f32 * yr);
+    PxRect::new(x, x + size[0] as f32 * xr, y, y + size[1] as f32 * yr)
+}
+
 /// The dot-sight image's rect (A8), px.
 pub fn dot_sight_rect(screen: Screen) -> PxRect {
     let (xr, yr) = (screen.xr(), screen.yr());

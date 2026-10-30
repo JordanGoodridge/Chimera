@@ -473,7 +473,8 @@ fn default_bodies_wear_face_and_head() {
             }
         }
         assert!(body.model.skins.iter().all(|s| s.len() == meshes.len()));
-        // The team marks: blended in both families, the enemy's texture
+        // The team marks: alpha-tested cut-outs in both families
+        // (characters.md Corrections (2026-10-30) 2), the enemy's texture
         // (mark 0) clear, the teammate's (mark 1) not.
         let enemy = &body.model.skins[models::family(0, false) as usize];
         let mate = &body.model.skins[models::family(0, true) as usize];
@@ -482,8 +483,8 @@ fn default_bodies_wear_face_and_head() {
             .collect();
         assert!(!marks.is_empty(), "body {id}: no team-mark piece");
         for &k in &marks {
-            assert_eq!(enemy[k].alpha, MapAlpha::Blend, "body {id}: mark {k}");
-            assert_eq!(mate[k].alpha, MapAlpha::Blend);
+            assert!(matches!(enemy[k].alpha, MapAlpha::Mask(_)), "body {id}: mark {k}: {:?}", enemy[k].alpha);
+            assert!(matches!(mate[k].alpha, MapAlpha::Mask(_)));
             assert!(enemy[k].material.eq_ignore_ascii_case(&data.marks.enemy));
             let opacity = |t: Option<usize>| {
                 let t = &map.textures[t.expect("textured")];

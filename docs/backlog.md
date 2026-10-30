@@ -158,10 +158,12 @@ the user's go-ahead: no Actions runs unless asked.
   (`ParticleDrawMaterial`; tests `particle_depth::`), and no CS:S effect
   showed through walls. Combat Arms' tracers drew with no depth test
   (effects_sounds.md section 4, Quirk 1); the user called that a bug, so
-  a deliberate deviation from the spec: they are depth tested by default
-  everywhere (Combat Arms' app and the party apps), and
-  `cl_tracer_through_walls 1` (archived, default 0) restores the original
-  look (`OnTop`). The party option `party_tracer_depth` is not needed.
+  they are depth tested by default everywhere (Combat Arms' app and the
+  party apps), and `cl_tracer_through_walls 1` (archived, default 0)
+  draws them over everything (`OnTop`). The party option
+  `party_tracer_depth` is not needed. The spec has since agreed
+  (effects_sounds.md Corrections (2026-10-30) 3: the game depth-tests
+  tracers too; Quirk 1 withdrawn).
 - **The All-Star chainsaw doesn't stay on; its right click spams sound
   (user, 2026-10-29).** view_models.md section 3, "Attached effects": a
   weapon's `PVAttachFXName#` effects (the chainsaw's idle, the PSY bomb's
@@ -677,7 +679,9 @@ the user's go-ahead: no Actions runs unless asked.
   perpendicular to its camera-space direction; world width `Width`/2, no
   zoom or distance compensation; texture only (no colour or alpha fade);
   depth-tested, not written (so not through walls); own tracer from the
-  data flash point, drawn while scoped.
+  data flash point, drawn while scoped. **Done (2026-10-30)**:
+  `rules::tracer_corners` (one camera-space width direction, `Width`/2
+  across), the texture alone; effects_sounds tests t73, t74, t76.
 - **Ultimate Gun Game's Escape menu (user, 2026-10-29): fixed, confirm
   in a playtest** (`party_kit::esc_menu`, `party_kit::host`; DESIGN.md
   "The party apps' Escape menu"). It's

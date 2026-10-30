@@ -699,15 +699,16 @@ fn t63_integer_reperturb() {
     assert_eq!(draws.into_iter().collect::<Vec<_>>(), (-5..=5).collect::<Vec<_>>(), "11 offsets");
 }
 
-/// 64 (and weapon_classes.md 40). First-round latency at 60 fps: the
-/// M4A1 (frame-quantised) on updates 3, 10, 17 after the press's; the
-/// Remington 870 on update 2; the M92FS on 3.
+/// 64 (and weapon_classes.md 40, as corrected by its case 43). First-round
+/// latency at 60 fps: the M4A1 (frame-quantised) on updates 3, 10, 17
+/// after the press's; the Remington 870 on update 2; the M92FS on 2 (no
+/// pre-fire for pistols).
 #[test]
 fn t64_first_round_latency() {
     for (id, want) in [
         ("test:m4a1_frames", vec![3, 10, 17]),
         ("combat_arms:remington_870", vec![2]),
-        ("combat_arms:beretta_m92fs", vec![3]),
+        ("combat_arms:beretta_m92fs", vec![2]),
     ] {
         let mut sim = sim_at(1.0 / 60.0);
         let p = player(&mut sim, Vec3::new(30.0, 1.0, 30.0), 0.0, 1.0);

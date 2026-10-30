@@ -54,6 +54,8 @@ const INSTALL: &str = r#"
 [Weapon10] Name="Timing Minigun" Guntype=5 AmmoName0="762" ShotsPerClip=500 AccumPreFire=1 RapidFireCount=0
     PVModelNormal="TEST\Timing\PV_Minigun.LTB"
 [Weapon11] Name="Timing Knife" Guntype=0 AmmoName0="knife" PVModelNormal="TEST\Timing\PV_Knife.LTB"
+[Weapon12] Name="Timing Rifle Long" Guntype=4 AmmoName0="556" ShotsPerClip=30 RapidFireCount=0
+    PVModelNormal="TEST\Timing\PV_Rifle_Long.LTB"
 [Ammo3] Name="762" Type=1 MaxAmount=1000
 [Ammo4] Name="knife" Type=1 MaxAmount=1000 InstDamage=45 AltInstDamage=75
 "#;
@@ -64,6 +66,7 @@ const SMG: &str = "combat_arms:timing_smg";
 const PISTOL: &str = "combat_arms:timing_pistol";
 const MINIGUN: &str = "combat_arms:timing_minigun";
 const KNIFE: &str = "combat_arms:timing_knife";
+const RIFLE_LONG: &str = "combat_arms:timing_rifle_long";
 
 /// The copies' view models, as the test writes them (s at rate 1).
 fn models(app: &mut App) {
@@ -74,6 +77,15 @@ fn models(app: &mut App) {
         select: Some(0.5),
         // A 0 ms pre-fire, as the M4A1's: the update it takes stays.
         has_prefire: true,
+        ..default()
+    });
+    // A 200 ms pre-fire (weapon_classes.md case 44).
+    times.set("test/timing/pv_rifle_long.ltb", AnimTimes {
+        fire: Some(0.2),
+        reload: Some(1.0),
+        select: Some(0.5),
+        has_prefire: true,
+        prefire: Some(0.2),
         ..default()
     });
     times.set("test/timing/pv_shotgun.ltb", AnimTimes {
@@ -160,7 +172,7 @@ fn hooks(t: &Table) -> &Table {
 /// The copies' documents as text, to register.
 fn copies() -> Vec<(String, String)> {
     let docs = merged();
-    [RIFLE, SHOTGUN, SMG, PISTOL, MINIGUN, KNIFE]
+    [RIFLE, SHOTGUN, SMG, PISTOL, MINIGUN, KNIFE, RIFLE_LONG]
         .iter()
         .map(|id| (id.to_string(), toml::to_string(doc(&docs, id)).unwrap()))
         .collect()
@@ -710,4 +722,45 @@ fn a_client_without_the_models_takes_the_servers_sequence() {
     assert_eq!(c.get::<CaSpin>(cm).unwrap().params.prefire, 1.0);
     assert_eq!(c.get::<Knife>(ck).unwrap().attacks, s.get::<Knife>(server[2]).unwrap().attacks);
     assert_eq!(c.get::<Knife>(ck).unwrap().attacks[1].hits, vec![0.45]);
+}
+
+/// weapon_classes.md 43 and 44 (Corrections 2026-10-30, 1), at 60 updates
+/// a second: a pistol plays no pre-fire (the M92FS fires on update 2, as
+/// a primary shotgun; the M4A1's 0 ms pre-fire on update 3); a 200 ms
+/// pre-fire delays the first round by its whole length: `prefire` from
+/// update 1, seen done on update 14 (233.3 ms), the round on update 15
+/// (250 ms).
+#[test]
+fn t43_t44_pre_fire_by_class_and_length() {
+    use combat_arms::game::weapons::timing::prefire_latency;
+    assert_eq!(prefire_latency(0.0, 1.0 / 60.0), 3);
+    assert_eq!(prefire_latency(0.2, 1.0 / 60.0), 15);
+    let copies = copies();
+    let mut sim = Sim::with(CaSim, move |app| {
+        app.add_plugins(GreyboxMapPlugin);
+        register(app, &copies);
+    });
+    let tick = 1.0 / 60.0;
+    sim.set_tick_interval(tick);
+    let p = sim.spawn_character(Vec3::new(30.0, 1.0, 30.0), movement::ID);
+    sim.seconds(0.5);
+    sim.app.world_mut().entity_mut(p).insert(Health { current: 1.0, max: 1.0 });
+    for (id, updates) in [
+        ("combat_arms:beretta_m92fs", 2),
+        ("combat_arms:remington_870", 2),
+        ("combat_arms:m4a1", 3),
+        (RIFLE_LONG, 15),
+    ] {
+        let w = weapon::give(sim.app.world_mut(), p, id).unwrap();
+        assert_eq!(sim.app.world().get::<Trigger>(w).unwrap().latency, updates, "{id}");
+        sim.seconds(2.0);
+        sim.intent(p).fire = true;
+        let pressed = now(&sim);
+        let t = next_shot(&mut sim, w, 40).expect("a shot");
+        sim.intent(p).fire = false;
+        // The update that sees the press is update 0 (the tick after `pressed`).
+        let at = ((t - pressed) / tick).round() as u32 - 1;
+        assert_eq!(at, updates, "{id}: the round on update {at}");
+        sim.seconds(1.0);
+    }
 }

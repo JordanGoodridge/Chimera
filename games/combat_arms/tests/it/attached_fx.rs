@@ -311,7 +311,7 @@ fn t44_the_bombs_lights_follow_their_keys() {
 #[test]
 fn the_chainsaws_secondary_sounds_per_swing_and_hit() {
     let (mut sim, p) = sim();
-    draw(&mut sim, p, SAW);
+    let saw = draw(&mut sim, p, SAW);
     heard(&mut sim);
     sim.intent(p).secondary = true;
     sim.seconds(2.0);
@@ -323,10 +323,10 @@ fn the_chainsaws_secondary_sounds_per_swing_and_hit() {
     let swings = 3; // at 0, 0.9 and 1.8 s (the third started before the release)
     assert_eq!(revs, swings, "sound_key 1 once a swing: {:?}", h.0);
     assert_eq!(fires, swings * 7, "the fire sound once a hit: {:?}", h.0);
-    // One fire voice: each hit's replaces the last (no pile-up of the
-    // stock chainsaw's 2.9 s file).
+    // One fire voice (the attacker's with this weapon): each hit's
+    // replaces the last (no pile-up of the stock chainsaw's 2.9 s file).
     for s in h.0.iter().filter(|s| s.file == "test_snd/saw/fire.wav") {
-        assert_eq!((s.source, s.channel), (Some(p), Some(effects::sounds::CHANNEL_FIRE)));
+        assert_eq!((s.source, s.channel), (Some(saw), Some(effects::sounds::CHANNEL_FIRE)));
     }
     // The idle loop wasn't restarted by the swings.
     assert!(h.1.is_empty(), "{:?}", h.1);

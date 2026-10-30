@@ -827,7 +827,7 @@ fn shots_sound_local_for_you_and_3d_for_others() {
     sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
     let other = player(&mut sim, Vec3::new(24.0, 1.0, 20.0), 0.0);
     arm(&mut sim, me, "combat_arms:m4a1");
-    arm(&mut sim, other, "combat_arms:m4a1");
+    let gun = arm(&mut sim, other, "combat_arms:m4a1");
     heard(&mut sim);
     fire_once(&mut sim, me);
     let mine = heard(&mut sim);
@@ -840,7 +840,8 @@ fn shots_sound_local_for_you_and_3d_for_others() {
         .expect("their fire sound");
     assert!(fire.at.is_some());
     assert_eq!(fire.radii, (140.0, 2000.0));
-    assert_eq!((fire.source, fire.channel), (Some(other), Some(effects::sounds::CHANNEL_FIRE)));
+    // The fire voice is the shooter's weapon's (one per attacker and weapon).
+    assert_eq!((fire.source, fire.channel), (Some(gun), Some(effects::sounds::CHANNEL_FIRE)));
 }
 
 /// A round whose gun is gone when its effects are drawn (the gun game
@@ -1950,4 +1951,173 @@ fn a_held_player_holding_fire_shows_and_sounds_nothing() {
     assert!(clip(&sim) < before, "fires when free");
     assert!(sim.position(me).distance(spot) > 0.1, "walks when free");
     assert!(!heard(&mut sim).is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-30) 3: how a tracer strip is drawn.
+
+/// 73. The M4A1's AR02 (`Width` 15) seen from the side is 7.5 u across
+/// in the world, whatever the zoom (a world width: no floor or cap).
+#[test]
+fn t73_tracer_width() {
+    let look = effects::tracer_look(t(), &wfx("combat_arms:m4a1"), None).unwrap();
+    close(rules::tracer_across(look.width), 7.5, 1e-6, "AR02 across");
+    // Seen from the side, its middle 1000 u ahead: the corners 7.5 u apart.
+    let cam = Transform::IDENTITY;
+    let (a, b) = (Vec3::new(-300.0, 0.0, -1000.0), Vec3::new(300.0, 0.0, -1000.0));
+    let [ta, _, _, tb] = rules::tracer_corners(a, b, &cam, look.width).unwrap();
+    close((ta - tb).length(), 7.5, 1e-4, "world width");
+    close((ta - tb).x, 0.0, 1e-4, "across the strip");
+}
+
+/// 74. One width direction for both ends: Δ = (−10, 10) → n = (0.7071,
+/// 0.7071, 0); corners at each end ± 3.75·n (AR02). Our camera space looks
+/// along −Z (x right, y up as the spec's), so the spec's z 50 is −50.
+#[test]
+fn t74_tracer_facing() {
+    let (a, b) = (Vec3::new(10.0, -10.0, -50.0), Vec3::new(0.0, 0.0, -1050.0));
+    let n = rules::tracer_side(a, b).unwrap();
+    assert!((n - Vec3::new(0.7071, 0.7071, 0.0)).length() < 1e-4, "{n}");
+    let [ah, bh, bl, al] = rules::tracer_corners(a, b, &Transform::IDENTITY, 15.0).unwrap();
+    for (c, want) in [(ah, a + 3.75 * n), (bh, b + 3.75 * n), (bl, b - 3.75 * n), (al, a - 3.75 * n)] {
+        assert!((c - want).length() < 1e-4, "{c} vs {want}");
+    }
+    // A turned and moved camera: the same strip in its frame, the same n.
+    let cam = Transform::from_xyz(100.0, 20.0, -5.0).with_rotation(Quat::from_rotation_y(0.7) * Quat::from_rotation_x(-0.2));
+    let [ah2, bh2, ..] = rules::tracer_corners(cam * a, cam * b, &cam, 15.0).unwrap();
+    assert!((ah2 - cam * ah).length() < 1e-3 && (bh2 - cam * bh).length() < 1e-3);
+    // Pointing straight at the eye: not seen.
+    assert!(rules::tracer_side(Vec3::new(0.0, 0.0, -10.0), Vec3::new(0.0, 0.0, -500.0)).is_none());
+}
+
+/// 76. A zoomed sniper's own tracer is made, its tail at the data flash
+/// point F (camera + `Pos` + `MuzzlePos` in camera axes, as unzoomed); the
+/// record's colour and alpha play no part in it (the draw is the texture's).
+#[test]
+fn t76_scoped_own_tracer() {
+    use combat_arms::game::{view_model::CaViewModel, weapons::CaZoom};
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let w = arm(&mut sim, me, "combat_arms:l96a1");
+    sim.intent(me).pitch = 0.0;
+    sim.intent(me).secondary = true;
+    sim.ticks(1);
+    sim.intent(me).secondary = false;
+    sim.seconds(0.5);
+    let z = sim.app.world().get::<CaZoom>(w).unwrap();
+    assert!(z.level > 0 && z.transition.is_none(), "zoomed in");
+    let f = sim.app.world().get::<CaViewModel>(me).unwrap().flash_point;
+    fire_once(&mut sim, me);
+    let list = &sim.app.world().resource::<CaTracers>().0;
+    assert_eq!(list.len(), 1, "SR01: every shot, scoped too");
+    let from = list[0].path.from * UNIT;
+    assert!((from - f).length() < 0.02, "tail at F: {from} vs {f}");
+}
+
+// ---------------------------------------------------------------------------
+// Corrections (2026-10-30) 2 and special_weapons.md 5.1: swing sounds.
+
+const M9: &str = "combat_arms:m9_knife";
+const M9_FIRE: &str = "guns_snd_melee/m9/fire.wav";
+const M9_ALT: &str = "test_snd/m9/alt_fire.wav";
+
+/// The M9 in hand with an `Alt_FireSnd` of its own (data test: the stock
+/// M9 has none), the swing aimed level at nothing.
+fn knife_with_alt(sim: &mut Sim, p: Entity) -> Entity {
+    let w = arm(sim, p, M9);
+    sim.app.world_mut().get_mut::<CaWeaponFx>(w).unwrap().alt_fire_sound = M9_ALT.into();
+    sim.intent(p).pitch = 0.6;
+    w
+}
+
+/// One swing with the button `secondary` (held for one tick), then
+/// time for its hits.
+fn swing(sim: &mut Sim, p: Entity, secondary: bool) {
+    if secondary {
+        sim.intent(p).secondary = true;
+    } else {
+        sim.intent(p).fire = true;
+    }
+    sim.ticks(1);
+    sim.intent(p).fire = false;
+    sim.intent(p).secondary = false;
+    sim.seconds(1.3);
+}
+
+/// effects_sounds 71 / special_weapons 44: the attacker's own client plays
+/// `Alt_FireSnd` for a secondary swing; others hear `FireSnd` for both.
+#[test]
+fn t71_own_alt_fire_sound() {
+    let wfx_ = |alt: &str| CaWeaponFx {
+        fire_sound: "a.wav".into(),
+        alt_fire_sound: alt.into(),
+        ..wfx(M9)
+    };
+    let w = wfx_("b.wav");
+    assert_eq!(effects::fire_sound_of(&w, None, true, false).unwrap().0, "a.wav");
+    assert_eq!(effects::fire_sound_of(&w, None, true, true).unwrap().0, "b.wav");
+    assert_eq!(effects::fire_sound_of(&w, None, false, false).unwrap().0, "a.wav", "others: plain");
+    assert_eq!(effects::fire_sound_of(&wfx_(""), None, true, true).unwrap().0, "a.wav", "none named");
+
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let other = player(&mut sim, Vec3::new(24.0, 1.0, 20.0), 0.0);
+    knife_with_alt(&mut sim, me);
+    knife_with_alt(&mut sim, other);
+    heard(&mut sim);
+    let fire = |h: &[CaSound], f: &str| h.iter().filter(|s| s.file == f).count();
+    swing(&mut sim, me, false);
+    let h = heard(&mut sim);
+    assert_eq!((fire(&h, M9_FIRE), fire(&h, M9_ALT)), (2, 0), "primary: two hit keys, FireSnd: {h:?}");
+    swing(&mut sim, me, true);
+    let h = heard(&mut sim);
+    assert_eq!((fire(&h, M9_FIRE), fire(&h, M9_ALT)), (0, 1), "secondary: Alt_FireSnd: {h:?}");
+    assert!(h.iter().filter(|s| s.file == M9_ALT).all(|s| s.at.is_none()), "local");
+    swing(&mut sim, other, true);
+    let h = heard(&mut sim);
+    assert_eq!((fire(&h, M9_FIRE), fire(&h, M9_ALT)), (1, 0), "others hear FireSnd (Quirk 10): {h:?}");
+    assert!(h.iter().filter(|s| s.file == M9_FIRE).all(|s| s.at.is_some()), "3D");
+}
+
+/// effects_sounds 72 / special_weapons 43: one fire voice per attacker
+/// and weapon, both buttons sharing it; another weapon's is its own.
+#[test]
+fn t72_shared_fire_voice() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    let knife = knife_with_alt(&mut sim, me);
+    heard(&mut sim);
+    swing(&mut sim, me, false);
+    swing(&mut sim, me, true);
+    let h = heard(&mut sim);
+    let voices: Vec<_> = h.iter().filter(|s| s.file == M9_FIRE || s.file == M9_ALT).map(|s| (s.source, s.channel)).collect();
+    assert_eq!(voices.len(), 3);
+    assert!(voices.iter().all(|v| *v == (Some(knife), Some(effects::sounds::CHANNEL_FIRE))), "{voices:?}");
+    let gun = arm(&mut sim, me, "combat_arms:m4a1");
+    sim.intent(me).pitch = 0.0;
+    heard(&mut sim);
+    fire_once(&mut sim, me);
+    let h = heard(&mut sim);
+    let shot = h.iter().find(|s| s.file == "guns_snd_ar/m4a1/fire.wav").expect("the shot");
+    assert_eq!(shot.source, Some(gun), "another weapon: its own voice");
+}
+
+/// special_weapons 45: a swing at nothing plays its fire sound per hit key
+/// and no impact sound (a sky impact is silent).
+#[test]
+fn t45_a_miss_is_the_fire_sound_alone() {
+    let mut sim = sim();
+    let me = player(&mut sim, Vec3::new(20.0, 1.0, 20.0), 0.0);
+    sim.app.world_mut().entity_mut(me).insert(LocalPlayer);
+    arm(&mut sim, me, M9);
+    // Up at the open sky of the greybox.
+    sim.intent(me).pitch = 1.4;
+    heard(&mut sim);
+    swing(&mut sim, me, false);
+    let h = heard(&mut sim);
+    assert_eq!(h.iter().filter(|s| s.file == M9_FIRE).count(), 2, "{h:?}");
+    assert!(!h.iter().any(|s| s.file.contains("impact")), "no impact sound: {h:?}");
 }
