@@ -45,6 +45,7 @@ links (`checks/tests/it/architecture.rs`). Its failure messages say how to fix t
 ```
 cargo run --features dev       # the game, `cs_source` (apps/cs_source); day-to-day
                                    # (dynamic linking + remote protocol)
+cargo run --profile devfull --features dev   # full debug info for inspecting locals
 cargo test --features dev -- --skip heavy::   # whole fast tier
 cargo nextest run --features dev   # full suite (or `cargo test --features dev`,
                                    # 2x slower)

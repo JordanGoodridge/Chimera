@@ -2177,8 +2177,9 @@ The hooks, a one-line change in chimera_sim staged in a warm slot (load
 | new pre-push (identity, traces, repo_checks) | 38 s |
 | `post-push-tests.sh`, nothing to test but repo_checks: its build checks from a test-only slot | 1,376 s (the first run; the checks' builds then stay warm) |
 
-`cargo run`/`build` keep full debug info (the dev profile), so a slot
-that also runs the game builds the dependencies a second time.
+At the time of this measurement, `cargo run`/`build` kept full debug info,
+so a slot that also ran the game built the dependencies a second time.
+The default dev profile now uses line tables too (see below).
 
 Linking cs_source's test binary (478 MB, line tables), replaying its
 link command three times under load 33: LLD 4.3, 2.8, 3.5 s; mold 2.5,
@@ -2186,6 +2187,39 @@ link command three times under load 33: LLD 4.3, 2.8, 3.5 s; mold 2.5,
 below it), so mold is only in the slots' environment, where the one full
 rebuild a rustflags change costs comes with a new slot anyway;
 `.cargo/config.toml` stays without it (Windows and other clones).
+
+### Sharing dev and test artifacts (2026-10-30)
+
+The dev and test profiles both use `debug = "line-tables-only"`. Ordinary
+`cargo build`/`run` and `cargo test` can reuse dependency artifacts when
+their features and other compiler settings match. Backtraces retain file
+and line information; inspecting local variables requires full debug info:
+
+```
+cargo run --profile devfull --features dev
+```
+
+`devfull` inherits dev's optimization and incremental settings but uses
+`debug = 2`, with its own `target/devfull` directory. Tests already used
+line tables, so their debug-info setting is unchanged. A dev-only cache
+will need one rebuild when adopting the default; keep the warm target.
+This does not eliminate rebuilds caused by different feature sets or
+changes to foundational workspace crates.
+
+Windows measurement, same warm worktree, `cargo test -p source_formats
+--no-run` followed by `cargo build -p source_formats` (Cargo JSON artifact
+records, unchanged sources):
+
+| dev debug info | build time | rebuilt artifacts | fresh artifacts shared with the test build |
+|---|---|---|---|
+| full (before) | 16.78 s | 21 | 4 |
+| line tables (after) | 4.35 s | 1 | 24 |
+
+The remaining compiled artifact was `source_formats` itself; all 24
+dependency artifacts were fresh and their paths matched the test build.
+This measures the first test-to-dev transition, not a no-op build or a
+whole-game speedup. Both profiles cache subsequent builds; matching them
+avoids paying for a second dependency build when first switching modes.
 
 ### The first crate: `source_formats` (2026-10-14)
 
