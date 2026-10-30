@@ -70,14 +70,16 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
-- **Tracers seen through walls (user, 2026-10-29).** Combat Arms draws
-  tracers with depth testing off (effects_sounds.md section 4), so its
-  tracers show through walls by design. CS:S's must not. Test each game's
-  guns firing at a wall with an observer behind it. Only Combat Arms'
-  tracers may show through; a CS:S one is a bug. Open (user): in party
-  modes Combat Arms' through-wall tracers give shooters away where CS:S's
-  don't. Keep them for parity, or add an option (`party_tracer_depth`,
-  off by default) that depth-tests them?
+- **Tracers seen through walls (user, 2026-10-29): done, decided by the
+  user 2026-10-30.** Found: CS:S's tracers (and impacts, flashes, every
+  effect group's particles) were already depth tested
+  (`ParticleDrawMaterial`; tests `particle_depth::`), and no CS:S effect
+  showed through walls. Combat Arms' tracers drew with no depth test
+  (effects_sounds.md section 4, Quirk 1); the user called that a bug, so
+  a deliberate deviation from the spec: they are depth tested by default
+  everywhere (Combat Arms' app and the party apps), and
+  `cl_tracer_through_walls 1` (archived, default 0) restores the original
+  look (`OnTop`). The party option `party_tracer_depth` is not needed.
 - **The All-Star chainsaw doesn't stay on; its right click spams sound
   (user, 2026-10-29).** view_models.md section 3, "Attached effects": a
   weapon's `PVAttachFXName#` effects (the chainsaw's idle, the PSY bomb's
