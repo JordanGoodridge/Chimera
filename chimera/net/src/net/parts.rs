@@ -22,14 +22,19 @@
 //!   `JoinRules` (how a remote player comes in: the join menus or a team,
 //!   out of the game while its client loads the map, in when it has it),
 //!   `BotHooks` (kick a bot, the quota in step with the bots there are;
-//!   bots are `core::Bot`), `Holds` (when the rules' freeze ends and what
-//!   a frozen player's intent keeps, for the client's prediction) and
-//!   `NetHooks` (what a part takes off when this process stops serving;
-//!   what it places before movement in each replayed tick). Each has a
-//!   default for a game without join rules of its own (Combat Arms so
-//!   far): players join on the smaller team (the network's pick) and come
-//!   in at a free spawn point of their team, else any (`enter_at_spawn`),
-//!   bots are despawned, nothing is held.
+//!   bots are `core::Bot`) and `Holds` (when the rules' freeze ends and
+//!   what a frozen player's intent keeps, for the client's prediction).
+//!   Each game registers its own under its id
+//!   (`gameplay::GameplayAppExt::game_hook`) and the network calls the
+//!   gameplay's game's (`active`: the rules' slot, the bots' for
+//!   `BotHooks`), so two games' hooks live side by side and a gameplay
+//!   switch switches them. Each has a default for a game without its own
+//!   (a minigame's rules): players join on the smaller team (the
+//!   network's pick) and come in at a free spawn point of their team,
+//!   else any (`enter_at_spawn`), bots are despawned, a frozen player
+//!   keeps only its look. `NetHooks` lists what every part does when this
+//!   process stops serving and what it places before movement in each
+//!   replayed tick.
 //! - **Ordering**: a part orders its client-side holds before
 //!   `predict::RecordCommand` (CS:S's `BombHold`), as the rules' freeze is
 //!   applied in `SimSet::Rules`.
@@ -192,7 +197,7 @@ pub struct NetHooks {
 
 /// How a remote player comes into the game (the game's join flow; CS:S's
 /// `rules::JoinChoice`, `hold_out`, `enter_game`).
-#[derive(Resource, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct JoinRules {
     /// A remote player's character was just spawned (on the smaller team,
     /// dead: `core::Dead`), with what its client asked for (its
@@ -218,6 +223,13 @@ impl Default for JoinRules {
             enter: enter_at_spawn,
             choice: |_| "auto".into(),
         }
+    }
+}
+
+impl JoinRules {
+    /// The gameplay's rules' join rules (`gameplay::GameHooks`), else the default.
+    pub fn active(world: &World) -> Self {
+        chimera_core::gameplay::active_hook::<Self>(world, |g| g.rules).unwrap_or_default()
     }
 }
 
@@ -283,7 +295,7 @@ pub fn enter_at_spawn(world: &mut World, e: Entity) {
 }
 
 /// Bots (`core::Bot`) as the game keeps them (CS:S's `bot_quota`).
-#[derive(Resource, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct BotHooks {
     /// Remove this bot (`kick <name>`), the quota one lower.
     pub kick: fn(&mut World, Entity),
@@ -304,9 +316,16 @@ impl Default for BotHooks {
     }
 }
 
+impl BotHooks {
+    /// The hooks of the gameplay's bots' game (`gameplay::GameHooks`), else the default.
+    pub fn active(world: &World) -> Self {
+        chimera_core::gameplay::active_hook::<Self>(world, |g| g.bots).unwrap_or_default()
+    }
+}
+
 /// What the rules hold a player to, for a client predicting its own (the
 /// server sends whether it is held: `OwnState::held`, `frozen_until`).
-#[derive(Resource, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Holds {
     /// The server: when the rules' freeze (`core::FreezeTime`) ends
     /// (`SimClock::now`, s), if they know; else it holds until it lifts.
@@ -327,6 +346,13 @@ impl Default for Holds {
                 ..default()
             },
         }
+    }
+}
+
+impl Holds {
+    /// The gameplay's rules' holds (`gameplay::GameHooks`), else the default.
+    pub fn active(world: &World) -> Self {
+        chimera_core::gameplay::active_hook::<Self>(world, |g| g.rules).unwrap_or_default()
     }
 }
 

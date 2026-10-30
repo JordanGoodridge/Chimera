@@ -488,6 +488,15 @@ impl Plugin for MinigamePlugin {
             .init_resource::<ladder::LaddersMade>()
             .add_systems(Update, hud::update)
             .add_minigame_rules(ladder::RULES);
+        // A map loaded while a minigame is the rules: counted
+        // (`core::MapLoads`: a network client waits on the count after a
+        // map change, the kill feed starts over); no game's fresh game
+        // runs (a server's map change restarts the match itself).
+        gameplay::GameplayAppExt::game_hook(
+            app,
+            MINIGAME,
+            gameplay::NewGame(|w| w.get_resource_or_init::<crate::core::MapLoads>().0 += 1),
+        );
         if !app.is_plugin_added::<crate::identity::IdentityPlugin>() {
             app.add_plugins(crate::identity::IdentityPlugin);
         }

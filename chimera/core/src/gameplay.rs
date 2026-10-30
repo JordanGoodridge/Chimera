@@ -29,12 +29,22 @@
 //! `run_if` takes the gameplay's as a second one (its anonymous set
 //! exists already); one without takes it with `distributive_run_if`.
 //!
+//! A game's data hooks of a kind the engine calls one of (the network's
+//! join, hold and bot hooks, `NewGame`, the log's subjects) are
+//! kept per game (`GameHooks<T>`, registered with
+//! `GameplayAppExt::game_hook`): the engine calls the entry of the game
+//! filling the slot (`active_hook`; the rules' slot, the bots' for the
+//! bots' hooks), so a switch switches them and the plugin order doesn't
+//! matter (docs/plans/active/ecs-cleanup.md, step 2). A slot whose game
+//! has none (a minigame's rules, `chimera`, registers only those it
+//! needs) gets the kind's `any` entry, else its default.
+//!
 //! Known shortcuts: the slots are game ids and a tick; the character kit
 //! and the weapon sets offered (A1, D2) aren't slots yet (a weapon's
-//! hooks are per entity, any registered set is offered). Hooks a game
-//! keeps in single-slot resources (`core::NewGame`, the network's join,
-//! bot and hold hooks) and its console commands aren't switched with the
-//! gameplay, and the shell reads the binds at start only. A HUD gated off
+//! hooks are per entity, any registered set is offered). A game's
+//! console commands aren't switched with the gameplay, nor
+//! `weapon::view_anim::ViewAnimRules` (plan step 3), and the shell reads
+//! the binds at start only. A HUD gated off
 //! keeps the nodes it spawned unless it marks them for the shell to hide
 //! (`client::hud::HudRoot`) or builds them from the map's HUD look
 //! (Combat Arms' and CS:S's do).
@@ -109,12 +119,97 @@ pub fn slot_game(world: &World, slot: impl Fn(&Gameplay) -> &'static str) -> Opt
         .or_else(|| games.default_game())
 }
 
+/// One kind of a game's hooks (`T`: the network's `JoinRules`, `Holds`,
+/// `BotHooks`, `NewGame`, `game_log::LogSubjects`), an entry per
+/// game id, so each game registers its own beside the others'
+/// (`GameplayAppExt::game_hook`) and the gameplay picks which runs
+/// (`active_hook`), not the last plugin added. `any` is the entry for a
+/// game without its own (the network's log subjects).
+#[derive(Resource)]
+pub struct GameHooks<T> {
+    games: Vec<(&'static str, T)>,
+    any: Option<T>,
+}
+
+impl<T> Default for GameHooks<T> {
+    fn default() -> Self {
+        Self {
+            games: Vec::new(),
+            any: None,
+        }
+    }
+}
+
+impl<T: Copy> GameHooks<T> {
+    /// `game`'s entry (replacing its earlier one).
+    pub fn set(&mut self, game: &'static str, hooks: T) {
+        match self.games.iter_mut().find(|(g, _)| *g == game) {
+            Some(entry) => entry.1 = hooks,
+            None => self.games.push((game, hooks)),
+        }
+    }
+
+    /// The entry for a game without its own.
+    pub fn set_any(&mut self, hooks: T) {
+        self.any = Some(hooks);
+    }
+
+    /// `game`'s own entry.
+    pub fn get(&self, game: &str) -> Option<T> {
+        self.games.iter().find(|(g, _)| *g == game).map(|(_, h)| *h)
+    }
+
+    /// The entry of the game filling `slot` of `gameplay`; without a
+    /// gameplay, the first game's registered (as `default_gameplay` makes
+    /// the first game's parts play); else `any`.
+    pub fn pick(&self, gameplay: Option<&Gameplay>, slot: impl Fn(&Gameplay) -> &'static str) -> Option<T> {
+        match gameplay {
+            Some(g) => self.get(slot(g)),
+            None => self.games.first().map(|(_, h)| *h),
+        }
+        .or(self.any)
+    }
+}
+
+/// The active `T` hooks: the entry of the game filling `slot` of the
+/// gameplay (`|g| g.rules`; the bots' `|g| g.bots`), else `any`
+/// (`GameHooks::pick`); None when there is neither (the caller's
+/// default).
+pub fn active_hook<T: Copy + Send + Sync + 'static>(
+    world: &World,
+    slot: impl Fn(&Gameplay) -> &'static str,
+) -> Option<T> {
+    world
+        .get_resource::<GameHooks<T>>()?
+        .pick(world.get_resource::<Gameplay>(), slot)
+}
+
+/// The rules' fresh game on a newly loaded map (CS:S's `rules::new_game`:
+/// everyone respawned, rounds from the start), which the rules register
+/// under their game's id (`GameplayAppExt::game_hook`) so what loads maps
+/// (the client's `map` command, the greybox) names none.
+#[derive(Clone, Copy)]
+pub struct NewGame(pub fn(&mut World));
+
+/// Start a fresh game on the map just loaded: the gameplay's rules'
+/// `NewGame` (`active_hook`); nothing without one.
+pub fn new_game(world: &mut World) {
+    if let Some(hook) = active_hook::<NewGame>(world, |g| g.rules) {
+        (hook.0)(world);
+    }
+}
+
 /// Setting the gameplay on an app.
 pub trait GameplayAppExt {
     /// The app's gameplay (replacing any) and its tick (`Time<Fixed>`).
     fn set_gameplay(&mut self, gameplay: Gameplay) -> &mut Self;
     /// `gameplay` unless the app has one: a game's gated parts.
     fn default_gameplay(&mut self, gameplay: Gameplay) -> &mut Self;
+    /// `game`'s `T` hooks (`GameHooks`), used while the gameplay's slot is
+    /// `game`'s.
+    fn game_hook<T: Copy + Send + Sync + 'static>(&mut self, game: &'static str, hooks: T) -> &mut Self;
+    /// The `T` hooks of a game without its own (`GameHooks::set_any`).
+    fn any_game_hook<T: Copy + Send + Sync + 'static>(&mut self, hooks: T) -> &mut Self;
 }
 
 impl GameplayAppExt for App {
@@ -126,6 +221,16 @@ impl GameplayAppExt for App {
         if !self.world().contains_resource::<Gameplay>() {
             self.insert_resource(gameplay);
         }
+        self
+    }
+
+    fn game_hook<T: Copy + Send + Sync + 'static>(&mut self, game: &'static str, hooks: T) -> &mut Self {
+        self.world_mut().get_resource_or_init::<GameHooks<T>>().set(game, hooks);
+        self
+    }
+
+    fn any_game_hook<T: Copy + Send + Sync + 'static>(&mut self, hooks: T) -> &mut Self {
+        self.world_mut().get_resource_or_init::<GameHooks<T>>().set_any(hooks);
         self
     }
 }
@@ -191,6 +296,33 @@ mod tests {
         assert_eq!(frame(&mut app), ["a rules", "a hud", "a hud 2"]);
         switch_gameplay(app.world_mut(), Gameplay { hud: "a_game", ..Gameplay::of(&B) });
         assert_eq!(frame(&mut app), ["b rules", "a hud", "a hud 2"]);
+    }
+
+    /// A game's hooks are the gameplay's slot's entry, whichever game
+    /// registered last; the first game's without a gameplay; `any` for a
+    /// game without its own.
+    #[test]
+    fn hooks_follow_the_gameplay_not_the_plugin_order() {
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        struct Hook(&'static str);
+        for order in [["a_game", "b_game"], ["b_game", "a_game"]] {
+            let mut app = App::new();
+            for game in order {
+                app.game_hook(game, Hook(game));
+            }
+            let first = order[0];
+            assert_eq!(active_hook::<Hook>(app.world(), |g| g.rules), Some(Hook(first)), "no gameplay");
+            app.set_gameplay(Gameplay::of(&A));
+            assert_eq!(active_hook::<Hook>(app.world(), |g| g.rules), Some(Hook("a_game")));
+            switch_gameplay(app.world_mut(), Gameplay { bots: "a_game", ..Gameplay::of(&B) });
+            assert_eq!(active_hook::<Hook>(app.world(), |g| g.rules), Some(Hook("b_game")));
+            assert_eq!(active_hook::<Hook>(app.world(), |g| g.bots), Some(Hook("a_game")));
+            switch_gameplay(app.world_mut(), Gameplay { rules: "c_game", ..Gameplay::of(&B) });
+            assert_eq!(active_hook::<Hook>(app.world(), |g| g.rules), None, "no entry, no `any`");
+            app.any_game_hook(Hook("any"));
+            assert_eq!(active_hook::<Hook>(app.world(), |g| g.rules), Some(Hook("any")));
+            assert_eq!(active_hook::<Hook>(app.world(), |g| g.hud), Some(Hook("b_game")));
+        }
     }
 
     /// The tick follows the gameplay; the first default holds; a slot's

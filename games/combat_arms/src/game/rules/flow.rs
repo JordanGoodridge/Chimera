@@ -358,7 +358,7 @@ pub fn enter_game(world: &mut World, e: Entity) {
     }
 }
 
-/// A fresh match on the map just loaded (`core::NewGame`), or by
+/// A fresh match on the map just loaded (`gameplay::NewGame`), or by
 /// `ca_restart`: waiting for players, the cursors at 0, the statistics
 /// cleared; the map loads counted.
 pub fn new_game(world: &mut World) {

@@ -348,7 +348,8 @@ chimera_core          source_formats (source/formats/)   formats as plain data: 
                                   query_cache under console: kept query states)
 ```
 
-Exact edges: game_log uses core and console; net uses the engine's
+Exact edges: game_log uses core, console and gameplay (the gameplay's
+game names players in the log); net uses the engine's
 simulation (core, console, game_log, slots, character, movement, map,
 weapon) and names no game or Source logic (`minigame_net` uses net,
 minigame, mode and core):
@@ -356,7 +357,8 @@ logic and games/<name> use it to register what they replicate (their
 parts, `net::parts`), and harness and client use it; bot uses core, console,
 slots, character, map, weapon (grenades
 it carries and throws), objectives (planting, defusing); rules uses core,
-console, game_log, weapon, objectives; objectives uses core, console, slots,
+console, game_log, gameplay (it registers its hooks by game), weapon,
+objectives; objectives uses core, console, slots,
 character, map, weapon (games use it too, to fill in their bomb and
 hostages); weapon uses core, console, map; logic uses core, console,
 map (games feed it through `MapData::entities`; harness and client may use
