@@ -55,7 +55,10 @@
 //!    step crosses (the character's, then its hit-box object's, the hit
 //!    spheres' bounds) while the line of motion passes a hit sphere slow
 //!    it by flesh for each, no mirror, every step it is inside
-//!    (`character_touches`); props slow it by their surface the same way;
+//!    (`character_touches`; not a party's spawn-protected, Chimera's
+//!    `core::SpawnProtected` in its bullets window, which every grenade,
+//!    bolt, blast and flash here leaves out: `GrenadeWorld::bodies`);
+//!    props slow it by their surface the same way;
 //!    grenades in flight whose box it crosses (`box_half`) slow both by
 //!    metal, between one thrower's only with `hits_same_kind`). A
 //!    detonation (8) sends the effect (`Detonated`) and applies its
@@ -1143,6 +1146,9 @@ pub(crate) struct GrenadeWorld<'w, 's> {
     volumes: Query<'w, 's, &'static CaVolume>,
     pub(crate) table: Res<'w, CaGrenadeSurfaces>,
     pub(crate) entities: &'w bevy::ecs::entity::Entities,
+    /// Spawn-protected characters (Chimera's `core::SpawnProtected`, a
+    /// party's): not among `bodies` in their bullets window.
+    protected: (Query<'w, 's, &'static crate::core::SpawnProtected>, Option<Res<'w, crate::core::SimClock>>),
 }
 
 /// What a character is to grenades: its box (m), centre (m), spheres (m)
@@ -1232,11 +1238,16 @@ impl GrenadeWorld<'_, '_> {
         !self.blocked_one_way(a, b) && !self.blocked_one_way(b, a)
     }
 
-    /// The living characters, in no particular order.
+    /// The living characters, in no particular order (not the
+    /// spawn-protected in their bullets window).
     pub(crate) fn bodies(&self) -> Vec<Body> {
         let mut out = Vec::new();
+        let now = self.protected.1.as_ref().map_or(0.0, |c| c.now);
         for (entity, t, intent, state, aabb, spheres, health, flash, (identity, boxes)) in &self.characters {
-            if health.current <= 0.0 {
+            // The spawn-protected in their bullets window aren't there:
+            // grenades and bolts fly through, blasts and flashes leave
+            // them out.
+            if health.current <= 0.0 || self.protected.0.get(entity).is_ok_and(|p| p.passes_attacks(now)) {
                 continue;
             }
             let data = spheres.map_or(*MALE, |s| s.0);

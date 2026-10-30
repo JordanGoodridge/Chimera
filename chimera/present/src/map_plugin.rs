@@ -289,7 +289,7 @@ impl MapLayers for Present {
         Some([
             (
                 render::tint::apply_brush_tints,
-                render::tint::apply_character_looks,
+                (render::tint::fade_protected, render::tint::apply_character_looks).chain(),
                 render::merge::sync_merged_brushes,
             )
                 .chain(),

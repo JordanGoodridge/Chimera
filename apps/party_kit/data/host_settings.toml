@@ -87,5 +87,5 @@ choices = [["", "Minigame's"], ["0", "0"], ["3", "3"], ["5", "5"], ["10", "10"]]
 label = "Spawn protection"
 cvar = "mp_spawn_protection"
 key = "spawn.respawn.protection"
-help = "Seconds a respawned player can't be hurt (ended by firing)."
+help = "Seconds a respawned player can't be hurt: shots pass through, drawn see-through (ended by attacking)."
 choices = [["", "Minigame's"], ["0", "Off"], ["1", "1 s"], ["1.5", "1.5 s"], ["2", "2 s"], ["3", "3 s"]]

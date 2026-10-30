@@ -110,6 +110,13 @@ the user's go-ahead: no Actions runs unless asked.
     no damage, blood, impact or decal on them. That part is already
     true for damage and effects. Firing already ends the protection
     (`fire_ends`, the default).
+  *Fixed, confirm in a playtest (2026-10-29):* the party gun games
+  protect for 2 s; the body draws at alpha 0.5 on every machine
+  (`render::tint::fade_protected`, from the replicated protection) and
+  fades back over 0.2 s; in the bullets window rounds, swings and thrown
+  grenades pass through the player to what is behind (both games'
+  deliveries), blasts leave it out; any attack (fire key, a knife's
+  stab, a throw) ends the protection. Its blob shadow stays as dark.
 - **CS:S rungs get a character too (user, 2026-10-29): fixed, confirm in
   a playtest.** As for Combat Arms rungs, each CS:S rung draws one of
   CS:S's eight player models (the stock T and CT ones; no other is
@@ -1087,9 +1094,9 @@ sections above already list.
   puff, decal, impact sound, hit indicator, name-tag flash or reaction:
   `weapon::impact::hide_protected`) and deals nothing, and the windows
   replicate on each client's clock (`minigame_net::NetProtected`), so
-  there is no blood without damage. Follow-up: an optional visible
-  marker (a tint or icon, a party option, default off; not Combat
-  Arms').
+  there is no blood without damage. The visible marker came after
+  (2026-10-29, the user's): the protected body draws see-through (see
+  "Spawn protection: 2 s, see-through, shot through").
 - **Ladder rules players expect from gun game.** No cost for a suicide,
   a fall, `kill` or one's own grenade (gun game mods take a level, so
   `kill` isn't a free reset); a late joiner starts on the first rung
