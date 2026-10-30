@@ -29,10 +29,11 @@ max = 30
 automatic = false
 cycle = 0.18
 timing = "accumulate"
-# weapon_firing.md Corrections 10: the update that sees the press only
-# enters the firing state; the pre-fire (even a 0 ms one) and fire_0 take
-# one update each, so the first round comes 3 updates on.
-latency = 3
+# weapon_classes.md Corrections (2026-10-30) 1: pistols (the secondary
+# class) play no pre-fire: the update that sees the press enters the
+# firing state, fire_0 starts on the next and its key is consumed on the
+# one after, so the first round comes 2 updates on.
+latency = 2
 
 # [TW: Clip / total] 15, [TW: Reload] 1500 ms.
 [magazine]

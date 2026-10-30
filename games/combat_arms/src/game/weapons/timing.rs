@@ -9,10 +9,13 @@
 //! model's combined list (its own animations, then its children's:
 //! `model::load`). Also from the model:
 //!
-//! - the pre-fire's presence: a gun whose class plays one (the template's
-//!   `trigger.latency` 3) and whose model has no `prefire` takes the
-//!   first round an update sooner (latency 2; weapon_firing.md, "Trigger
-//!   and fire cycle");
+//! - the pre-fire: a gun whose class plays one (the template's
+//!   `trigger.latency` 3: not pistols, knives or primary shotguns) and
+//!   whose model has no `prefire` takes the first round an update sooner
+//!   (latency 2; weapon_firing.md, "Trigger and fire cycle"); one with a
+//!   `prefire` waits for its whole length (`prefire_latency`, at the
+//!   simulation's tick when the weapon is built: weapon_classes.md
+//!   Corrections (2026-10-30) 1);
 //! - a spinning gun's (`CaSpin`, the merge's `combat_arms:spin` table
 //!   where `AccumPreFire` is set): the spin-up `prefire`, the spin-down
 //!   `postfire`, the loop `fire_0`, a round per `FIRE_KEY` before the
@@ -338,6 +341,11 @@ pub fn push(world: &mut World, e: Entity, bytes: &[u8]) {
 pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
     let (fire_rate, select_rate) = e.get::<CaItem>().map_or((0.0, 0.0), |i| (i.fire_rate, i.select_rate));
     let rate = fire_animation_rate(fire_rate, 0.0);
+    // The weapon update's length (the simulation's tick).
+    let tick = e
+        .world()
+        .get_resource::<Time<Fixed>>()
+        .map_or(crate::game::TICK_INTERVAL, |t| t.timestep().as_secs_f64());
     if e.contains::<Knife>() {
         knife_times(e, t, fire_rate);
     }
@@ -383,6 +391,9 @@ pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
             // A class that plays the pre-fire (3: the update that sees the
             // press, the pre-fire's, `fire_0`'s), without one in the model.
             3 if !t.has_prefire => 2,
+            // With one: its whole length (weapon_classes.md Corrections
+            // (2026-10-30) 1).
+            3 => prefire_latency(t.prefire.unwrap_or(0.0) / rate, tick),
             l => l,
         };
     }
@@ -407,12 +418,27 @@ pub fn apply_times(e: &mut EntityWorldMut, t: &AnimTimes) {
     if let (Some(sel), Some(mut w)) = (t.select, e.get_mut::<Weapon>()) {
         w.draw_time = sel / animation_rate(1.0 + select_rate);
     }
+    if let (Some(sel), Some(mut d)) = (t.select, e.get_mut::<crate::game::inventory::DrawStock>()) {
+        d.0 = sel;
+    }
     // The server's reload window, when it was the template's reload.
     if let (Some(r), Some(old), Some(mut dmg)) = (t.reload, old_reload, e.get_mut::<CaDamage>())
         && dmg.reload_third_person == old
     {
         dmg.reload_third_person = r;
     }
+}
+
+/// The updates from the press to the first round of a weapon whose class
+/// plays a pre-fire of `prefire` s (at its rate) with updates of `tick`
+/// s: the update that sees the press, the pre-fire from the next, seen
+/// done on the first update at least `prefire` + 1 ms later (where
+/// `fire_0` starts), the round on the one after (weapon_classes.md
+/// Corrections (2026-10-30) 1: a 0 ms pre-fire is 3, a 200 ms one at 60
+/// updates a second 15).
+pub fn prefire_latency(prefire: f32, tick: f64) -> u32 {
+    let done = ((f64::from(prefire.max(0.0)) + 0.001) / tick - 1e-9).ceil().max(1.0);
+    2 + done as u32
 }
 
 /// A flame gun's fire keys from `t` (special_weapons.md 4): the pre-fire,

@@ -739,9 +739,8 @@ Shining's), 2.9 s long. Open:
    (2026-10-30):** `Alt_FireSnd` for the own secondary
    (`effects::fire_sound_of`), the fire voice per attacker and weapon
    (`effects::fire_voice`), each hit's impact before its fire sound, a
-   head hit's head surface; tests effects_sounds t71, t72, t45. Not
-   done: keys merging in one long frame (case 46: ours steps every hit
-   key that passed).
+   head hit's head surface; tests effects_sounds t71, t72, t45. Hit
+   keys passing in one update make one hit (case 46, inventory t46).
 6. **The attached keys' looks.** An attached `DynaLight` (the PSY
    bomb's): does it light the world, the view model, or both? Do the
    particles of an attached system move with the view model (as ours) or
