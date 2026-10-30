@@ -370,11 +370,23 @@ mod tests {
     fn counts_grow_with_work() {
         let mut c = ThreadCounters::current();
         let a = c.read();
+        // Burn work until the thread's CPU clock moves. A short loop is
+        // enough where the clock is fine (Linux: nanoseconds), but Windows
+        // reads it from GetThreadTimes in 15.6 ms steps
+        // (docs/performance.md), so how much work it takes is the clock's
+        // business, not the test's.
+        let started = std::time::Instant::now();
         let mut x = 0u64;
-        for i in 0..2_000_000u64 {
-            x = x.wrapping_mul(31).wrapping_add(std::hint::black_box(i));
+        while c.read().cpu_ns == a.cpu_ns {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(10),
+                "the thread's CPU clock did not move in 10 s: {a:?}"
+            );
+            for i in 0..2_000_000u64 {
+                x = x.wrapping_mul(31).wrapping_add(std::hint::black_box(i));
+            }
+            std::hint::black_box(x);
         }
-        std::hint::black_box(x);
         let d = c.read() - a;
         assert!(d.cpu_ns > 0, "{d:?}");
         if let Some(hw) = d.hw {

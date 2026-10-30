@@ -22,7 +22,16 @@ fn every_tick_is_measured() {
     sim.ticks(50);
     let m = sim.app.world().resource::<TickMetrics>();
     assert_eq!(m.ticks - before, 50);
+    // Every tick is in the wall series on every platform (a real clock, in
+    // microseconds here), and in the CPU series too. Only the CPU values are
+    // asserted where the thread's clock can resolve them: Windows reads it
+    // from GetThreadTimes, in 15.6 ms steps (docs/performance.md), so 50
+    // quick ticks can add up to no CPU time at all there.
+    let wall = m.work.wall_ms.ring.percentiles().expect("wall times");
+    assert!(wall.total > 0.0, "{wall:?}");
     let cpu = m.work.cpu_ms.ring.percentiles().expect("cpu times");
+    assert_eq!(cpu.n, wall.n, "a cpu sample a tick");
+    #[cfg(unix)]
     assert!(cpu.total > 0.0, "{cpu:?}");
     match m.work.instructions.ring.percentiles() {
         // A greybox tick runs the engine's systems: well over 10k
