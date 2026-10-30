@@ -53,6 +53,33 @@ the user's go-ahead: no Actions runs unless asked.
 
 ### Gun game playtest, 2026-10-28 (user)
 
+- **Rung attachments may not fit their gun, or not show (user, 2026-10-29).**
+  In the Escape-menu screenshots, the FMG-9's rung listed a holosight and
+  the Luger P08's a silencer, but neither shows on the gun, and the user
+  doubts they fit. Check, with the real install:
+  - *The accepted list:* where each gun's list comes from. The
+    modification file's `Weapon#` record is linked by position
+    (attachments.md Q13), and a mismatched name is only logged. Count the
+    mismatches over the pool; check skin variants (the `_Gold` and `_Red`
+    parts on gold and red guns).
+  - *What the draw takes:* `rungs::draw_parts`, against each slot's
+    rules: requirements, conflicts, the slot's `Kinds`.
+  - *What's drawn on screen:* are fitted parts drawn on the view and held
+    models (copies included)?
+  Fix the draw to take only parts that fit, and draw fitted parts on the
+  models; questions the specs leave open go to a spec session.
+  With it, odds for the draw (user, 2026-10-29). Each slot keeps the
+  gun's stock part most of the time (about 70-80%). Odds per kind:
+  sights and scopes most often, then silencers, power parts (ammo,
+  magazines) least (about 10%). At most two non-stock parts per gun. The
+  odds live in the ladder rules as data. Fitted parts can add to a gun's
+  power score once the power curve exists.
+- **The rung line lists raw attachment ids.** With rung extras on, the
+  gun game panel's top line reads like "Rung 1/12: FMG-9
+  (Silencer_A_SMG_Gold, DotSight_Holosight_SMG_Gold, ...)". It runs
+  across the whole screen and shows record ids. Show the attachments'
+  display names from the install's string table, shortened (or icons),
+  and wrap or cap the line.
 - **A natural power curve for the random ladder (user idea, 2026-10-29).**
   Weak guns first, power rising, then the hard-hitting ones, then
   specials, a grenade, melee last. Proposed design, waiting on the
