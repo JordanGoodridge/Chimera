@@ -26,7 +26,7 @@ play exactly like it. "Exactly" is measured, not guessed: values come from
 a real CS:S dedicated server driven by a test plugin, from SourceTV demos,
 and from written behaviour specs. Movement is compared with CS:S tick by
 tick, and differences we know of are tracked in
-[docs/plans/active/parity-gaps.md](docs/plans/active/parity-gaps.md).
+[docs/archive/plans/parity-gaps.md](docs/archive/plans/parity-gaps.md).
 
 What works:
 
@@ -115,13 +115,13 @@ A listen server is Create Server with more than one player allowed. For a
 dedicated server, without graphics or sound:
 
 ```bash
-cargo run --release -p cs_source_server -- +map de_dust2 +maxplayers 10
+cargo run --release -p cs_source_app --no-default-features --bin cs_source_server -- +map de_dust2 +maxplayers 10
 ```
 
 Players join with `connect <your ip>` (UDP port 27015, change it with
 `+hostport`), or find it in Find Servers on the same network.
 
-Combat Arms has one too: `cargo run --release -p combat_arms_server --
+Combat Arms has one too: `cargo run --release -p combat_arms_app --no-default-features --bin combat_arms_server --
 +map combat_arms:warehouse +ca_mode TDM +MaxPlayer 6`; players join with
 `combat_arms +connect <your ip>`.
 
@@ -151,15 +151,15 @@ knife death costing a rung, the last gun's kill winning. It needs both
 games installed, like the mashup demo:
 
 ```bash
-cargo run --release -p lucker_party                    # the gun game on de_dust2
-cargo run --release -p lucker_party -- --map combat_arms:warehouse
+cargo run --release -p party_kit --bin lucker_party                    # the gun game on de_dust2
+cargo run --release -p party_kit --bin lucker_party -- --map combat_arms:warehouse
 ```
 
 Ultimate Gun Game: the ladder is built from every game's guns (seeded,
 spread across the games), the map pool from every game's maps; each gun
 makes you its game. `cargo run --release -p ultimate_gun_game` (its server:
-`-p ultimate_gun_game_server`; `ugg_new <seed>` on the console deals a new
-ladder).
+`-p ultimate_gun_game --no-default-features --bin ultimate_gun_game_server`;
+`ugg_new <seed>` on the console deals a new ladder).
 
 ### Play the gun game with friends
 
@@ -193,10 +193,10 @@ runs an optimized build):
 .\scripts\lucker_party_join.ps1 192.168.1.20     # a friend joins (:28930 unless it says another port)
 ```
 
-On Linux or macOS the same by hand: `cargo run --profile playtest --bin
+On Linux or macOS the same by hand: `cargo run --profile playtest -p party_kit --bin
 lucker_party -- -port 28930 +maxplayers 4 +MaxPlayer 0 +net_upnp 1` hosts
-(or `--bin lucker_party_server` for no window) and `cargo run --profile
-playtest --bin lucker_party -- +connect <ip>:28930` joins.
+(or `--no-default-features --bin lucker_party_server` for no window) and `cargo run --profile
+playtest -p party_kit --bin lucker_party -- +connect <ip>:28930` joins.
 
 The host script prints your LAN address and the exact command to give your
 friends; the game port is **UDP 28930** (`-Port` changes it).
@@ -226,9 +226,9 @@ friends; the game port is **UDP 28930** (`-Port` changes it).
 ## How it is built
 
 ```
-apps/       the programs: apps/cs_source (the game), apps/cs_source_server,
-            apps/combat_arms, apps/combat_arms_server, apps/mashup_demo
-            and apps/lucker_party
+apps/       the programs: apps/cs_source, apps/combat_arms, apps/mashup_demo,
+            apps/party_kit, apps/ultimate_gun_game (each app also houses its
+            headless server binary under --no-default-features)
 games/      each game as a library of parts: games/cs_source,
             games/combat_arms; games/originals, Lucker Party's own
 minigames/  Lucker Party's minigames as data

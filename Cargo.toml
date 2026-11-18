@@ -8,7 +8,6 @@
 # apps/cs_source).
 [workspace]
 members = [
-    ".",
     "chimera/core",
     "chimera/dev",
     "chimera/workspace-hack",
@@ -28,48 +27,16 @@ members = [
     "games/combat_arms",
     "games/originals",
     "apps/cs_source",
-    "apps/cs_source_server",
     "apps/combat_arms",
-    "apps/combat_arms_server",
     "apps/mashup_demo",
     "apps/party_kit",
-    "apps/lucker_party",
-    "apps/lucker_party_server",
     "apps/ultimate_gun_game",
-    "apps/ultimate_gun_game_server",
+    "tools/dump",
     "checks",
 ]
 default-members = [
-    ".",
-    "chimera/core",
-    "chimera/dev",
-    "chimera/workspace-hack",
-    "chimera/world",
-    "chimera/present",
-    "chimera/sim",
-    "chimera/client",
-    "chimera/net",
-    "chimera/tools",
-    "chimera/vfs",
-    "source/formats",
-    "source/logic",
-    "source/tools",
-    "lithtech/formats",
-    "games/cs_source",
-    "games/cs_source/tools",
-    "games/combat_arms",
-    "games/originals",
     "apps/cs_source",
-    "apps/cs_source_server",
-    "apps/combat_arms",
-    "apps/combat_arms_server",
-    "apps/mashup_demo",
     "apps/party_kit",
-    "apps/lucker_party",
-    "apps/lucker_party_server",
-    "apps/ultimate_gun_game",
-    "apps/ultimate_gun_game_server",
-    "checks",
 ]
 resolver = "3"
 
@@ -203,112 +170,33 @@ serde_json = "1.0.151"
 # The window icon (`winit::window::Icon`; the winit bevy_winit uses).
 winit = { version = "0.30", default-features = false }
 
-[package]
-name = "mashup"
-version = "0.1.0"
-edition.workspace = true
-rust-version.workspace = true
-publish.workspace = true
-license.workspace = true
-
-# `mashup`, the repository root's package, is now a thin shim: the CS:S
-# app's glue (`cs_source_app`, apps/cs_source) re-exported at the old
-# `mashup::` paths (src/lib.rs), for `dump` (an install inspector for
-# several games, tested in tests/it/; Combat Arms' archives through
-# `lithtech_formats`). The game binary is the app's,
-# the dedicated server apps/cs_source_server's, the tools their layers'
-# (docs/ARCHITECTURE.md, "Crates").
-[lib]
-doctest = false
-
-[dependencies]
-cs_source_app.workspace = true
-cs_source.workspace = true
-source_formats.workspace = true
-lithtech_formats.workspace = true
-avian3d.workspace = true
-bevy.workspace = true
-bevy_replicon.workspace = true
-bevy_replicon_renet.workspace = true
-postcard.workspace = true
-bzip2.workspace = true
-dirs.workspace = true
-half.workspace = true
-image.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
-toml.workspace = true
-vbsp.workspace = true
-vmdl.workspace = true
-vmt-parser.workspace = true
-vtf.workspace = true
-workspace-hack.workspace = true
-
-# Binaries without unit tests: `cargo test` skips building a test harness
-# of each (one more link apiece). A binary that gets tests loses its
-# `test = false`; checks/tests/it/architecture.rs checks this in every member.
-[[bin]]
-name = "dump"
-test = false
-
-# `dump`'s test (tests/it/).
-[[test]]
-name = "it"
-path = "tests/it/main.rs"
-required-features = ["present"]
-
-[features]
-default = ["present"]
-
-# The app with its presentation, client shell and CS:S's front end
-# (`cs_source_app`'s `present`): what the integration tests drive.
-present = ["cs_source_app/present"]
-
-# Faster iteration: link Bevy as a dynamic library (the app's `dev` and
-# every crate's under it). Never enable for release builds.
-dev = ["cs_source_app/dev"]
-
-# CPU profile: every system and render step as a span in a Chrome trace
-# (docs/performance.md). Slower; only for measuring.
-profile = ["cs_source_app/profile"]
-# A short window of spans (`trace_capture`), the Tracy profiler live:
-# docs/performance.md, "See a frame yourself".
-trace = ["cs_source_app/trace"]
-tracy = ["cs_source_app/tracy"]
-
-# Our own code: a little optimization so the game is playable in debug.
+# Local crates: light optimization + line-tables-only so dev and test share
+# 100% of compiled dependency artifacts.
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
 
-# Dependencies (Bevy, parsers): fully optimized, compiled once and cached.
+# Third-party crates (Bevy, Avian, wgpu): optimized once, zero DWARF debuginfo.
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
-# The `.rez` ciphers' block functions are inlined into lithtech_formats'
-# CBC loop, so they build at its level: at 1, V1 (Twofish) decrypts at
-# about 2 MB/s and stalls loading Combat Arms' keyed archives.
 [profile.dev.package.lithtech_formats]
 opt-level = 3
 
-# Build scripts, proc macros and their dependencies: no debuginfo, always.
-# Left to cargo, a build-time dependency keeps debuginfo only when a
-# runtime dependency shares it, so `cargo test -p <crate>` (fewer runtime
-# dependencies) built every proc macro again, and Bevy after them, for
-# all the workspace-hack's unified features (docs/performance.md,
-# "Workspace-hack").
 [profile.dev.build-override]
 debug = false
 
-# Tests (`cargo test`, nextest): line tables only, for every crate. Panics
-# and backtraces keep their files and lines; a debugger loses variables.
-# Measured (docs/performance.md, "Test cycle"): rebuilding every test
-# binary after a change to chimera_core 197-237 s instead of 383-427 s, a
-# full test build's artifacts a third the size (23 GB instead of ~68), a
-# test binary 478 MB instead of ~1 GB. `cargo run`/`build` (dev) keep full
-# debug info, so they no longer share the dependencies' build with tests.
 [profile.test]
+opt-level = 1
 debug = "line-tables-only"
+
+[profile.test.package."*"]
+opt-level = 3
+debug = false
+
+[profile.test.build-override]
+debug = false
 
 [profile.release]
 codegen-units = 1

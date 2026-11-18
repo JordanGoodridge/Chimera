@@ -9,17 +9,17 @@ git pull --ff-only
 case "$1" in
     combat_arms)
         shift
-        exec cargo run --profile playtest --bin combat_arms -- "$@"
+        exec cargo run --profile playtest -p combat_arms_app --bin combat_arms -- "$@"
         ;;
     lucker_party)
         shift
-        exec cargo run --profile playtest --bin lucker_party -- "$@"
+        exec cargo run --profile playtest -p party_kit --bin lucker_party -- "$@"
         ;;
     ultimate_gun_game)
         shift
-        exec cargo run --profile playtest --bin ultimate_gun_game -- "$@"
+        exec cargo run --profile playtest -p ultimate_gun_game --bin ultimate_gun_game -- "$@"
         ;;
     *)
-        exec cargo run --profile playtest -- "$@"
+        exec cargo run --profile playtest -p cs_source_app --bin cs_source -- "$@"
         ;;
 esac

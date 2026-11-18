@@ -21,8 +21,13 @@
 //! folder as the CS:S app's (`console::cfg_dir`).
 
 use bevy::prelude::*;
+#[cfg(feature = "present")]
 use chimera_client::client::{AppHooks, Args, ClientPlugins};
-use chimera_world::{greybox, map::MapData};
+#[cfg(feature = "present")]
+use chimera_world::greybox;
+use chimera_world::map::MapData;
+
+pub mod server;
 
 /// This build's version (`version` command, bug reports): see
 /// `version::format_version`; stamped by build.rs.
@@ -34,6 +39,7 @@ pub const BUILD: &str = env!("CHIMERA_GIT");
 
 /// What this app tells the client shell: its commit, Combat Arms' maps
 /// by id (`load_map`), and the greybox's own hooks.
+#[cfg(feature = "present")]
 pub fn client_hooks() -> AppHooks {
     AppHooks {
         build: BUILD,
@@ -45,6 +51,7 @@ pub fn client_hooks() -> AppHooks {
     }
 }
 
+#[cfg(feature = "present")]
 fn no_maps(id: &str) -> String {
     format!("{id}: Combat Arms maps load by id only (combat_arms:<name>), not from a file")
 }
@@ -79,10 +86,12 @@ impl Plugin for SimPlugin {
 
 /// The client as this app runs it: the shell's plugins with the app's
 /// hooks and Combat Arms' HUD (`combat_arms::ui::with_hud`).
+#[cfg(feature = "present")]
 pub struct ClientPlugin {
     pub args: Args,
 }
 
+#[cfg(feature = "present")]
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(combat_arms::ui::with_hud(
@@ -96,7 +105,7 @@ impl Plugin for ClientPlugin {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "present"))]
 mod tests {
     /// The world is 75 degrees vertical (view_models.md 5.2), the view
     /// model 50 (5.1): the app's unzoomed field of view is the spec's

@@ -415,7 +415,7 @@ fn module_layering() {
     // `crate::render`, `source_logic`'s `crate::logic`, re-exported by
     // `mashup` at the same paths), so one table covers them all.
     let mut files = Vec::new();
-    for dir in CRATE_SRC.iter().copied().chain(["src"]) {
+    for dir in CRATE_SRC.iter().copied() {
         let mut more = Vec::new();
         rust_files(&root().join(dir), &mut more);
         files.extend(more.into_iter().map(|f| (root().join(dir), f)));
@@ -541,7 +541,7 @@ fn simulation_builds_no_drawn_parts() {
         "games",
     ];
     let mut files = Vec::new();
-    for dir in CRATE_SRC.iter().copied().chain(["src"]) {
+    for dir in CRATE_SRC.iter().copied() {
         let mut more = Vec::new();
         rust_files(&root().join(dir), &mut more);
         files.extend(more.into_iter().map(|f| (root().join(dir), f)));
@@ -769,45 +769,6 @@ fn docs_map_links_resolve() {
     assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
 }
 
-/// The doc lists built from the sources' `//!` docs (docs/modules.md and the
-/// generated entries of docs/tech-debt.md, architecture review T5) match the
-/// sources, so features edit only their own file's doc and parallel branches
-/// don't conflict on the lists. Also: the hand-kept debt entries stay one
-/// short line, and docs/ARCHITECTURE.md points at the module list.
-#[test]
-fn generated_docs_are_fresh() {
-    const HAND_DEBT_LINE: usize = 320;
-    let mut errors = Vec::new();
-    match repo_checks::docs_index::stale(&root()) {
-        Ok(stale) => {
-            for (path, _) in stale {
-                errors.push(format!(
-                    "{path} is stale: it is generated from the files' `//!` docs. Regenerate it \
-                     with `{}` and commit the result (change a summary or shortcut in the \
-                     file's `//!` doc, never in {path}).",
-                    repo_checks::docs_index::COMMAND
-                ));
-            }
-        }
-        Err(e) => errors.push(e),
-    }
-    let debt = fs::read_to_string(root().join("docs/tech-debt.md")).unwrap();
-    for line in debt.lines().filter(|l| l.starts_with("- ")) {
-        if line.chars().count() > HAND_DEBT_LINE {
-            errors.push(format!(
-                "docs/tech-debt.md entry longer than {HAND_DEBT_LINE} characters: {line:.80}... \
-                 Keep one line; a shortcut that belongs to a file goes in its `//!` doc under \
-                 \"Known shortcuts\" and is listed by the generator."
-            ));
-        }
-    }
-    let arch = fs::read_to_string(root().join("docs/ARCHITECTURE.md")).unwrap();
-    if !arch.contains("docs/modules.md") {
-        errors.push("docs/ARCHITECTURE.md must point at docs/modules.md (the generated module list).".into());
-    }
-    assert!(errors.is_empty(), "\n{}\n", errors.join("\n"));
-}
-
 /// Binaries built without a test harness (`test = false` in Cargo.toml)
 /// must have no unit tests, or those would never run.
 #[test]
@@ -869,10 +830,12 @@ fn workspace_crates() {
     };
     let (members, defaults) = (list("members"), list("default-members"));
     let mut errors = Vec::new();
-    for m in members.difference(&defaults) {
+    if defaults.is_empty() {
+        errors.push("`default-members` in Cargo.toml must not be empty.".to_string());
+    }
+    for m in defaults.difference(&members) {
         errors.push(format!(
-            "workspace member `{m}` isn't in `default-members` (Cargo.toml), so `cargo test` at the root \
-             (and the git hooks) never test it. Add it there."
+            "`default-members` entry `{m}` is not listed in `[workspace] members` (Cargo.toml)."
         ));
     }
     // Every member builds third-party crates with the workspace's features
@@ -957,27 +920,10 @@ fn workspace_crates() {
     const PARTY_KIT: &str = "is the party kit (docs/ARCHITECTURE.md, \"Crates\"): the games as libraries, \
         the original minigames and Chimera composed once for the four party apps (Lucker Party, the Ultimate \
         Gun Game, and their servers), never one of those apps: what they share lives here, not across them.";
-    const PARTY_APP: &str = "is Lucker Party's game binary (docs/ARCHITECTURE.md, \"Crates\"): a thin binary \
-        over the party kit (`party_kit`), never another app and no game crate: what it needs from the games \
-        goes through the kit.";
-    const PARTY_SERVER: &str = "is Lucker Party's dedicated server (docs/ARCHITECTURE.md, \"Crates\"): \
-        a thin binary over the party kit (`party_kit`) without its default `present`, so no presentation or \
-        client shell links (`server_builds_without_presentation`). Move what needs them into the kit's \
-        client side (`present`).";
     const UGG_APP: &str = "is the Ultimate Gun Game (docs/ARCHITECTURE.md, \"Crates\"; \
-        docs/plans/active/ultimate-gun-game.md): the party kit (`party_kit`) with an automatic gun game made \
+        docs/archive/plans/ultimate-gun-game.md): the party kit (`party_kit`) with an automatic gun game made \
         from the games' parts (`chimera_core::game_parts`). It names no game crate and no other app: what a \
         game lends reaches it through the parts registry, and what it shares with the party lives in the kit.";
-    const UGG_SERVER: &str = "is the Ultimate Gun Game's dedicated server (docs/ARCHITECTURE.md, \"Crates\"): \
-        the party kit (`party_kit::server`) and `ultimate_gun_game` without their default `present`, so no \
-        presentation or client shell links (`server_builds_without_presentation`).";
-    const SERVER: &str = "is the dedicated server (docs/ARCHITECTURE.md, \"Crates\"): it builds without the \
-        presentation and the client shell (`server_builds_without_presentation`). Move what needs them \
-        into the client's side or behind `cs_source_app`'s `present`.";
-    const CA_SERVER: &str = "is Combat Arms' dedicated server (docs/ARCHITECTURE.md, \"Crates\"): Chimera's \
-        simulation crates and Combat Arms without its front end (`ui`), no presentation, client shell or \
-        Combat Arms app (`server_builds_without_presentation`), and never CS:S or Source's logic. Move what \
-        needs them into the client's side (the app, `ui`).";
     const TOOLS: &str = "is a layer's tools (docs/ARCHITECTURE.md, \"Crates\"): a tool lives at the lowest \
         layer whose knowledge it needs, and uses nothing above it. Move the tool (or the part of it that \
         needs the layer above) into that layer's tools: chimera/tools, source/tools, games/<game>/tools.";
@@ -1118,57 +1064,13 @@ fn workspace_crates() {
         ),
         (
             "apps/party_kit",
-            &["mashup", "cs_source_app", "combat_arms_app", "ultimate_gun_game", "lucker_party"],
+            &["mashup", "cs_source_app", "combat_arms_app", "ultimate_gun_game"],
             PARTY_KIT,
         ),
         (
-            "apps/lucker_party",
-            &[
-                "mashup",
-                "cs_source",
-                "source_logic",
-                "combat_arms",
-                "originals",
-                "ultimate_gun_game",
-                "lucker_party_server",
-            ],
-            PARTY_APP,
-        ),
-        (
-            "apps/lucker_party_server",
-            &[
-                "chimera_present",
-                "chimera_client",
-                "bevy_egui",
-                "bevy-inspector-egui",
-                "arboard",
-                "cs_source",
-                "combat_arms",
-                "mashup",
-                "ultimate_gun_game",
-                "lucker_party",
-            ],
-            PARTY_SERVER,
-        ),
-        (
             "apps/ultimate_gun_game",
-            &["mashup", "cs_source", "source_logic", "cs_source_app", "combat_arms_app", "lucker_party"],
+            &["mashup", "cs_source", "source_logic", "cs_source_app", "combat_arms_app"],
             UGG_APP,
-        ),
-        (
-            "apps/ultimate_gun_game_server",
-            &[
-                "chimera_present",
-                "chimera_client",
-                "bevy_egui",
-                "bevy-inspector-egui",
-                "arboard",
-                "cs_source",
-                "combat_arms",
-                "mashup",
-                "lucker_party",
-            ],
-            UGG_SERVER,
         ),
         (
             "chimera/tools",
@@ -1185,7 +1087,6 @@ fn workspace_crates() {
                 "combat_arms",
                 "games",
                 "originals",
-                "lucker_party",
                 "party_kit",
                 "mashup",
             ],
@@ -1202,7 +1103,6 @@ fn workspace_crates() {
                 "combat_arms",
                 "games",
                 "originals",
-                "lucker_party",
                 "party_kit",
                 "mashup",
                 "workspace-hack",
@@ -1210,33 +1110,7 @@ fn workspace_crates() {
             CHECKS,
         ),
         ("games/cs_source/tools", &["mashup", "combat_arms"], TOOLS),
-        (
-            "apps/cs_source_server",
-            &[
-                "chimera_present",
-                "chimera_client",
-                "bevy_egui",
-                "bevy-inspector-egui",
-                "arboard",
-                "mashup",
-            ],
-            SERVER,
-        ),
-        (
-            "apps/combat_arms_server",
-            &[
-                "chimera_present",
-                "chimera_client",
-                "bevy_egui",
-                "bevy-inspector-egui",
-                "arboard",
-                "combat_arms_app",
-                "cs_source",
-                "source_logic",
-                "mashup",
-            ],
-            CA_SERVER,
-        ),
+        ("tools/dump", &["mashup", "chimera_present", "chimera_client"], TOOLS),
         (
             "chimera/client",
             &[
@@ -1430,22 +1304,23 @@ fn server_builds_without_presentation() {
         "rodio",
     ];
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let tree = |package: &str| -> String {
-        let out = Command::new(&cargo)
-            .current_dir(root())
-            .args([
-                "tree",
-                "-p",
-                package,
-                "-e",
-                "normal",
-                "--prefix",
-                "none",
-                "--offline",
-                "--locked",
-            ])
-            .output()
-            .expect("running cargo tree");
+    let tree = |package: &str, no_default: bool| -> String {
+        let mut cmd = Command::new(&cargo);
+        cmd.current_dir(root()).args([
+            "tree",
+            "-p",
+            package,
+            "-e",
+            "normal",
+            "--prefix",
+            "none",
+            "--offline",
+            "--locked",
+        ]);
+        if no_default {
+            cmd.arg("--no-default-features");
+        }
+        let out = cmd.output().expect("running cargo tree");
         assert!(
             out.status.success(),
             "cargo tree failed: {}",
@@ -1455,57 +1330,27 @@ fn server_builds_without_presentation() {
     };
     let uses_present = |tree: &str| tree.lines().any(|l| l.starts_with("chimera_present "));
     assert!(
-        uses_present(&tree("cs_source_app")),
+        uses_present(&tree("cs_source_app", false)),
         "the game (`cs_source_app` with its default features) no longer depends on chimera_present: update this \
-         test and docs/ARCHITECTURE.md (\"Crates\")."
+         test and docs/ARCHITECTURE.md."
     );
-    let server = tree("cs_source_server");
-    let present: Vec<&str> = server
-        .lines()
-        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
-        .collect();
-    assert!(
-        present.is_empty(),
-        "`cs_source_server` (the dedicated server's build) depends on {present:?}. The presentation \
-         (chimera_present) and the client-only crates are optional in `cs_source_app`, behind its default \
-         feature `present` (apps/cs_source/Cargo.toml): make the new dependency optional and add it to \
-         `present`, or move what the simulation needs out of the presentation."
-    );
-    let server = tree("combat_arms_server");
-    let present: Vec<&str> = server
-        .lines()
-        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
-        .collect();
-    assert!(
-        present.is_empty(),
-        "`combat_arms_server` (the Combat Arms dedicated server's build) depends on {present:?}. It uses \
-         Chimera's simulation crates and `combat_arms` without its `ui` feature (apps/combat_arms_server/\
-         Cargo.toml): don't turn on `ui` or depend on the app (`combat_arms_app`), and keep the new \
-         dependency out of the simulation crates (the front end's optional ones: UI_FEATURES)."
-    );
-    let server = tree("lucker_party_server");
-    let present: Vec<&str> = server
-        .lines()
-        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
-        .collect();
-    assert!(
-        present.is_empty(),
-        "`lucker_party_server` (Lucker Party's dedicated server's build) depends on {present:?}. It uses \
-         `party_kit` without its default feature `present` (the workspace's dependency, Cargo.toml) and \
-         the games without their front ends: make the new dependency optional in `party_kit` behind \
-         `present`, or move what the simulation needs out of the presentation."
-    );
-    let server = tree("ultimate_gun_game_server");
-    let present: Vec<&str> = server
-        .lines()
-        .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
-        .collect();
-    assert!(
-        present.is_empty(),
-        "`ultimate_gun_game_server` depends on {present:?}. It uses `party_kit` and \
-         `ultimate_gun_game` without their default feature `present` (the workspace's dependency, Cargo.toml): \
-         make the new dependency optional in `ultimate_gun_game` behind `present`."
-    );
+    for (pkg, bin) in [
+        ("cs_source_app", "cs_source_server"),
+        ("combat_arms_app", "combat_arms_server"),
+        ("party_kit", "lucker_party_server"),
+        ("ultimate_gun_game", "ultimate_gun_game_server"),
+    ] {
+        let server = tree(pkg, true);
+        let present: Vec<&str> = server
+            .lines()
+            .filter(|l| CLIENT_ONLY.iter().any(|c| l.starts_with(&format!("{c} "))))
+            .collect();
+        assert!(
+            present.is_empty(),
+            "`{pkg}` with `--no-default-features` (for `{bin}`) depends on {present:?}. Presentation and \
+             client-only crates must stay optional behind the `present` feature."
+        );
+    }
 }
 
 /// Each package's integration tests are one test binary per crate

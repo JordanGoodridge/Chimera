@@ -2953,20 +2953,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "combat_arms_server"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "chimera_core",
- "chimera_net",
- "chimera_sim",
- "chimera_world",
- "combat_arms",
- "workspace-hack",
-]
-
-[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3342,15 +3328,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cs_source_server"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "cs_source_app",
- "workspace-hack",
-]
-
-[[package]]
 name = "cs_source_tools"
 version = "0.1.0"
 dependencies = [
@@ -3521,6 +3498,19 @@ name = "dpi"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
+
+[[package]]
+name = "dump"
+version = "0.1.0"
+dependencies = [
+ "chimera_core",
+ "chimera_world",
+ "cs_source",
+ "glam 0.33.12",
+ "lithtech_formats",
+ "vmdl",
+ "workspace-hack",
+]
 
 [[package]]
 name = "ecolor"
@@ -5077,23 +5067,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lucker_party"
-version = "0.1.0"
-dependencies = [
- "chimera_client",
- "party_kit",
- "workspace-hack",
-]
-
-[[package]]
-name = "lucker_party_server"
-version = "0.1.0"
-dependencies = [
- "party_kit",
- "workspace-hack",
-]
-
-[[package]]
 name = "lzma"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5119,34 +5092,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a1b95cd5421ec55b445b5ae102f5ea0e768de1f82bd3001e11f426c269c3aea"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "mashup"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "bevy_replicon",
- "bevy_replicon_renet",
- "bzip2",
- "cs_source",
- "cs_source_app",
- "dirs",
- "half",
- "image",
- "lithtech_formats",
- "postcard",
- "serde",
- "serde_json",
- "sha2",
- "source_formats",
- "toml",
- "vbsp",
- "vmdl",
- "vmt-parser",
- "vtf",
- "workspace-hack",
 ]
 
 [[package]]
@@ -7857,15 +7802,6 @@ dependencies = [
  "chimera_world",
  "combat_arms",
  "party_kit",
- "workspace-hack",
-]
-
-[[package]]
-name = "ultimate_gun_game_server"
-version = "0.1.0"
-dependencies = [
- "party_kit",
- "ultimate_gun_game",
  "workspace-hack",
 ]
 
