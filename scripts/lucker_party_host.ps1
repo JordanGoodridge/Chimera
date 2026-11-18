@@ -52,7 +52,7 @@ Write-Host ""
 Write-Host "Friends on your network (same router / Wi-Fi) join with:"
 Write-Host "    .\scripts\lucker_party_join.ps1 $join"
 Write-Host "  or, in a built checkout:"
-Write-Host "    cargo run --profile playtest --bin lucker_party -- +connect $join"
+Write-Host "    cargo run --profile playtest -p party_kit --bin lucker_party -- +connect $join"
 Write-Host ""
 Write-Host "Friends elsewhere use your public address instead of $lan (search 'what is my IP',"
 Write-Host "or read it from the 'UPnP:' line the game prints), the same port ($Port), and one of:"
@@ -71,7 +71,7 @@ $upnp = @()
 if (-not $NoUpnp) { $upnp = @('+net_upnp', '1') }
 
 if ($Dedicated) {
-    cargo run --profile playtest --bin lucker_party_server -- -port $Port +maxplayers $Players +MaxPlayer $Bots +hostname "Lucker Party gun game" @upnp
+    cargo run --profile playtest -p party_kit --no-default-features --bin lucker_party_server -- -port $Port +maxplayers $Players +MaxPlayer $Bots +hostname "Lucker Party gun game" @upnp
 } else {
-    cargo run --profile playtest --bin lucker_party -- -port $Port +maxplayers $Players +MaxPlayer $Bots +name $Name @upnp
+    cargo run --profile playtest -p party_kit --bin lucker_party -- -port $Port +maxplayers $Players +MaxPlayer $Bots +name $Name @upnp
 }

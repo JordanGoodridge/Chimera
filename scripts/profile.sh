@@ -19,16 +19,19 @@ else
     export CHIMERA_TRACE_SECONDS="${CHIMERA_TRACE_SECONDS:-1}" CHIMERA_TRACE_AFTER="${CHIMERA_TRACE_AFTER:-20}"
 fi
 case "$1" in
-    lucker_party|mashup_demo)
-        app=$1
+    lucker_party)
         shift
-        exec cargo run --profile playtest -p "$app" --features "$feature" --bin "$app" -- "$@"
+        exec cargo run --profile playtest -p party_kit --features "$feature" --bin lucker_party -- "$@"
+        ;;
+    mashup_demo)
+        shift
+        exec cargo run --profile playtest -p mashup_demo --features "$feature" --bin mashup_demo -- "$@"
         ;;
     combat_arms)
         shift
         exec cargo run --profile playtest -p combat_arms_app --features "$feature" --bin combat_arms -- "$@"
         ;;
     *)
-        exec cargo run --profile playtest --features "$feature" -- "$@"
+        exec cargo run --profile playtest -p cs_source_app --features "$feature" --bin cs_source -- "$@"
         ;;
 esac

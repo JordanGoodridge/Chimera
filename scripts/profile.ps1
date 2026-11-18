@@ -24,8 +24,8 @@ $apps = @("lucker_party", "combat_arms", "mashup_demo")
 if ($rest.Count -gt 0 -and $apps -contains $rest[0]) {
     $app = $rest[0]
     $rest = @($rest | Select-Object -Skip 1)
-    $package = if ($app -eq "combat_arms") { "combat_arms_app" } else { $app }
+    $package = if ($app -eq "combat_arms") { "combat_arms_app" } elseif ($app -eq "lucker_party") { "party_kit" } else { $app }
     cargo run --profile playtest -p $package --features $feature --bin $app -- @rest
 } else {
-    cargo run --profile playtest --features $feature -- @rest
+    cargo run --profile playtest -p cs_source_app --features $feature --bin cs_source -- @rest
 }

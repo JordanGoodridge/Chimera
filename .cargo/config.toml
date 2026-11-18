@@ -13,3 +13,13 @@
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
 rustdocflags = ["-Clinker=rust-lld.exe"]
+
+[alias]
+dev = "run -p cs_source_app --features dev --bin cs_source --"
+party = "run -p party_kit --features dev --bin lucker_party --"
+ugg = "run -p ultimate_gun_game --features dev --bin ultimate_gun_game --"
+ca = "run -p combat_arms_app --features dev --bin combat_arms --"
+mashup = "run -p mashup_demo --features dev --bin mashup_demo --"
+lint = "test -p repo_checks"
+check-all = "check --workspace --all-targets"
+test-fast = "test --workspace --exclude dump -- --skip heavy::"

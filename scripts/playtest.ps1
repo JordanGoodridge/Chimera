@@ -9,13 +9,13 @@ $ErrorActionPreference = "Stop"
 git pull --ff-only
 if ($args.Count -gt 0 -and $args[0] -eq "combat_arms") {
     $rest = @($args | Select-Object -Skip 1)
-    cargo run --profile playtest --bin combat_arms -- @rest
+    cargo run --profile playtest -p combat_arms_app --bin combat_arms -- @rest
 } elseif ($args.Count -gt 0 -and $args[0] -eq "lucker_party") {
     $rest = @($args | Select-Object -Skip 1)
-    cargo run --profile playtest --bin lucker_party -- @rest
+    cargo run --profile playtest -p party_kit --bin lucker_party -- @rest
 } elseif ($args.Count -gt 0 -and $args[0] -eq "ultimate_gun_game") {
     $rest = @($args | Select-Object -Skip 1)
-    cargo run --profile playtest --bin ultimate_gun_game -- @rest
+    cargo run --profile playtest -p ultimate_gun_game --bin ultimate_gun_game -- @rest
 } else {
-    cargo run --profile playtest -- @args
+    cargo run --profile playtest -p cs_source_app --bin cs_source -- @args
 }

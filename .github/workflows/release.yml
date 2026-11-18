@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           cargo build --release --locked -p cs_source_app --bin cs_source
-          cargo build --release --locked -p cs_source_server --bin cs_source_server
+          cargo build --release --locked -p cs_source_app --no-default-features --bin cs_source_server
       - name: Package
         shell: bash
         run: |

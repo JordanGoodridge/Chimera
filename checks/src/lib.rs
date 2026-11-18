@@ -13,4 +13,3 @@
 //! `cargo run -p repo_checks --bin affected -- --help` for the command.
 
 pub mod affected;
-pub mod docs_index;

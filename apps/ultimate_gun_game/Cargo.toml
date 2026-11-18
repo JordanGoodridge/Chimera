@@ -42,6 +42,11 @@ path = "src/main.rs"
 test = false
 required-features = ["present"]
 
+[[bin]]
+name = "ultimate_gun_game_server"
+path = "src/bin/ultimate_gun_game_server.rs"
+test = false
+
 # Its integration tests (tests/it/): the automatic gun game on the
 # composed simulation, headless.
 [[test]]

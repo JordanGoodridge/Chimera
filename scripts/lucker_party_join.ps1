@@ -36,4 +36,4 @@ Write-Host "Joining $Address as $Name ..."
 Write-Host "If it times out: the host's game must be running, the address and port right, and for a"
 Write-Host "friend outside your network the host needs UPnP or a UDP port forward (or a shared VPN)."
 Write-Host ""
-cargo run --profile playtest --bin lucker_party -- +name $Name +connect $Address
+cargo run --profile playtest -p party_kit --bin lucker_party -- +name $Name +connect $Address
